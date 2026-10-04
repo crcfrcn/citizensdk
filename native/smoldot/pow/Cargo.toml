@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+default-members = ["lib", "light-base"]
+members = [
+    "lib",
+    "light-base",
+]
+
+[workspace.package]
+authors = ["Parity Technologies <admin@parity.io>", "Pierre Krieger <pierre.krieger1708@gmail.com>"]
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+edition = "2024"
+repository = "https://github.com/smol-dot/smoldot"
+include = ["**/*.rs"]  # Only Rust files are included, as anything else might be a test fixture.
+
+[profile.dev]
+debug = "limited"
+opt-level = 2
+panic = "abort"
+[profile.dev.package."*"]
+opt-level = 3
+debug-assertions = false   # The debug assertions in wasmi in particular take a lot of time
+
+# The `test` profile mimics the `dev` profile to avoid recompilations.
+[profile.test]
+opt-level = 2
+[profile.test.package."*"]
+opt-level = 3
+
+[profile.release]
+panic = "abort"
+lto = true
+# codegen-units set to 1 to avoid performance regressions when combined with LTO
+# See https://github.com/rust-lang/rust/issues/47745
+# https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+codegen-units = 1
+incremental = false
+# 与 ../ffi/Cargo.toml 同策:磁盘产物保留符号+行号供崩溃反解;release APK 由 AGP 剥离。
+strip = false
+debug = 1
+
+[profile.min-size-release]
+inherits = "release"
+opt-level = "z"
+incremental = false

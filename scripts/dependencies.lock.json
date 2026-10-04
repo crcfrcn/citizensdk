@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "environment": {
+    "zxing-cpp": {
+      "version": "3.1.1",
+      "url": "https://github.com/zxing-cpp/zxing-cpp/releases/download/v3.1.1/zxing-cpp-3.1.1.tar.gz",
+      "size": 1628322,
+      "sha256": "c3c02c29c0b519de7bd4e25b376e606e87f0761befd1282815642a2246613d14",
+      "archive_root": "zxing-cpp-3.1.1"
+    }
+  },
+  "android_tools": {
+    "agp": "9.0.1",
+    "kotlin": "2.2.20",
+    "gradle": "9.1.0",
+    "cmake": "3.31.6",
+    "ndk": "28.2.13676358"
+  },
+  "native": {
+    "schema": 1,
+    "sources": {
+      "sqlite": {
+        "version": "3.53.4",
+        "url": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+        "size": 2946650,
+        "sha256": "1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d",
+        "sha3_256": "628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e",
+        "archive_root": "sqlite-amalgamation-3530400"
+      },
+      "openssl": {
+        "version": "3.5.8",
+        "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz",
+        "size": 53213818,
+        "sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+        "archive_root": "openssl-3.5.8",
+        "license": "LICENSE.txt",
+        "license_sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+      },
+      "tpm2-tss": {
+        "version": "4.2.0",
+        "url": "https://github.com/tpm2-software/tpm2-tss/releases/download/4.2.0/tpm2-tss-4.2.0.tar.gz",
+        "size": 2023505,
+        "sha256": "b53f0c5c8c4ce17f05701a410ca9688f725ca380c9bc4640eacd0eadb1fea124",
+        "archive_root": "tpm2-tss-4.2.0",
+        "license": "LICENSE",
+        "license_sha256": "18c1bf4b1ba1fb2c4ffa7398c234d83c0d55475298e470ae1e5e3a8a8bd2e448"
+      }
+    },
+    "sqlite_defines": ["SQLITE_THREADSAFE=1"],
+    "openssl_options": ["no-shared", "no-module", "no-dso", "no-tests", "-fPIC"],
+    "tss2_options": [
+      "--enable-option-checking=fatal", "--disable-shared", "--enable-static", "--with-pic",
+      "--with-crypto=ossl", "--disable-fapi", "--disable-policy", "--enable-esys",
+      "--enable-util-io", "--enable-tcti-device", "--disable-tcti-mssim",
+      "--disable-tcti-swtpm", "--disable-tcti-pcap", "--disable-tcti-null",
+      "--disable-tcti-libtpms", "--disable-tcti-cmd", "--disable-tcti-spi-helper",
+      "--disable-tcti-spi-ltt2go", "--disable-tcti-spidev", "--disable-tcti-spi-ftdi",
+      "--disable-tcti-i2c-helper", "--disable-tcti-i2c-ftdi", "--disable-tcti-fuzzing",
+      "--enable-nodl", "--disable-unit", "--disable-integration", "--disable-log-file",
+      "--with-maxloglevel=none", "--with-sysusersdir=no", "--with-tmpfilesdir=no",
+      "--disable-doxygen-doc", "--disable-doxygen-man", "--disable-doxygen-html"
+    ],
+    "platforms": {
+      "LinuxARM": {"target": "aarch64-unknown-linux-gnu", "machine": 183, "openssl_target": "linux-aarch64", "glibc": "2.31"},
+      "LinuxAMD": {"target": "x86_64-unknown-linux-gnu", "machine": 62, "openssl_target": "linux-x86_64", "glibc": "2.31"},
+      "Windows": {"target": "x86_64-pc-windows-msvc", "machine": 34404, "msvc_runtime": "/MD"}
+    }
+  },
+  "headers": {
+    "openssl": [
+      "aes.h", "asn1.h", "asn1err.h", "asn1t.h", "async.h", "asyncerr.h", "bio.h", "bioerr.h",
+      "blowfish.h", "bn.h", "bnerr.h", "buffer.h", "buffererr.h", "byteorder.h", "camellia.h",
+      "cast.h", "cmac.h", "cmp.h", "cmp_util.h", "cmperr.h", "cms.h", "cmserr.h", "comp.h",
+      "comperr.h", "conf.h", "conf_api.h", "conferr.h", "configuration.h", "conftypes.h", "core.h",
+      "core_dispatch.h", "core_names.h", "core_object.h", "crmf.h", "crmferr.h", "crypto.h",
+      "cryptoerr.h", "cryptoerr_legacy.h", "ct.h", "cterr.h", "decoder.h", "decodererr.h", "des.h",
+      "dh.h", "dherr.h", "dsa.h", "dsaerr.h", "dtls1.h", "e_os2.h", "e_ostime.h", "ebcdic.h",
+      "ec.h", "ecdh.h", "ecdsa.h", "ecerr.h", "encoder.h", "encodererr.h", "engine.h", "engineerr.h",
+      "err.h", "ess.h", "esserr.h", "evp.h", "evperr.h", "fips_names.h", "fipskey.h", "hmac.h",
+      "hpke.h", "http.h", "httperr.h", "idea.h", "indicator.h", "kdf.h", "kdferr.h", "lhash.h",
+      "macros.h", "md2.h", "md4.h", "md5.h", "mdc2.h", "ml_kem.h", "modes.h", "obj_mac.h",
+      "objects.h", "objectserr.h", "ocsp.h", "ocsperr.h", "opensslconf.h", "opensslv.h", "ossl_typ.h",
+      "param_build.h", "params.h", "pem.h", "pem2.h", "pemerr.h", "pkcs12.h", "pkcs12err.h",
+      "pkcs7.h", "pkcs7err.h", "prov_ssl.h", "proverr.h", "provider.h", "quic.h", "rand.h",
+      "randerr.h", "rc2.h", "rc4.h", "rc5.h", "ripemd.h", "rsa.h", "rsaerr.h", "safestack.h",
+      "seed.h", "self_test.h", "sha.h", "srp.h", "srtp.h", "ssl.h", "ssl2.h", "ssl3.h",
+      "sslerr.h", "sslerr_legacy.h", "stack.h", "store.h", "storeerr.h", "symhacks.h", "thread.h",
+      "tls1.h", "trace.h", "ts.h", "tserr.h", "txt_db.h", "types.h", "ui.h", "uierr.h",
+      "whrlpool.h", "x509.h", "x509_acert.h", "x509_vfy.h", "x509err.h", "x509v3.h", "x509v3err.h"
+    ],
+    "tss2": ["common", "esys", "mu", "rc", "sys", "tcti", "tcti_device", "tpm2_types"]
+  }
+}

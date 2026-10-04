@@ -1,0 +1,25 @@
+LIBRARY citizensdk_host
+EXPORTS
+  citizensdk_host_abi_version
+  citizensdk_host_abandon
+  citizensdk_host_config_size
+  citizensdk_host_create
+  citizensdk_host_create_with_modules
+  citizensdk_host_create_sdk
+  citizensdk_host_destroy
+  citizensdk_host_last_error_copy
+  citizensdk_host_sdk
+  citizensdk_host_set_event_callback
+  citizensdk_host_set_parent_window
+  citizensdk_host_vault_availability
+  citizensdk_qr_image_decode_luminance
+  citizensdk_qr_image_encode_text
+  citizensdk_qr_image_zxing_version
+  citizensdk_host_set_credential_provider
+  citizensdk_host_respond_credential
+  citizensdk_host_cancel_credential
+  citizensdk_qr_image_decode_luminance_all
+  citizensdk_host_submit_request
+  citizensdk_host_open_qr_capture
+  citizensdk_host_control_qr_capture
+  citizensdk_host_decode_qr_image

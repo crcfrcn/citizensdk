@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "product_id": "citizensdk",
+  "chain_id": "citizenchain",
+  "protocol_id": "citizenchain",
+  "genesis_hash": "0x18847a5dfd263272f2e7727836fe6582f8c4463ff48609df7b96d5e4d9dd24dd",
+  "chainspec_sha256": "6ae934933682a8ffca78663dd4391a730b6ae219bd12abfb5d96b4d8154fc2e0",
+  "light_sync_state_sha256": "014802836a0f6e01a9f1bf7173b8e04c9df8fc3f057565f855abdccdc7361ab6",
+  "sdk_min_version": "1.0.0"
+}

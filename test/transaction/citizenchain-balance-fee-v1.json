@@ -1,0 +1,37 @@
+{
+  "schema": "citizensdk.account-balance-fee-vector.v1",
+  "source": {
+    "behavior": "CitizenApp finalized System.Account and metadata-driven fee implementation",
+    "runtime_metadata": "citizenchain-runtime-v14-metadata.hex",
+    "network": "citizenchain",
+    "genesis_hash": "18847a5dfd263272f2e7727836fe6582f8c4463ff48609df7b96d5e4d9dd24dd"
+  },
+  "account_balance": {
+    "account_id": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "system_account_storage_key": "26aa394eea5630e07c48ae0c9558cef7b99d880ec681799c0cf30e8886371da9f39a2cad58411cd49f577e5086b8031f000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "finalized_block_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "finalized_block_number": 77,
+    "account_info": "0700000001000000020000000300000040e2010000000000000000000000000015030000000000000000000000000000",
+    "free_fen": "123456",
+    "reserved_fen": "789",
+    "total_fen": "124245",
+    "missing_or_short_is_zero": true
+  },
+  "fee_policy": {
+    "best_block_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "best_block_number": 78,
+    "spec_version": 0,
+    "transaction_version": 0,
+    "fee_rate_parts": 1000000,
+    "minimum_fee_fen": "10",
+    "existential_deposit_fen": "111",
+    "minimum_self_pay_fen": "121",
+    "estimates": [
+      { "amount_fen": "0", "fee_fen": "10" },
+      { "amount_fen": "1", "fee_fen": "10" },
+      { "amount_fen": "9999", "fee_fen": "10" },
+      { "amount_fen": "10500", "fee_fen": "11" },
+      { "amount_fen": "100000", "fee_fen": "100" }
+    ]
+  }
+}

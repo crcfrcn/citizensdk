@@ -1,0 +1,58 @@
+[package]
+name = "citizen-sdk-ffi"
+description = "CitizenSDK stable product C ABI over the Rust Engine and verified smoldot provider."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "citizensdk"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
+# 模块编译依赖不等于实例启用权限：wallet 复用 signer 算法，不自动开放签名入口。
+signing = ["dep:citizen-signer", "citizen-sdk-engine/signing"]
+wallet = ["signing", "citizen-sdk-engine/wallet"]
+chain = ["dep:citizen-sdk-smoldot-provider", "citizen-sdk-engine/chain", "dep:tokio"]
+transactions = ["chain", "citizen-sdk-engine/transactions"]
+history = ["chain", "citizen-sdk-engine/history"]
+qr = ["dep:citizen-sdk-qr", "dep:citizen-signer", "citizen-sdk-engine/qr"]
+
+[dependencies]
+# The direct `aes`/`ghash` entries intentionally unify the optional zeroize
+# features used underneath AES-GCM. They are not alternative crypto engines:
+# the host-vault envelope still has one RustCrypto AES-256-GCM implementation.
+aes = { version = "=0.8.4", features = ["zeroize"] }
+aes-gcm = { version = "=0.10.3", features = ["zeroize"] }
+blake2 = "=0.10.6"
+citizen-sdk-contracts = { path = "../contracts" }
+citizen-sdk-engine = { path = "../engine", default-features = false }
+citizen-sdk-qr = { path = "../qr", optional = true }
+citizen-sdk-smoldot-provider = { path = "../smoldot/provider", optional = true }
+# Product composition, rather than a host binding, selects CitizenSDK's one
+# audited sr25519 implementation. The public C ABI exposes account-scoped
+# signing but never exports secret material or lets a host inject a signer.
+citizen-signer = { path = "../signer", optional = true }
+futures-channel = "=0.3.34"
+futures-executor = "=0.3.34"
+futures-util = "=0.3.34"
+getrandom = "=0.3.4"
+ghash = { version = "=0.5.1", features = ["zeroize"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+tokio = { version = "=1.53.1", features = ["time"], optional = true }
+zeroize = "=1.9.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Android HTTPS 使用系统证书验证；JNI 与平台验证器必须和锁文件中的官方组件一致。
+jni = "=0.22.4"
+rustls-platform-verifier = "=0.7.0"

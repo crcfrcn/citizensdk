@@ -1,0 +1,22 @@
+[package]
+name = "citizen-sdk-contracts"
+description = "CitizenSDK Core 的类型化链、签名、金库、钱包与状态存储合同。"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# 钱包公开 profile 必须按 CitizenChain SS58 prefix 反证规范地址，不能只接受任意展示字符串。
+blake2 = "=0.10.6"
+bs58 = { version = "=0.5.1", default-features = false, features = ["alloc"] }
+# watch_extrinsic 只暴露标准 Stream 语义，不把具体异步运行时带入合同层。
+futures-core = "=0.3.34"
+# SecretBuffer 的实际内存擦除由成熟实现负责，禁止以普通 Vec 模拟清零。
+zeroize = "=1.9.0"

@@ -1,0 +1,43 @@
+name: citizen_sdk
+description: Citizenchain light client, rootless hot wallet, sr25519 signing, and on-chain transaction SDK.
+version: 1.0.0
+repository: https://github.com/crcfrcn/citizensdk
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  polkadart_keyring: 0.7.1
+
+dev_dependencies:
+  # 正式 Binding/资产测试和受保护 smoldot 来源测试；无第二套 Dart 钱包或交易。
+  crypto: 3.0.7
+  ffi: 2.2.0
+  flutter_lints: 6.0.0
+  flutter_test:
+    sdk: flutter
+  meta: 1.19.0
+  path: ^1.9.1
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: org.citizen.sdk
+        pluginClass: CitizenSdkPlugin
+      ios:
+        pluginClass: CitizenSdkPlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: CitizenSdkPlugin
+        sharedDarwinSource: true
+      # LinuxARM/LinuxAMD 共享 Flutter 官方 linux 注册和同版 Host/Core。
+      linux:
+        pluginClass: CitizenSdkPlugin
+      windows:
+        pluginClass: CitizenSdkPlugin
+  assets:
+    - chain/

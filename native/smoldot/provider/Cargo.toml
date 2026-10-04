@@ -1,0 +1,31 @@
+[package]
+name = "citizen-sdk-smoldot-provider"
+description = "CitizenSDK VerifiedChainClient provider backed by the bundled smoldot light node."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+blake2-rfc = "=0.2.18"
+citizen-sdk-contracts = { path = "../../contracts" }
+futures-channel = "=0.3.34"
+# 捕获启动 Future 的 unwind，使 provider 先收敛为 StartFailed 再向 ABI 报错。
+futures-util = "=0.3.34"
+hex = "=0.4.3"
+parking_lot = "=0.12.5"
+# SDK 只读取非权威 HTTPS 启动节点建议；不增加远端链 RPC 客户端。
+reqwest = { version = "=0.13.4", default-features = false, features = ["rustls"] }
+serde_json = "=1.0.151"
+smoldot-light = { path = "../pow/light-base" }
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "sync", "time", "net"] }
+
+[dev-dependencies]
+# 与随包 smoldot/pow 已验证锁闭包保持同一 futures family 版本。
+futures = "=0.3.34"

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "repository": "citizensdk",
+  "workflows": [
+    "citizensdk.sdk.ci",
+    "citizensdk.sdk.release"
+  ],
+  "node_tests": [
+    "scripts/ci/aggregate/test.mjs",
+    "scripts/ci/android/test.mjs",
+    "scripts/ci/apple/test.mjs",
+    "scripts/ci/consume-android/test.mjs",
+    "scripts/ci/consume-apple/test.mjs",
+    "scripts/ci/consume-linuxamd/test.mjs",
+    "scripts/ci/consume-linuxarm/test.mjs",
+    "scripts/ci/consume-windows/test.mjs",
+    "scripts/ci/linuxamd/test.mjs",
+    "scripts/ci/linuxarm/test.mjs",
+    "scripts/ci/windows/test.mjs",
+    "scripts/release/aggregate/test.mjs",
+    "scripts/release/android/test.mjs",
+    "scripts/release/apple/test.mjs",
+    "scripts/release/consume-android/test.mjs",
+    "scripts/release/consume-apple/test.mjs",
+    "scripts/release/consume-linuxamd/test.mjs",
+    "scripts/release/consume-linuxarm/test.mjs",
+    "scripts/release/consume-windows/test.mjs",
+    "scripts/release/finalize/test.mjs",
+    "scripts/release/linuxamd/test.mjs",
+    "scripts/release/linuxarm/test.mjs",
+    "scripts/release/windows/test.mjs"
+  ],
+  "checks": [
+    "repository-contracts",
+    "dependency-contracts"
+  ],
+  "tools": {
+    "node": "25.2.1",
+    "actionlint": "1.7.12",
+    "rust": null
+  },
+  "platform_forbidden_values": [
+    "macOS ARM64",
+    "macos-arm64",
+    "macos_arm64"
+  ]
+}

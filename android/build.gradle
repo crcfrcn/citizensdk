@@ -1,0 +1,220 @@
+group = 'org.citizen.sdk'
+version = '1.0.0'
+
+// 独立AAR使用显式原源码根；Flutter插件继续使用宿主登记的插件根。
+def sdkSourceValue = System.getenv('CITIZENSDK_SOURCE_DIR')
+if (sdkSourceValue != null && !new File(sdkSourceValue).isAbsolute()) {
+    throw new GradleException('CITIZENSDK_SOURCE_DIR must be absolute')
+}
+def sdkProductRoot = sdkSourceValue == null
+    ? project.projectDir.parentFile.canonicalFile : new File(sdkSourceValue).canonicalFile
+def androidSourceRoot = new File(sdkProductRoot, 'android')
+
+// 独立根工程测试复用调用方同一Flutter工具的官方embedding；宿主插件工程由
+// 官方Flutter Gradle插件提供类路径，不读取此测试输入，也不打包工具原件。
+def standaloneFlutterTests = project == rootProject && sdkSourceValue != null
+def flutterRootValue = standaloneFlutterTests ? System.getenv('CITIZENSDK_FLUTTER_ROOT') : null
+def flutterTestJar = null
+if (flutterRootValue != null) {
+    def flutterRootInput = new File(flutterRootValue)
+    def flutterRoot = flutterRootInput.canonicalFile
+    if (!flutterRootInput.isAbsolute() || flutterRootInput.absoluteFile != flutterRoot ||
+        !flutterRoot.isDirectory() || flutterRoot.toPath().startsWith(sdkProductRoot.toPath())) {
+        throw new GradleException('CitizenSDK Flutter test tool root must be an absolute real directory outside the source tree')
+    }
+    flutterTestJar = new File(flutterRoot, 'bin/cache/artifacts/engine/android-arm/flutter.jar')
+    if (!flutterTestJar.isFile() || flutterTestJar.absoluteFile != flutterTestJar.canonicalFile) {
+        throw new GradleException('CitizenSDK Flutter test tool must contain its official Android embedding')
+    }
+}
+
+def androidBuildValue = System.getenv('CITIZENSDK_ANDROID_BUILD_DIR')
+if (androidBuildValue != null && !androidBuildValue.trim().isEmpty()) {
+    def androidBuildInput = file(androidBuildValue)
+    if (!androidBuildInput.isAbsolute()) {
+        throw new GradleException('CITIZENSDK_ANDROID_BUILD_DIR must be absolute')
+    }
+    def androidBuildRoot = androidBuildInput.canonicalFile
+    if (System.getenv('GITHUB_ACTIONS') == 'true') {
+        def githubWorkspaceValue = System.getenv('GITHUB_WORKSPACE')
+        if (githubWorkspaceValue != null && !githubWorkspaceValue.trim().isEmpty()) {
+            def githubWorkspace = file(githubWorkspaceValue).canonicalFile
+            if (androidBuildRoot.toPath().startsWith(githubWorkspace.toPath())) {
+                throw new GradleException('CitizenSDK Android output must remain outside the GitHub source checkout')
+            }
+        }
+    }
+    if (androidBuildRoot.toPath().startsWith(sdkProductRoot.toPath())) {
+        throw new GradleException('CitizenSDK Android output must remain outside the source tree')
+    }
+    buildDir = new File(androidBuildRoot, 'flutter')
+}
+
+// Flutter 宿主会在 :app 解析本插件的传递依赖；仓库必须登记到消费方所在的根工程。
+rootProject.allprojects {
+    repositories {
+        // 同一任务的 Cargo 锁定包提供官方 Android 证书组件；脚本先建立只读 Maven 视图。
+        maven {
+            url = new File(gradle.gradleUserHomeDir, 'citizensdk-verifier-maven').toURI()
+            content { includeGroup 'rustls' }
+        }
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+// AGP启用内置Kotlin；Flutter宿主或独立settings负责唯一版本选择。
+
+def sharedFacadeSource = new File(androidSourceRoot, 'native/src/main/kotlin').canonicalFile
+def packagedAndroidAbiDirectory = new File(androidSourceRoot, 'src/main/jniLibs/arm64-v8a').canonicalFile
+def stagedAndroidAbiValue = System.getenv('CITIZENSDK_ANDROID_CORE_DIR')
+def stagedAndroidAbiFile = stagedAndroidAbiValue == null || stagedAndroidAbiValue.trim().isEmpty()
+    ? null
+    : file(stagedAndroidAbiValue)
+def selectedAndroidAbiDirectory = stagedAndroidAbiValue == null || stagedAndroidAbiValue.trim().isEmpty()
+    ? packagedAndroidAbiDirectory
+    : stagedAndroidAbiFile.canonicalFile
+
+if (stagedAndroidAbiValue != null && !stagedAndroidAbiValue.trim().isEmpty()) {
+    if (!stagedAndroidAbiFile.isAbsolute()) {
+        throw new GradleException('CITIZENSDK_ANDROID_CORE_DIR must be absolute')
+    }
+    if (System.getenv('GITHUB_ACTIONS') == 'true') {
+        def githubWorkspaceValue = System.getenv('GITHUB_WORKSPACE')
+        if (githubWorkspaceValue != null && !githubWorkspaceValue.trim().isEmpty() &&
+            selectedAndroidAbiDirectory.toPath().startsWith(file(githubWorkspaceValue).canonicalFile.toPath())) {
+            throw new GradleException('CitizenSDK Android native staging must remain outside the GitHub source checkout')
+        }
+    }
+    if (selectedAndroidAbiDirectory.toPath().startsWith(sdkProductRoot.toPath())) {
+        throw new GradleException('CitizenSDK Android native staging must remain outside the source tree')
+    }
+}
+
+// 只把唯一chain三文件投影到本模块当前构建目录；Android标准assets容器保留chain层级，
+// 禁止把整个SDK源码根作为资产源，也不在源码中恢复assets包装目录。
+def chainAssetDirectory = layout.buildDirectory.dir('generated/chain-assets')
+def prepareChainAssets = tasks.register('prepareCitizenSdkChainAssets', Sync) {
+    from(sdkProductRoot) {
+        include 'chain/manifest.json', 'chain/chainspec.json', 'chain/light_sync_state.json'
+    }
+    into(chainAssetDirectory)
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(prepareChainAssets) }
+
+android {
+    namespace = 'org.citizen.sdk'
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'
+
+    sourceSets {
+        all { sourceSet ->
+            def sourceRoot = new File(androidSourceRoot, "src/${sourceSet.name}")
+            sourceSet.setRoot(sourceRoot.path)
+            // 包名由源码的 package 声明决定；测试源码直接位于源集根，禁止单子目录包装层。
+            sourceSet.kotlin.srcDirs = [sourceSet.name == 'test' ? sourceRoot : new File(sourceRoot, 'kotlin')]
+        }
+        main {
+            // The Flutter plugin compiles the exact same public Android facade
+            // as the native/AAR surface. There is no nested AAR or second adapter.
+            // 内置Kotlin只识别Kotlin源集，不能再借Java源集加入共享门面。
+            kotlin.srcDir(sharedFacadeSource)
+            assets.srcDirs = [chainAssetDirectory.get().asFile]
+            // Android's jniLibs root is the parent of the fixed arm64-v8a leaf.
+            jniLibs.srcDirs = [selectedAndroidAbiDirectory.parentFile]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    defaultConfig {
+        minSdk = 24
+        // Flutter宿主直接编译本模块；必须与独立AAR消费同一份JNI准确名称规则。
+        consumerProguardFiles new File(androidSourceRoot, 'native/consumer-rules.pro')
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+            excludes += ['lib/armeabi*/**', 'lib/x86/**', 'lib/x86_64/**']
+        }
+    }
+    buildFeatures {
+        buildConfig = false
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+// 使用公开编译选项保持JVM17和接口默认实现语义。
+// 本文件通过 apply from 加载；从已应用插件的类加载器取公开枚举，避免脚本编译期没有插件 classpath。
+def kotlinPluginLoader = extensions.getByName('kotlin').getClass().getClassLoader()
+def kotlinJvmTarget = kotlinPluginLoader.loadClass('org.jetbrains.kotlin.gradle.dsl.JvmTarget')
+def kotlinJvmDefault = kotlinPluginLoader.loadClass('org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode')
+kotlin {
+    compilerOptions {
+        jvmTarget = kotlinJvmTarget.JVM_17
+        jvmDefault = kotlinJvmDefault.NO_COMPATIBILITY
+    }
+}
+
+def verifyCitizenSdkAndroidNativeInputs = tasks.register('verifyCitizenSdkAndroidNativeInputs') {
+    doLast {
+        if (standaloneFlutterTests && flutterTestJar == null) {
+            throw new GradleException('CITIZENSDK_FLUTTER_ROOT is required for standalone Flutter binding tasks')
+        }
+        if (!sharedFacadeSource.isDirectory()) {
+            throw new GradleException("Missing shared CitizenSDK Android facade: ${sharedFacadeSource}")
+        }
+        if (!selectedAndroidAbiDirectory.isDirectory()) {
+            throw new GradleException(
+                'Missing CitizenSDK Android ABI arm64-v8a staging; set '
+                    + 'CITIZENSDK_ANDROID_CORE_DIR to the directory containing the two release libraries',
+            )
+        }
+        if (selectedAndroidAbiDirectory.name != 'arm64-v8a') {
+            throw new GradleException('CitizenSDK Android staging leaf must be named arm64-v8a')
+        }
+        def actualLibraries = selectedAndroidAbiDirectory.listFiles()
+            .collect { it.name }
+            .sort()
+        def expectedLibraries = ['libcitizensdk.so', 'libcitizensdk_jni.so']
+        if (actualLibraries != expectedLibraries) {
+            throw new GradleException(
+                "CitizenSDK Android ABI arm64-v8a libraries must be exactly ${expectedLibraries}; actual=${actualLibraries}",
+            )
+        }
+        if (new File(selectedAndroidAbiDirectory, 'libsmoldot.so').exists()) {
+            throw new GradleException('CitizenSDK product plugin must not package legacy libsmoldot.so')
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name == 'preBuild') {
+        task.dependsOn(verifyCitizenSdkAndroidNativeInputs)
+    }
+}
+
+dependencies {
+    if (flutterTestJar != null) {
+        // 生产只编译引用；JVM测试才把同一原件放入运行类路径。
+        compileOnly files(flutterTestJar)
+        testImplementation files(flutterTestJar)
+    }
+    implementation 'androidx.biometric:biometric:1.1.0'
+    // 与 Cargo.lock 中 rustls-platform-verifier-android 精确同版，随宿主 APK 合入 JVM 类。
+    implementation 'rustls:rustls-platform-verifier:0.1.1'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.fragment:fragment-ktx:1.8.9'
+    implementation 'androidx.camera:camera-core:1.5.3'
+    implementation 'androidx.camera:camera-camera2:1.5.3'
+    implementation 'androidx.camera:camera-lifecycle:1.5.3'
+    testImplementation 'junit:junit:4.13.2'
+}

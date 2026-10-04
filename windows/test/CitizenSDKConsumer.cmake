@@ -1,0 +1,181 @@
+# 只消费唯一构建器本轮已验真的安装件；这里不编译任何 Host/Core 私有实现。
+set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CITIZENSDK_CONSUMER_PREFIX "" CACHE PATH "Exact current CitizenSDK installation prefix")
+set(CITIZENSDK_CONSUMER_VERSION "" CACHE STRING "Exact installed CitizenSDK version")
+set(CITIZENSDK_PLATFORM "" CACHE STRING "Windows")
+set(CITIZENSDK_TEST_WORK_DIR "" CACHE PATH "Task-exclusive native Windows consumer state root")
+
+if(NOT WIN32 OR NOT MSVC OR CMAKE_CROSSCOMPILING OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "CitizenSDK consumers require native 64-bit Windows/MSVC execution")
+endif()
+if(NOT CITIZENSDK_PLATFORM STREQUAL "Windows" OR
+   (CMAKE_GENERATOR_PLATFORM AND NOT CMAKE_GENERATOR_PLATFORM STREQUAL "x64"))
+  message(FATAL_ERROR "CitizenSDK consumer platform must be Windows x64")
+endif()
+if(NOT CITIZENSDK_CONSUMER_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "CITIZENSDK_CONSUMER_VERSION must be the exact SDK version")
+endif()
+foreach(_path CITIZENSDK_CONSUMER_PREFIX CITIZENSDK_TEST_WORK_DIR)
+  if(NOT IS_ABSOLUTE "${${_path}}" OR NOT "${${_path}}" MATCHES "^[A-Za-z]:/[^/].*" OR
+     "${${_path}}" MATCHES "(^|/)[.][.]?(/|$)" OR
+     "${${_path}}" MATCHES "[;\\\\]" OR
+     (EXISTS "${${_path}}" AND NOT IS_DIRECTORY "${${_path}}"))
+    message(FATAL_ERROR "${_path} must be an ordinary absolute local non-root directory")
+  endif()
+  cmake_path(NORMAL_PATH ${_path} OUTPUT_VARIABLE _normal)
+  if(NOT _normal STREQUAL "${${_path}}")
+    message(FATAL_ERROR "${_path} must use a canonical path")
+  endif()
+  if(EXISTS "${${_path}}")
+    get_filename_component(_real "${${_path}}" REALPATH)
+    if(NOT _real STREQUAL "${${_path}}" OR IS_SYMLINK "${${_path}}")
+      message(FATAL_ERROR "${_path} must not be redirected through a link")
+    endif()
+  endif()
+endforeach()
+if(NOT IS_DIRECTORY "${CITIZENSDK_CONSUMER_PREFIX}")
+  message(FATAL_ERROR "CitizenSDK installation prefix is missing")
+endif()
+# state 可以尚不存在；只有原生 Host 可按 SID/保护 DACL 创建，不能由 CMake mkdir。
+get_filename_component(_sdk_source "${CMAKE_CURRENT_LIST_DIR}/../.." REALPATH)
+string(TOLOWER "${_sdk_source}" _sdk_source_lower)
+foreach(_path "${CMAKE_BINARY_DIR}" "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_CONSUMER_PREFIX}")
+  string(TOLOWER "${_path}" _path_lower)
+  cmake_path(IS_PREFIX _sdk_source_lower "${_path_lower}" NORMALIZE _in_source)
+  if(_in_source)
+    message(FATAL_ERROR "CitizenSDK consumer build, install and state must stay outside SDK sources")
+  endif()
+endforeach()
+
+# EXACT + 固定 Config 目录杜绝系统包注册表、PATH 或另外一轮安装的碰巧命中。
+set(_package_dir "${CITIZENSDK_CONSUMER_PREFIX}/lib/Windows/cmake/CitizenSDK")
+set(CitizenSDK_DIR "${_package_dir}")
+find_package(CitizenSDK ${CITIZENSDK_CONSUMER_VERSION} EXACT CONFIG REQUIRED
+  PATHS "${_package_dir}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+foreach(_kind Core Host)
+  if(NOT TARGET CitizenSDK::${_kind})
+    message(FATAL_ERROR "CitizenSDK installation is missing ${_kind}")
+  endif()
+  get_target_property(_imported CitizenSDK::${_kind} IMPORTED)
+  get_target_property(_type CitizenSDK::${_kind} TYPE)
+  if(NOT _imported OR NOT _type STREQUAL "SHARED_LIBRARY")
+    message(FATAL_ERROR "CitizenSDK consumer must link imported shared Core/Host")
+  endif()
+  get_target_property(_links CitizenSDK::${_kind} INTERFACE_LINK_LIBRARIES)
+  if((_kind STREQUAL "Core" AND _links) OR
+     (_kind STREQUAL "Host" AND NOT _links STREQUAL "CitizenSDK::Core"))
+    message(FATAL_ERROR "CitizenSDK consumer requires the single installed Host-to-Core dependency")
+  endif()
+  if(_kind STREQUAL "Core")
+    set(_dll citizensdk.dll)
+    set(_implib citizensdk.dll.lib)
+  else()
+    set(_dll citizensdk_host.dll)
+    set(_implib citizensdk_host.lib)
+  endif()
+  get_target_property(_configs CitizenSDK::${_kind} IMPORTED_CONFIGURATIONS)
+  if(NOT _configs)
+    set(_configs)
+  endif()
+  list(APPEND _configs ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE}
+    DEBUG RELEASE RELWITHDEBINFO MINSIZEREL PROFILE NOCONFIG)
+  list(REMOVE_DUPLICATES _configs)
+  # 配置映射也可能选择未列在 IMPORTED_CONFIGURATIONS 的属性，必须一并检查。
+  set(_mapped_configs)
+  foreach(_config IN LISTS _configs)
+    string(TOUPPER "${_config}" _upper)
+    get_target_property(_mapped CitizenSDK::${_kind} MAP_IMPORTED_CONFIG_${_upper})
+    if(_mapped)
+      list(APPEND _mapped_configs ${_mapped})
+    endif()
+  endforeach()
+  list(APPEND _configs ${_mapped_configs})
+  list(REMOVE_DUPLICATES _configs)
+  foreach(_property IMPORTED_LOCATION IMPORTED_IMPLIB)
+    if(_property STREQUAL "IMPORTED_LOCATION")
+      set(_expected "${CITIZENSDK_CONSUMER_PREFIX}/bin/Windows/${_dll}")
+    else()
+      set(_expected "${CITIZENSDK_CONSUMER_PREFIX}/lib/Windows/${_implib}")
+    endif()
+    if(NOT EXISTS "${_expected}" OR IS_DIRECTORY "${_expected}" OR IS_SYMLINK "${_expected}")
+      message(FATAL_ERROR "CitizenSDK installed library is missing or unsafe")
+    endif()
+    set(_locations)
+    get_target_property(_location CitizenSDK::${_kind} ${_property})
+    if(_location)
+      list(APPEND _locations "${_location}")
+    endif()
+    foreach(_config IN LISTS _configs)
+      string(TOUPPER "${_config}" _upper)
+      get_target_property(_location CitizenSDK::${_kind} ${_property}_${_upper})
+      if(_location)
+        list(APPEND _locations "${_location}")
+      endif()
+    endforeach()
+    if(NOT _locations)
+      message(FATAL_ERROR "CitizenSDK imported library has no runtime or import-library location")
+    endif()
+    foreach(_location IN LISTS _locations)
+      if(NOT _location STREQUAL _expected)
+        message(FATAL_ERROR "CitizenSDK consumer resolved a different installation")
+      endif()
+    endforeach()
+  endforeach()
+  get_target_property(_includes CitizenSDK::${_kind} INTERFACE_INCLUDE_DIRECTORIES)
+  if(NOT _includes)
+    message(FATAL_ERROR "CitizenSDK installed public headers are missing")
+  endif()
+  foreach(_include IN LISTS _includes)
+    if(NOT _include STREQUAL "${CITIZENSDK_CONSUMER_PREFIX}/include")
+      message(FATAL_ERROR "CitizenSDK consumer must not include source/private headers")
+    endif()
+  endforeach()
+endforeach()
+if(NOT CITIZENSDK_ASSET_DIR STREQUAL
+   "${CITIZENSDK_CONSUMER_PREFIX}/share/citizensdk/chain")
+  message(FATAL_ERROR "CitizenSDK consumer must use the installed chain assets")
+endif()
+foreach(_asset manifest.json chainspec.json light_sync_state.json)
+  if(NOT EXISTS "${CITIZENSDK_ASSET_DIR}/${_asset}" OR
+     IS_DIRECTORY "${CITIZENSDK_ASSET_DIR}/${_asset}" OR
+     IS_SYMLINK "${CITIZENSDK_ASSET_DIR}/${_asset}")
+    message(FATAL_ERROR "CitizenSDK installed chain asset is missing or unsafe")
+  endif()
+endforeach()
+
+enable_testing()
+add_executable(citizen_sdk_c_consumer citizen_sdk_c_consumer.c)
+set_target_properties(citizen_sdk_c_consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
+add_executable(citizen_sdk_cpp_consumer citizen_sdk_cpp_consumer.cc)
+set_target_properties(citizen_sdk_cpp_consumer PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+set(_runtime_dir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
+# 单一复制目标避免两个并行链接任务同时改写 DLL；复制后逐字节比较，不依赖 PATH。
+add_custom_target(citizensdk_consumer_runtime
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_runtime_dir}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:CitizenSDK::Core>" "${_runtime_dir}/citizensdk.dll"
+  COMMAND ${CMAKE_COMMAND} -E compare_files
+    "$<TARGET_FILE:CitizenSDK::Core>" "${_runtime_dir}/citizensdk.dll"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:CitizenSDK::Host>" "${_runtime_dir}/citizensdk_host.dll"
+  COMMAND ${CMAKE_COMMAND} -E compare_files
+    "$<TARGET_FILE:CitizenSDK::Host>" "${_runtime_dir}/citizensdk_host.dll"
+  VERBATIM)
+foreach(_consumer citizen_sdk_c_consumer citizen_sdk_cpp_consumer)
+  target_link_libraries(${_consumer} PRIVATE CitizenSDK::Host)
+  target_compile_definitions(${_consumer} PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+  target_compile_options(${_consumer} PRIVATE /UNDEBUG /W4 /WX /utf-8
+    $<$<COMPILE_LANGUAGE:CXX>:/permissive-> $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+  set_target_properties(${_consumer} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${_runtime_dir}")
+  add_dependencies(${_consumer} citizensdk_consumer_runtime)
+endforeach()
+add_test(NAME CitizenSDK.Windows.CConsumer COMMAND citizen_sdk_c_consumer
+  "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_ASSET_DIR}" "${_runtime_dir}")
+add_test(NAME CitizenSDK.Windows.CppConsumer COMMAND citizen_sdk_cpp_consumer
+  "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_ASSET_DIR}" "${_runtime_dir}")
+# 不设置 PASS_REGULAR_EXPRESSION：它会让成功字样掩盖非零退出。
+# 构建器另检查 verbose 输出中两个成功标记各一次，同时要求真实 CTest exit=0。
+set_tests_properties(CitizenSDK.Windows.CConsumer CitizenSDK.Windows.CppConsumer
+  PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE LABELS "CitizenSDK;WindowsConsumer")

@@ -1,0 +1,107 @@
+/target/
+**/target/
+/build/
+/.dart_tool/
+/.packages
+/.flutter-plugins
+/.flutter-plugins-dependencies
+/coverage/
+/darwin/.build/
+/darwin/.swiftpm/
+/darwin/Pods/
+/darwin/DerivedData/
+# Linux运行库只允许由Release候选从产品源码外产物目录注入；
+# 源码树永远不能保存 Core/Host ELF、CMake cache 或安装投影。
+/linux/lib/
+/linux/.cache/
+/linux/CMakeCache.txt
+/linux/CMakeFiles/
+/linux/cmake_install.cmake
+# Windows 运行件只在中央候选中注入；源码树不得保存 DLL/LIB/CMake/MSVC 状态。
+/windows/bin/
+/windows/lib/
+/windows/.vs/
+/windows/CMakeCache.txt
+/windows/CMakeFiles/
+/windows/cmake_install.cmake
+/windows/**/*.dll
+/windows/**/*.lib
+/windows/**/*.obj
+/windows/**/*.pdb
+*.xcresult
+*.dSYM
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+/target
+.claude/
+
+target/
+*.sst
+
+# Local chain state
+
+# Frontend build artifacts
+
+# Python cache
+**/__pycache__/
+*.pyc
+
+# Local/generated backup files
+*.spec*-backup
+
+# OS / Editor junk
+.DS_Store
+**/.DS_Store
+*.swp
+*.tmp
+*.log
+
+# IDE local settings
+.vscode/
+.idea/
+
+# JS/TS local artifacts
+**/node_modules/
+**/*.tsbuildinfo
+
+# Dart / Flutter generated files
+**/.dart_tool/
+**/.packages
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub/
+**/build/
+**/coverage/
+
+# Flutter iOS generated dependencies
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/Flutter.podspec
+
+# Flutter Android local/generated files
+**/android/.gradle/
+**/android/local.properties
+
+# Android 系统错误报告可能包含设备与网络诊断信息，禁止进入仓库。
+/bugreport-*.zip
+
+# Android signing secrets
+
+# 注册局前端构建产物
+
+# Flutter IDE user state
+**/ios/Runner.xcworkspace/xcuserdata/
+**/ios/Runner.xcodeproj/xcuserdata/
+
+# CitizenApp native generated artifacts
+**/android/.kotlin/
+
+# 本机 AI 入口直接解析唯一规则；产品源码不跟踪本机链接。
+/CODEX.md
+/CLAUDE.md

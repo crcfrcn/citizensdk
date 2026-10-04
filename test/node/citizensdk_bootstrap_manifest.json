@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "schema": "citizensdk.chain.bootstrap",
+  "generated_at": 1800000000000,
+  "cache_ttl_seconds": 300,
+  "chain": {
+    "chain_id": "citizenchain",
+    "protocol_id": "citizenchain",
+    "genesis_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "state_root": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "ss58_format": 2027,
+    "token_symbol": "GMB",
+    "token_decimals": 2
+  },
+  "light_client": {
+    "mode": "smoldot",
+    "truth_source": "p2p_finalized_storage",
+    "api_is_truth": false,
+    "bundled_assets_required": [
+      "assets/chainspec.json",
+      "assets/light_sync_state.json"
+    ]
+  },
+  "p2p": {
+    "bootnodes": [
+      "/dns4/nrcgch.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWHepcMGD3h9VC1XNWmrac3pXo63RimV5jhTU2nC2TLAyS",
+      "/dns4/prczss.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWPjWNXvCzPv6PPuiGnF3J5uToW3ySfaB7rKkwUrN2CALv"
+    ],
+    "min_peer_count_hint": 1
+  },
+  "security": {
+    "exposes_rpc_url": false,
+    "rpc_proxy": false,
+    "exposes_private_key_material": false,
+    "validator_rpc_public": false
+  }
+}

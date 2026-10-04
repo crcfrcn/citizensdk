@@ -1,0 +1,23 @@
+{
+  "name": "CitizenChain",
+  "id": "citizenchain",
+  "chainType": "Live",
+  "bootNodes": [
+    "/dns4/nrcgch.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWHepcMGD3h9VC1XNWmrac3pXo63RimV5jhTU2nC2TLAyS",
+    "/dns4/prczss.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWPjWNXvCzPv6PPuiGnF3J5uToW3ySfaB7rKkwUrN2CALv",
+    "/dns4/prcgzs.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWC7t4V1Z2aQWS9HikBdXQgXEaTqeZ5YD78cnxtYBDn31M",
+    "/dns4/prches.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWSkKBEJ2KZXckFhzLvrqqbhpq4PVKeFuWsxdTF7hfzoGc",
+    "/dns4/prchbs.crcfrcn.com/tcp/30333/wss/p2p/12D3KooWMXQoZ9F6nxMuoC2ZnzxEKAn4z2qPKAugP2CZFEcXDqkT"
+  ],
+  "telemetryEndpoints": null,
+  "protocolId": "citizenchain",
+  "properties": {
+    "ss58Format": 2027,
+    "tokenDecimals": 2,
+    "tokenSymbol": "GMB"
+  },
+  "codeSubstitutes": {},
+  "genesis": {
+    "stateRootHash": "0x1f74a2ca094fc3ebb2143f504d807a6b4f4f9b0a3d13ac808ae84efc7cb12111"
+  }
+}

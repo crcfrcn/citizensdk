@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "native/contracts",
+    "native/engine",
+    "native/ffi",
+    "native/qr",
+    "native/signer",
+    "native/smoldot/provider",
+]
+# smoldot 的收编快照继续由其既有嵌套 workspace/锁文件管理；provider 只把
+# `light-base` 当作路径依赖，不能让根 workspace 重新认领并改变已验证依赖闭包。
+exclude = [
+    "native/smoldot/pow/lib",
+    "native/smoldot/pow/light-base",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "1.0.0"
+authors = ["VoyagerRhett <chinanation@icloud.com>"]
+repository = "https://github.com/crcfrcn/citizensdk"
+homepage = "https://github.com/crcfrcn/citizensdk"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"

@@ -1,0 +1,16 @@
+# SQLite 静态进入 Host，系统 CNG/Win32 是平台依赖，不导出第二套包依赖。
+# DLL 和 import library 缺任一项都不能被视为完整原生安装。
+set(CitizenSDK_FOUND TRUE)
+foreach(_runtime citizensdk.dll citizensdk_host.dll)
+  if(NOT EXISTS "${CITIZENSDK_RUNTIME_DIR}/Windows/${_runtime}")
+    set(CitizenSDK_FOUND FALSE)
+  endif()
+endforeach()
+foreach(_import citizensdk.dll.lib citizensdk_host.lib)
+  if(NOT EXISTS "${CITIZENSDK_LIBRARY_DIR}/Windows/${_import}")
+    set(CitizenSDK_FOUND FALSE)
+  endif()
+endforeach()
+if(NOT CitizenSDK_FOUND)
+  set(CitizenSDK_NOT_FOUND_MESSAGE "CitizenSDK Core/Host DLL and import-library pair is incomplete")
+endif()

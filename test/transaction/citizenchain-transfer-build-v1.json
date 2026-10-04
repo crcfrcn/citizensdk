@@ -1,0 +1,35 @@
+{
+  "schema": "citizensdk.transfer-build-vector.v1",
+  "source": {
+    "behavior": "CitizenApp transfer_with_remark and immortal V4 SignedExtrinsicBuilder",
+    "runtime_metadata": "citizenchain-runtime-v14-metadata.hex",
+    "network": "citizenchain",
+    "genesis_hash": "18847a5dfd263272f2e7727836fe6582f8c4463ff48609df7b96d5e4d9dd24dd"
+  },
+  "runtime": {
+    "best_block_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "best_block_number": 77,
+    "spec_version": 0,
+    "transaction_version": 0,
+    "nonce": 7,
+    "era": "immortal",
+    "tip": "0"
+  },
+  "transfer": {
+    "source_account_id": "2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972",
+    "destination_account_id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "amount_fen": "123456",
+    "remark_utf8": "CitizenSDK"
+  },
+  "public_test_signature": {
+    "wallet_vector": "test/wallet/fixtures/citizenchain-wallet-derivation-v1.json",
+    "wallet_account_index": 0,
+    "signature": "34c3d9eb81e10b169f191899967ec1fdc4c2fdfb11351d5c62157a049343c81acd6701a1e52718fb77f5a22519417563dd9ce4dfd94d2d5cbbe8b4bffe885288",
+    "note": "Valid sr25519 substrate-context signature generated from account 0 of the public CitizenSDK wallet vector; no production secret is present."
+  },
+  "expected": {
+    "call_data": "0400222222222222222222222222222222222222222222222222222222222222222240e2010000000000000000000000000028436974697a656e53444b",
+    "signing_message": "0400222222222222222222222222222222222222222222222222222222222222222240e2010000000000000000000000000028436974697a656e53444b001c0000000000000000000018847a5dfd263272f2e7727836fe6582f8c4463ff48609df7b96d5e4d9dd24dd18847a5dfd263272f2e7727836fe6582f8c4463ff48609df7b96d5e4d9dd24dd00",
+    "signed_extrinsic": "910284002afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db89720134c3d9eb81e10b169f191899967ec1fdc4c2fdfb11351d5c62157a049343c81acd6701a1e52718fb77f5a22519417563dd9ce4dfd94d2d5cbbe8b4bffe885288001c00000400222222222222222222222222222222222222222222222222222222222222222240e2010000000000000000000000000028436974697a656e53444b"
+  }
+}

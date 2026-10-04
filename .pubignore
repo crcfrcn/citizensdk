@@ -1,0 +1,90 @@
+# CitizenSDK 的 Hosted Package 从已注入同版原生运行件的唯一 Release 候选生成。
+# 这里只过滤开发、审计和测试输入；运行时 Dart/Flutter、插件、链资产与原生运行件保留。
+/.gitignore
+/.pubignore
+/Cargo.lock
+/Cargo.toml
+/analysis_options.yaml
+/pubspec.lock
+/citizensdk-release.json
+/SHA256SUMS
+
+# 完整 Rust/测试/脚本/历史文档保留在 GitHub Release 审计包，不进入 Flutter 运行时包。
+/docs/
+/native/**
+/scripts/
+/test/
+/android/src/test/
+/darwin/Tests/
+/darwin/.build/
+/darwin/.swiftpm/
+/darwin/Pods/
+/darwin/DerivedData/
+/linux/test/
+# Windows Hosted 精确保留 22 项同版安装件及 12 项插件输入；不重编 Host/Core。
+/windows/test/
+/windows/README.md
+/windows/include/README.md
+/windows/cmake/*
+!/windows/cmake/CitizenSDKFlutter.cmake
+/windows/src/*
+!/windows/src/citizen_sdk_plugin.cc
+!/windows/src/citizen_sdk_flutter_codec.cc
+!/windows/src/citizen_sdk_flutter_codec.hpp
+!/windows/src/citizen_sdk_flutter_sessions.cc
+!/windows/src/citizen_sdk_flutter_sessions.hpp
+!/windows/src/citizen_sdk_flutter_wallet_flow.cc
+!/windows/src/citizen_sdk_flutter_wallet_flow.hpp
+!/windows/src/citizen_sdk_flutter_environment.cc
+!/windows/src/citizen_sdk_flutter_environment.hpp
+
+# Linux Hosted 精确保留 27 项同版合并安装件及 12 项插件输入；不重编 Host/Core。
+# 父目录保持可遍历，只排除子项再逐文件恢复官方插件所需源码；实际文件闭集由发布器反向核验。
+/linux/README.md
+/linux/include/README.md
+/linux/cmake/*
+!/linux/cmake/CitizenSDKFlutter.cmake
+/linux/src/*
+!/linux/src/citizen_sdk_plugin.cc
+!/linux/src/citizen_sdk_flutter_codec.cc
+!/linux/src/citizen_sdk_flutter_codec.hpp
+!/linux/src/citizen_sdk_flutter_sessions.cc
+!/linux/src/citizen_sdk_flutter_sessions.hpp
+!/linux/src/citizen_sdk_flutter_wallet_flow.cc
+!/linux/src/citizen_sdk_flutter_wallet_flow.hpp
+!/linux/src/citizen_sdk_flutter_environment.cc
+!/linux/src/citizen_sdk_flutter_environment.hpp
+
+# CitizenSDK 在 Android/Apple/Linux/Windows 统一经固定 Flutter tuple 调用产品 C ABI。
+# 仅保留受保护的上游 smoldot Dart 来源快照作审计输入，不能成为 Hosted 运行闭包。
+# account_codec.dart 只负责公开 AccountId/SS58 投影，不处理秘密。
+/lib/src/smoldot/
+
+# Android Flutter compiles the one shared Kotlin facade directly. Native/AAR
+# build descriptions, C++ sources, tests and generated packages remain audit
+# inputs only; the shared production Kotlin under native/src/main/kotlin stays.
+/android/native/CMakeLists.txt
+/android/native/build.gradle
+/android/native/settings.gradle
+/android/native/consumer-rules.pro
+/android/native/README.md
+/android/native/src/main/AndroidManifest.xml
+/android/native/src/main/cpp/
+/android/native/src/main/jniLibs/
+/android/native/src/test/
+/android/native/src/androidTest/
+/android/native/**/*.aar
+/android/native/**/*.pom
+/android/citizensdk.aar
+
+# Dart/Flutter 与各平台工具即使在 dry-run 副本中生成状态，也绝不能进入 Hosted 包。
+/.dart_tool/**
+/build/**
+/**/build/**
+/**/target/**
+/**/.gradle/**
+
+# 生产源码目录中的分层说明不是运行时文件；根 README 与法律声明继续保留。
+/lib/**/README.md
+/android/src/main/**/README.md
+/android/native/src/main/**/README.md

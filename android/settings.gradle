@@ -1,0 +1,37 @@
+// 仅独立AAR读取本settings；Flutter宿主直接引入库模块，沿用宿主的工具选择。
+// 由任务 settings 应用本脚本；插件统一经下面的 buildscript classpath 装载。
+// 不在只读源码目录登记可写 Gradle 工程，也不另存一份 SDK 配置。
+def sdkSourceValue = System.getenv('CITIZENSDK_SOURCE_DIR')
+def sdkWorkValue = System.getenv('CITIZENSDK_WORK_DIR')
+if (!sdkSourceValue || !sdkWorkValue || !new File(sdkSourceValue).isAbsolute() || !new File(sdkWorkValue).isAbsolute()) {
+    throw new GradleException('CitizenSDK standalone Android requires absolute source and task work directories')
+}
+def sdkSource = new File(sdkSourceValue).canonicalFile
+def taskProject = new File(sdkWorkValue, 'gradle-project').canonicalFile
+if (settingsDir.canonicalFile != taskProject || taskProject.toPath().startsWith(sdkSource.toPath())) {
+    throw new GradleException('CitizenSDK Gradle project must remain in the current task outside the source tree')
+}
+def sourceProperties = new Properties()
+new File(sdkSource, 'android/gradle.properties').withInputStream { sourceProperties.load(it) }
+def plugins = [agp: '9.0.1', kotlin: '2.2.20', gradle: '9.1.0']
+if (gradle.gradleVersion != plugins.gradle) {
+    throw new GradleException("CitizenSDK独立Android要求Gradle ${plugins.gradle}")
+}
+// 在根脚本解析前选择同一组classpath；子模块不重复申请插件版本。
+gradle.beforeProject { project ->
+    sourceProperties.each { key, value -> project.extensions.extraProperties.set(key.toString(), value) }
+    if (project.path == ':') {
+        project.buildscript {
+            repositories { google(); mavenCentral() }
+            dependencies {
+                classpath "com.android.tools.build:gradle:${plugins.agp}"
+                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${plugins.kotlin}"
+            }
+        }
+    }
+}
+
+rootProject.name = 'citizen_sdk'
+include ':native'
+// apply-from 脚本的 file('native') 会按源码脚本目录解析；显式绑定任务工程，避免 Gradle 写源码树。
+project(':native').projectDir = new File(taskProject, 'native')

@@ -1,0 +1,19 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    invalid_use_of_visible_for_testing_member: error
+    missing_required_param: error
+    missing_return: error
+
+linter:
+  rules:
+    avoid_dynamic_calls: false
+    directives_ordering: true
+    discarded_futures: true
+    prefer_final_locals: true
+    unawaited_futures: true

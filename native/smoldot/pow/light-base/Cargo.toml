@@ -1,0 +1,59 @@
+[package]
+name = "smoldot-light"
+# 作为 CitizenApp Rust 的路径依赖时仍必须继承收编的 smoldot workspace，禁止向外误认根 workspace。
+workspace = ".."
+version = "0.19.0"
+description = "Browser bindings to a light client for Substrate-based blockchains"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+include.workspace = true
+
+[[example]]
+name = "basic"
+required-features = ["std"]
+
+[dependencies]
+async-channel = { version = "2.5.0", default-features = false }
+async-lock = { version = "3.0.0", default-features = false }
+base64 = { version = "0.22.0", default-features = false, features = ["alloc"] }
+blake2-rfc = { version = "0.2.18", default-features = false }
+bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
+derive_more = { version = "2.0", default-features = false, features = ["full"] }
+either = { version = "1.9.0", default-features = false }
+event-listener = { version = "5.3.0", default-features = false }
+fnv = { version = "1.0.7", default-features = false }
+futures-channel = { version = "0.3.31", default-features = false, features = ["alloc"] }
+futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3.27", default-features = false, features = ["alloc", "sink"] }
+hashbrown = { version = "0.16.0", default-features = false }
+hex = { version = "0.4.3", default-features = false }
+itertools = { version = "0.14.0", default-features = false, features = ["use_alloc"] }
+lru = { version = "0.16.3", default-features = false, features = ["hashbrown"] } # The `hashbrown` feature brings no-std compatibility.
+pin-project = "1.1.5"
+rand = { version = "0.8.5", default-features = false, features = ["alloc"] }
+rand_chacha = { version = "0.3.1", default-features = false }
+serde = { version = "1.0.183", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1.0.104", default-features = false, features = ["alloc"] }
+siphasher = { version = "1.0.1", default-features = false }
+slab = { version = "0.4.8", default-features = false }
+smoldot = { version = "0.21.0", path = "../lib", default-features = false }
+zeroize = { version = "1.7.0", default-features = false, features = ["alloc"] }
+
+# `std` feature
+# Add here the crates that cannot function without the help of the operating system or environment.
+parking_lot = { version = "0.12.1", optional = true }
+log = { version = "0.4.18", default-features = false, optional = true }
+smol = { version = "2.0.0", optional = true }
+# WSS 使用受维护的 rustls 0.23，并通过 futures IO 直接兼容 smol。
+futures-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+
+[features]
+default = ["std", "wasmtime"]
+std = ["dep:parking_lot", "dep:log", "dep:smol", "dep:futures-rustls", "dep:rustls", "rand/std", "rand/std_rng", "smoldot/std"]
+wasmtime = ["smoldot/wasmtime"]
+
+[dev-dependencies]
+env_logger = "0.11.4"

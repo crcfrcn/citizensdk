@@ -1,0 +1,53 @@
+{
+  "format_version": 1,
+  "chain_id": "citizenchain",
+  "algorithm": "sr25519",
+  "signing_context": "substrate",
+  "ss58_prefix": 2027,
+  "mnemonic": "bottom drive obey lake curtain smoke basket hold race lonely fit walk",
+  "cases": [
+    {
+      "password": "",
+      "accounts": [
+        {
+          "index": 0,
+          "account_id": "0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972",
+          "ss58": "w5CZACAABUbK4jspzPB5be9trhtSgRCRZFafGe7kvFPvxq8M2",
+          "child_mini_secret": "0x914dded06277afbe5b0e8a30bce539ec8a9552a784d08e530dc7c2915c478393"
+        },
+        {
+          "index": 1,
+          "account_id": "0xb606fc73f57f03cdb4c932d475ab426043e429cecc2ffff0d2672b0df8398c48",
+          "ss58": "w5FhUDLW4BxsE1QXK4sNjPZ8rqSnK2QeVpUfXzqczpWdxChxV",
+          "child_mini_secret": "0x4433c3ada0cf37c3050d5435321872f4f84ef53d8b5f1f1560689d500b882245"
+        },
+        {
+          "index": 2,
+          "account_id": "0x46f136b564e1fad55031404dd84e5cd3fa76bfe7cc7599b39d38fd06663bbc0a",
+          "ss58": "w5DBpRvbgkersZohanGQiXa4qQLS1n7VQaSFwBaq4irJmgDn5",
+          "child_mini_secret": "0x5418179cea7224f2d9d2ab437773c2fdb266e52ef7fa52c0d9c15c6ca6068748"
+        }
+      ]
+    },
+    {
+      "password": "Aa1!中华",
+      "accounts": [
+        {
+          "index": 0,
+          "account_id": "0x582cdc8c9b4c0ab469a54850285004eec274d08baa1ccd885300697c1410a939",
+          "child_mini_secret": "0xd2db5cb0ab33f2b28d460ecc98d44606a582560e15217f993dcd0890dc637883"
+        },
+        {
+          "index": 1,
+          "account_id": "0xb2e853e5b2338b391203393805fb99b3e698b72a27be2d881ceb5883b8f1ae0e",
+          "child_mini_secret": "0x17662e95a4cebb837b63d0a803d30dd183541f6ecb0a3f26fd1e911e30f3a3e0"
+        },
+        {
+          "index": 2,
+          "account_id": "0xee6b0534f98e4dd14802f59e44dd962741dd18dfcbdf4614980719b9809b7a61",
+          "child_mini_secret": "0xde45491978a38d3f3960e3f7aece9e5d619c81dd2c4cabe1904aa8fef4442201"
+        }
+      ]
+    }
+  ]
+}

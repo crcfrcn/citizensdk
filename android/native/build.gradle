@@ -1,0 +1,185 @@
+group = 'org.citizen.sdk'
+version = rootProject.version
+
+apply plugin: 'com.android.library'
+// 与Flutter库共用独立入口已选定的AGP及内置Kotlin，不另选版本。
+// projectDir 是任务目录；输入路径必须显式指向原 SDK，不能从任务目录推导。
+def sdkSourceValue = System.getenv('CITIZENSDK_SOURCE_DIR')
+if (!sdkSourceValue || !new File(sdkSourceValue).isAbsolute()) {
+    throw new GradleException('CitizenSDK native Android requires an absolute source directory')
+}
+def sdkProductRoot = new File(sdkSourceValue).canonicalFile
+def nativeSourceRoot = new File(sdkProductRoot, 'android/native')
+
+// SDK产品合同固定独立AAR使用的CMake版本；工具由开发环境或CI提供。
+def cmakeVersion = '3.31.6'
+def configuredBuildDir = System.getenv('CITIZENSDK_ANDROID_BUILD_DIR')
+def fallbackRoot = new File(System.getProperty('java.io.tmpdir'), 'citizensdk-unconfigured')
+def normalizedTarget = configuredBuildDir == null || configuredBuildDir.trim().isEmpty()
+    ? new File(fallbackRoot, 'android-native').canonicalFile
+    : file(configuredBuildDir).canonicalFile
+if (configuredBuildDir != null && !configuredBuildDir.trim().isEmpty()) {
+    if (!file(configuredBuildDir).isAbsolute()) {
+        throw new GradleException('CITIZENSDK_ANDROID_BUILD_DIR must be absolute')
+    }
+    def githubActions = System.getenv('GITHUB_ACTIONS') == 'true'
+    if (githubActions) {
+        def workspace = System.getenv('GITHUB_WORKSPACE')
+        if (workspace != null && !workspace.trim().isEmpty()) {
+            def sourceRoot = file(workspace).canonicalFile
+            if (normalizedTarget.path == sourceRoot.path ||
+                normalizedTarget.path.startsWith(sourceRoot.path + File.separator)) {
+                throw new GradleException('CitizenSDK Android output must be outside the GitHub source checkout')
+            }
+        }
+    }
+    if (normalizedTarget.toPath().startsWith(sdkProductRoot.toPath())) {
+        throw new GradleException('CitizenSDK Android build output must remain outside the source tree')
+    }
+}
+def nativeTarget = new File(normalizedTarget, 'native')
+buildDir = nativeTarget
+
+def coreDirValue = System.getenv('CITIZENSDK_ANDROID_CORE_DIR')
+def coreDir = coreDirValue == null || coreDirValue.trim().isEmpty()
+    ? new File(fallbackRoot, 'arm64-v8a').canonicalFile
+    : file(coreDirValue).canonicalFile
+def coreLibrary = new File(coreDir, 'libcitizensdk.so')
+def zxingSourceValue = System.getenv('CITIZENSDK_ZXING_SOURCE_DIR')
+def zxingSource = zxingSourceValue == null || zxingSourceValue.trim().isEmpty()
+    ? new File(fallbackRoot, 'zxing-cpp-3.1.1').canonicalFile
+    : file(zxingSourceValue).canonicalFile
+
+// 只把唯一chain三文件投影到本模块当前构建目录；Android标准assets容器保留chain层级，
+// 禁止把整个SDK源码根作为资产源，也不在源码中恢复assets包装目录。
+def chainAssetDirectory = layout.buildDirectory.dir('generated/chain-assets')
+def prepareChainAssets = tasks.register('prepareCitizenSdkChainAssets', Sync) {
+    from(sdkProductRoot) {
+        include 'chain/manifest.json', 'chain/chainspec.json', 'chain/light_sync_state.json'
+    }
+    into(chainAssetDirectory)
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(prepareChainAssets) }
+
+android {
+    namespace = 'org.citizen.sdk'
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'
+
+    defaultConfig {
+        minSdk = 24
+        consumerProguardFiles new File(nativeSourceRoot, 'consumer-rules.pro')
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fvisibility=hidden'
+                arguments '-DANDROID_STL=c++_static',
+                    "-DCITIZENSDK_CORE_DIR=${coreDir.absolutePath}",
+                    "-DCITIZENSDK_INTERNAL_INCLUDE_DIR=${System.getenv('CITIZENSDK_INTERNAL_INCLUDE_DIR') ?: ''}",
+                    "-DCITIZENSDK_ZXING_SOURCE_DIR=${zxingSource.absolutePath}"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = new File(nativeSourceRoot, 'src/main/cpp/CMakeLists.txt')
+            version = cmakeVersion
+            // CMake状态属于调用方当前任务，不写入源码或其它任务目录。
+            buildStagingDirectory = new File(normalizedTarget, 'native-cmake')
+        }
+    }
+
+    sourceSets {
+        all { sourceSet ->
+            def sourceRoot = new File(nativeSourceRoot, "src/${sourceSet.name}")
+            sourceSet.setRoot(sourceRoot.path)
+            // 包名由源码的 package 声明决定；测试源码直接位于源集根，禁止单子目录包装层。
+            sourceSet.kotlin.srcDirs = [sourceSet.name == 'androidTest' ? sourceRoot : new File(sourceRoot, 'kotlin')]
+        }
+        main {
+            // 独立AAR与Flutter均只打包当前模块投影的chain三文件。
+            assets.srcDirs = [chainAssetDirectory.get().asFile]
+            // jniLibs expects the parent whose direct child is arm64-v8a.
+            jniLibs.srcDirs = [coreDir.parentFile]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig = false
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+            excludes += [
+                'lib/armeabi*/**',
+                'lib/x86/**',
+                'lib/x86_64/**',
+                '**/libsmoldot.so',
+                '**/libc++_shared.so',
+            ]
+        }
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+// 两种分发面保持相同JVM目标与接口默认实现，不重复旧字符串编译参数。
+// apply from 的脚本不另声明插件版本；只复用当前 Kotlin 插件公开枚举。
+def kotlinPluginLoader = extensions.getByName('kotlin').getClass().getClassLoader()
+def kotlinJvmTarget = kotlinPluginLoader.loadClass('org.jetbrains.kotlin.gradle.dsl.JvmTarget')
+def kotlinJvmDefault = kotlinPluginLoader.loadClass('org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode')
+kotlin {
+    compilerOptions {
+        jvmTarget = kotlinJvmTarget.JVM_17
+        jvmDefault = kotlinJvmDefault.NO_COMPATIBILITY
+    }
+}
+
+// 独立settings登记native模块；显式原生任务在执行前验证两个生产输入。
+// Flutter宿主只引入根库模块，不执行此独立子工程。
+tasks.configureEach { task ->
+    if (task.name == 'preBuild') {
+        task.doFirst {
+            if (configuredBuildDir == null || configuredBuildDir.trim().isEmpty()) {
+                throw new GradleException('CITIZENSDK_ANDROID_BUILD_DIR is required for native AAR tasks')
+            }
+            if (coreDirValue == null || coreDirValue.trim().isEmpty() || !coreLibrary.isFile()) {
+                throw new GradleException(
+                    'CITIZENSDK_ANDROID_CORE_DIR must be an arm64-v8a leaf containing libcitizensdk.so'
+                )
+            }
+            if (coreDir.name != 'arm64-v8a') {
+                throw new GradleException('CITIZENSDK_ANDROID_CORE_DIR must end in arm64-v8a')
+            }
+            if (zxingSourceValue == null || zxingSourceValue.trim().isEmpty() ||
+                !new File(zxingSource, 'core/src/ZXingC.h').isFile()) {
+                throw new GradleException('CITIZENSDK_ZXING_SOURCE_DIR must contain official ZXing-C++ 3.1.1')
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.biometric:biometric:1.1.0'
+    // 独立 AAR 消费时同样保留官方验证器传递依赖合同。
+    implementation 'rustls:rustls-platform-verifier:0.1.1'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.fragment:fragment-ktx:1.8.9'
+    implementation 'androidx.camera:camera-core:1.5.3'
+    implementation 'androidx.camera:camera-camera2:1.5.3'
+    implementation 'androidx.camera:camera-lifecycle:1.5.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+}

@@ -1,0 +1,48 @@
+[package]
+name = "citizen-sdk-engine"
+description = "CitizenSDK product-independent account, runtime, transaction, and state coordination engine."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
+# 钱包派生需要密码学实现，但实例的公开签名授权仍由独立 modules 位控制。
+wallet = ["signing"]
+signing = []
+chain = ["dep:subxt-core", "dep:tokio"]
+transactions = ["chain"]
+history = ["chain"]
+qr = ["dep:citizen-sdk-qr"]
+
+[dependencies]
+# `Mnemonic` 内部同样等价持有助记词索引；必须启用上游析构清零，不能只清理外围 String。
+bip39 = { version = "=2.2.2", default-features = false, features = ["std", "zeroize"] }
+citizen-sdk-contracts = { path = "../contracts" }
+citizen-sdk-qr = { path = "../qr", optional = true }
+getrandom = "=0.3.4"
+hmac = "=0.12.1"
+pbkdf2 = "=0.12.2"
+futures = "=0.3.34"
+sha2 = "=0.10.9"
+# Keep the same official crates.io Subxt core used by CitizenChain's verified
+# client tooling. This crate decodes metadata and System.Events only; it does
+# not add an online RPC client or a second light-node implementation.
+subxt-core = { version = "=0.43.0", default-features = true, optional = true }
+# 原生 provider 已使用的官方运行时；仅为 finalized 执行核验的一秒重试间隔。
+tokio = { version = "=1.53.1", features = ["time"], optional = true }
+unicode-normalization = "=0.1.25"
+unicode-segmentation = "=1.13.3"
+zeroize = "=1.9.0"
+
+[dev-dependencies]
+tokio = { version = "=1.53.1", features = ["rt", "time"] }
+citizen-signer = { path = "../signer" }
+serde_json = "=1.0.151"
