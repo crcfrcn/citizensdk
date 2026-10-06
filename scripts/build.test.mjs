@@ -1,5 +1,6 @@
 // 产品独立入口：真实只读需求、资源身份、路径隔离与锁定归档失败关闭。
 import {test} from 'node:test';
+import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {existsSync,lstatSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,mkdirSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -89,5 +90,20 @@ test('未经本产品锁声明的归档回执不能用于编译',async()=>{
   const receipt=fixture(work);
   // 同一工具回执不能为归档注入增加来源；验证在任何暂存写入前结束。
   await assert.rejects(checkArchives(receipt.platform,work,{...receipt,archives:{injected:[{name:'unknown',version:'1.0.0',url:'https://example.invalid/archive',sha256:'a'.repeat(64),path:join(work,'missing')}]}}),/产品锁/);
+ }finally{rmSync(work,{recursive:true});}
+});
+
+// 真实命令行只读自身入口；清除私有环境与工具搜索路径，不能从控制台补齐执行条件。
+test('独立命令行从自身声明输出JSON，未知平台失败且不写工作根',async()=>{
+ const work=sandbox();try{
+  for(const platform of Object.keys(contract.platforms)){
+   const before=readdirSync(work),result=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements',platform,'--work',work],{env:{HOME:work,LANG:'C',LC_ALL:'C'},encoding:'utf8'});
+   const apple=platform.endsWith('ios')?'ios':platform.endsWith('macos')?'macos':null;
+   if(apple&&existsSync(join(base,apple,'Podfile'))&&!existsSync(join(base,apple,'Podfile.lock'))){assert.notEqual(result.status,0);assert.match(result.stderr,/CocoaPods原始锁缺失/);}
+   else{assert.equal(result.status,0,result.stderr);const value=JSON.parse(result.stdout);assert.equal(value.product_id,contract.product_id);assert.equal(value.platform,platform);}
+   assert.deepEqual(readdirSync(work),before);
+  }
+  const invalid=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements','unknown','--work',work],{env:{HOME:work},encoding:'utf8'});
+  assert.notEqual(invalid.status,0);assert.match(invalid.stderr,/平台/);
  }finally{rmSync(work,{recursive:true});}
 });

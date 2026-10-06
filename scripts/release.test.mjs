@@ -7661,7 +7661,10 @@ test('macOS Hosted 消费者只用公开入口并在 Release 显式验收生命�
   assert.match(source, /Platform\.isMacOS && kReleaseMode/u);
   assert.doesNotMatch(source, /package:citizen_sdk\/src\/|FlutterCitizenSdkPlatform|MethodChannelCitizenSdkPlatform|setMockMethodCallHandler|\bassert\s*\(/u);
   assert.doesNotMatch(source, /\.wallet\.(?:create|import|sign|transfer)|\.transaction\.(?:submit|transfer)|\.invokeMethod\(/u);
-  assert.match(source, /opened\.wallet\.getProfile\(\)[\s\S]*?== null/u);
+  assert.match(source, /sdk\.wallet\.getState\(\)\.result\.timeout\(_timeout\)/u);
+  assert.match(source, /state\.hotProfile == null && state\.accounts\.isEmpty/u);
+  assert.match(source, /await _emptyWallet\(opened\)/u);
+  assert.match(source, /CitizenSdkCredentialRequest\(\)[\s\S]*?CitizenSdkPrivateKeyClosed\(\):[\s\S]*?eventFailed = true/u);
   assert.match(source, /CitizenSdkErrorCode\.notReady/u);
   assert.match(source, /CitizenSdkErrorCode\.invalidState/u);
   assert.match(source, /event\.sequence <= eventSequence/u);

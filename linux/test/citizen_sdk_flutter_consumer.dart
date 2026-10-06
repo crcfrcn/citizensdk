@@ -50,6 +50,12 @@ Future<void> _until(bool Function() condition) async {
   }
 }
 
+Future<void> _emptyWallet(CitizenSdk sdk) async {
+  // 只回读隔离目录的公开快照；空热资料与空账户目录必须同时成立。
+  final state = await sdk.wallet.getState().result.timeout(_timeout);
+  _require(state.hotProfile == null && state.accounts.isEmpty);
+}
+
 Future<void> _verify() async {
   _require(Platform.isLinux);
   final stateRoot = Platform.environment['XDG_DATA_HOME'] ?? '';
@@ -83,6 +89,13 @@ Future<void> _verify() async {
         if (event.sequence <= eventSequence) eventFailed = true;
         eventSequence = event.sequence;
         switch (event) {
+          case CitizenSdkCredentialRequest() ||
+              CitizenSdkCredentialCancelled() ||
+              CitizenSdkWalletChanged() ||
+              CitizenSdkQrCaptureEvent() ||
+              CitizenSdkPrivateKeyClosed():
+            // 本夹具未请求凭据、写入或秘密资源；任何此类事件都使验收失败。
+            eventFailed = true;
           case CitizenSdkHistoryChanged():
             // 本夹具不触发历史写入；出现该事件说明原生路由隔离错误。
             eventFailed = true;
@@ -96,7 +109,7 @@ Future<void> _verify() async {
             }
         }
       },
-      onError: (Object _, StackTrace __) {
+      onError: (Object _, StackTrace _) {
         eventFailed = true;
       },
     );
@@ -109,7 +122,7 @@ Future<void> _verify() async {
       CitizenSdkErrorCode.notReady,
     );
     // 只读新数据空间的公开 profile，不显示、创建、导入或签名任何账户。
-    _require(await opened.wallet.getProfile().timeout(_timeout) == null);
+    await _emptyWallet(opened);
     await opened.start().timeout(_timeout);
     _require(opened.lifecycle == CitizenSdkLifecycle.running);
     await _until(() => lifecycleEvents.contains(CitizenSdkLifecycle.running));
