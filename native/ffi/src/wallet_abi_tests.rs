@@ -78,7 +78,7 @@ use crate::abi::{
     CitizenSdkWalletStateAccountInfo, CitizenSdkWalletStateInfo, CitizenSdkWalletWordCount,
 };
 use citizen_sdk_contracts::{
-    citizen_ss58_address, AccountId32, ColdWalletAccount, Hash32, SecretBuffer, SigningCompletion,
+    citizen_ss58_address, AccountId32, ColdWalletAccount, Hash32, SigningCompletion,
     Sr25519Signature, WalletState,
 };
 use std::sync::Arc;

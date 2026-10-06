@@ -4591,7 +4591,7 @@ test('模块选择和独立签名历史门面只投影同一Core，不产生第�
   }
 });
 
-test('QR_V1保留原六类码型并由Core唯一给出扫码用途', () => {
+test('QR_V1固定五类码型并由Core唯一给出扫码用途', () => {
   const productionRoots = [
     'native/qr/src', 'native/engine/src', 'native/ffi/src', 'include', 'lib',
     'android/native/src/main', 'android/src/main', 'darwin/Sources',
@@ -4612,18 +4612,18 @@ test('QR_V1保留原六类码型并由Core唯一给出扫码用途', () => {
     const source = readFileSync(path, 'utf8');
     assert.doesNotMatch(source, new RegExp(['QR', '_V', '(?:0|[2-9][0-9]*)'].join(''), 'u'), path);
   }
-  // 既定六类协议都归Core；冷导入账户码限制不能被误写成删除其它码型。
+  // 五类协议统一由Core解析；账户码继续支持冷导入及既定公开扫码用途。
   const dart = readFileSync(join(citizenSdkRoot, 'lib/src/api/citizen_qr.dart'), 'utf8');
   const kind = dart.match(/enum CitizenQrKind \{([\s\S]*?)\n\}/u)?.[1];
   assert.ok(kind);
-  assert.deepEqual([...kind.matchAll(/\b([a-zA-Z]+)\(([1-6])\)/gu)].map(match => [match[1], Number(match[2])]), [
+  assert.deepEqual([...kind.matchAll(/\b([a-zA-Z]+)\(([1-5])\)/gu)].map(match => [match[1], Number(match[2])]), [
     ['signRequest', 1], ['signResponse', 2], ['userContact', 3],
     ['userTransfer', 4], ['accountId', 5],
   ]);
   const core = readFileSync(join(citizenSdkRoot, 'native/qr/src/codec.rs'), 'utf8');
   assert.match(core, /pub const fn scan_purpose_mask\(&self\)/u);
   assert.match(core, /self\.scan_purpose_mask\(\) & purpose\.bit\(\) != 0/u);
-  assert.match(core, /Self::AccountId\(_\) => ColdAccountImport\.bit\(\)/u);
+  assert.match(core, /Self::AccountId\(_\) => \{\s*ColdAccountImport\.bit\(\)\s*\| TransferRecipient\.bit\(\)\s*\| GeneralScan\.bit\(\)\s*\| AccountTarget\.bit\(\)\s*\}/u);
   assert.match(readFileSync(join(citizenSdkRoot, 'native/qr/src/codec.rs'), 'utf8'),
                /pub const QR_V1: &str = "QR_V1";/u);
 });
@@ -5929,10 +5929,9 @@ test('SDK 自有测试源码固定 Core Rust、FFI、provider、根与平台合�
       copyFileSync(join(citizenSdkRoot, ...relativePath.split('/')), destination);
     }
     mkdirSync(join(root, 'scripts'), { recursive: true });
-    copyFileSync(
-      join(citizenSdkRoot, 'scripts', 'release.test.mjs'),
-      join(root, 'scripts', 'release.test.mjs'),
-    );
+    for (const name of ['release.test.mjs', 'build.test.mjs']) {
+      copyFileSync(join(citizenSdkRoot, 'scripts', name), join(root, 'scripts', name));
+    }
     assert.doesNotThrow(() => assertSdkTestContracts(root));
 
     const golden = join(root, 'native', 'engine', 'src', 'wallet_derivation_tests.rs');

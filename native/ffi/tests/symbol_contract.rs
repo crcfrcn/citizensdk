@@ -265,7 +265,7 @@ fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
     let qr = rust_exports(include_str!("../src/qr_abi.rs"));
     let transaction = rust_exports(include_str!("../src/transaction_abi.rs"));
     assert_eq!(rust.len(), 53, "base Rust export count changed");
-    assert_eq!(wallet.len(), 73, "wallet Rust export count changed");
+    assert_eq!(wallet.len(), 67, "wallet Rust export count changed");
     for export in wallet {
         assert!(
             rust.insert(export.clone()),

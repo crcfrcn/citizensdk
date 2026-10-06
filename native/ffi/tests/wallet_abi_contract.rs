@@ -75,7 +75,7 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
     let qr = rust_exports(include_str!("../src/qr_abi.rs"));
     // 钱包函数逐项对拍同一144项公开C闭集；被删除的结果编号不重排、不复用。
     assert_eq!(old.len(), 53);
-    assert_eq!(wallet.len(), 73);
+    assert_eq!(wallet.len(), 67);
     assert_eq!(qr.len(), 11);
     assert!(old.is_disjoint(&wallet));
     assert!(old.is_disjoint(&qr));
