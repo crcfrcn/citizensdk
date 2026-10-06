@@ -5474,6 +5474,7 @@ test('真实 Runtime metadata/events 测试夹具由 Release 固定完整闭集'
   const root = mkdtempSync(join(workRoot, 'release-source-fixture-test-'));
   const fixturePaths = [
     'test/transaction/citizenchain-balance-fee-v1.json',
+    'test/transaction/citizenchain-revive-v15-metadata.hex',
     'test/transaction/citizenchain-runtime-system-events.hex',
     'test/transaction/citizenchain-runtime-v14-metadata.hex',
     'test/transaction/citizenchain-transfer-build-v1.json',
@@ -5488,6 +5489,13 @@ test('真实 Runtime metadata/events 测试夹具由 Release 固定完整闭集'
       copyFileSync(join(citizenSdkRoot, ...relativePath.split('/')), destination);
     }
     assert.doesNotThrow(() => assertSourceFixtures(root));
+    const currentMetadata = join(root, 'test/transaction/citizenchain-revive-v15-metadata.hex');
+    const originalMetadata = readFileSync(currentMetadata);
+    rmSync(currentMetadata);
+    assert.throws(() => assertSourceFixtures(root), /缺少普通逐字节来源夹具文件.*citizenchain-revive-v15-metadata\.hex/u);
+    writeFileSync(currentMetadata, Buffer.concat([originalMetadata, Buffer.from('00\n')]));
+    assert.throws(() => assertSourceFixtures(root), /逐字节来源夹具文件哈希漂移.*citizenchain-revive-v15-metadata\.hex/u);
+    writeFileSync(currentMetadata, originalMetadata);
     const destination = join(
       root,
       'test',

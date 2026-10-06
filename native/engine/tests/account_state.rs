@@ -635,6 +635,17 @@ fn assert_integrity<T>(result: Result<T, EngineError>) {
 // 经过真实 Engine 准备与冷签执行入口，验证执行不再二次读取链状态或 nonce。
 #[test]
 fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation() {
+    check_prepared_execution(METADATA_HEX);
+}
+
+#[test]
+fn current_revive_metadata_reaches_native_cold_signing_without_more_nonce_reads() {
+    check_prepared_execution(include_str!(
+        "../../../test/transaction/citizenchain-revive-v15-metadata.hex"
+    ));
+}
+
+fn check_prepared_execution(metadata_hex: &str) {
     use citizen_sdk_contracts::{
         citizen_ss58_address, CapabilityName, ColdWalletAccount, TransactionExecutionId,
         TransactionHistoryCursor, TransactionHistoryIndex, TransactionHistoryMutation,
@@ -650,10 +661,20 @@ fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation
     // 冷签只读取公开目录；任何秘密、金库或密文操作都会使本测试失败。
     struct NoSecrets;
     impl SecretVault for NoSecrets {
-    fn authorize_add_accounts(&self, _: [u8; 16], _: u32, _: VaultGeneration) -> ContractFuture<'_, ()> {
-        panic!("此夹具不得执行追加认证")
-    }
-        fn ensure_wallet_key(&self, _: [u8; 16], _: u32, _: VaultGeneration) -> ContractFuture<'_, ()> {
+        fn authorize_add_accounts(
+            &self,
+            _: [u8; 16],
+            _: u32,
+            _: VaultGeneration,
+        ) -> ContractFuture<'_, ()> {
+            panic!("此夹具不得执行追加认证")
+        }
+        fn ensure_wallet_key(
+            &self,
+            _: [u8; 16],
+            _: u32,
+            _: VaultGeneration,
+        ) -> ContractFuture<'_, ()> {
             panic!("冷签不能初始化金库")
         }
         fn availability(&self) -> ContractFuture<'_, VaultAvailability> {
@@ -769,7 +790,9 @@ fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation
     let account = AccountId32::from_bytes([0x51; 32]);
     let finalized = FinalizedBlockRef::from_parts(Hash32::from_bytes([0x42; 32]), 42);
     let best = VerifiedBlockRef::best(finalized.hash(), finalized.number());
-    let chain = Arc::new(TestClient::new(best, finalized));
+    let mut client = TestClient::new(best, finalized);
+    client.metadata = decode_hex(metadata_hex);
+    let chain = Arc::new(client);
     let metadata = decode_metadata(&chain.metadata);
     let pallet = metadata.pallet_by_name("System").expect("System metadata");
     let call = pallet

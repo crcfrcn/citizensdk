@@ -246,12 +246,17 @@ final class _CitizenChain implements CitizenChain {
     Uint8List? startKey,
     int limit = 1000,
   }) async {
+    // 发送及回包关联必须使用同一快照，调用方等待期间修改数组不改变请求。
+    final prefixSnapshot = Uint8List.fromList(prefix).asUnmodifiableView();
+    final startSnapshot = startKey == null
+        ? null
+        : Uint8List.fromList(startKey).asUnmodifiableView();
     final value = await _session.invoke(
       'getStorageKeysPaged',
       fields: <Object?>[
         _codec.encodeBlock(finalizedBlock),
-        Uint8List.fromList(prefix),
-        startKey == null ? null : Uint8List.fromList(startKey),
+        prefixSnapshot,
+        startSnapshot,
         limit,
       ],
     );
@@ -268,8 +273,8 @@ final class _CitizenChain implements CitizenChain {
     }
     for (var index = 0; index < keys.length; index += 1) {
       final key = keys[index];
-      if (!_startsWithBytes(key, prefix) ||
-          (startKey != null && _compareBytes(key, startKey) <= 0) ||
+      if (!_startsWithBytes(key, prefixSnapshot) ||
+          (startSnapshot != null && _compareBytes(key, startSnapshot) <= 0) ||
           (index > 0 && _compareBytes(keys[index - 1], key) >= 0)) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.integrity,

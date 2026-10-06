@@ -43,6 +43,79 @@ void main() {
     ]);
   });
 
+  test('存储分页发送与回包关联使用接纳时的前缀和游标快照', () async {
+    final sdk = await CitizenSdk.open();
+    final block = CitizenBlockRef(
+      hash: '0x${'11' * 32}',
+      number: BigInt.from(7),
+      finality: CitizenBlockFinality.finalized,
+    );
+    final prefix = Uint8List.fromList([1]);
+    final start = Uint8List.fromList([1, 0]);
+    final barrier = Completer<void>();
+    platform.chainBarrier = barrier.future;
+    final result = sdk.chain.getStorageKeysPaged(
+      block,
+      prefix,
+      startKey: start,
+      limit: 2,
+    );
+    prefix[0] = 9;
+    start.fillRange(0, start.length, 9);
+    barrier.complete();
+    final keys = await result;
+    expect(keys, [
+      [1, 1],
+      [1, 2],
+    ]);
+    final fields =
+        platform.calls.singleWhere(
+              (call) => call[0] == 'getStorageKeysPaged',
+            )[1]
+            as List;
+    expect(fields[4], [1]);
+    expect(fields[5], [1, 0]);
+    expect(() => keys.first[0] = 0, throwsUnsupportedError);
+    await sdk.close();
+  });
+
+  test('调用方改为伪造回包的前缀不能放宽原请求，Runtime参数不受外部修改影响', () async {
+    final sdk = await CitizenSdk.open();
+    final block = CitizenBlockRef(
+      hash: '0x${'11' * 32}',
+      number: BigInt.from(7),
+      finality: CitizenBlockFinality.finalized,
+    );
+    final prefix = Uint8List.fromList([1]);
+    final barrier = Completer<void>();
+    platform.chainBarrier = barrier.future;
+    platform.storageKeys = [
+      Uint8List.fromList([2, 1]),
+    ];
+    final keys = sdk.chain.getStorageKeysPaged(block, prefix);
+    prefix[0] = 2;
+    barrier.complete();
+    await expectLater(
+      keys,
+      throwsA(
+        isA<CitizenSdkException>().having(
+          (error) => error.code,
+          'code',
+          CitizenSdkErrorCode.integrity,
+        ),
+      ),
+    );
+    final args = Uint8List.fromList([3, 4]);
+    final runtime = sdk.chain.callRuntimeApi(block, 'CitizenApi_items', args);
+    args.fillRange(0, args.length, 9);
+    expect(await runtime, [7, 8]);
+    final fields =
+        platform.calls.singleWhere((call) => call[0] == 'callRuntimeApi')[1]
+            as List;
+    expect(fields[5], [3, 4]);
+    await sdk.close();
+  });
+
   test('QR 门面只转发固定 tuple 并重建公开类型', () async {
     final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
 
@@ -171,6 +244,8 @@ final class _FacadePlatform implements CitizenSdkPlatform {
   final StreamController<Object?> _events =
       StreamController<Object?>.broadcast();
   final List<List<Object?>> calls = <List<Object?>>[];
+  Future<void>? chainBarrier;
+  List<Uint8List>? storageKeys;
 
   @override
   Stream<Object?> get events => _events.stream;
@@ -178,6 +253,9 @@ final class _FacadePlatform implements CitizenSdkPlatform {
   @override
   Future<Object?> invoke(String method, List<Object?> arguments) async {
     calls.add(<Object?>[method, arguments]);
+    if (method == 'getStorageKeysPaged' || method == 'callRuntimeApi') {
+      await chainBarrier;
+    }
     return switch (method) {
       'open' => <Object?>[
         2,
@@ -276,10 +354,11 @@ final class _FacadePlatform implements CitizenSdkPlatform {
         'session-1',
         arguments[2],
         <Object?>[
-          <Uint8List>[
-            Uint8List.fromList(<int>[1, 1]),
-            Uint8List.fromList(<int>[1, 2]),
-          ],
+          storageKeys ??
+              <Uint8List>[
+                Uint8List.fromList(<int>[1, 1]),
+                Uint8List.fromList(<int>[1, 2]),
+              ],
         ],
       ],
       'callRuntimeApi' => <Object?>[

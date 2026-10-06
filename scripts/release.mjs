@@ -340,6 +340,7 @@ const CHAIN_ASSET_MANIFEST = Object.freeze({
 // Release 的来源守卫。
 const SOURCE_FIXTURE_FILES = Object.freeze({
   'test/transaction/citizenchain-balance-fee-v1.json': '2cd5e648703c8cc389c59f07753470b63c034f7cfa63dac8ffa596c8128a0033',
+  'test/transaction/citizenchain-revive-v15-metadata.hex': '6c697a80d160ccec859941c9d79ff926c3ff7f36c41da0b621789d6ed663a820',
   'test/transaction/citizenchain-runtime-system-events.hex': '2c4d04a69ff994622877786d481dc4780b7a32795e5f7cfa070ae4acb72679ef',
   'test/transaction/citizenchain-runtime-v14-metadata.hex': 'da62207dfa342ce5285bb214a116761fd0a38c7c329ab8953506ad52471ed681',
   'test/transaction/citizenchain-transfer-build-v1.json': 'c43a1f01c22556d2b1e172088fb540358c25b9554c91ffc71f7b483fcd5a469b',
@@ -475,7 +476,7 @@ const MOBILE_BINDING_SOURCE_FILES = Object.freeze({
   'lib/citizen_sdk.dart': 'ac8fcf2b24f3556523dbbfc737dce00326ab4679797a45eaaa4f981e0104f243',
   'lib/src/api/citizen_chain.dart': 'f64e8fd8918469564b11f32212bbaadd2fc3cd09f5ee34711ba819b531f00077',
   'lib/src/api/citizen_qr.dart': 'fb88651400b8a81f976d681e18364aaf7ac53b4711645ead15d3b549d31bd24b',
-  'lib/src/api/citizen_sdk.dart': '8a736de811d33fbc1d924a89cbab57c4c84d8b661e654723c3db2339bbea909a',
+  'lib/src/api/citizen_sdk.dart': 'd2cb4251450b772b86b15bc2df2973983d5d0533ce8acdbe04c50063e654c58f',
   'lib/src/api/citizen_sdk_error.dart': '1bd6c7b0ce0391ca8edfb41e20a681f1372a506f18d0730f65b0d9d417b42f4f',
   'lib/src/api/citizen_sdk_events.dart': 'f4313b944ba072d4aaa2307bc3f232a6f15cd2a1adb7742625e03a3dae71e03e',
   'lib/src/api/citizen_transactions.dart': 'cfedd56d49a07f4c3d3ba15ec5a91441271a275d802a697856dc1c4402ad5bc8',
@@ -621,7 +622,7 @@ const DOCUMENTATION_SHA256 = Object.freeze({
 // Linux/Windows Host/Flutter、三类公开面消费者、独立签名器、安装消费者与 Release 合同测试
 // 共同构成 SDK 自有测试反向闭集。
 // 固定测试源码能阻止“删除测试后剩余测试仍全绿”或实现与金标同步漂移进入正式包。
-const SDK_TEST_CONTRACT_FILE_COUNT = 168;
+const SDK_TEST_CONTRACT_FILE_COUNT = 169;
 const SDK_TEST_CONTRACT_ROOTS = Object.freeze([
   'test',
   'native/contracts/tests',
@@ -769,7 +770,7 @@ const SDK_TEST_CONTRACT_FILES = Object.freeze({
   'native/contracts/tests/transaction_prepare_contract.rs': '1ff363381350352c500fd639b3346e6dd2be556cad23878755268b90a17712dc',
   'native/engine/src/wallet_derivation_tests.rs': '0af6e57e748e0811e5651841ec40e3be43618139ea138b5491178a325e5a438d',
   'native/engine/src/wallet_service_tests.rs': 'a670d270f1ce02fe2dcdaa746859a1fc8b5611a0ed63f0048a3a983257d6cbd6',
-  'native/engine/tests/account_state.rs': '7dcf7d20a6a9d290afef6e2372b293e3cf274095206361231bca01d2485e0365',
+  'native/engine/tests/account_state.rs': '1f64f4b7e245c1aece23d73cb885d5a1ca0a6a9d5c632414e34ed542c6828289',
   'native/engine/tests/capabilities.rs': 'dcfdbffcbaeabc44a6d6934021b2a80ec593d6c8b64b23a7cfbed8b6791f3e93',
   'native/engine/tests/chain_access.rs': '8df836b9bb209fe4db1dfc8766410172a12e042da9236c5898f5292d0bcc4cf5',
   'native/engine/tests/engine_boundary.rs': '62d04ec6b9035204c4f44777cbf08815521bd63e29146b8bcceb8774190bcbd3',
@@ -800,12 +801,12 @@ const SDK_TEST_CONTRACT_FILES = Object.freeze({
   'native/smoldot/provider/tests/account_nonce_contract.rs': '7b3ea1752b1d96e2d54374ef2b45391f5281138fa7c63ae216185cb5bcb463c4',
   'native/smoldot/provider/tests/legacy_parity.rs': '7db2b3ef4959a7bd1c83b22597666b0448f48b3079b82821f624efd2ccb7d9dc',
   'native/smoldot/provider/tests/verified_chain_client_contract.rs': '543f75c8a92a6e4e225a6c7d7c33f213687e4d6f14b25776320a2e3883a0f58d',
-  'scripts/release.test.mjs': '6299ab70b78a2451e007da3a80fa6560bb24412eb967b9c39462f2b73e82e0fb',
+  'scripts/release.test.mjs': '9e1245127369e4a2990984bc6dfcc104f8cfc3aa250a9cae9cdd505a6d430ed5',
   'test/api/citizen_sdk_test.dart': '682d5b30eed22732404d83f00da062578e4676fe64ff7e4be33cae2e7c8e9548',
   'test/api/citizen_transaction_test.dart': '323b2315d2b6a6343c682f1626b10938c141348994b566b4ba0e75d2b656a4a8',
   'test/api/citizen_wallet_flow_test.dart': '8d24bea2696ef58071c60e6b44ca954f250051f024f4beb72507811747bc6518',
   'test/api/public_api_contract_test.dart': 'be2857da646be9a883102b85596eac2598f2078af6b37f8b18fe56ee00711ab7',
-  'test/citizen_sdk_facade_test.dart': '408de33c12f4053ba965e2af214dc60c79d95139ad56b2e7a869a46e5cbf54b0',
+  'test/citizen_sdk_facade_test.dart': 'da67a4722dee132d9efaa951651c463c6d8eac541078f08ea764b420f2f29412',
   'test/consumers/citizenapp_fixture.dart': 'b06f4fad06481223a1fbde7046743aeaad6af72e0c10cc67cfc54b158686e3a0',
   'test/consumers/consumer_test_support.dart': 'aed47f5bde9605510eeb26cdc9b876034ee0cca753cab27e04ab3c72d75b1d11',
   'test/consumers/generic_qr_v1_signer.dart': 'cd5c9b09093798cebb25ec64ceefd8e4ab691136d1b651444989a77d5c509ad5',
@@ -828,6 +829,7 @@ const SDK_TEST_CONTRACT_FILES = Object.freeze({
   'test/smoldot/smoldot_test.dart': '144f3a7d3385e0f8ece9c28762ae19862cffa1e2db8e449b51ed6e56dbcf6cce',
   'test/smoldot/subscription_test.dart': '18cce5adff77d300f4f6adb6e20db9237a1e0206a05f9308133689319636e677',
   'test/transaction/citizenchain-balance-fee-v1.json': '2cd5e648703c8cc389c59f07753470b63c034f7cfa63dac8ffa596c8128a0033',
+  'test/transaction/citizenchain-revive-v15-metadata.hex': '6c697a80d160ccec859941c9d79ff926c3ff7f36c41da0b621789d6ed663a820',
   'test/transaction/citizenchain-runtime-system-events.hex': '2c4d04a69ff994622877786d481dc4780b7a32795e5f7cfa070ae4acb72679ef',
   'test/transaction/citizenchain-runtime-v14-metadata.hex': 'da62207dfa342ce5285bb214a116761fd0a38c7c329ab8953506ad52471ed681',
   'test/transaction/citizenchain-transfer-build-v1.json': 'c43a1f01c22556d2b1e172088fb540358c25b9554c91ffc71f7b483fcd5a469b',
@@ -984,7 +986,7 @@ const CORE_RUST_FILES = Object.freeze({
   'native/engine/src/error.rs': '949efd108cc8c2205f2adf58d03b55148bc88c03c89e0acd9f453f52716c2bcf',
   'native/engine/src/finalized_history_runtime.rs': 'fff50b2949481b99aff2fa7e3569ab6902c7c3d6b7f676d4564570cdbc729325',
   'native/engine/src/lib.rs': '700693ea2dd0792fd69ec21836ae9381b4ccb96d0afc77b2cae872bb83f4f998',
-  'native/engine/src/metadata.rs': '65c649dbdd0dbe693d2bd0074a8a2d586e34fa1fe7441c4bc94ff0aa83969a5e',
+  'native/engine/src/metadata.rs': 'c8adc893d483ec0dc7624aa8cefb5b3793ae9ec2f402dce7d731054f93d97fa8',
   'native/engine/src/runtime_context.rs': 'b7bac6e77f1761237ba3a309cbcc15b68bcedc49f1fb85d65366cf145ef73b6f',
   'native/engine/src/state_import.rs': '1308efbbc2626bfd5f9cc936a8e3c6e4984dbc6e2e2dda9dc0917b24d98eaa01',
   'native/engine/src/system_events.rs': 'd3f2722e4106d615a6d96e4b9b92c89b97413d6f6b17d4026e167435eb790d22',
@@ -996,7 +998,7 @@ const CORE_RUST_FILES = Object.freeze({
   'native/engine/src/wallet_derivation_tests.rs': '0af6e57e748e0811e5651841ec40e3be43618139ea138b5491178a325e5a438d',
   'native/engine/src/wallet_service.rs': 'ffb0a185f42a53715fc28cd2e9b007c33df20e3aeb4f840fb354ba686cdb8563',
   'native/engine/src/wallet_service_tests.rs': 'a670d270f1ce02fe2dcdaa746859a1fc8b5611a0ed63f0048a3a983257d6cbd6',
-  'native/engine/tests/account_state.rs': '7dcf7d20a6a9d290afef6e2372b293e3cf274095206361231bca01d2485e0365',
+  'native/engine/tests/account_state.rs': '1f64f4b7e245c1aece23d73cb885d5a1ca0a6a9d5c632414e34ed542c6828289',
   'native/engine/tests/capabilities.rs': 'dcfdbffcbaeabc44a6d6934021b2a80ec593d6c8b64b23a7cfbed8b6791f3e93',
   'native/engine/tests/chain_access.rs': '8df836b9bb209fe4db1dfc8766410172a12e042da9236c5898f5292d0bcc4cf5',
   'native/engine/tests/engine_boundary.rs': '62d04ec6b9035204c4f44777cbf08815521bd63e29146b8bcceb8774190bcbd3',
