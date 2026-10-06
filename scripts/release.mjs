@@ -660,7 +660,7 @@ const SDK_SCRIPT_ENTRIES = Object.freeze({
   'test.sh': 'pinned-test-entry',
 });
 const SDK_PINNED_SCRIPT_FILES = Object.freeze({
-  'scripts/build.mjs': '7a17f8a7dafe90f9bf5d1eeff60e6877d531a6ecc4f5295b46459ba8a84f730f',
+  'scripts/build.mjs': 'ea424ba77ccd5fddc632c34f7ccbdcb9ae0c98453b180dc9035fb991e02fed43',
   'scripts/flows.json': '709c78c0db7cc9cf10fa59e4c5ca8938e7d46e272c5bf81cbde4ea248bfa692b',
   'scripts/analysis_options.yaml': '67a8f842d8b2c0eee53ab22db23c98e4deb3f8d3992a20d1a977870dc2e8218a',
   'scripts/build-native.sh': '3c5ddcdbc9017d01295287a60f4797970dd496dba28c06c21227015f59112f9f',
@@ -669,7 +669,7 @@ const SDK_PINNED_SCRIPT_FILES = Object.freeze({
   'scripts/test.sh': '09f2060908baa8cc6fba27e9929c50273fabd8ac8dcaa5954b8a81d848fb23f6',
 });
 const SDK_TEST_CONTRACT_FILES = Object.freeze({
-  'scripts/build.test.mjs': '3dfeb570f713e3d3b9ddad34ef5f5c1dbf0f79fe13e4101b6b3d921fe2a3453e',
+  'scripts/build.test.mjs': '541088a69c6c93fbc6060e87f82ec678bed187ed7e212d8c8d31a120555e7711',
   'test/sdk_1_10_1_contract_test.dart': '94e591396269be5a11005427077850919bb72c346556a84e99d3db8e6355e513',
   'native/engine/tests/baseline_resource_contract.rs': '78b211a0d7ce43d9819cbaf1f867f8680222cf649a5b9729ea9a808ce09abb03',
   'native/smoldot/provider/tests/baseline_lifecycle_contract.rs': '17411f0c473d13b1d40d1058e51f66671e68e11855c1faccfbb41b9f1f58bc1e',
@@ -813,7 +813,7 @@ const SDK_TEST_CONTRACT_FILES = Object.freeze({
   'test/consumers/citizenapp_fixture.dart': 'b06f4fad06481223a1fbde7046743aeaad6af72e0c10cc67cfc54b158686e3a0',
   'test/consumers/consumer_test_support.dart': 'aed47f5bde9605510eeb26cdc9b876034ee0cca753cab27e04ab3c72d75b1d11',
   'test/consumers/generic_qr_v1_signer.dart': 'cd5c9b09093798cebb25ec64ceefd8e4ab691136d1b651444989a77d5c509ad5',
-  'test/consumers/multi_consumer_contract_test.dart': 'b1d71bf32b3e3e55860e4a19bc094f4e47397fcadd383e1c81a1afcda83ace57',
+  'test/consumers/multi_consumer_contract_test.dart': 'ab38ba496c4ae252283a33507ca57e0ce83fc6d3977aaf8bbe0fec0f8c97f0be',
   'test/consumers/reference_consumer.dart': '56b5e9d414302d45a4ba796b7c3af2b25b1e67c9268ecc1907d2ecacd7f01520',
   'test/consumers/third_party_fixture.dart': 'adf75a027328a9a83c26b0d3783d821c3383cb39f4a5d787db0248ca51cf8f99',
   'test/models/public_models_test.dart': '71a5ef0b8ef3fcb59ba17e88bab6def2069df0f939095a12c2ac06be04664b77',

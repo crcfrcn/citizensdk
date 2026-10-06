@@ -91,6 +91,8 @@ export function resourceEnvironment(platform,work,receipt,base={}) {
  if(env.JAVA)env.JAVA_HOME=dirname(dirname(env.JAVA));
  if(env.OPENSSL)env.TUYU_OPENSSL_PREFIX=dirname(dirname(env.OPENSSL));
  const own=receipt.dependencies.own||{};
+ // 原始锁要求的目录必须显式交付，不能落入用户默认缓存。
+ for(const lock of declared.locks){const key={npm:'npmCache',pub:'pubCache',cargo:'cargoHome'}[lock.ecosystem];if(key&&!own[key])fail('缺少原始锁依赖回执：'+lock.ecosystem);}
  for(const [key,name]of [['npmCache','npm_config_cache'],['pubCache','PUB_CACHE'],['cargoHome','CARGO_HOME']])if(own[key]){
   checkDependency(work,own[key]);env[name]=own[key];
  }
@@ -110,12 +112,27 @@ function checkDependency(work,path){if(!isAbsolute(path)||resolve(path)!==path||
 // 工程输入复制到本轮真实目录，保证包解析与写入均不进入正式源码；内部链接映射到同轮副本。
 export function createView(source,destination) {
  if(realpathSync(source)!==source||!lstatSync(source).isDirectory()||!isAbsolute(destination)||resolve(destination)!==destination||inside(source,destination)||inside(destination,source))fail('工程输入与输出边界无效');
- if(existsSync(destination))fail('本轮工程已存在');mkdirSync(destination,{recursive:true,mode:0o700});
+ let parent=dirname(destination);while(!existsSync(parent))parent=dirname(parent);
+ if(!lstatSync(parent).isDirectory()||realpathSync(parent)!==parent)fail('工程输出经过链接');
+ if(lstatSync(destination,{throwIfNoEntry:false}))fail('本轮工程已存在');mkdirSync(destination,{recursive:true,mode:0o700});
  const generated=new Set(['.git','.dart_tool','.gradle','.symlinks','Pods','build','target','node_modules','ephemeral','.cache','.DS_Store','swiftpm','dist','tsconfig.tsbuildinfo']);
  function visit(from,to){for(const name of readdirSync(from).sort()){if(generated.has(name))continue;const a=join(from,name),b=join(to,name),s=lstatSync(a);
   if(s.isDirectory()){mkdirSync(b);visit(a,b);}else if(s.isFile()){copyFileSync(a,b);}
   else if(s.isSymbolicLink()){const target=realpathSync(a);if(!inside(source,target)||!lstatSync(target).isFile())fail('源码链接越界');symlinkSync(join(destination,relative(source,target)),b);}else fail('源码文件类型无效');
  }}visit(source,destination);return destination;
+}
+// 归档坐标只接受本产品当前锁；完整性在build前核验，prepare允许稍后展开的锁。
+export async function checkArchives(platform,work,receipt,complete=false) {
+ const requested=(await requirements(platform,work)).archives;
+ const expected=new Map(requested.map(value=>[value.group+'@'+value.name,value]));const seen=new Set();
+ for(const [group,items]of Object.entries(receipt.archives)){
+  if(!Array.isArray(items))fail('归档回执类型无效');
+  for(const item of items){const key=group+'@'+item.name,wanted=expected.get(key);
+   if(!wanted||seen.has(key)||['url','version','sha256'].some(key=>item[key]!==wanted[key])||typeof item.path!=='string'||!isAbsolute(item.path)||resolve(item.path)!==item.path||!inside(work,item.path))fail('归档回执与产品锁不一致');
+   seen.add(key);const info=lstatSync(item.path);if(!info.isFile()||info.isSymbolicLink()||realpathSync(item.path)!==item.path||!info.size||createHash('sha256').update(readFileSync(item.path)).digest('hex')!==wanted.sha256)fail('锁定归档原件无效');
+  }
+ }
+ if(complete&&seen.size!==expected.size)fail('缺少产品锁定归档回执');
 }
 async function stageArchives(work,receipt) {
  // 归档都来自回执；先按本产品锁回读摘要，再交给现有原生准备器，缺失时禁止下载。
@@ -129,13 +146,13 @@ async function stageArchives(work,receipt) {
 export async function prepare(platform,work,receipt,base) {
  const env=resourceEnvironment(platform,work,receipt,base),source=sourceRoot();
  for(const name of ['work','tmp','cache','config','dependencies','stage'])mkdirSync(join(work,name),{recursive:true,mode:0o700});
- await stageArchives(work,receipt);
+ await checkArchives(platform,work,receipt);await stageArchives(work,receipt);
 
  return {schema:1,product_id:product,platform,work};
 }
 export async function build(platform,work,receipt,base) {
  const env=resourceEnvironment(platform,work,receipt,base),declared=platformContract(platform);
- await stageArchives(work,receipt);
+ await checkArchives(platform,work,receipt,true);await stageArchives(work,receipt);
  const shell=receipt.tools.posix?.path||receipt.tools.bash?.path;
  if(!shell)fail('缺少显式Shell资源');
  const project=env[prefix+'_PROJECT_ROOT'];

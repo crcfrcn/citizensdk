@@ -190,7 +190,7 @@ void main() {
       18,
       24,
     ]);
-    expect(CitizenQrKind.values.map((value) => value.value), <int>[1, 2, 3, 4, 5, 6]);
+    expect(CitizenQrKind.values.map((value) => value.value), <int>[1, 2, 3, 4, 5]);
     expect(CitizenQrKind.values.any((value) => value.value == 4), isTrue);
     expect(CitizenExternalSignerTransport.values, <Object>[
       CitizenExternalSignerTransport.qrV1,
