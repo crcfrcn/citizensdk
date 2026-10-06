@@ -307,7 +307,7 @@ product_header_symbols() {
     "$product_header" | sort -u
 }
 
-# 公开150符号精确封闭，旧窗口私有符号已清零；内部模块只复用公开声明。
+# 公开144符号精确封闭，旧窗口私有符号已清零；内部模块只复用公开声明。
 product_internal_symbols() {
   node --input-type=module - "$script_dir/release.mjs" <<'NODE'
 import {pathToFileURL} from 'node:url';
@@ -369,7 +369,7 @@ verify_product_abi_symbols() {
   local actual expected forbidden
   actual="$(product_library_symbols "$library" "$nm_bin" "$prefix")"
   expected="$(product_linked_symbols)"
-  # Android 证书初始化只在 Android Core 中导出；其它平台的150个公开函数不变。
+  # Android 证书初始化只在 Android Core 中导出；其它平台的144个公开函数不变。
   if [[ "$label" == 'Android libcitizensdk.so' ]]; then
     expected="$(printf '%s\n%s\n' "$expected" citizensdk_android_init_tls | LC_ALL=C sort -u)"
   fi
@@ -550,9 +550,9 @@ verify_linux_install() {
   fi
   core_symbols="$(product_header_symbols)"
   host_symbols="$(linux_host_header_symbols)"
-  [[ "$(printf '%s\n' "$core_symbols" | wc -l | tr -d ' ')" == 150 \
+  [[ "$(printf '%s\n' "$core_symbols" | wc -l | tr -d ' ')" == 144 \
     && "$(printf '%s\n' "$host_symbols" | wc -l | tr -d ' ')" == 19 ]] \
-    || fail "$platform 公开 ABI 必须精确为 150 Core / 19 Host"
+    || fail "$platform 公开 ABI 必须精确为 144 Core / 19 Host"
   verify_linux_elf_identity "$platform" "$prefix/lib/$platform/libcitizensdk.so" \
     "$prefix/lib/$platform/libcitizensdk_host.so" "$readelf_bin" "$nm_bin"
 }
@@ -983,8 +983,8 @@ verify_apple_product_abi_symbols() {
   actual="$(printf '%s\n' "$all_symbols" | grep '^citizensdk_' || true)"
   expected="$(apple_public_symbols)"
   expected_count="$(printf '%s\n' "$expected" | grep -c '^citizensdk_' || true)"
-  [[ "$expected_count" == 154 ]] \
-    || fail "Apple 产品头必须精确声明 150 个 Core 与 4 个图像函数"
+  [[ "$expected_count" == 148 ]] \
+    || fail "Apple 产品头必须精确声明 144 个 Core 与 4 个图像函数"
   forbidden="$(printf '%s\n' "$all_symbols" \
     | grep -E '^(smoldot_|citizen_sr25519_|account_crypto_)' || true)"
   [[ -z "$forbidden" ]] \
@@ -993,11 +993,11 @@ verify_apple_product_abi_symbols() {
     local missing extra
     missing="$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$actual"))"
     extra="$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$actual"))"
-    fail "$label 的 citizensdk_* 与 150 Core + 4 图像函数产品头不一致；缺失=${missing:-无}；额外=${extra:-无}"
+    fail "$label 的 citizensdk_* 与 144 Core + 4 图像函数产品头不一致；缺失=${missing:-无}；额外=${extra:-无}"
   }
   # 动态 framework 同时提供 Swift API 和 C ABI。Swift public/ABI-support 符号
   # 只能属于本模块 mangling；除这组 Swift 符号外，全部外部已定义符号必须正好
-  # 是产品头中的 150 个 Core + 4 个图像 C ABI，Rust staticlib 及其依赖不得穿透边界。
+  # 是产品头中的 144 个 Core + 4 个图像 C ABI，Rust staticlib 及其依赖不得穿透边界。
   swift_symbols="$(printf '%s\n' "$all_symbols" | grep '^\$s10CitizenSDK' || true)"
   [[ -n "$swift_symbols" ]] || fail "$label 未导出 CitizenSDK Swift 模块符号"
   foreign="$(printf '%s\n' "$all_symbols" \
@@ -1022,8 +1022,8 @@ write_apple_exported_symbols() {
     apple_public_symbols
     printf '%s\n' "$swift_symbols"
   } | sed 's/^/_/' | LC_ALL=C sort -u >"$destination"
-  [[ "$(grep -c '^_citizensdk_' "$destination" || true)" == 154 ]] \
-    || fail "$label 导出允许集没有精确 150 个 Core + 4 个图像 C ABI"
+  [[ "$(grep -c '^_citizensdk_' "$destination" || true)" == 148 ]] \
+    || fail "$label 导出允许集没有精确 144 个 Core + 4 个图像 C ABI"
 }
 
 write_framework_plist() {

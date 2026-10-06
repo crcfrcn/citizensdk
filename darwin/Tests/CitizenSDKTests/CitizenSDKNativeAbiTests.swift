@@ -107,10 +107,7 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         })
-        XCTAssertEqual(names.count, 150)
-        XCTAssertEqual(CITIZENSDK_RESULT_APPLICATION_KEY_PREPARATION, 31)
-        XCTAssertTrue(names.isSuperset(of: ["citizensdk_prepare_application_keys",
-            "citizensdk_result_get_application_preparation_signature"]))
+        XCTAssertEqual(names.count, 144)
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_set_secret_presence_provider", "citizensdk_encrypted_secret_record_has_secret"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_review_qr_sign_request", "citizensdk_sign_qr_request", "citizensdk_result_copy_qr"]))
         XCTAssertFalse(names.contains("citizensdk_qr_signing_bytes"))
@@ -118,9 +115,6 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_validate_modules", "citizensdk_create_with_modules", "citizensdk_verify_signature"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_get_genesis_hash", "citizensdk_get_finalized_account_balances",
             "citizensdk_result_get_account_balance_count", "citizensdk_result_get_account_balance_at"]))
-        XCTAssertTrue(names.isSuperset(of: ["citizensdk_get_storage_keys_paged",
-            "citizensdk_call_runtime_api", "citizensdk_derive_application_key",
-            "citizensdk_derive_application_keys", "citizensdk_result_get_application_key",
-            "citizensdk_result_get_application_key_at"]))
+        XCTAssertTrue(names.isSuperset(of: ["citizensdk_get_storage_keys_paged", "citizensdk_call_runtime_api"]))
     }
 }

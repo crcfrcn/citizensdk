@@ -104,18 +104,6 @@ pub struct UserTransferCode {
     pub bank_cid_number: String,
 }
 
-/// 只解析原k6密文封装，不在扫码解析过程中解密、导出或持久化用途钥。
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountDataKeyResponse {
-    pub request_id: String,
-    pub expires_at: u64,
-    pub signer_public_key: Sr25519PublicKey,
-    pub signature: Sr25519Signature,
-    pub key_exchange_public_key: [u8; 32],
-    pub encryption_nonce: [u8; 12],
-    pub ciphertext: Vec<u8>,
-}
-
 /// 宿主用途不是wire码型；唯一允许集在Core，语言绑定只投影位图。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -125,13 +113,14 @@ pub enum QrScanPurpose {
     Contact = 3,
     ExternalSignature = 4,
     SigningRequest = 5,
-    AccountDataKey = 6,
     GeneralScan = 7,
     AccountTarget = 8,
 }
 
 impl QrScanPurpose {
-    const fn bit(self) -> u8 { 1 << (self as u8 - 1) }
+    const fn bit(self) -> u8 {
+        1 << (self as u8 - 1)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,7 +130,6 @@ pub enum QrCode {
     UserContact(UserContactCode),
     UserTransfer(UserTransferCode),
     AccountId(AccountIdCode),
-    AccountDataKeyResponse(AccountDataKeyResponse),
 }
 
 /// 生产解析只使用 SDK 时钟；测试钟不会进入 FFI 或平台调用合同。
@@ -181,7 +169,6 @@ pub(crate) fn parse_at(raw: &str, now_epoch_seconds: u64) -> QrResult<QrCode> {
         3 => parse_user_contact(envelope),
         4 => parse_user_transfer(envelope, now_epoch_seconds),
         5 => parse_account_id(envelope),
-        6 => parse_account_data_key(envelope, now_epoch_seconds),
         _ => Err(QrError::new(
             QrErrorCode::UnsupportedKind,
             "CitizenSDK 不处理该二维码类型",
@@ -189,29 +176,42 @@ pub(crate) fn parse_at(raw: &str, now_epoch_seconds: u64) -> QrResult<QrCode> {
     }
 }
 
-
 /// 规范长字段输入只在SDK绑定边界使用；真实wire仍只由下列既有编码器产生。
 /// 返回编码事实，不产生签名、会话消费或“已认证”声明。
 pub fn encode_document(input_json: &str) -> QrResult<Value> {
-    if input_json.len() > MAX_QR_JSON_BYTES { return Err(invalid_field("编码输入超过64KiB")); }
+    if input_json.len() > MAX_QR_JSON_BYTES {
+        return Err(invalid_field("编码输入超过64KiB"));
+    }
     let input = serde_json::from_str::<StrictValue>(input_json)
-        .map_err(|_| invalid_field("编码输入不是无重复键JSON"))?.0;
+        .map_err(|_| invalid_field("编码输入不是无重复键JSON"))?
+        .0;
     let fields = object(&input, "编码输入必须是对象")?;
     let kind = unsigned(fields, "kind")?;
-    let expiry = |fields: &Map<String, Value>| -> QrResult<u64> {
-        decimal(string(fields, "expires_at")?)
-    };
+    let expiry =
+        |fields: &Map<String, Value>| -> QrResult<u64> { decimal(string(fields, "expires_at")?) };
     let account = |name| decode_account_id(string(fields, name)?).map(AccountId32::from_bytes);
     let signer = |name| decode_account_id(string(fields, name)?).map(Sr25519PublicKey::from_bytes);
     let fixed = |name, length| -> QrResult<Vec<u8>> {
         let bytes = decode_hex(string(fields, name)?, length)?;
-        if bytes.len() != length { return Err(invalid_field("编码字段字节长度无效")); }
+        if bytes.len() != length {
+            return Err(invalid_field("编码字段字节长度无效"));
+        }
         Ok(bytes)
     };
     let code = match kind {
         1 => {
-            exact_keys(fields, &["kind", "request_id", "request_id_prefix", "expires_at",
-                "action", "signer_account_id", "review_payload"])?;
+            exact_keys(
+                fields,
+                &[
+                    "kind",
+                    "request_id",
+                    "request_id_prefix",
+                    "expires_at",
+                    "action",
+                    "signer_account_id",
+                    "review_payload",
+                ],
+            )?;
             let prefix = string(fields, "request_id_prefix")?;
             let request_id = match field(fields, "request_id")? {
                 Value::Null => new_request_id(prefix)?,
@@ -223,90 +223,142 @@ pub fn encode_document(input_json: &str) -> QrResult<Value> {
                 _ => Some(signer("signer_account_id")?),
             };
             QrCode::SignRequest(SignRequest {
-                request_id, expires_at: expiry(fields)?,
-                action: u16::try_from(unsigned(fields, "action")?).map_err(|_| invalid_field("动作超出u16"))?,
+                request_id,
+                expires_at: expiry(fields)?,
+                action: u16::try_from(unsigned(fields, "action")?)
+                    .map_err(|_| invalid_field("动作超出u16"))?,
                 signer_public_key,
-                review_payload: decode_hex(string(fields, "review_payload")?, MAX_REVIEW_PAYLOAD_BYTES)?,
+                review_payload: decode_hex(
+                    string(fields, "review_payload")?,
+                    MAX_REVIEW_PAYLOAD_BYTES,
+                )?,
             })
         }
         2 => {
-            exact_keys(fields, &["kind", "request_id", "expires_at", "signer_account_id",
-                "signature", "current_account_id", "current_account_signature"])?;
-            let current_account = match (field(fields, "current_account_id")?, field(fields, "current_account_signature")?) {
+            exact_keys(
+                fields,
+                &[
+                    "kind",
+                    "request_id",
+                    "expires_at",
+                    "signer_account_id",
+                    "signature",
+                    "current_account_id",
+                    "current_account_signature",
+                ],
+            )?;
+            let current_account = match (
+                field(fields, "current_account_id")?,
+                field(fields, "current_account_signature")?,
+            ) {
                 (Value::Null, Value::Null) => None,
-                (Value::String(_), Value::String(_)) => Some((account("current_account_id")?,
-                    Sr25519Signature::from_bytes(fixed("current_account_signature", 64)?.try_into().map_err(|_| invalid_field("签名长度无效"))?))),
+                (Value::String(_), Value::String(_)) => Some((
+                    account("current_account_id")?,
+                    Sr25519Signature::from_bytes(
+                        fixed("current_account_signature", 64)?
+                            .try_into()
+                            .map_err(|_| invalid_field("签名长度无效"))?,
+                    ),
+                )),
                 _ => return Err(invalid_field("当前账户及签名必须同时有无")),
             };
             QrCode::SignResponse(SignResponse {
-                request_id: string(fields, "request_id")?.to_owned(), expires_at: expiry(fields)?,
+                request_id: string(fields, "request_id")?.to_owned(),
+                expires_at: expiry(fields)?,
                 signer_public_key: signer("signer_account_id")?,
-                signature: Sr25519Signature::from_bytes(fixed("signature", 64)?.try_into().map_err(|_| invalid_field("签名长度无效"))?),
+                signature: Sr25519Signature::from_bytes(
+                    fixed("signature", 64)?
+                        .try_into()
+                        .map_err(|_| invalid_field("签名长度无效"))?,
+                ),
                 current_account,
             })
         }
         3 => {
             exact_keys(fields, &["kind", "cid_number", "account_id"])?;
             QrCode::UserContact(UserContactCode {
-                cid_number: string(fields, "cid_number")?.to_owned(), account_id: account("account_id")?,
+                cid_number: string(fields, "cid_number")?.to_owned(),
+                account_id: account("account_id")?,
             })
         }
         4 => {
-            exact_keys(fields, &["kind", "request_id", "expires_at", "account_id",
-                "amount", "symbol", "memo", "bank_cid_number"])?;
+            exact_keys(
+                fields,
+                &[
+                    "kind",
+                    "request_id",
+                    "expires_at",
+                    "account_id",
+                    "amount",
+                    "symbol",
+                    "memo",
+                    "bank_cid_number",
+                ],
+            )?;
             QrCode::UserTransfer(UserTransferCode {
-                request_id: string(fields, "request_id")?.to_owned(), expires_at: expiry(fields)?,
-                account_id: account("account_id")?, amount: string(fields, "amount")?.to_owned(),
-                symbol: string(fields, "symbol")?.to_owned(), memo: string(fields, "memo")?.to_owned(),
+                request_id: string(fields, "request_id")?.to_owned(),
+                expires_at: expiry(fields)?,
+                account_id: account("account_id")?,
+                amount: string(fields, "amount")?.to_owned(),
+                symbol: string(fields, "symbol")?.to_owned(),
+                memo: string(fields, "memo")?.to_owned(),
                 bank_cid_number: string(fields, "bank_cid_number")?.to_owned(),
             })
         }
-        6 => {
-            exact_keys(fields, &["kind", "request_id", "expires_at", "signer_account_id", "signature",
-                "key_exchange_public_key", "encryption_nonce", "ciphertext"])?;
-            QrCode::AccountDataKeyResponse(AccountDataKeyResponse {
-                request_id: string(fields, "request_id")?.to_owned(), expires_at: expiry(fields)?,
-                signer_public_key: signer("signer_account_id")?,
-                signature: Sr25519Signature::from_bytes(fixed("signature", 64)?.try_into().map_err(|_| invalid_field("签名长度无效"))?),
-                key_exchange_public_key: fixed("key_exchange_public_key", 32)?.try_into().map_err(|_| invalid_field("交换公钥长度无效"))?,
-                encryption_nonce: fixed("encryption_nonce", 12)?.try_into().map_err(|_| invalid_field("加密nonce长度无效"))?,
-                ciphertext: decode_hex(string(fields, "ciphertext")?, MAX_QR_TEXT_BYTES)?,
-            })
-        }
         // k5已有唯一公开入口encodeAccountId，不另加同义编码路径。
-        _ => return Err(QrError::new(QrErrorCode::UnsupportedKind, "该输入种类没有文档编码入口")),
+        _ => {
+            return Err(QrError::new(
+                QrErrorCode::UnsupportedKind,
+                "该输入种类没有文档编码入口",
+            ))
+        }
     };
     code.normalized()
 }
 
 fn decimal(text: &str) -> QrResult<u64> {
-    if text.is_empty() || (text.len() > 1 && text.starts_with('0')) ||
-        !text.bytes().all(|byte| byte.is_ascii_digit()) {
+    if text.is_empty()
+        || (text.len() > 1 && text.starts_with('0'))
+        || !text.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return Err(invalid_field("整数必须是规范十进制字符串"));
     }
     text.parse().map_err(|_| invalid_field("整数超出u64"))
 }
 
 fn decode_hex(text: &str, maximum: usize) -> QrResult<Vec<u8>> {
-    let raw = text.strip_prefix("0x").ok_or_else(|| invalid_field("字节必须有小写0x前缀"))?;
-    if raw.len() % 2 != 0 || raw.len() / 2 > maximum ||
-        !raw.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+    let raw = text
+        .strip_prefix("0x")
+        .ok_or_else(|| invalid_field("字节必须有小写0x前缀"))?;
+    if raw.len() % 2 != 0
+        || raw.len() / 2 > maximum
+        || !raw
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
         return Err(invalid_field("字节长度或小写十六进制编码无效"));
     }
-    raw.as_bytes().chunks_exact(2).map(|pair| {
-        let digit = |b: u8| if b <= b'9' { b - b'0' } else { b - b'a' + 10 };
-        Ok((digit(pair[0]) << 4) | digit(pair[1]))
-    }).collect()
+    raw.as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let digit = |b: u8| if b <= b'9' { b - b'0' } else { b - b'a' + 10 };
+            Ok((digit(pair[0]) << 4) | digit(pair[1]))
+        })
+        .collect()
 }
 
 /// 请求ID熵源由二维码模块唯一维护；前缀不可截断随机部分。
 pub(crate) fn new_request_id(prefix: &str) -> QrResult<String> {
-    if prefix.len() > MAX_REQUEST_ID_BYTES - 22 ||
-        !prefix.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+    if prefix.len() > MAX_REQUEST_ID_BYTES - 22
+        || !prefix
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
         return Err(invalid_field("请求编号前缀无效"));
     }
     let mut entropy = [0u8; 16];
-    getrandom::fill(&mut entropy).map_err(|_| QrError::new(QrErrorCode::EntropyUnavailable, "无法生成请求编号"))?;
+    getrandom::fill(&mut entropy)
+        .map_err(|_| QrError::new(QrErrorCode::EntropyUnavailable, "无法生成请求编号"))?;
     Ok(format!("{prefix}{}", URL_SAFE_NO_PAD.encode(entropy)))
 }
 
@@ -319,35 +371,56 @@ pub fn prepare_account_authorization(action: u32, payload: &[u8], account_id: &s
     }
     type Template = ([u8; 32], String, Option<[u8; 32]>, u64, u64, usize);
     fn template(action: u32, payload: &[u8]) -> Option<Template> {
-        if !matches!(action, 10 | 11) || payload.len() > MAX_REVIEW_PAYLOAD_BYTES { return None; }
+        if !matches!(action, 10 | 11) || payload.len() > MAX_REVIEW_PAYLOAD_BYTES {
+            return None;
+        }
         let genesis = payload.get(..32)?.try_into().ok()?;
         let compact = *payload.get(32)?;
         // CID至多32字节，只允许最短SCALE compact mode0，不接收等价长编码。
-        if compact & 3 != 0 { return None; }
+        if compact & 3 != 0 {
+            return None;
+        }
         let length = usize::from(compact >> 2);
-        if length == 0 || length > 32 { return None; }
+        if length == 0 || length > 32 {
+            return None;
+        }
         let cid = payload.get(33..33 + length)?;
-        if !cid.iter().all(|b| (0x21..=0x7e).contains(b)) { return None; }
+        if !cid.iter().all(|b| (0x21..=0x7e).contains(b)) {
+            return None;
+        }
         let cid = String::from_utf8(cid.to_vec()).ok()?;
         let mut at = 33 + length;
         let current = if action == 11 {
             let current = payload.get(at..at + 32)?.try_into().ok()?;
-            at += 32; Some(current)
-        } else { None };
+            at += 32;
+            Some(current)
+        } else {
+            None
+        };
         let slot = at;
-        if payload.get(at..at + 32)?.iter().any(|b| *b != 0) { return None; }
+        if payload.get(at..at + 32)?.iter().any(|b| *b != 0) {
+            return None;
+        }
         at += 32;
-        if payload.len() != at + 16 { return None; }
+        if payload.len() != at + 16 {
+            return None;
+        }
         let revision = u64::from_le_bytes(payload.get(at..at + 8)?.try_into().ok()?);
         let expiry = u64::from_le_bytes(payload.get(at + 8..at + 16)?.try_into().ok()?);
-        if expiry == 0 || (action == 10 && revision != 0) || (action == 11 && revision == 0) { return None; }
+        if expiry == 0 || (action == 10 && revision != 0) || (action == 11 && revision == 0) {
+            return None;
+        }
         Some((genesis, cid, current, revision, expiry, slot))
     }
     let Some((genesis, cid, current, revision, expiry, slot)) = template(action, payload) else {
         return rejected(1);
     };
-    let Ok(account) = decode_account_id(account_id) else { return rejected(2); };
-    if current == Some(account) { return rejected(3); }
+    let Ok(account) = decode_account_id(account_id) else {
+        return rejected(2);
+    };
+    if current == Some(account) {
+        return rejected(3);
+    }
     let mut materialized = payload.to_vec();
     materialized[slot..slot + 32].copy_from_slice(&account);
     serde_json::json!({"reason": 0, "genesis_hash": hex(&genesis), "cid_number": cid,
@@ -360,10 +433,16 @@ impl QrCode {
         match self {
             Self::SignRequest(_) => SigningRequest.bit() | GeneralScan.bit(),
             Self::SignResponse(_) => ExternalSignature.bit(),
-            Self::UserContact(_) => TransferRecipient.bit() | Contact.bit() | GeneralScan.bit() | AccountTarget.bit(),
+            Self::UserContact(_) => {
+                TransferRecipient.bit() | Contact.bit() | GeneralScan.bit() | AccountTarget.bit()
+            }
             Self::UserTransfer(_) => TransferRecipient.bit() | GeneralScan.bit(),
-            Self::AccountId(_) => ColdAccountImport.bit() | TransferRecipient.bit() | GeneralScan.bit() | AccountTarget.bit(),
-            Self::AccountDataKeyResponse(_) => AccountDataKey.bit(),
+            Self::AccountId(_) => {
+                ColdAccountImport.bit()
+                    | TransferRecipient.bit()
+                    | GeneralScan.bit()
+                    | AccountTarget.bit()
+            }
         }
     }
 
@@ -401,12 +480,6 @@ impl QrCode {
                 "amount": v.amount, "symbol": v.symbol, "memo": v.memo,
                 "bank_cid_number": v.bank_cid_number,
             }),
-            Self::AccountDataKeyResponse(v) => serde_json::json!({
-                "kind": 6, "canonical_text": v.encode()?, "request_id": v.request_id,
-                "expires_at": v.expires_at, "signer_account_id": hex(v.signer_public_key.as_bytes()),
-                "signature": hex(v.signature.as_bytes()), "key_exchange_public_key": hex(&v.key_exchange_public_key),
-                "encryption_nonce": hex(&v.encryption_nonce), "ciphertext": hex(&v.ciphertext),
-            }),
         };
         // 显式对象保证平台不必处理多种返回形状。
         if !value.is_object() {
@@ -430,7 +503,8 @@ fn hex(bytes: &[u8]) -> String {
 impl SignRequest {
     /// 普通链签名/固定账户会话必须有确切签名者，不能对匿名模板猜默认账户。
     pub fn require_signer(&self) -> QrResult<Sr25519PublicKey> {
-        self.signer_public_key.ok_or_else(|| invalid_field("请求尚未绑定签名账户"))
+        self.signer_public_key
+            .ok_or_else(|| invalid_field("请求尚未绑定签名账户"))
     }
     /// 仅供 SDK Rust 审阅/验签管线使用，不是公开语言绑定的拆分签名入口。
     #[doc(hidden)]
@@ -513,24 +587,14 @@ impl UserTransferCode {
         validate_business_id(&self.request_id)?;
         validate_expiry_value(self.expires_at)?;
         validate_cid(&self.bank_cid_number)?;
-        if self.amount.is_empty() || self.symbol.is_empty() { return Err(invalid_field("收款金额和币种不能为空")); }
-        checked_json(serde_json::json!({"p": QR_V1, "k": 4, "i": self.request_id, "e": self.expires_at,
+        if self.amount.is_empty() || self.symbol.is_empty() {
+            return Err(invalid_field("收款金额和币种不能为空"));
+        }
+        checked_json(
+            serde_json::json!({"p": QR_V1, "k": 4, "i": self.request_id, "e": self.expires_at,
             "b": {"n": account_id_text(self.account_id), "v": self.amount, "t": self.symbol,
-                "m": self.memo, "l": self.bank_cid_number}}))
-    }
-}
-
-impl AccountDataKeyResponse {
-    pub fn encode(&self) -> QrResult<String> {
-        validate_business_id(&self.request_id)?;
-        validate_expiry_value(self.expires_at)?;
-        if self.ciphertext.len() < 17 { return Err(invalid_field("用途钥密文长度无效")); }
-        checked_json(serde_json::json!({"p": QR_V1, "k": 6, "i": self.request_id, "e": self.expires_at,
-            "b": {"u": URL_SAFE_NO_PAD.encode(self.signer_public_key.as_bytes()),
-                "s": URL_SAFE_NO_PAD.encode(self.signature.as_bytes()),
-                "x": URL_SAFE_NO_PAD.encode(self.key_exchange_public_key),
-                "q": URL_SAFE_NO_PAD.encode(self.encryption_nonce),
-                "z": URL_SAFE_NO_PAD.encode(&self.ciphertext)}}))
+                "m": self.memo, "l": self.bank_cid_number}}),
+        )
     }
 }
 
@@ -561,7 +625,8 @@ fn parse_sign_request(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCod
         None
     } else {
         Some(Sr25519PublicKey::from_bytes(decode_fixed::<32>(
-            signer_text, "signer_public_key 长度或编码无效",
+            signer_text,
+            "signer_public_key 长度或编码无效",
         )?))
     };
     let review_payload = decode(string(body, "d")?, MAX_REVIEW_PAYLOAD_BYTES)?;
@@ -586,8 +651,16 @@ fn parse_sign_response(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCo
     let body = object(field(envelope, "b")?, "签名响应 body 必须是对象")?;
     let current_account = if body.contains_key("o") || body.contains_key("r") {
         exact_keys(body, &["u", "s", "o", "r"])?;
-        Some((AccountId32::from_bytes(decode_fixed::<32>(string(body, "o")?, "当前账户长度或编码无效")?),
-            Sr25519Signature::from_bytes(decode_fixed::<64>(string(body, "r")?, "当前账户签名长度或编码无效")?)))
+        Some((
+            AccountId32::from_bytes(decode_fixed::<32>(
+                string(body, "o")?,
+                "当前账户长度或编码无效",
+            )?),
+            Sr25519Signature::from_bytes(decode_fixed::<64>(
+                string(body, "r")?,
+                "当前账户签名长度或编码无效",
+            )?),
+        ))
     } else {
         exact_keys(body, &["u", "s"])?;
         None
@@ -614,7 +687,8 @@ fn parse_user_contact(envelope: &Map<String, Value>) -> QrResult<QrCode> {
     let cid_number = string(body, "c")?.to_owned();
     validate_cid(&cid_number)?;
     Ok(QrCode::UserContact(UserContactCode {
-        cid_number, account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
+        cid_number,
+        account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
     }))
 }
 
@@ -635,38 +709,36 @@ fn parse_user_transfer(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCo
     validate_cid(&bank_cid_number)?;
     let amount = string(body, "v")?.to_owned();
     let symbol = string(body, "t")?.to_owned();
-    if amount.is_empty() || symbol.is_empty() { return Err(invalid_field("收款金额和币种不能为空")); }
+    if amount.is_empty() || symbol.is_empty() {
+        return Err(invalid_field("收款金额和币种不能为空"));
+    }
     Ok(QrCode::UserTransfer(UserTransferCode {
-        request_id, expires_at, amount, symbol, bank_cid_number,
+        request_id,
+        expires_at,
+        amount,
+        symbol,
+        bank_cid_number,
         account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
         memo: string(body, "m")?.to_owned(),
     }))
 }
 
-fn parse_account_data_key(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCode> {
-    let (request_id, expires_at) = parse_business_expiry(envelope, now)?;
-    let body = object(field(envelope, "b")?, "用途钥响应body必须是对象")?;
-    exact_keys(body, &["u", "s", "x", "q", "z"])?;
-    let ciphertext = decode(string(body, "z")?, MAX_QR_TEXT_BYTES)?;
-    if ciphertext.len() < 17 { return Err(invalid_field("用途钥密文长度无效")); }
-    Ok(QrCode::AccountDataKeyResponse(AccountDataKeyResponse {
-        request_id, expires_at, ciphertext,
-        signer_public_key: Sr25519PublicKey::from_bytes(decode_fixed::<32>(string(body, "u")?, "签名账户无效")?),
-        signature: Sr25519Signature::from_bytes(decode_fixed::<64>(string(body, "s")?, "签名长度无效")?),
-        key_exchange_public_key: decode_fixed::<32>(string(body, "x")?, "会话公钥无效")?,
-        encryption_nonce: decode_fixed::<12>(string(body, "q")?, "加密nonce无效")?,
-    }))
-}
-
 fn validate_cid(value: &str) -> QrResult<()> {
-    if value.is_empty() || value.len() > 32 || !value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-') {
+    if value.is_empty()
+        || value.len() > 32
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
         return Err(invalid_field("CID必须是1至32位ASCII字母数字或连字符"));
     }
     Ok(())
 }
 
 fn validate_business_id(value: &str) -> QrResult<()> {
-    if value.is_empty() || value.len() > MAX_QR_TEXT_BYTES { return Err(invalid_field("临时码标识不能为空或超长")); }
+    if value.is_empty() || value.len() > MAX_QR_TEXT_BYTES {
+        return Err(invalid_field("临时码标识不能为空或超长"));
+    }
     Ok(())
 }
 
@@ -899,23 +971,36 @@ mod tests {
         let account = hex(&[7; 32]);
         let contact = serde_json::json!({"p":"QR_V1","k":3,"b":{"c":"CID-7","n":account}});
         assert!(parse(&contact.to_string(), 99).is_ok());
-        for bad in [serde_json::json!("5"), serde_json::json!(" 5"), serde_json::json!("+5"),
-                    serde_json::json!("0x5"), serde_json::json!(5.0), serde_json::json!(true)] {
-            let mut value = contact.clone(); value["k"] = bad;
+        for bad in [
+            serde_json::json!("5"),
+            serde_json::json!(" 5"),
+            serde_json::json!("+5"),
+            serde_json::json!("0x5"),
+            serde_json::json!(5.0),
+            serde_json::json!(true),
+        ] {
+            let mut value = contact.clone();
+            value["k"] = bad;
             assert!(parse(&value.to_string(), 99).is_err());
         }
         for extra in ["display_name", "x", "ss58_address"] {
-            let mut value = contact.clone(); value["b"][extra] = "not-authoritative".into();
+            let mut value = contact.clone();
+            value["b"][extra] = "not-authoritative".into();
             assert!(parse(&value.to_string(), 99).is_err());
         }
         let legacy = serde_json::json!({"p":"QR_V1","k":3,"b":{
             "cid_number":"CID-7","ss58_address":"old-format","display_name":"name"}});
         assert!(parse(&legacy.to_string(), 99).is_err());
         for cid in ["\u{200b}CID-7", "\u{200b}\u{200b}"] {
-            let mut value = contact.clone(); value["b"]["c"] = cid.into();
+            let mut value = contact.clone();
+            value["b"]["c"] = cid.into();
             assert!(parse(&value.to_string(), 99).is_err());
         }
-        for bad in [account.to_uppercase(), account[2..].to_owned(), "0x8eaf".into()] {
+        for bad in [
+            account.to_uppercase(),
+            account[2..].to_owned(),
+            "0x8eaf".into(),
+        ] {
             let value = serde_json::json!({"p":"QR_V1","k":5,"b":{"n":bad}});
             assert!(parse(&value.to_string(), 99).is_err());
         }
@@ -923,56 +1008,88 @@ mod tests {
             "b":{"a":1024,"g":1,"u":URL_SAFE_NO_PAD.encode([7;32]),"d":"AQID"}});
         assert!(parse(&request.to_string(), 99).is_ok());
         for bad in ["++++", "AA==", "A/A"] {
-            let mut value = request.clone(); value["b"]["u"] = bad.into();
+            let mut value = request.clone();
+            value["b"]["u"] = bad.into();
             assert!(parse(&value.to_string(), 99).is_err());
         }
-        let mut extra = request; extra["b"]["display"] = "fake-ui".into();
+        let mut extra = request;
+        extra["b"]["display"] = "fake-ui".into();
         assert!(parse(&extra.to_string(), 99).is_err());
         let incomplete = serde_json::json!({"p":"QR_V1","k":2,"i":"request-identifier","e":100,
             "b":{"u":URL_SAFE_NO_PAD.encode([7;32]),"s":URL_SAFE_NO_PAD.encode([0;64]),"o":URL_SAFE_NO_PAD.encode([8;32])}});
         assert!(parse(&incomplete.to_string(), 99).is_err());
-        for raw in ["", "hello world", "gmb://account/removed",
-                    "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", r#"{"p":"UNKNOWN_PROTO","foo":"bar"}"#] {
+        for raw in [
+            "",
+            "hello world",
+            "gmb://account/removed",
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+            r#"{"p":"UNKNOWN_PROTO","foo":"bar"}"#,
+        ] {
             assert!(parse(raw, 99).is_err());
         }
     }
 
     #[test]
     fn document_encoding_preserves_original_fields_and_explicit_deadline() {
-        let contact = serde_json::json!({"kind": 3, "cid_number": "CID-7", "account_id": hex(&[7; 32])});
+        let contact =
+            serde_json::json!({"kind": 3, "cid_number": "CID-7", "account_id": hex(&[7; 32])});
         let document = encode_document(&contact.to_string()).unwrap();
-        let raw: Value = serde_json::from_str(document["canonical_text"].as_str().unwrap()).unwrap();
-        assert_eq!(raw, serde_json::json!({"p":"QR_V1","k":3,"b":{"c":"CID-7","n":hex(&[7;32])}}));
+        let raw: Value =
+            serde_json::from_str(document["canonical_text"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            raw,
+            serde_json::json!({"p":"QR_V1","k":3,"b":{"c":"CID-7","n":hex(&[7;32])}})
+        );
         let request = serde_json::json!({"kind":1,"request_id":null,"request_id_prefix":"data-key-",
             "expires_at":"100","action":10,"signer_account_id":null,"review_payload":"0x0102"});
         let document = encode_document(&request.to_string()).unwrap();
         assert_eq!(document["expires_at"], 100);
-        assert!(document["request_id"].as_str().unwrap().starts_with("data-key-"));
+        assert!(document["request_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("data-key-"));
         assert!(document["signer_account_id"].is_null());
         let parsed = parse(document["canonical_text"].as_str().unwrap(), 99).unwrap();
-        let QrCode::SignRequest(parsed) = parsed else { panic!("request kind") };
+        let QrCode::SignRequest(parsed) = parsed else {
+            panic!("request kind")
+        };
         assert!(parsed.require_signer().is_err());
         assert_eq!(parsed.signer_public_key, None);
         let mut invalid = request.clone();
         invalid["action"] = 12.into();
         assert!(encode_document(&invalid.to_string()).is_err());
-        invalid = request.clone(); invalid["title"] = "not-ui".into();
+        invalid = request.clone();
+        invalid["title"] = "not-ui".into();
         assert!(encode_document(&invalid.to_string()).is_err());
-        invalid = request; invalid["request_id"] = "0123456789abcdef".into();
+        invalid = request;
+        invalid["request_id"] = "0123456789abcdef".into();
         assert!(encode_document(&invalid.to_string()).is_err());
-        assert!(encode_document(r#"{"kind":3,"kind":3,"cid_number":"C","account_id":"bad"}"#).is_err());
-        assert!(encode_document(&serde_json::json!({"kind":5,"account_id":hex(&[7;32])}).to_string()).is_err());
+        assert!(
+            encode_document(r#"{"kind":3,"kind":3,"cid_number":"C","account_id":"bad"}"#).is_err()
+        );
+        assert!(encode_document(
+            &serde_json::json!({"kind":5,"account_id":hex(&[7;32])}).to_string()
+        )
+        .is_err());
     }
 
     #[test]
     fn rebind_response_round_trips_paired_current_account_proof() {
-        let response = SignResponse { request_id: "0123456789abcdef".into(), expires_at: 100,
+        let response = SignResponse {
+            request_id: "0123456789abcdef".into(),
+            expires_at: 100,
             signer_public_key: Sr25519PublicKey::from_bytes([7; 32]),
             signature: Sr25519Signature::from_bytes([8; 64]),
-            current_account: Some((AccountId32::from_bytes([9; 32]), Sr25519Signature::from_bytes([10; 64]))),
+            current_account: Some((
+                AccountId32::from_bytes([9; 32]),
+                Sr25519Signature::from_bytes([10; 64]),
+            )),
         };
         let encoded = response.encode().unwrap();
-        assert_eq!(parse(&encoded, 99).unwrap(), QrCode::SignResponse(response.clone()));
+        assert_eq!(
+            parse(&encoded, 99).unwrap(),
+            QrCode::SignResponse(response.clone())
+        );
         let value = QrCode::SignResponse(response).normalized().unwrap();
         assert_eq!(value["current_account_id"], hex(&[9; 32]));
         let mut invalid: Value = serde_json::from_str(&encoded).unwrap();
@@ -987,11 +1104,15 @@ mod tests {
     #[test]
     fn authorization_preparation_preserves_template_slots_and_rejects_malformed_inputs() {
         fn payload(action: u32) -> Vec<u8> {
-            let mut p = vec![1; 32]; p.extend_from_slice(&[12, b'C', b'I', b'D']);
-            if action == 11 { p.extend_from_slice(&[7; 32]); }
+            let mut p = vec![1; 32];
+            p.extend_from_slice(&[12, b'C', b'I', b'D']);
+            if action == 11 {
+                p.extend_from_slice(&[7; 32]);
+            }
             p.extend_from_slice(&[0; 32]);
             p.extend_from_slice(&(if action == 11 { 9_u64 } else { 0_u64 }).to_le_bytes());
-            p.extend_from_slice(&100_u64.to_le_bytes()); p
+            p.extend_from_slice(&100_u64.to_le_bytes());
+            p
         }
         for action in [10, 11] {
             let raw = payload(action);
@@ -1000,19 +1121,40 @@ mod tests {
             assert_eq!(result["cid_number"], "CID");
             assert_eq!(result["expires_at"], "100");
             let slot = if action == 11 { 68 } else { 36 };
-            let mut expected = raw.clone(); expected[slot..slot + 32].copy_from_slice(&[8; 32]);
+            let mut expected = raw.clone();
+            expected[slot..slot + 32].copy_from_slice(&[8; 32]);
             assert_eq!(result["materialized_payload"], hex(&expected));
             assert_eq!(&raw[slot..slot + 32], &[0; 32]);
-            assert_eq!(prepare_account_authorization(action, &raw, "bad")["reason"], 2);
-            let mut extra = raw.clone(); extra.push(0);
-            assert_eq!(prepare_account_authorization(action, &extra, &hex(&[8; 32]))["reason"], 1);
-            let mut polluted = raw.clone(); polluted[slot] = 1;
-            assert_eq!(prepare_account_authorization(action, &polluted, &hex(&[8; 32]))["reason"], 1);
+            assert_eq!(
+                prepare_account_authorization(action, &raw, "bad")["reason"],
+                2
+            );
+            let mut extra = raw.clone();
+            extra.push(0);
+            assert_eq!(
+                prepare_account_authorization(action, &extra, &hex(&[8; 32]))["reason"],
+                1
+            );
+            let mut polluted = raw.clone();
+            polluted[slot] = 1;
+            assert_eq!(
+                prepare_account_authorization(action, &polluted, &hex(&[8; 32]))["reason"],
+                1
+            );
         }
-        assert_eq!(prepare_account_authorization(11, &payload(11), &hex(&[7; 32]))["reason"], 3);
-        assert_eq!(prepare_account_authorization(12, &payload(10), &hex(&[8; 32]))["reason"], 1);
+        assert_eq!(
+            prepare_account_authorization(11, &payload(11), &hex(&[7; 32]))["reason"],
+            3
+        );
+        assert_eq!(
+            prepare_account_authorization(12, &payload(10), &hex(&[8; 32]))["reason"],
+            1
+        );
         for length in 0..payload(10).len() {
-            assert_eq!(prepare_account_authorization(10, &payload(10)[..length], &hex(&[8; 32]))["reason"], 1);
+            assert_eq!(
+                prepare_account_authorization(10, &payload(10)[..length], &hex(&[8; 32]))["reason"],
+                1
+            );
         }
     }
 
@@ -1060,22 +1202,47 @@ mod tests {
     fn original_business_codes_round_trip_without_changing_wire_fields() {
         let account = format!("0x{}", "07".repeat(32));
         let contact = format!(r#"{{"p":"QR_V1","k":3,"b":{{"c":"CID-7","n":"{account}"}}}}"#);
-        let transfer = format!(r#"{{"p":"QR_V1","k":4,"i":"original-id","e":100,"b":{{"n":"{account}","v":"1.25","t":"GMB","m":"原备注","l":"BANK-7"}}}}"#);
+        let transfer = format!(
+            r#"{{"p":"QR_V1","k":4,"i":"original-id","e":100,"b":{{"n":"{account}","v":"1.25","t":"GMB","m":"原备注","l":"BANK-7"}}}}"#
+        );
         for raw in [&contact, &transfer] {
             let parsed = parse(raw, 99).unwrap();
             let normalized = parsed.normalized().unwrap();
             let encoded = normalized["canonical_text"].as_str().unwrap();
-            assert_eq!(serde_json::from_str::<Value>(raw).unwrap(), serde_json::from_str::<Value>(encoded).unwrap());
+            assert_eq!(
+                serde_json::from_str::<Value>(raw).unwrap(),
+                serde_json::from_str::<Value>(encoded).unwrap()
+            );
             assert!(!parsed.permits(QrScanPurpose::ColdAccountImport));
             assert!(parsed.permits(QrScanPurpose::TransferRecipient));
             assert!(parsed.permits(QrScanPurpose::GeneralScan));
-            assert_eq!(normalized["scan_purpose_mask"], Value::from(parsed.scan_purpose_mask()));
+            assert_eq!(
+                normalized["scan_purpose_mask"],
+                Value::from(parsed.scan_purpose_mask())
+            );
         }
-        assert!(parse(&contact, 99).unwrap().permits(QrScanPurpose::AccountTarget));
-        assert!(!parse(&transfer, 99).unwrap().permits(QrScanPurpose::AccountTarget));
-        assert_eq!(parse(&transfer, 100).unwrap_err().code(), QrErrorCode::Expired);
-        assert_eq!(parse(&contact.replace("CID-7", "CID\u{200b}7"), 99).unwrap_err().code(), QrErrorCode::InvalidField);
-        assert_eq!(parse(&contact.replace("\"c\":", "\"c\":\"CID-8\",\"c\":"), 99).unwrap_err().code(), QrErrorCode::InvalidFormat);
+        assert!(parse(&contact, 99)
+            .unwrap()
+            .permits(QrScanPurpose::AccountTarget));
+        assert!(!parse(&transfer, 99)
+            .unwrap()
+            .permits(QrScanPurpose::AccountTarget));
+        assert_eq!(
+            parse(&transfer, 100).unwrap_err().code(),
+            QrErrorCode::Expired
+        );
+        assert_eq!(
+            parse(&contact.replace("CID-7", "CID\u{200b}7"), 99)
+                .unwrap_err()
+                .code(),
+            QrErrorCode::InvalidField
+        );
+        assert_eq!(
+            parse(&contact.replace("\"c\":", "\"c\":\"CID-8\",\"c\":"), 99)
+                .unwrap_err()
+                .code(),
+            QrErrorCode::InvalidFormat
+        );
     }
 
     #[test]
@@ -1084,34 +1251,45 @@ mod tests {
             QrCode::SignRequest(request()),
             QrCode::SignResponse(SignResponse {
                 current_account: None,
-                request_id: "0123456789abcdef".into(), expires_at: 100,
+                request_id: "0123456789abcdef".into(),
+                expires_at: 100,
                 signer_public_key: Sr25519PublicKey::from_bytes([7; 32]),
                 signature: Sr25519Signature::from_bytes([0; 64]),
             }),
-            QrCode::UserContact(UserContactCode { cid_number: "CID-7".into(), account_id: AccountId32::from_bytes([7; 32]) }),
-            QrCode::UserTransfer(UserTransferCode { request_id: "original-id".into(), expires_at: 100,
-                account_id: AccountId32::from_bytes([7; 32]), amount: "1".into(), symbol: "GMB".into(), memo: "".into(), bank_cid_number: "BANK-7".into() }),
-            QrCode::AccountId(AccountIdCode { account_id: AccountId32::from_bytes([7; 32]) }),
-            QrCode::AccountDataKeyResponse(AccountDataKeyResponse { request_id: "original-id".into(), expires_at: 100,
-                signer_public_key: Sr25519PublicKey::from_bytes([7; 32]), signature: Sr25519Signature::from_bytes([0; 64]),
-                key_exchange_public_key: [8; 32], encryption_nonce: [0; 12], ciphertext: vec![9; 17] }),
+            QrCode::UserContact(UserContactCode {
+                cid_number: "CID-7".into(),
+                account_id: AccountId32::from_bytes([7; 32]),
+            }),
+            QrCode::UserTransfer(UserTransferCode {
+                request_id: "original-id".into(),
+                expires_at: 100,
+                account_id: AccountId32::from_bytes([7; 32]),
+                amount: "1".into(),
+                symbol: "GMB".into(),
+                memo: "".into(),
+                bank_cid_number: "BANK-7".into(),
+            }),
+            QrCode::AccountId(AccountIdCode {
+                account_id: AccountId32::from_bytes([7; 32]),
+            }),
         ];
-        assert_eq!(codes.map(|code| code.scan_purpose_mask()), [80, 8, 198, 66, 195, 32]);
+        assert_eq!(
+            codes.map(|code| code.scan_purpose_mask()),
+            [80, 8, 198, 66, 195]
+        );
     }
 
     #[test]
-    fn encrypted_account_data_key_response_has_exact_lengths_and_no_plaintext_field() {
-        let value = AccountDataKeyResponse { request_id: "session".into(), expires_at: 100,
-            signer_public_key: Sr25519PublicKey::from_bytes([7; 32]), signature: Sr25519Signature::from_bytes([0; 64]),
-            key_exchange_public_key: [8; 32], encryption_nonce: [0; 12], ciphertext: vec![9; 17] };
-        let encoded = value.encode().unwrap();
-        assert_eq!(parse(&encoded, 99), Ok(QrCode::AccountDataKeyResponse(value.clone())));
-        let mut invalid: Value = serde_json::from_str(&encoded).unwrap();
-        invalid["b"]["q"] = Value::from(URL_SAFE_NO_PAD.encode([0; 11]));
-        assert_eq!(parse(&invalid.to_string(), 99).unwrap_err().code(), QrErrorCode::InvalidField);
-        let mut short = value;
-        short.ciphertext.pop();
-        assert_eq!(short.encode().unwrap_err().code(), QrErrorCode::InvalidField);
+    fn unsupported_wire_kind_is_rejected() {
+        let text = r#"{"p":"QR_V1","k":6,"i":"request-id","e":100,"b":{}}"#;
+        assert_eq!(
+            parse(text, 99).unwrap_err().code(),
+            QrErrorCode::UnsupportedKind
+        );
+        assert_eq!(
+            encode_document(r#"{"kind":6}"#).unwrap_err().code(),
+            QrErrorCode::UnsupportedKind
+        );
     }
 
     #[test]
@@ -1149,7 +1327,7 @@ mod tests {
         let mut request = request();
         request.expires_at = i64::MAX as u64;
         let response = SignResponse {
-                current_account: None,
+            current_account: None,
             request_id: request.request_id.clone(),
             expires_at: request.expires_at,
             signer_public_key: request.require_signer().unwrap(),

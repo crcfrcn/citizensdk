@@ -35,8 +35,8 @@ int main() {
   assert(imported.mnemonic && imported.password);
   assert(imported.mnemonic->value == csf::Value::Bytes({'s','y','n','t','h','e','t','i','c'}));
   const auto added = decode("addWalletAccounts", request({csf::Value::string("synthetic"), csf::Value::string(""),
-      list({csf::Value::integer(1), csf::Value::integer(1989)})}));
-  assert((added.indices == std::vector<uint32_t>{1, 1989}));
+      list({csf::Value::integer(1), csf::Value::integer(19890604)})}));
+  assert((added.indices == std::vector<uint32_t>{1, 19890604}));
   const auto next = decode("addNextWalletAccount", request({csf::Value::string("synthetic"), csf::Value::string("")}));
   assert(next.indices.empty()); // 原子分配由Core负责，界面不提交推算编号。
   expect_failure([&] { (void)decode("importWallet", request({csf::Value::string(std::string(1025, 'a')), csf::Value::string("")})); },

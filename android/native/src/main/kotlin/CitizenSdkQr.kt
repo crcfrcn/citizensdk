@@ -26,12 +26,6 @@ class CitizenQrContent internal constructor(internal val inputJson: String) {
                          symbol: String, memo: String, bankCidNumber: String) =
             content("kind" to 4, "request_id" to requestId, "expires_at" to expiresAt.toString(),
                 "account_id" to accountId, "amount" to amount, "symbol" to symbol, "memo" to memo, "bank_cid_number" to bankCidNumber)
-        fun accountDataKeyResponse(requestId: String, expiresAt: ULong, signerAccountId: String, signature: ByteArray,
-                                   keyExchangePublicKey: ByteArray, encryptionNonce: ByteArray, ciphertext: ByteArray) =
-            content("kind" to 6, "request_id" to requestId, "expires_at" to expiresAt.toString(),
-                "signer_account_id" to signerAccountId, "signature" to hex(signature),
-                "key_exchange_public_key" to hex(keyExchangePublicKey), "encryption_nonce" to hex(encryptionNonce),
-                "ciphertext" to hex(ciphertext))
     }
 }
 
@@ -88,7 +82,7 @@ class CitizenSigningPayload internal constructor(internal val kind: Int, interna
 }
 enum class CitizenQrScanPurpose(val value: Int) {
     COLD_ACCOUNT_IMPORT(1), TRANSFER_RECIPIENT(2), CONTACT(3), EXTERNAL_SIGNATURE(4),
-    SIGNING_REQUEST(5), ACCOUNT_DATA_KEY(6), GENERAL_SCAN(7), ACCOUNT_TARGET(8),
+    SIGNING_REQUEST(5), GENERAL_SCAN(7), ACCOUNT_TARGET(8),
 }
 
 class CitizenQrScanResult private constructor(val purpose: CitizenQrScanPurpose, val document: CitizenQrDocument) {
@@ -125,9 +119,6 @@ class CitizenQrDocument internal constructor(
         data class UserContact(val cidNumber: String, val accountId: String) : Content()
         data class UserTransfer(val requestId: String, val expiresAt: Long, val accountId: String,
             val amount: String, val symbol: String, val memo: String, val bankCidNumber: String) : Content()
-        data class AccountDataKeyResponse(val requestId: String, val expiresAt: Long,
-            val signerAccountId: String, val signature: String, val keyExchangePublicKey: String,
-            val encryptionNonce: String, val ciphertext: String) : Content()
     }
     internal companion object {
         fun parse(json: String): CitizenQrDocument = projection {
@@ -149,9 +140,6 @@ class CitizenQrDocument internal constructor(
                 4 -> Content.UserTransfer(value.text("request_id"), value.expiration(), value.hex("account_id", 32),
                     value.text("amount"), value.text("symbol"), value.text("memo"), value.text("bank_cid_number"))
                 5 -> Content.AccountId(value.hex("account_id", 32))
-                6 -> Content.AccountDataKeyResponse(value.text("request_id"), value.expiration(),
-                    value.hex("signer_account_id", 32), value.hex("signature", 64),
-                    value.hex("key_exchange_public_key", 32), value.hex("encryption_nonce", 12), value.hex("ciphertext"))
                 else -> error("unsupported Core QR kind")
             }
             val mask = value.getInt("scan_purpose_mask").also { check(it in 1..255) }

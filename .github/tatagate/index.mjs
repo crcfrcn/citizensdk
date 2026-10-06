@@ -1,3 +1,4 @@
+import { toolEnvironment, validateToolSources } from './tools.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync,
@@ -30,9 +31,10 @@ function exactKeys(value, expected, label) {
 
 function git(root, arguments_) {
   try {
-    return execFileSync('/usr/bin/git', ['-C', root, ...arguments_], {
+    const env = toolEnvironment();
+    return execFileSync(env.PRODUCT_GIT_BIN, ['-C', root, ...arguments_], {
       encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-      env: { HOME: process.env.HOME, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', LANG: 'C', LC_ALL: 'C' },
+      env,
     });
   } catch {
     fail('产品门禁读取Git提交失败');
@@ -227,7 +229,7 @@ function validateSyntax(root, execute, environment, repository) {
     const absolute = resolve(root, path);
     let result = null;
     if (path.endsWith('.mjs')) result = execute(process.execPath, ['--check', absolute], { cwd: root, env: environment, stdio: 'inherit' });
-    else if (path.endsWith('.sh')) result = execute('bash', ['-n', absolute], { cwd: root, env: environment, stdio: 'inherit' });
+    else if (path.endsWith('.sh')) result = execute(environment.PRODUCT_BASH_BIN, ['-n', absolute], { cwd: root, env: environment, stdio: 'inherit' });
     else if (path.endsWith('.json')) {
       try { JSON.parse(readFileSync(absolute, 'utf8')); } catch { fail('JSON语法无效：' + path); }
     }
@@ -292,9 +294,10 @@ export async function checkDependencies(root, { execute = spawnSync, report = co
 // 强特征扫描只返回路径；不将机密值带入回执或日志。
 export function validateSecrets(root) {
   const pattern = 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{16,}';
-  const result = spawnSync('/usr/bin/git', ['-C', root, 'grep','-l','-I','-E',pattern,'--','.',
+  const env = toolEnvironment();
+  const result = spawnSync(env.PRODUCT_GIT_BIN, ['-C', root, 'grep','-l','-I','-E',pattern,'--','.',
     ':!test/release_manifest.test.ts', ':!test/release_manifest.test.mjs', ':!scripts/release/check/release_manifest.test.mjs'],
-    { encoding: 'utf8', stdio: ['ignore','pipe','ignore'] });
+    { env, encoding: 'utf8', stdio: ['ignore','pipe','ignore'] });
   if (result.error || ![0,1].includes(result.status)) fail('门禁机密扫描执行失败');
   if (result.status === 0) fail('产品机密扫描未通过，仅报告路径：' + result.stdout.trim().split('\n').join('、'));
 }
@@ -496,8 +499,9 @@ export function insecureTransportLines(path, source) {
 }
 const guardrailsSource = "#!/usr/bin/env bash\nset -euo pipefail\n\nbase_ref=\"${BASE_REF:-origin/main}\"\n\n# 中文说明：产品门禁只读取自身提交；私有规则与全产品字典在控制台独立检查。\nflow_root=\"${TATAGATE_DIRECTORY:?缺少本仓门禁根}\"\nif [[ -e memory || -e TataConsole || -e AGENTS.md || -e CODEX.md || -e CLAUDE.md ]]; then\n  echo \"公民产品根目录检测到私人 AI 或 TataConsole 残留。\" >&2\n  exit 1\nfi\n\n# 中文注释：全仓禁止中国国旗字符；用 UTF-8 八进制构造，避免规则本身成为命中项。\nforbidden_cn_flag=\"$(printf '\\360\\237\\207\\250\\360\\237\\207\\263')\"\nflag_files=\"$(git grep --untracked -l -I -F \"$forbidden_cn_flag\" -- . || true)\"\nif [[ -n \"$flag_files\" ]]; then\n  echo \"检测到禁止使用的中国国旗字符（仅报告文件）：\" >&2\n  printf '  - %s\\n' \"$flag_files\" >&2\n  exit 1\nfi\n\n# 首次推送以空树比较全部已保存内容；已有main必须提供可验证祖先，不主动抓取或猜测分支。\ngit rev-parse --verify \"$base_ref\" >/dev/null 2>&1 || { echo '门禁基线不存在' >&2; exit 1; }\nif [[ \"$base_ref\" == '4b825dc642cb6eb9a060e54bf8d69288fbee4904' ]]; then\n  merge_base=\"$base_ref\"\nelse\n  merge_base=\"$(git merge-base HEAD \"$base_ref\")\"\nfi\n\ndeclare -a changed_files=()\nwhile IFS= read -r file; do\n  [[ -n \"$file\" ]] && changed_files+=(\"$file\")\ndone < <(git diff --name-only \"$merge_base\")\nwhile IFS= read -r file; do\n  [[ -n \"$file\" ]] && changed_files+=(\"$file\")\ndone < <(git ls-files --others --exclude-standard)\n\nif [[ \"${#changed_files[@]}\" -eq 0 ]]; then\n  echo \"未检测到变更文件，跳过公开仓库增量门禁。\"\n  exit 0\nfi\n\n# 中文注释：强特征机密扫描只报告路径，禁止把命中值写入 Actions 日志。\nsecret_files=\"$(git grep --untracked -l -I -E 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|sk_live_[A-Za-z0-9]{16,}' -- . ':!test/release_manifest.test.ts' ':!test/release_manifest.test.mjs' ':!scripts/release/check/release_manifest.test.mjs' || true)\"\nif [[ -n \"$secret_files\" ]]; then\n  echo \"公开仓库检测到疑似真实机密（仅报告文件）：\" >&2\n  printf '  - %s\\n' \"$secret_files\" >&2\n  exit 1\nfi\n\ntodo_word=\"TO\"\"DO\"\nfixme_word=\"FIX\"\"ME\"\nresidual_regex=\"(console\\\\.log\\\\(|debugger;|dbg!\\\\(|todo!\\\\(|unimplemented!\\\\(|\\\\b${todo_word}\\\\b|\\\\b${fixme_word}\\\\b)\"\nversion_regex='([A-Za-z0-9][._:-]v[0-9]+|/(api/)?v[0-9]+|[A-Za-z0-9]_V[0-9]+|schema_version|cache_version|protocol_version|tag[[:space:]]*=[[:space:]]*[\\\"]v[0-9]+)'\ndeclare -a residual_hits=()\ndeclare -a version_hits=()\ndeclare -a lint_hits=()\ndeclare -a insecure_transport_hits=()\n\nis_code_file() {\n  case \"$1\" in\n    *.rs|*.dart|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.sh|*.py|*.sql|*.swift|*.kt|*.kts) return 0 ;;\n    *) return 1 ;;\n  esac\n}\n\nskip_generated_or_vendor() {\n  case \"$1\" in\n    native/smoldot/pow/*|docs/smoldot-dart/*|lib/src/smoldot/*|test/smoldot/*|assets/topup/walletconnect.bundle.js|scripts/worker-configuration.d.ts|*/dist/*|*/build/*|*/target/*|*/node_modules/*|*/GeneratedPluginRegistrant.*|*.g.dart|*.pb.dart|*.pbjson.dart|*.pbenum.dart|.github/scripts/repository/ci-repository.mjs) return 0 ;;\n    *) return 1 ;;\n  esac\n}\n\nhas_chinese_comment() {\n  # 中文注释：Unicode Script=Han 不依赖 runner 的本地排序规则，避免 grep 把汉字端点判为非法范围。\n  node -e 'const fs = require(\"node:fs\"); process.exit(/(?:\\/\\/|\\/\\*|\\*|#).*\\p{Script=Han}/u.test(fs.readFileSync(0, \"utf8\")) ? 0 : 1)'\n}\n\nsanitize_version_line() {\n  local line=\"$1\"\n  # 中文注释：Apple 官方 API/audience 与四条产品正式 Release Tag 是外部接口或软件版本身份，\n  # 不属于一方自定义协议标识；只精确移除这些已登记形态，继续阻断其它版本化协议。\n  # 中文注释：同一组准确字面量由 Node 一次批量处理，避免 Bash 长字符串的重复复制。\n  line=\"$(printf '%s\\n' \"$line\" | node --input-type=module -e 'import { readFileSync } from \"node:fs\"; let source=readFileSync(0,\"utf8\"); for(const token of [\"QR_V1\", \"QrProtocol.qrV1\", \"QrProtocols.qrV1\", \"citizen_sdk.smoldot.database.v1\", \"citizensdk.smoldot.database.v1\", \"citizensdk.wallet.state.v1\", \"APK v2/v3\", \"APK Signature Scheme v2/v3\"]) source=source.split(token).join(\"\"); process.stdout.write(source);')\"\n  # 中文注释：以下名称是已冻结的数据库文件、上游RPC/库API、ABI类型、测试描述或\n  # QR_V1负向断言，不是一方另建协议；只移除准确形态，未知版本化标识仍继续阻断。\n  line=\"$(printf '%s\\n' \"$line\" | sed -E \\\n    -e 's/(^|[^A-Za-z0-9_])(citizensdk_host_bool_completion_v1_t|citizensdk_host_bool_result_v1_t|citizensdk_host_bytes_completion_v1_t|citizensdk_host_bytes_result_v1_t|citizensdk_host_public_store_v1_t|citizensdk_host_record_completion_v1_t|citizensdk_host_record_result_v1_t|citizensdk_host_secret_presence_v1_t|citizensdk_host_secret_ref_v1_t|citizensdk_host_secret_vault_v1_t|citizensdk_host_secure_store_v1_t|citizensdk_host_services_v1_t|citizensdk_host_status_completion_v1_t|citizensdk_host_status_result_v1_t|citizensdk_host_vault_availability_completion_v1_t|citizensdk_host_vault_availability_result_v1_t|citizensdk_host_wallet_key_ref_v1_t|citizensdk_private_key_receiver_v1_t|citizensdk_wallet_diagnostic_info_v1_t|citizensdk_wallet_input_validation_v1_t)([^A-Za-z0-9_]|$)/\\1\\3/g' \\\n    -e 's/(^|[^A-Za-z0-9_])(sqlite3_open_v2|sqlite3_close_v2|sqlite3_prepare_v2|chainSpec_v1_genesisHash)([^A-Za-z0-9_]|$)/\\1\\3/g' \\\n    -e 's#citizensdk/v1|citizen/sdk/(core|events)/v2##g' \\\n    -e 's/(^|[^A-Za-z0-9_])(citizenchain-wallet-password-v1\\.json|citizenchain-balance-fee-v1\\.json|wallet_v3_preserves_invalid_mode_in_its_original_slot_without_creating_a_signable_account|wallet_v3_round_trips_hot_and_cold_diagnostics_with_strict_identity_boundaries|wallet_v3_round_trips_selection_and_rejects_old_versions_without_fallback|wallet_v3_round_trips_independent_hot_name_without_changing_account_label|host_v1_layout_and_constants_are_exact|host_v1_layout_matches_the_c_header_contract|validate_bool_result_v1|validate_bytes_result_v1|validate_public_store_v1|validate_record_result_v1|validate_secret_vault_v1|validate_secure_store_v1|validate_status_result_v1|validate_vault_availability_result_v1|json-v1)([^A-Za-z0-9_]|$)/\\1\\3/g' \\\n    -e 's/(^|[^A-Za-z0-9_])(citizenchain-wallet-password-v1\\.json|citizenchain-balance-fee-v1\\.json|wallet_v3_preserves_invalid_mode_in_its_original_slot_without_creating_a_signable_account|wallet_v3_round_trips_hot_and_cold_diagnostics_with_strict_identity_boundaries|wallet_v3_round_trips_selection_and_rejects_old_versions_without_fallback|wallet_v3_round_trips_independent_hot_name_without_changing_account_label|host_v1_layout_and_constants_are_exact|host_v1_layout_matches_the_c_header_contract|validate_bool_result_v1|validate_bytes_result_v1|validate_public_store_v1|validate_record_result_v1|validate_secret_vault_v1|validate_secure_store_v1|validate_status_result_v1|validate_vault_availability_result_v1|json-v1)([^A-Za-z0-9_]|$)/\\1\\3/g' \\\n    -e 's/public-state-v1\\.sqlite3//g' \\\n    -e 's/secure-state-v1\\.sqlite3//g' \\\n    -e 's/citizensdk_host_record_completion_v1_t//g' \\\n    -e 's/citizenchain-runtime-v[0-9]+-metadata\\.hex//g' \\\n    -e 's/create_v4_signed//g' \\\n    -e 's/wallet_v2_round_trips_cold_catalog_and_rejects_v1_without_fallback//g' \\\n    -e 's/citizenchain-transfer-build-v1\\.json//g' \\\n    -e 's/transactionWatch_v1[_A-Za-z]*//g' \\\n    -e 's/transaction_watch_uses_the_upstream_v1_surface_without_legacy_fallback//g' \\\n    -e 's/generic_qr_v1_signer\\.dart//g' \\\n    -e 's/citizenchain-wallet-derivation-v1\\.json//g' \\\n    -e 's/QR_V2//g' \\\n    -e 's/Uuid::new_v[45]//g' \\\n    -e 's/arm64-v8a//g' \\\n    -e 's/armeabi-v7a//g' \\\n    -e 's/libbarhopper_v[0-9]+//g' \\\n    -e 's/RSASSA-PKCS1-v1_5//g' \\\n    -e 's/sc-rpc-spec-v2//g' \\\n    -e 's#https://api\\.appstoreconnect\\.apple\\.com/v1##g' \\\n    -e 's/appstoreconnect-v1//g' \\\n    -e 's#/(upload/)?androidpublisher/v[0-9]+##g' \\\n    -e 's/citizen(app|wallet)-(ios|android)-v[0-9]+\\.[0-9]+\\.[0-9]+//g' \\\n    -e 's/citizen(serve-cloudflare|web)-v[0-9]+\\.[0-9]+\\.[0-9]+//g' \\\n    -e 's/citizensdk-sdk-v[0-9]+\\.[0-9]+\\.[0-9]+//g')\"\n  printf '%s\\n' \"$line\"\n}\n\nfor file in \"${changed_files[@]}\"; do\n  [[ -f \"$file\" ]] || continue\n  [[ \"$file\" == .github/tatagate/index.mjs || \"$file\" == .github/tatagate/contracts.json ]] && continue\n  is_code_file \"$file\" || continue\n  skip_generated_or_vendor \"$file\" && continue\n\n  added_lines=\"$(git diff --unified=0 \"$merge_base\" -- \"$file\" | grep -E '^\\+' | grep -vE '^\\+\\+\\+' || true)\"\n  # 中文注释：自包含动作把受合同约束的实现序列化为一条生成行；机械刷新该行时，\n  # 只排除生成载荷本身，动作脚本其余新增代码仍继续执行全部增量扫描。\n  if [[ \"$file\" == .github/scripts/*/*.mjs ]]; then\n    added_lines=\"$(printf '%s\\n' \"$added_lines\" | grep -vE '^\\+const implementations = Object\\.freeze\\(' || true)\"\n  fi\n  [[ -n \"$added_lines\" ]] || continue\n\n  # 中文注释：第一方新增网络地址只允许 HTTPS/WSS，禁止明文协议及任何降级入口。\n  if printf '%s\\n' \"$added_lines\" | grep -Eq '(http|ws)://'; then\n    # 读取准确源码上下文，只认可真实拒绝型测试，仍扫描同文件其余明文地址。\n    if ! node --input-type=module - \"$file\" \"$flow_root\" <<'TRANSPORT'\nimport { readFileSync } from 'node:fs';\nimport { pathToFileURL } from 'node:url';\nconst [path, flow] = process.argv.slice(2);\nconst { insecureTransportLines } = await import(pathToFileURL(flow + '/index.mjs'));\nprocess.exitCode = insecureTransportLines(path, readFileSync(path, 'utf8')).length ? 1 : 0;\nTRANSPORT\n    then insecure_transport_hits+=(\"${file}: 本次新增内容使用明文网络协议\"); fi\n  fi\n\n  # 中文注释：只拦本次新增残留；命令行工具的结果输出不是浏览器调试日志。\n  # scripts中的Node命令行结果输出不是浏览器调试；其它残留模式仍完整检查。\n  file_residual_regex=\"$residual_regex\"\n  if [[ \"$file\" == scripts/*.mjs || \"$file\" == .github/tatagate/test.mjs ]]; then\n    file_residual_regex=\"(debugger;|dbg!\\(|todo!\\(|unimplemented!\\(|\\b${todo_word}\\b|\\b${fixme_word}\\b)\"\n  fi\n  if [[ \"$file\" != .github/scripts/*/*.mjs && \"$file\" != .github/tatagate/index.mjs ]] && printf '%s\\n' \"$added_lines\" | grep -Eq \"$file_residual_regex\"; then\n    residual_hits+=(\"${file}: 本次新增内容含开发残留\")\n  fi\n\n  # 一次读取准确源文判定拒绝断言，再对整批新增行清理上游/既定标识，避免逐行启动外部进程。\n  # 通过stdin传入整批新增内容，不以超长argv或旁路文件承载源码。\n  protocol_lines=\"$(printf '%s\\n' \"$added_lines\" | node --input-type=module -e '\nimport { readFileSync } from \"node:fs\";\nimport { pathToFileURL } from \"node:url\";\nconst [path, flow] = process.argv.slice(1);\nconst { protocolAssertionLines } = await import(pathToFileURL(flow + \"/index.mjs\"));\nconst allowed = new Set(protocolAssertionLines(path, readFileSync(path, \"utf8\")));\nprocess.stdout.write(readFileSync(0, \"utf8\").split(\"\\n\")\n  .filter(line => !allowed.has(line.replace(/^\\+/u, \"\"))).join(\"\\n\"));\n' \"$file\" \"$flow_root\")\"\n  sanitized=\"$(sanitize_version_line \"$protocol_lines\")\" || { echo \"协议归属扫描执行失败\" >&2; exit 1; }\n  if printf '%s\\n' \"$sanitized\" | grep -Eq \"$version_regex\"; then\n    version_hits+=(\"${file}: 新增非 QR_V1 的一方版本化标识\")\n  fi\n\n  if [[ \"$file\" == *.rs ]] && printf '%s\\n' \"$added_lines\" | grep -Eq '#!?\\[allow\\((dead_code|unused)'; then\n    if ! printf '%s\\n' \"$added_lines\" | has_chinese_comment; then\n      lint_hits+=(\"${file}: 新增编译器抑制但没有中文理由\")\n    fi\n  fi\ndone\n\nif [[ \"${#insecure_transport_hits[@]}\" -gt 0 ]]; then\n  echo \"检测到禁止的明文网络协议：\" >&2\n  printf '  - %s\\n' \"${insecure_transport_hits[@]}\" >&2\n  exit 1\nfi\nif [[ \"${#residual_hits[@]}\" -gt 0 ]]; then\n  echo \"检测到开发残留：\" >&2\n  printf '  - %s\\n' \"${residual_hits[@]}\" >&2\n  exit 1\nfi\nif [[ \"${#version_hits[@]}\" -gt 0 ]]; then\n  echo \"检测到非 QR_V1 的一方版本化标识：\" >&2\n  printf '  - %s\\n' \"${version_hits[@]}\" >&2\n  exit 1\nfi\nif [[ \"${#lint_hits[@]}\" -gt 0 ]]; then\n  echo \"检测到缺少中文理由的编译器抑制：\" >&2\n  printf '  - %s\\n' \"${lint_hits[@]}\" >&2\n  exit 1\nfi\n\necho \"公民产品公开仓库门禁通过。\"\n";
 export function checkGuardrails(root, env, execute) {
-  const result = execute('/bin/bash', ['-s'], { cwd: root,
-    env: { ...env, TATAGATE_DIRECTORY: gateDirectory, PATH: dirname(process.execPath) + ':' + env.PATH },
+  const tools = toolEnvironment(env);
+  const result = execute(tools.PRODUCT_BASH_BIN, ['--noprofile', '--norc', '-s'], { cwd: root,
+    env: { ...env, ...tools, TATAGATE_DIRECTORY: gateDirectory },
     input: guardrailsSource, stdio: ['pipe','inherit','inherit'] });
   if (result.error || result.signal || result.status !== 0) fail('产品增量防护未通过');
 }
@@ -527,7 +531,7 @@ const gateDirectory = dirname(fileURLToPath(import.meta.url));
 const contract = JSON.parse(readFileSync(resolve(gateDirectory, 'contracts.json'), 'utf8'));
 export function gateContract(value = contract) {
   const contract = value;
-  exactKeys(contract, ['schema','repository','workflows','node_tests','checks','tools','platform_forbidden_values'], '本仓塔塔门禁');
+  exactKeys(contract, ['schema','repository','workflows','node_tests','checks','tools','tool_sources','platform_forbidden_values'], '本仓塔塔门禁');
   if (contract.schema !== 1 || !/^[a-z][a-z0-9]*$/u.test(contract.repository)
     || !Array.isArray(contract.workflows) || !Array.isArray(contract.node_tests)
     || !Array.isArray(contract.checks) || contract.node_tests.length === 0
@@ -539,7 +543,10 @@ export function gateContract(value = contract) {
   }
   const allowed = ['repository-contracts','dependency-contracts','cross-platform-contracts','shared-contracts'];
   if (contract.checks.some(id => !allowed.includes(id)) || new Set(contract.checks).size !== contract.checks.length) fail('本仓门禁检查闭集无效');
-    exactKeys(contract.tools, ['node','actionlint','rust'], '门禁工具');
+    exactKeys(contract.tools, ['node','actionlint','rust','git','bash','grep','sed'], '门禁工具');
+  validateToolSources(contract.tool_sources);
+  if (contract.tools.git !== '2.54.0' || contract.tools.bash !== '5.3.20'
+    || contract.tools.grep !== '3.12' || contract.tools.sed !== '4.10') fail('基础工具唯一版本无效');
   if (contract.tools.node !== '25.2.1' || contract.tools.actionlint !== '1.7.12'
     || contract.tools.rust !== (contract.repository === 'citizenchain' ? '1.97.1' : null)) fail('门禁工具版本无效');
   if (contract.workflows.some(id => !new RegExp('^' + contract.repository + '\\.[a-z][a-z0-9-]*\\.(?:ci|release)$', 'u').test(id))) fail('Workflow不属于本仓');
@@ -577,7 +584,8 @@ export function validateWorkflow(root) {
     if (entry.name === 'tatagate.yml') {
       if (!/^name: tatagate$/mu.test(source) || !/^\s*push:\s*$/mu.test(source)
         || !source.includes('branches: [main]') || /^\s*(?:pull_request|workflow_dispatch|workflow_run):/mu.test(source)
-        || !source.includes('node .github/tatagate/index.mjs remote')) fail('GitHub塔塔门禁入口无效');
+        || !source.includes("['.github/tatagate/index.mjs', 'remote']")
+        || !source.includes("['.github/tatagate/tools.mjs', 'prepare-runner', '--bootstrap', work]")) fail('GitHub塔塔门禁入口无效');
     } else if (!contract.workflows.includes(validateWorkflowSource(source, entry.name))) fail('产品Workflow不属于本仓登记');
   }
   return entries.map(entry => '.github/workflows/' + entry.name);
@@ -590,7 +598,8 @@ function environment(root, work) {
     'GITHUB_ACTIONS','GITHUB_WORKSPACE','GITHUB_SHA','GITHUB_EVENT_NAME','GITHUB_REF',
     'GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_REPOSITORY','RUNNER_TOOL_CACHE','RUNNER_TEMP',
     'GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'];
-  const result=Object.fromEntries(names.filter(name=>typeof process.env[name]==='string').map(name=>[name,process.env[name]]));
+  const result={...Object.fromEntries(names.filter(name=>typeof process.env[name]==='string').map(name=>[name,process.env[name]])),
+    ...toolEnvironment()};
   Object.assign(result,{ TMPDIR:resolve(work,'tmp'),CARGO_HOME:resolve(work,'cargo-home'),
     CARGO_TARGET_DIR:resolve(work,'cargo'),CARGO_INCREMENTAL:'0' });
   result[contract.repository.toUpperCase()+'_ROOT']=root;

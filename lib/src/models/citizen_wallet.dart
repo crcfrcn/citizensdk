@@ -163,6 +163,8 @@ enum CitizenWalletWordCount {
 
 /// 一只无根热钱包的公开资料；不包含 generation、secret owner 或任何秘密。
 final class CitizenWalletProfile {
+  /// 本SDK热派生序号上界；冷账户目录编号和处理批次不使用此限制。
+  static const int maxAccountIndex = 19890604;
   CitizenWalletProfile({
     required this.walletIndex,
     required this.walletName,
@@ -196,7 +198,7 @@ final class CitizenWalletProfile {
     final maximum = accounts
         .map((account) => account.index)
         .reduce((a, b) => a > b ? a : b);
-    return maximum >= 1989 ? null : maximum + 1;
+    return maximum >= maxAccountIndex ? null : maximum + 1;
   }
 }
 
@@ -276,18 +278,4 @@ final class CitizenWalletSignature {
 
   final String accountId;
   final Uint8List bytes;
-}
-
-/// 一次授权操作的应用材料；使用结束后立即清零钥及签名副本。
-final class CitizenApplicationKeyPreparation {
-  const CitizenApplicationKeyPreparation({required this.keys, this.signature});
-  final List<Uint8List> keys;
-  final Uint8List? signature;
-  void dispose() {
-    for (final key in keys) {
-      key.fillRange(0, key.length, 0);
-    }
-    final value = signature;
-    if (value != null) value.fillRange(0, value.length, 0);
-  }
 }

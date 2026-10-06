@@ -139,127 +139,6 @@ fn headless_input_validation_checks_abi_and_returns_only_typed_facts() {
 }
 
 #[test]
-fn application_key_result_has_one_exact_secret_copy_surface() {
-    use crate::ownership::{self, OwnedResult, ResultPayload};
-
-    let result = ownership::insert(OwnedResult::success(
-        71,
-        ResultPayload::ApplicationKey(Arc::new(SecretBuffer::try_new(vec![0x5a; 32]).unwrap())),
-    ))
-    .unwrap();
-    let mut output = [0_u8; 32];
-    unsafe {
-        assert_eq!(
-            super::citizensdk_result_get_application_key(result, output.as_mut_ptr()),
-            CitizenSdkErrorCode::Ok.as_i32(),
-        );
-        assert_eq!(
-            super::citizensdk_result_get_application_key(result, std::ptr::null_mut()),
-            CitizenSdkErrorCode::InvalidArgument.as_i32(),
-        );
-    }
-    assert_eq!(output, [0x5a; 32]);
-    ownership::release(result).unwrap();
-}
-
-// 准备批次与签名同属一个拥有者；无签名、错误类型、空输出及释放均严格拒绝或清零。
-#[test]
-fn application_preparation_result_shares_typed_owner_and_optional_signature() {
-    use crate::ownership::{self, OwnedResult, ResultPayload};
-    for signature in [None, Some(Sr25519Signature::from_bytes([0x6b; 64]))] {
-        let result = ownership::insert(OwnedResult::success(
-            71,
-            ResultPayload::ApplicationKeyPreparation(
-                Arc::new(SecretBuffer::try_new(vec![0x5a; 64]).unwrap()),
-                signature,
-            ),
-        ))
-        .unwrap();
-        let mut key = [0_u8; 32];
-        let mut bytes = [0xa5_u8; 64];
-        let mut present = 7_u8;
-        unsafe {
-            assert_eq!(
-                super::citizensdk_result_get_application_key_at(result, 1, key.as_mut_ptr()),
-                0
-            );
-            assert_eq!(key, [0x5a; 32]);
-            assert_eq!(
-                super::citizensdk_result_get_application_preparation_signature(
-                    result,
-                    bytes.as_mut_ptr(),
-                    &mut present
-                ),
-                0
-            );
-            assert_eq!(present, u8::from(signature.is_some()));
-            assert_eq!(
-                bytes,
-                if signature.is_some() {
-                    [0x6b; 64]
-                } else {
-                    [0; 64]
-                }
-            );
-            assert_eq!(
-                super::citizensdk_result_get_application_preparation_signature(
-                    result,
-                    std::ptr::null_mut(),
-                    &mut present
-                ),
-                CitizenSdkErrorCode::InvalidArgument.as_i32()
-            );
-            assert_eq!(
-                super::citizensdk_result_get_application_preparation_signature(
-                    result,
-                    bytes.as_mut_ptr(),
-                    std::ptr::null_mut()
-                ),
-                CitizenSdkErrorCode::InvalidArgument.as_i32()
-            );
-            assert_eq!(
-                super::citizensdk_result_get_application_key_at(result, 2, key.as_mut_ptr()),
-                CitizenSdkErrorCode::InvalidArgument.as_i32()
-            );
-        }
-        ownership::release(result).unwrap();
-        unsafe {
-            assert_ne!(
-                super::citizensdk_result_get_application_preparation_signature(
-                    result,
-                    bytes.as_mut_ptr(),
-                    &mut present
-                ),
-                0
-            );
-        }
-        key.fill(0);
-        bytes.fill(0);
-    }
-    let wrong = ownership::insert(OwnedResult::success(
-        71,
-        ResultPayload::Signature(Sr25519Signature::from_bytes([0x7c; 64])),
-    ))
-    .unwrap();
-    let mut bytes = [0xa5; 64];
-    let mut present = 7;
-    unsafe {
-        assert_ne!(
-            super::citizensdk_result_get_application_preparation_signature(
-                wrong,
-                bytes.as_mut_ptr(),
-                &mut present
-            ),
-            0
-        );
-    }
-    assert_eq!(bytes, [0xa5; 64]);
-    assert_eq!(present, 7);
-    ownership::release(wrong).unwrap();
-    bytes.fill(0);
-}
-
-#[test]
 fn signing_and_default_change_results_preflight_and_project_each_variant_exactly() {
     use crate::ownership::{
         DefaultAccountChangePayload, ExternalSigningPending, OwnedResult, ResultPayload,
@@ -1137,14 +1016,14 @@ fn wallet_state_projection_is_globally_ordered_and_multi_buffer_copy_is_atomic()
 
     let account_id = AccountId32::from_bytes([0xc1; 32]);
     let ss58 = citizen_ss58_address(account_id);
-    let cold =
-        ColdWalletAccount::try_new(1, account_id, ss58.clone(), "离线签名", 17).expect("冷账户");
+    let cold = ColdWalletAccount::try_new(19_890_605, account_id, ss58.clone(), "离线签名", 17)
+        .expect("冷账户");
     let state = WalletState::try_from_catalog_parts(
         3,
         None,
         vec![cold],
         vec![account_id],
-        2,
+        19_890_606,
         None,
         None,
         Vec::new(),
@@ -1210,7 +1089,7 @@ fn wallet_state_projection_is_globally_ordered_and_multi_buffer_copy_is_atomic()
             account_info.sign_mode,
             CitizenSdkWalletSignMode::Cold as u32
         );
-        assert_eq!(account_info.wallet_index, 1);
+        assert_eq!(account_info.wallet_index, 19_890_605);
         assert_eq!(account_info.has_account_index, 0);
         assert_eq!(account_info.is_default, 1);
         assert_eq!(ss58_required, ss58.len() as u64);

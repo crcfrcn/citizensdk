@@ -5,6 +5,11 @@ internal enum CitizenSDKInputLimits {
     static let maximumSigningPayloadBytes = 16 * 1_024 * 1_024
     static let maximumWalletSecretBytes = 1_024
     static let maximumAdditionalAccounts = 1_989
+    // 热序号范围与冷容量、追加批次独立；不按范围预分配账户。
+    static let maximumAccountIndex: UInt32 = 19_890_604
+    static let maximumWalletAccounts = 19_890_605
+    static let maximumColdAccounts = 1_990
+    static let maximumCatalogAccounts = maximumWalletAccounts + maximumColdAccounts
     static let maximumAccountNameUTF16Units = 128
     static let maximumStorageKeyBytes = 4 * 1_024
     static let maximumStorageBatchKeys = 1_024
@@ -59,8 +64,8 @@ internal enum CitizenSDKInputLimits {
     static func additionalIndices(_ values: [UInt32]) throws -> [UInt32] {
         try CitizenSDKChecks.require((1...maximumAdditionalAccounts).contains(values.count),
                                      "wallet index list must contain 1...1989 items")
-        try CitizenSDKChecks.require(Set(values).count == values.count && values.allSatisfy { (1...1_989).contains($0) },
-                                     "wallet indices must be unique values in 1...1989")
+        try CitizenSDKChecks.require(Set(values).count == values.count && values.allSatisfy { (1...maximumAccountIndex).contains($0) },
+                                     "wallet indices must be unique values in 1...19890604")
         return values
     }
 }

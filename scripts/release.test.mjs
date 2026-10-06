@@ -613,7 +613,7 @@ function windowsInstallFixture(root) {
         ? 'windows/citizen_sdk/citizensdk_host.h' : 'include/citizensdk.h');
       const names = [...new Set([...readFileSync(header, 'utf8')
         .matchAll(/\b(citizensdk_[a-z0-9_]+)\s*\((?!\s*\*)/gu)].map((m) => m[1]))].sort();
-      assert.equal(names.length, host ? 19 : 150);
+      assert.equal(names.length, host ? 19 : 144);
       if (host) names.push(...qrImageSymbols());
       if (!host) names.push(...CITIZENSDK_INTERNAL_SYMBOLS);
       names.sort();
@@ -1237,7 +1237,7 @@ function citizenSdkSymbols() {
   const symbols = [...new Set(
     [...header.matchAll(/\b(citizensdk_[a-z0-9_]+)\s*\((?!\s*\*)/g)].map((match) => match[1]),
   )].sort();
-  assert.equal(symbols.length, 150);
+  assert.equal(symbols.length, 144);
   return symbols;
 }
 
@@ -1264,7 +1264,7 @@ test('私钥receiver只通过公开Core声明，旧窗口内部符号清零', ()
     assert.ok(header.includes('citizensdk_private_key_' + suffix + '('));
   }
   assert.match(types, /int32_t \(\*receive\)\(void \*context, uint64_t secret_id, citizensdk_bytes_view_t private_key\)/u);
-  assert.equal(citizenSdkSymbols().length, 150);
+  assert.equal(citizenSdkSymbols().length, 144);
   assert.deepEqual(citizenSdkLinkedSymbols(), citizenSdkSymbols());
 });
 
@@ -2875,7 +2875,7 @@ test('Apple XCFramework 固定三个 arm64 技术变体、产品 ABI、版本与
     });
     assert.throws(
       () => assertAppleReleaseProjection(missingSymbol),
-      /精确导出 154 个 citizensdk_/,
+      /精确导出 148 个 citizensdk_/,
     );
 
     const legacySymbol = join(root, 'legacy-symbol');
@@ -3409,7 +3409,7 @@ test('Windows 薄 Host 与正式 Flutter 适配保持唯一 Core 和官方注册
   const functions = [...new Set([...header.matchAll(/\b(citizensdk_host_[a-z0-9_]+)\s*\(/gu)].map((m) => m[1]))].sort();
   assert.equal(exported.length, 23);
   assert.deepEqual(exported, [...functions, ...qrImageSymbols()].sort());
-  assert.equal(citizenSdkSymbols().length, 150);
+  assert.equal(citizenSdkSymbols().length, 144);
   assert.match(header, /void \*hwnd;/u);
   assert.doesNotMatch(header, /gtk_parent|private_key|plaintext_dek|mnemonic_utf8/u);
   const cmake = readFileSync(join(citizenSdkRoot, 'windows/CMakeLists.txt'), 'utf8');
@@ -4618,7 +4618,7 @@ test('QR_V1保留原六类码型并由Core唯一给出扫码用途', () => {
   assert.ok(kind);
   assert.deepEqual([...kind.matchAll(/\b([a-zA-Z]+)\(([1-6])\)/gu)].map(match => [match[1], Number(match[2])]), [
     ['signRequest', 1], ['signResponse', 2], ['userContact', 3],
-    ['userTransfer', 4], ['accountId', 5], ['accountDataKeyResponse', 6],
+    ['userTransfer', 4], ['accountId', 5],
   ]);
   const core = readFileSync(join(citizenSdkRoot, 'native/qr/src/codec.rs'), 'utf8');
   assert.match(core, /pub const fn scan_purpose_mask\(&self\)/u);
@@ -4721,11 +4721,11 @@ test('三类消费者和独立签名器只依赖同一正式公开面', () => {
   assert.match(matrix, /calls, hasLength\(3\)/u);
   assert.match(matrix, /CitizenQrKind\.values\.any\(\(value\) => value\.value == 4\)/u);
   assert.match(matrix, /CitizenWalletWordCount\.values/u);
-  assert.equal(citizenSdkSymbols().length, 150);
+  assert.equal(citizenSdkSymbols().length, 144);
   assert.equal(CITIZENSDK_INTERNAL_SYMBOLS.length, 0);
 });
 
-test('Dart、Android、Darwin、Linux、Windows 固定同一 Flutter 双通道和 96 方法合同', () => {
+test('Dart、Android、Darwin、Linux、Windows 固定同一 Flutter 双通道和 93 方法合同', () => {
   const root = mkdtempSync(join(workRoot, 'release-flutter-contract-test-'));
   const sources = [
     'lib/src/platform/citizen_sdk_flutter_codec.dart',
@@ -4753,7 +4753,7 @@ test('Dart、Android、Darwin、Linux、Windows 固定同一 Flutter 双通道�
     );
     assert.throws(
       () => assertFlutterBindingContract(root),
-      /Linux Flutter 方法合同漂移：必须精确为固定 96 项/,
+      /Linux Flutter 方法合同漂移：必须精确为固定 93 项/,
     );
 
     writeFileSync(
@@ -4762,7 +4762,7 @@ test('Dart、Android、Darwin、Linux、Windows 固定同一 Flutter 双通道�
     );
     assert.throws(
       () => assertFlutterBindingContract(root),
-      /Linux Flutter 方法合同漂移：必须精确为固定 96 项/,
+      /Linux Flutter 方法合同漂移：必须精确为固定 93 项/,
     );
     writeFileSync(linuxMethods, methodSource);
 
@@ -6800,7 +6800,7 @@ test('Linux 安装验收执行真实文件闭集、字节、版本、平台和 E
     ]) {
       const names = [...new Set([...readFileSync(header, 'utf8')
         .matchAll(/\b(citizensdk_[a-z0-9_]+)\s*\((?!\s*\*)/g)].map((match) => match[1]))].sort();
-      assert.equal(names.length, kind === 'core' ? 150 : 19);
+      assert.equal(names.length, kind === 'core' ? 144 : 19);
       if (kind === 'host') names.push(...qrImageSymbols());
       if (kind === 'core') names.push(...CITIZENSDK_INTERNAL_SYMBOLS);
       names.sort();
@@ -7164,7 +7164,7 @@ test('产品 ABI 从完整 nm 导出集合与头文件精确对拍并拒绝任�
       [...header.matchAll(/\b(citizensdk_[a-z0-9_]+)\s*\((?!\s*\*)/g)]
         .map((match) => match[1]),
     )].sort();
-    assert.equal(expected.length, 150);
+    assert.equal(expected.length, 144);
     expected.push(...CITIZENSDK_INTERNAL_SYMBOLS);
     expected.sort();
 
@@ -7208,10 +7208,10 @@ test('产品 ABI 从完整 nm 导出集合与头文件精确对拍并拒绝任�
   }
 });
 
-test('Apple导出闭集固定150 Core与4图像ABI，旧窗口内部符号清零', () => {
+test('Apple导出闭集固定144 Core与4图像ABI，旧窗口内部符号清零', () => {
   const build = readFileSync(join(citizenSdkRoot, 'scripts/build-native.sh'), 'utf8');
-  assert.match(build, /\[\[ "\$expected_count" == 154 \]\]/u);
-  assert.match(build, /grep -c '\^_citizensdk_' "\$destination" \|\| true\)" == 154/u);
+  assert.match(build, /\[\[ "\$expected_count" == 148 \]\]/u);
+  assert.match(build, /grep -c '\^_citizensdk_' "\$destination" \|\| true\)" == 148/u);
   assert.match(build, /未过滤链接不等于产品头与既定内部符号闭集/u);
   assert.doesNotMatch(build, /117公开|expected_count" == 120|destination" \|\| true\)" == 120/u);
 });

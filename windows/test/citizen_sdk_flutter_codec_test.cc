@@ -290,9 +290,6 @@ void test_method_closure_and_requests() {
       Method::delete_wallet,
       Method::reconcile_wallet_cleanup,
       Method::sign_wallet_payload,
-      Method::derive_application_key,
-      Method::derive_application_keys,
-      Method::prepare_application_keys,
       Method::begin_signing,
       Method::consume_external_signature,
       Method::cancel_signing,
@@ -393,7 +390,14 @@ void test_method_closure_and_requests() {
         Value::integer(1), Value::integer(words), Value::string("")})).word_count == static_cast<uint32_t>(words));
   assert((decode("addWalletAccounts", list({Value::integer(2), Value::string("s"),
       Value::integer(1), Value::string("synthetic"), Value::string(""),
-      list({Value::integer(1), Value::integer(1989)})})).indices == std::vector<uint32_t>{1, 1989}));
+      list({Value::integer(1), Value::integer(19890604)})})).indices == std::vector<uint32_t>{1, 19890604}));
+  // 原上界后的序号合法，超过新上界的混合批次整体拒绝。
+  assert(decode("addWalletAccounts", list({Value::integer(2), Value::string("s"),
+      Value::integer(1), Value::string("synthetic"), Value::string(""),
+      list({Value::integer(1990)})})).indices[0] == 1990);
+  expect_failure([&] { (void)decode("addWalletAccounts", list({Value::integer(2),
+      Value::string("s"), Value::integer(1), Value::string("synthetic"), Value::string(""),
+      list({Value::integer(8), Value::integer(19890605)})})); }, CITIZENSDK_ERROR_INVALID_ARGUMENT);
   assert(decode("renameAccount", list({Value::integer(2), Value::string("s"),
       Value::integer(1), Value::string(account('1')), Value::string("冷账户") })).name == "冷账户");
   assert(decode("importColdAccountId", list({Value::integer(2), Value::string("s"),
@@ -407,40 +411,6 @@ void test_method_closure_and_requests() {
   assert(reordered.wallet_revision == 7 && reordered.account_ids.size() == 2);
   assert(decode("signWalletPayload", list({Value::integer(2), Value::string("s"),
       Value::integer(1), Value::string(account('2')), Value::bytes({1, 2})})).payload.size() == 2);
-  const auto application_key = decode("deriveApplicationKey", list({Value::integer(2),
-      Value::string("s"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32, 7)), Value::bytes({1})}));
-  assert(application_key.application_key_salt.size() == 32 &&
-         application_key.application_key_info.size() == 1);
-  // 同一复合操作接受有界可选证明，拒绝不完整消息和结果。
-  const auto preparation = decode("prepareApplicationKeys", list({Value::integer(2),
-      Value::string("session-1"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32)), list({Value::bytes(Value::Bytes{1})}), Value::bytes(Value::Bytes(32))}));
-  assert(preparation.payload.size() == 32 && preparation.application_key_infos.size() == 1);
-  expect_failure([&] { decode("prepareApplicationKeys", list({Value::integer(2),
-      Value::string("session-1"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32)), list({Value::bytes(Value::Bytes{1})}), Value::bytes(Value::Bytes(31))})); },
-      CITIZENSDK_ERROR_INVALID_ARGUMENT);
-  citizen_sdk::flutter::validate_public_value(Method::prepare_application_keys,
-      list({list({Value::bytes(Value::Bytes(32))}), Value::bytes(Value::Bytes(64))}));
-  const auto application_keys = decode("deriveApplicationKeys", list({Value::integer(2),
-      Value::string("s"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32, 7)), list({Value::bytes({1}), Value::bytes({2})})}));
-  assert(application_keys.application_key_salt.size() == 32 &&
-         application_keys.application_key_infos.size() == 2);
-  expect_failure([&] { decode("deriveApplicationKeys", list({Value::integer(2),
-      Value::string("s"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32, 7)), list({})})); }, CITIZENSDK_ERROR_INVALID_ARGUMENT);
-  Value::List too_many_infos(17, Value::bytes({1}));
-  expect_failure([&] { decode("deriveApplicationKeys", list({Value::integer(2),
-      Value::string("s"), Value::integer(1), Value::string(account('2')),
-      Value::bytes(Value::Bytes(32, 7)), Value::list(too_many_infos)})); },
-      CITIZENSDK_ERROR_INVALID_ARGUMENT);
-  citizen_sdk::flutter::validate_public_value(Method::derive_application_keys,
-      list({list({Value::bytes(Value::Bytes(32, 1)), Value::bytes(Value::Bytes(32, 2))})}));
-  expect_failure([&] { citizen_sdk::flutter::validate_public_value(
-      Method::derive_application_keys, list({list({Value::bytes(Value::Bytes(31))})})); },
-      CITIZENSDK_ERROR_INTEGRITY);
   const auto signing = decode("beginSigning", list({Value::integer(2), Value::string("s"),
       Value::integer(1), Value::string(account('2')), Value::bytes({1, 2}), Value::string("raw"),
       Value::bytes({}), Value::string("none"), Value::integer(0), Value::integer(120)}));

@@ -14,47 +14,85 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  const codec = CitizenSdkFlutterCodec();
-
-  test('复合准备严格限制可选消息与完整结果', () {
-    final account = _account(1);
-    for (final length in [0, 32]) {
+  test('派生序号范围与冷目录编号独立，旧上界后的序号可选', () {
+    const codec = CitizenSdkFlutterCodec();
+    for (final indices in [
+      [1, 1989, 1990, 19890604],
+      [60000],
+    ]) {
       expect(
         () => codec.encodeRequest(
-          method: 'prepareApplicationKeys',
+          method: 'addWalletAccounts',
           sessionId: 's',
           requestSequence: 1,
-          fields: [
-            account,
-            Uint8List(32),
-            <Uint8List>[
-              Uint8List.fromList([1]),
-            ],
-            Uint8List(length),
-          ],
+          fields: ['synthetic', '', indices],
         ),
         returnsNormally,
       );
     }
-    for (final length in [1, 31, 33]) {
+    for (final indices in [
+      [0],
+      [-1],
+      [19890605],
+      [8, 19890605],
+      [8, 8],
+    ]) {
       expect(
         () => codec.encodeRequest(
-          method: 'prepareApplicationKeys',
+          method: 'addWalletAccounts',
           sessionId: 's',
           requestSequence: 1,
-          fields: [
-            account,
-            Uint8List(32),
-            <Uint8List>[
-              Uint8List.fromList([1]),
-            ],
-            Uint8List(length),
-          ],
+          fields: ['synthetic', '', indices],
         ),
         throwsA(isA<CitizenSdkException>()),
       );
     }
+    final id = _account(1);
+    final state = codec.decodeWalletState([
+      '1',
+      null,
+      [
+        [
+          'cold',
+          19890605,
+          null,
+          id,
+          citizenSs58FromAccountId(id),
+          '冷账户',
+          '1',
+          true,
+        ],
+      ],
+      1,
+      false,
+      19890605,
+      <Object?>[],
+    ]);
+    expect(state.accounts.single.walletIndex, 19890605);
+    final child = _account(2);
+    List<Object?> profile(int index) => [
+      0,
+      'imported',
+      '1',
+      id,
+      child,
+      [
+        [0, id, citizenSs58FromAccountId(id), '账户0', '1', false],
+        [index, child, citizenSs58FromAccountId(child), '高序号', '1', true],
+      ],
+      '钱包',
+    ];
+    expect(
+      codec.decodeWalletProfile(profile(19890604))!.accounts.last.index,
+      19890604,
+    );
+    expect(
+      () => codec.decodeWalletProfile(profile(19890605)),
+      throwsA(isA<CitizenSdkException>()),
+    );
   });
+
+  const codec = CitizenSdkFlutterCodec();
 
   test('钱包元数据请求严格绑定修订和u32索引，不携带签名或默认顺序', () {
     expect(
@@ -617,9 +655,6 @@ void main() {
       'deleteWallet',
       'reconcileWalletCleanup',
       'signWalletPayload',
-      'deriveApplicationKey',
-      'deriveApplicationKeys',
-      'prepareApplicationKeys',
       'beginSigning',
       'consumeExternalSignature',
       'cancelSigning',
@@ -772,28 +807,6 @@ void main() {
         account,
         Uint8List.fromList(<int>[1]),
       ],
-      'deriveApplicationKey': <Object?>[
-        account,
-        Uint8List(32),
-        Uint8List.fromList(<int>[1]),
-      ],
-      'deriveApplicationKeys': <Object?>[
-        account,
-        Uint8List(32),
-        <Uint8List>[
-          Uint8List.fromList(<int>[1]),
-          Uint8List.fromList(<int>[2]),
-        ],
-      ],
-      'prepareApplicationKeys': <Object?>[
-        account,
-        Uint8List(32),
-        <Uint8List>[
-          Uint8List.fromList([1]),
-          Uint8List.fromList([2]),
-        ],
-        Uint8List(32),
-      ],
       'beginSigning': <Object?>[
         account,
         Uint8List.fromList(<int>[1]),
@@ -944,17 +957,6 @@ void main() {
           sessionId: 's',
           requestSequence: 1,
           fields: <Object?>[finalized, Uint8List(1), null, limit],
-        ),
-        throwsA(isA<CitizenSdkException>()),
-      );
-    }
-    for (final size in <int>[31, 33]) {
-      expect(
-        () => codec.encodeRequest(
-          method: 'deriveApplicationKey',
-          sessionId: 's',
-          requestSequence: 1,
-          fields: <Object?>[_account(1), Uint8List(size), Uint8List(1)],
         ),
         throwsA(isA<CitizenSdkException>()),
       );

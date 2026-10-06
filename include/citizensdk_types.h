@@ -146,9 +146,6 @@ typedef uint32_t citizensdk_result_kind_t;
 #define CITIZENSDK_RESULT_BLOCK_BODY 26U
 #define CITIZENSDK_RESULT_PREPARED_TRANSACTION 27U
 #define CITIZENSDK_RESULT_TRANSACTION_EXECUTION 28U
-#define CITIZENSDK_RESULT_APPLICATION_KEY 29U
-#define CITIZENSDK_RESULT_APPLICATION_KEYS 30U
-#define CITIZENSDK_RESULT_APPLICATION_KEY_PREPARATION 31U
 
 typedef uint32_t citizensdk_transaction_execution_status_t;
 #define CITIZENSDK_TRANSACTION_EXECUTION_EXTERNAL_PENDING 1U
@@ -772,7 +769,7 @@ typedef struct citizensdk_wallet_diagnostic_info_v1 {
   citizensdk_account_id_t account_id;
   uint64_t wallet_name_len;
   uint64_t ss58_address_len;
-  uint32_t cleanup_account_count; /* 0=无可信目标，非空最多1990项。 */
+  uint32_t cleanup_account_count; /* 0=无可信目标，非空最多19890605项；实际分配仍受记录字节边界约束。 */
   uint32_t delete_wallet_wide_key;
 } citizensdk_wallet_diagnostic_info_v1_t;
 

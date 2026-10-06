@@ -913,49 +913,8 @@ internal final class CitizenSDKNative: @unchecked Sendable {
         }
     }
 
-    func deriveApplicationKey(accountID: Data, salt: Data, info: Data)
-        throws -> CitizenSDKOperation<Data> {
-        var account = try cAccount(accountID)
-        return try withUnsafePointer(to: &account) { pointer in
-            try Self.withViews([salt, info]) { views in
-                try begin(accept: {
-                    citizensdk_derive_application_key(handle, pointer, views[0], views[1], $0)
-                }, decode: CitizenSDKNativeCodec.applicationKey)
-            }
-        }
-    }
 
-    func deriveApplicationKeys(accountID: Data, salt: Data, infos: [Data])
-        throws -> CitizenSDKOperation<[Data]> {
-        var account = try cAccount(accountID)
-        return try withUnsafePointer(to: &account) { pointer in
-            try Self.withViews([salt] + infos) { views in
-                let infoViews = Array(views.dropFirst())
-                return try infoViews.withUnsafeBufferPointer { infoBuffer in
-                    try begin(accept: {
-                        citizensdk_derive_application_keys(handle, pointer, views[0],
-                            infoBuffer.baseAddress, UInt32(infos.count), $0)
-                    }, decode: { try CitizenSDKNativeCodec.applicationKeys($0, count: infos.count) })
-                }
-            }
-        }
-    }
 
-    func prepareApplicationKeys(accountID: Data, salt: Data, infos: [Data], signingMessage: Data?)
-        throws -> CitizenSDKOperation<CitizenApplicationKeyPreparation> {
-        var account = try cAccount(accountID)
-        return try withUnsafePointer(to: &account) { pointer in
-            try Self.withViews([salt, signingMessage ?? Data()] + infos) { views in
-                let infoViews = Array(views.dropFirst(2))
-                return try infoViews.withUnsafeBufferPointer { infoBuffer in
-                    try begin(accept: {
-                        citizensdk_prepare_application_keys(handle, pointer, views[0],
-                            infoBuffer.baseAddress, UInt32(infos.count), views[1], $0)
-                    }, decode: { try CitizenSDKNativeCodec.applicationKeyPreparation($0, count: infos.count, signed: signingMessage != nil) })
-                }
-            }
-        }
-    }
 
     /// Product-independent signing. Core owns account-mode routing and exact
     /// transform application; this binding only borrows bounded opaque bytes.

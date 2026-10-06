@@ -664,20 +664,6 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
                 result,
                 sdk.signing.sign(request.accountId, request.payload),
             ) { listOf(CitizenSdkFlutterCodec.signature(it)) }
-            is CitizenSdkFlutterCodec.Request.DeriveApplicationKey -> complete(
-                session,
-                request,
-                result,
-                sdk.deriveApplicationKey(request.accountId, request.salt, request.info),
-            ) { listOf(it) }
-            is CitizenSdkFlutterCodec.Request.DeriveApplicationKeys -> complete(
-                session, request, result,
-                sdk.deriveApplicationKeys(request.accountId, request.salt, request.infos),
-            ) { listOf(it) }
-            is CitizenSdkFlutterCodec.Request.PrepareApplicationKeys -> complete(
-                session, request, result,
-                sdk.prepareApplicationKeys(request.accountId, request.salt, request.infos, request.message.takeIf { it.isNotEmpty() }),
-            ) { listOf(it.keys, it.signature ?: ByteArray(0)) }
             is CitizenSdkFlutterCodec.Request.BeginSigning -> complete(
                 session, request, result, sdk.signing.begin(request.intent),
             ) { listOf(CitizenSdkFlutterCodec.signingOutcome(it)) }
@@ -1070,13 +1056,8 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
                         val payload = encode(value)
                         try { success(result, context.sessionId, context.requestSequence, payload) }
                         finally {
-                            if (context.method in setOf("revealPrivateKey", "deriveApplicationKey", "deriveApplicationKeys", "prepareApplicationKeys")) {
+                            if (context.method == "revealPrivateKey") {
                                 payload.filterIsInstance<ByteArray>().forEach { it.fill(0) }
-                                if (context.method in setOf("deriveApplicationKeys", "prepareApplicationKeys")) {
-                                    payload.filterIsInstance<List<*>>().forEach { values ->
-                                        values.filterIsInstance<ByteArray>().forEach { it.fill(0) }
-                                    }
-                                }
                             }
                         }
                     } catch (encodingError: Throwable) {

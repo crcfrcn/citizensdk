@@ -73,7 +73,7 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
     assert!(old.remove("citizensdk_android_init_tls"));
     let wallet = rust_exports(include_str!("../src/wallet_abi.rs"));
     let qr = rust_exports(include_str!("../src/qr_abi.rs"));
-    // 应用准备与可选签名读取归钱包的73项；各组仍逐项对拍同一150项公开C闭集。
+    // 钱包函数逐项对拍同一144项公开C闭集；被删除的结果编号不重排、不复用。
     assert_eq!(old.len(), 53);
     assert_eq!(wallet.len(), 73);
     assert_eq!(qr.len(), 11);
@@ -127,9 +127,6 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
         "citizensdk_rename_wallet_account",
         "citizensdk_delete_wallet_account",
         "citizensdk_delete_wallet",
-        "citizensdk_derive_application_key",
-        "citizensdk_derive_application_keys",
-        "citizensdk_prepare_application_keys",
         "citizensdk_reconcile_wallet_cleanup",
         "citizensdk_sign_wallet_payload",
         "citizensdk_begin_signing",
@@ -151,9 +148,6 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
         "citizensdk_result_get_signature",
         "citizensdk_result_get_signing_outcome",
         "citizensdk_result_get_default_account_change",
-        "citizensdk_result_get_application_key",
-        "citizensdk_result_get_application_key_at",
-        "citizensdk_result_get_application_preparation_signature",
         "citizensdk_result_get_prepared_wallet",
     ]
     .into_iter()
@@ -243,10 +237,7 @@ fn appended_result_values_and_portable_product_layouts_are_frozen() {
     assert_eq!(CitizenSdkResultKind::QrReview as u32, 19);
     assert_eq!(CitizenSdkResultKind::QrSigned as u32, 20);
     assert_eq!(CitizenSdkResultKind::WalletState as u32, 21);
-    assert_eq!(CitizenSdkResultKind::ApplicationKey as u32, 29);
-    assert_eq!(CitizenSdkResultKind::ApplicationKeys as u32, 30);
     // 复合准备仅追加31，既有结果编号保持不变。
-    assert_eq!(CitizenSdkResultKind::ApplicationKeyPreparation as u32, 31);
     assert!(include_str!("../../../include/citizensdk_types.h")
         .contains("#define CITIZENSDK_RESULT_ACCOUNT_BALANCES 18U"));
 

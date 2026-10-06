@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
+
 import '../account_codec.dart';
 import 'citizen_sdk_error.dart';
 
@@ -10,8 +11,7 @@ abstract final class CitizenQrActions {
   static const int citizenOccupy = 10;
   static const int citizenRebind = 11;
   static const int switchDefaultAccount = 12;
-  static const int squareDeviceBind = 13;
-  static const int accountDataKeyProvision = 14;
+  static const int mlsDeviceBind = 13;
   static const int publish = 15;
   static const int onchinaAdmin = 3;
   static const int activateAdmin = 5;
@@ -61,7 +61,14 @@ abstract final class CitizenQrActions {
 
 /// 用途允许集由SDK判定；冷导入只允许账户码，不改变其它入口既有用途。
 enum CitizenQrScanPurpose {
-  coldAccountImport(1), transferRecipient(2), contact(3), externalSignature(4), signingRequest(5), accountDataKey(6), generalScan(7), accountTarget(8);
+  coldAccountImport(1),
+  transferRecipient(2),
+  contact(3),
+  externalSignature(4),
+  signingRequest(5),
+  generalScan(7),
+  accountTarget(8);
+
   const CitizenQrScanPurpose(this.value);
   final int value;
 }
@@ -72,12 +79,17 @@ final class CitizenQrScanResult {
   final CitizenQrDocument document;
   String get canonicalText => document.canonicalText;
   String? get accountId => document.accountId;
-  String? get ss58Address => accountId == null ? null : citizenSs58FromAccountId(accountId!);
+  String? get ss58Address =>
+      accountId == null ? null : citizenSs58FromAccountId(accountId!);
 }
 
 /// 相机尺寸与朝向是采集事实；裁剪、遮罩、提示和按钮仍由各App绘制。
 final class CitizenQrPreview {
-  const CitizenQrPreview({required this.width, required this.height, required this.rotationDegrees});
+  const CitizenQrPreview({
+    required this.width,
+    required this.height,
+    required this.rotationDegrees,
+  });
   final int width;
   final int height;
   final int rotationDegrees;
@@ -107,14 +119,13 @@ abstract interface class CitizenQrReview {
   Future<void> release();
 }
 
-/// 原QR_V1码型不变；宿主扫码用途与wire码型是两个独立闭集。
+/// QR_V1码型仅1..5；宿主扫码用途与wire码型是两个独立闭集。
 enum CitizenQrKind {
   signRequest(1),
   signResponse(2),
   userContact(3),
   userTransfer(4),
-  accountId(5),
-  accountDataKeyResponse(6);
+  accountId(5);
 
   const CitizenQrKind(this.value);
   final int value;
@@ -145,19 +156,15 @@ final class CitizenQrDocument {
     this.bankCidNumber,
     this.currentAccountId,
     Uint8List? currentAccountSignature,
-    Uint8List? keyExchangePublicKey,
-    Uint8List? encryptionNonce,
-    Uint8List? ciphertext,
   }) : reviewPayload = reviewPayload == null
            ? null
            : Uint8List.fromList(reviewPayload).asUnmodifiableView(),
        signature = signature == null
            ? null
            : Uint8List.fromList(signature).asUnmodifiableView(),
-       keyExchangePublicKey = keyExchangePublicKey == null ? null : Uint8List.fromList(keyExchangePublicKey).asUnmodifiableView(),
-       encryptionNonce = encryptionNonce == null ? null : Uint8List.fromList(encryptionNonce).asUnmodifiableView(),
-       ciphertext = ciphertext == null ? null : Uint8List.fromList(ciphertext).asUnmodifiableView(),
-       currentAccountSignature = currentAccountSignature == null ? null : Uint8List.fromList(currentAccountSignature).asUnmodifiableView();
+       currentAccountSignature = currentAccountSignature == null
+           ? null
+           : Uint8List.fromList(currentAccountSignature).asUnmodifiableView();
   // 当前账户附加证明只作协议事实，不因解析成功就认为其已授权。
 
   final CitizenQrKind kind;
@@ -169,6 +176,7 @@ final class CitizenQrDocument {
   final Uint8List? reviewPayload;
   final Uint8List? signature;
   final String? accountId;
+
   /// Core返回的只读用途事实；App不得自行拼表或更改导入允许集。
   final int scanPurposeMask;
   final String? cidNumber;
@@ -176,9 +184,6 @@ final class CitizenQrDocument {
   final String? symbol;
   final String? memo;
   final String? bankCidNumber;
-  final Uint8List? keyExchangePublicKey;
-  final Uint8List? encryptionNonce;
-  final Uint8List? ciphertext;
   final String? currentAccountId;
   final Uint8List? currentAccountSignature;
 
@@ -219,57 +224,97 @@ final class CitizenQrSigned {
   final String signRequest;
 }
 
-
 /// 规范字段输入，不是wire JSON；唯一wire编码与校验仍在Rust。
 final class CitizenQrContent {
-  CitizenQrContent._(Map<String, Object?> fields) : inputJson = jsonEncode(fields);
+  CitizenQrContent._(Map<String, Object?> fields)
+    : inputJson = jsonEncode(fields);
   final String inputJson;
 
-  factory CitizenQrContent.signRequest({String? requestId, String requestIdPrefix = '',
-    required BigInt expiresAt, required int action, String? signerAccountId,
-    required Uint8List reviewPayload}) => CitizenQrContent._({
-      'kind': 1, 'request_id': requestId, 'request_id_prefix': requestIdPrefix,
-      'expires_at': expiresAt.toString(), 'action': action, 'signer_account_id': signerAccountId,
-      'review_payload': _contentHex(reviewPayload),
-    });
-  factory CitizenQrContent.signResponse({required String requestId, required BigInt expiresAt,
-    required String signerAccountId, required Uint8List signature,
-    String? currentAccountId, Uint8List? currentAccountSignature}) => CitizenQrContent._({
-      'kind': 2, 'request_id': requestId, 'expires_at': expiresAt.toString(),
-      'signer_account_id': signerAccountId, 'signature': _contentHex(signature),
-      'current_account_id': currentAccountId,
-      'current_account_signature': currentAccountSignature == null ? null : _contentHex(currentAccountSignature),
-    });
-  factory CitizenQrContent.userContact({required String cidNumber, required String accountId}) =>
-    CitizenQrContent._({'kind': 3, 'cid_number': cidNumber, 'account_id': accountId});
-  factory CitizenQrContent.userTransfer({required String requestId, required BigInt expiresAt,
-    required String accountId, required String amount, required String symbol,
-    String memo = '', required String bankCidNumber}) => CitizenQrContent._({
-      'kind': 4, 'request_id': requestId, 'expires_at': expiresAt.toString(), 'account_id': accountId,
-      'amount': amount, 'symbol': symbol, 'memo': memo, 'bank_cid_number': bankCidNumber,
-    });
-  factory CitizenQrContent.accountDataKeyResponse({required String requestId,
-    required BigInt expiresAt, required String signerAccountId, required Uint8List signature,
-    required Uint8List keyExchangePublicKey, required Uint8List encryptionNonce,
-    required Uint8List ciphertext}) => CitizenQrContent._({
-      'kind': 6, 'request_id': requestId, 'expires_at': expiresAt.toString(),
-      'signer_account_id': signerAccountId, 'signature': _contentHex(signature),
-      'key_exchange_public_key': _contentHex(keyExchangePublicKey),
-      'encryption_nonce': _contentHex(encryptionNonce), 'ciphertext': _contentHex(ciphertext),
-    });
+  factory CitizenQrContent.signRequest({
+    String? requestId,
+    String requestIdPrefix = '',
+    required BigInt expiresAt,
+    required int action,
+    String? signerAccountId,
+    required Uint8List reviewPayload,
+  }) => CitizenQrContent._({
+    'kind': 1,
+    'request_id': requestId,
+    'request_id_prefix': requestIdPrefix,
+    'expires_at': expiresAt.toString(),
+    'action': action,
+    'signer_account_id': signerAccountId,
+    'review_payload': _contentHex(reviewPayload),
+  });
+  factory CitizenQrContent.signResponse({
+    required String requestId,
+    required BigInt expiresAt,
+    required String signerAccountId,
+    required Uint8List signature,
+    String? currentAccountId,
+    Uint8List? currentAccountSignature,
+  }) => CitizenQrContent._({
+    'kind': 2,
+    'request_id': requestId,
+    'expires_at': expiresAt.toString(),
+    'signer_account_id': signerAccountId,
+    'signature': _contentHex(signature),
+    'current_account_id': currentAccountId,
+    'current_account_signature': currentAccountSignature == null
+        ? null
+        : _contentHex(currentAccountSignature),
+  });
+  factory CitizenQrContent.userContact({
+    required String cidNumber,
+    required String accountId,
+  }) => CitizenQrContent._({
+    'kind': 3,
+    'cid_number': cidNumber,
+    'account_id': accountId,
+  });
+  factory CitizenQrContent.userTransfer({
+    required String requestId,
+    required BigInt expiresAt,
+    required String accountId,
+    required String amount,
+    required String symbol,
+    String memo = '',
+    required String bankCidNumber,
+  }) => CitizenQrContent._({
+    'kind': 4,
+    'request_id': requestId,
+    'expires_at': expiresAt.toString(),
+    'account_id': accountId,
+    'amount': amount,
+    'symbol': symbol,
+    'memo': memo,
+    'bank_cid_number': bankCidNumber,
+  });
 }
 
 /// 十六进制只是C ABI规范字段的字节投影，不构造QR短键或计算签名。
 String _contentHex(Uint8List bytes) =>
     '0x${bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join()}';
 
-enum CitizenQrAuthorizationReason { valid, invalidTemplate, invalidAccountId, sameAccount }
+enum CitizenQrAuthorizationReason {
+  valid,
+  invalidTemplate,
+  invalidAccountId,
+  sameAccount,
+}
 
 final class CitizenQrAuthorization {
-  CitizenQrAuthorization({required this.reason, this.genesisHash, this.cidNumber,
-    this.currentAccountId, this.expectedBindingRevision, this.expiresAt, Uint8List? materializedPayload})
-      : materializedPayload = materializedPayload == null
-          ? null : Uint8List.fromList(materializedPayload).asUnmodifiableView();
+  CitizenQrAuthorization({
+    required this.reason,
+    this.genesisHash,
+    this.cidNumber,
+    this.currentAccountId,
+    this.expectedBindingRevision,
+    this.expiresAt,
+    Uint8List? materializedPayload,
+  }) : materializedPayload = materializedPayload == null
+           ? null
+           : Uint8List.fromList(materializedPayload).asUnmodifiableView();
   final CitizenQrAuthorizationReason reason;
   final String? genesisHash;
   final String? cidNumber;
@@ -279,19 +324,29 @@ final class CitizenQrAuthorization {
   final Uint8List? materializedPayload;
   bool get isValid => reason == CitizenQrAuthorizationReason.valid;
 }
+
 /// 唯一 QR_V1 协议、扫码会话及 ZXing-C++ 图像模块。
 ///
 /// QR-only 不创建钱包、金库或轻节点；所有过期判断由 Core 系统时钟完成。
 /// 安全扫码签名使用signing的审阅资源；SDK核验事实和授权，用户确认UI归App。
 abstract interface class CitizenQr {
   Future<CitizenQrDocument> encodeDocument(CitizenQrContent content);
-  Future<CitizenQrAuthorization> prepareAccountAuthorization({required int action,
-    required Uint8List payload, required String accountId});
+  Future<CitizenQrAuthorization> prepareAccountAuthorization({
+    required int action,
+    required Uint8List payload,
+    required String accountId,
+  });
   Future<CitizenQrCapture> openCapture(CitizenQrScanPurpose purpose);
-  Future<List<CitizenQrScanResult>> decodeImage(Uint8List encodedImage, CitizenQrScanPurpose purpose);
+  Future<List<CitizenQrScanResult>> decodeImage(
+    Uint8List encodedImage,
+    CitizenQrScanPurpose purpose,
+  );
 
   Future<CitizenQrDocument> parse(String text);
-  Future<CitizenQrScanResult> parseForPurpose(String text, CitizenQrScanPurpose purpose);
+  Future<CitizenQrScanResult> parseForPurpose(
+    String text,
+    CitizenQrScanPurpose purpose,
+  );
 
   Future<String> createSignRequest({
     required int action,
@@ -304,7 +359,10 @@ abstract interface class CitizenQr {
   Future<Uint8List> consumeSignResponse(String signResponse);
 
   /// 同实例只验签、不消费；原页面据此留页重扫，最终提交仍走原消费入口。
-  Future<void> validateSignResponse({required String sessionId, required String response});
+  Future<void> validateSignResponse({
+    required String sessionId,
+    required String response,
+  });
 
   Future<bool> cancelSignRequest(String requestId);
   Future<String> encodeAccountId(String accountId);

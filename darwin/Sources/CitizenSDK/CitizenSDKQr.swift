@@ -36,13 +36,6 @@ public struct CitizenQRContent: Sendable, CustomStringConvertible {
         try Self(fields: ["kind": 4, "request_id": requestID, "expires_at": String(expiresAt),
             "account_id": accountID, "amount": amount, "symbol": symbol, "memo": memo, "bank_cid_number": bankCIDNumber])
     }
-    public static func accountDataKeyResponse(requestID: String, expiresAt: UInt64, signerAccountID: String,
-                                              signature: Data, keyExchangePublicKey: Data, encryptionNonce: Data, ciphertext: Data) throws -> Self {
-        try Self(fields: ["kind": 6, "request_id": requestID, "expires_at": String(expiresAt),
-            "signer_account_id": signerAccountID, "signature": citizenCodecHex(signature),
-            "key_exchange_public_key": citizenCodecHex(keyExchangePublicKey),
-            "encryption_nonce": citizenCodecHex(encryptionNonce), "ciphertext": citizenCodecHex(ciphertext)])
-    }
 }
 
 public enum CitizenQRAuthorizationReason: UInt8, Sendable {
@@ -130,7 +123,7 @@ public struct CitizenSigningPayload: Sendable, CustomStringConvertible {
 
 public enum CitizenQRScanPurpose: UInt8, Sendable {
     case coldAccountImport = 1, transferRecipient = 2, contact = 3, externalSignature = 4
-    case signingRequest = 5, accountDataKey = 6, generalScan = 7, accountTarget = 8
+    case signingRequest = 5, generalScan = 7, accountTarget = 8
 }
 
 public struct CitizenQRScanResult: Sendable, Equatable {
@@ -160,8 +153,6 @@ public struct CitizenQRDocument: Sendable, Equatable {
         case userContact(cidNumber: String, accountID: String)
         case userTransfer(requestID: String, expiresAt: UInt64, accountID: String,
                           amount: String, symbol: String, memo: String, bankCIDNumber: String)
-        case accountDataKeyResponse(requestID: String, expiresAt: UInt64, signerAccountID: String,
-            signature: String, keyExchangePublicKey: String, encryptionNonce: String, ciphertext: String)
     }
     public let kind: UInt32
     public let canonicalText: String
@@ -206,10 +197,6 @@ public struct CitizenQRDocument: Sendable, Equatable {
         case 4: content = .userTransfer(requestID: try value.required(value.request_id), expiresAt: try value.required(value.expires_at),
             accountID: try value.hex(value.account_id, count: 32), amount: try value.required(value.amount),
             symbol: try value.required(value.symbol), memo: try value.required(value.memo), bankCIDNumber: try value.required(value.bank_cid_number))
-        case 6: content = .accountDataKeyResponse(requestID: try value.required(value.request_id), expiresAt: try value.required(value.expires_at),
-            signerAccountID: try value.hex(value.signer_account_id, count: 32), signature: try value.hex(value.signature, count: 64),
-            keyExchangePublicKey: try value.hex(value.key_exchange_public_key, count: 32), encryptionNonce: try value.hex(value.encryption_nonce, count: 12),
-            ciphertext: try value.hex(value.ciphertext))
         default: throw CitizenSDKError(.integrity, "Core QR kind is invalid")
         }
     }
@@ -225,9 +212,6 @@ internal struct CitizenSDKQrProjection: Decodable {
     let symbol: String?
     let memo: String?
     let bank_cid_number: String?
-    let key_exchange_public_key: String?
-    let encryption_nonce: String?
-    let ciphertext: String?
     let request_id: String?
     let expires_at: UInt64?
     let action: UInt16?

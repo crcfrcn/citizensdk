@@ -18,6 +18,8 @@ inline constexpr uint64_t kMaximumAssetBytes = UINT64_C(128) * 1024 * 1024;
 inline constexpr uint64_t kMaximumPathBytes = 4096;
 inline constexpr std::size_t kMaximumUnlockPasswordBytes = 1024;
 inline constexpr uint32_t kMaximumAdditionalAccounts = 1989;
+// 热派生范围独立于追加批次和冷账户容量；只按实际输入分配。
+inline constexpr uint32_t kMaximumAccountIndex = 19890604;
 
 void validate_wallet_indices(const uint32_t *indices, uint32_t count);
 void validate_word_count(citizensdk_wallet_word_count_t count);

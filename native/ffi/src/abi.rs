@@ -191,9 +191,6 @@ pub enum CitizenSdkResultKind {
     BlockBody = 26,
     PreparedTransaction = 27,
     TransactionExecution = 28,
-    ApplicationKey = 29,
-    ApplicationKeys = 30,
-    ApplicationKeyPreparation = 31,
 }
 
 #[repr(u32)]

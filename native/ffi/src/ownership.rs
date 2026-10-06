@@ -8,8 +8,8 @@ use std::{
 
 use citizen_sdk_contracts::{
     AccountNonce, ChainSyncStatus, ExecutionConclusion, ExportedChainState, ExtrinsicWatchEvent,
-    FinalizedAccountBalance, Hash32, PreparedTransactionSummary, RuntimeContext, SecretBuffer,
-    SigningCompletion, Sr25519Signature, TransactionExecutionCompleted, TransactionExecutionId,
+    FinalizedAccountBalance, Hash32, PreparedTransactionSummary, RuntimeContext, SigningCompletion,
+    Sr25519Signature, TransactionExecutionCompleted, TransactionExecutionId,
     TransactionHistoryPage, VerifiedBlockBody, VerifiedBlockHeader, VerifiedBlockRef,
     WalletProfile,
 };
@@ -102,9 +102,6 @@ pub enum ResultPayload {
     BlockBody(VerifiedBlockBody),
     PreparedTransaction(PreparedTransactionPayload),
     TransactionExecution(TransactionExecutionPayload),
-    ApplicationKey(std::sync::Arc<SecretBuffer>),
-    ApplicationKeys(std::sync::Arc<SecretBuffer>),
-    ApplicationKeyPreparation(std::sync::Arc<SecretBuffer>, Option<Sr25519Signature>),
 }
 
 impl ResultPayload {
@@ -140,11 +137,6 @@ impl ResultPayload {
             Self::BlockBody(_) => CitizenSdkResultKind::BlockBody,
             Self::PreparedTransaction(_) => CitizenSdkResultKind::PreparedTransaction,
             Self::TransactionExecution(_) => CitizenSdkResultKind::TransactionExecution,
-            Self::ApplicationKey(_) => CitizenSdkResultKind::ApplicationKey,
-            Self::ApplicationKeys(_) => CitizenSdkResultKind::ApplicationKeys,
-            Self::ApplicationKeyPreparation(_, _) => {
-                CitizenSdkResultKind::ApplicationKeyPreparation
-            }
         }
     }
 
@@ -161,10 +153,6 @@ impl ResultPayload {
             | Self::WalletProfile(_)
             | Self::PreparedWallet(_)
             | Self::TransactionHistoryPage(_) => 0,
-            Self::ApplicationKey(_) => 32,
-            Self::ApplicationKeys(keys) | Self::ApplicationKeyPreparation(keys, _) => {
-                keys.with_secret(|bytes| bytes.len() as u64)
-            }
             Self::PreparedTransaction(_) => 0,
             Self::TransactionExecution(TransactionExecutionPayload::Completed(_)) => 0,
             Self::TransactionExecution(TransactionExecutionPayload::ExternalPending(pending)) => {

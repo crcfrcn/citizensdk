@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import '../models/citizen_signing.dart';
 import '../models/citizen_wallet.dart';
 
@@ -79,28 +77,5 @@ abstract interface class CitizenSdkWallet {
   consumeDefaultAccountChange({
     required String sessionId,
     required String response,
-  });
-  CitizenSdkOperation<Uint8List> deriveApplicationKey({
-    required String accountId,
-    required Uint8List salt,
-    required Uint8List info,
-  });
-}
-
-/// 可选的通用热账户批量 HKDF 能力；一次金库认证，逐项保持单钥派生结果。
-/// 独立接口使现有只实现普通钱包合同的消费侧测试替身继续有效。
-abstract interface class CitizenSdkWalletBatch {
-  /// 参数在认证前固定；派生与可选32字节原始证明只打开一次金库。
-  CitizenSdkOperation<CitizenApplicationKeyPreparation> prepareApplicationKeys({
-    required String accountId,
-    required Uint8List salt,
-    required List<Uint8List> infos,
-    Uint8List? signingMessage,
-  });
-
-  CitizenSdkOperation<List<Uint8List>> deriveApplicationKeys({
-    required String accountId,
-    required Uint8List salt,
-    required List<Uint8List> infos,
   });
 }

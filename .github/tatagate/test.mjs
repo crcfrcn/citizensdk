@@ -1,3 +1,4 @@
+import { toolEnvironment, exactExecutable, validateToolSources, prepareRunnerTools, resolveBootstrapPackages } from './tools.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { gateContract, validateWorkflowSource, validateVectorGroup, validatePalletRegistry, readPublicChain } from './index.mjs';
@@ -81,11 +82,11 @@ test('保留源码不按每文件汉字数量判定，真实第一方临时注�
     import('node:fs'), import('node:path'), import('node:os'), import('node:child_process'), import('./index.mjs'),
   ]);
   const root = mkdtempSync(join(tmpdir(), 'tatagate-quality-'));
-  const env = { HOME: process.env.HOME, PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C',
+  const env = { ...toolEnvironment(), HOME: process.env.HOME, LANG: 'C', LC_ALL: 'C',
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
     GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' };
-  const git = (...args) => execFileSync('/usr/bin/git', ['-C', root, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const git = (...args) => execFileSync(env.PRODUCT_GIT_BIN, ['-C', root, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   try {
     git('init', '--quiet', '--initial-branch=main');
     mkdirSync(join(root, 'test'));
@@ -133,11 +134,11 @@ test('增量防护执行真实归属判断并支持超过argv单项限制的输�
     import('node:fs'), import('node:path'), import('node:os'), import('node:child_process'), import('./index.mjs'),
   ]);
   const root = mkdtempSync(join(tmpdir(), 'tatagate-guard-'));
-  const env = { HOME: process.env.HOME, PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C',
+  const env = { ...toolEnvironment(), HOME: process.env.HOME, LANG: 'C', LC_ALL: 'C',
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
     GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' };
-  const git = (...args) => execFileSync('/usr/bin/git', ['-C', root, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const git = (...args) => execFileSync(env.PRODUCT_GIT_BIN, ['-C', root, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   let output;
   const execute = (command, args, options) => {
     output = spawnSync(command, args, { ...options, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024, timeout: 20_000 });
@@ -224,4 +225,56 @@ test('历史清理仅接受唯一无父新根并完整检查全部内容', async
     { ...reset, before: 'main' }, { ...reset, headSHA: 'main' },
     { ...reset, headSHA: '0'.repeat(40) }, { ...reset, before: '0'.repeat(40) },
   ]) assert.throws(() => pushBaseSHA(invalid));
+});
+
+// 正常与拒绝边界共用公开交付函数；真实版本探测不继承用户预加载和系统PATH。
+test('公开基础工具同时交付并拒绝缺失相对链接及错版本', async () => {
+  const { mkdtempSync, symlinkSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path'); const { tmpdir } = await import('node:os');
+  const current = toolEnvironment();
+  assert.equal(current.PRODUCT_GIT_BIN, process.env.PRODUCT_GIT_BIN);
+  assert.ok(!current.PATH.split(':').some(path => ['/bin','/usr/bin','/usr/sbin','/sbin'].includes(path)));
+  assert.equal(current.NODE_OPTIONS, undefined);
+  const root = mkdtempSync(join(tmpdir(), 'tatagate-tool-'));
+  try {
+    const link = join(root,'git'); symlinkSync(current.PRODUCT_GIT_BIN,link);
+    for (const path of [undefined, 'git', '/tmp/../git', link]) {
+      assert.throws(() => toolEnvironment({...process.env,PRODUCT_GIT_BIN:path}), /本仓工具交付/u);
+    }
+    for (const field of ['PRODUCT_GIT_BIN','PRODUCT_BASH_BIN','PRODUCT_GREP_BIN','PRODUCT_SED_BIN']) {
+      assert.throws(() => toolEnvironment({...process.env,[field]:process.execPath}), /版本/u);
+    }
+    assert.throws(() => exactExecutable(root,'directory'), /普通/u);
+  } finally { rmSync(root,{recursive:true}); }
+});
+test('公开源码闭包拒绝补丁缺项错序及非官方来源，未授权不准备Runner', async () => {
+  const original = structuredClone(gateContract().tool_sources);
+  assert.equal(validateToolSources(original),original);
+  for (const mutate of [
+    value => value.sources.bash.upstream_patches.pop(),
+    value => value.sources.bash.upstream_patches.reverse(),
+    value => {value.sources.grep.url='https://example.invalid/grep.tar.xz';},
+    value => {value.sources.sed.version='0.0';},
+    value => {value.sources.git.sha256='broken';},
+    value => {value.sources.actionlint.url='https://example.invalid/actionlint';},
+    value => {value.sources.actionlint.executable='bin/actionlint';},
+    value => {value.bootstrap.commands.push(value.bootstrap.commands[0]);},
+  ]) {const value=structuredClone(original);mutate(value);assert.throws(()=>validateToolSources(value));}
+  await assert.rejects(prepareRunnerTools(), /首次构建许可/u);
+});
+
+test('Ubuntu根包与内部依赖完整核验，缺项和漂移在构建前拒绝',()=>{
+  const records=[
+    {name:'compiler',version:'18.1.3',status:'install ok installed',depends:'runtime (= 18.1.3)',preDepends:''},
+    {name:'runtime',version:'18.1.3',status:'install ok installed',depends:'libc (>= 2.39)',preDepends:''},
+    {name:'libc',version:'2.39',status:'install ok installed',depends:'',preDepends:''},
+    {name:'other',version:'1',status:'install ok installed',depends:'',preDepends:''},
+  ], roots=[{name:'compiler',version:'18.1.3'}], compare=(a,op,b)=>op==='='?a===b:Number(a)>=Number(b);
+  assert.deepEqual(resolveBootstrapPackages(records,roots,compare),[
+    {name:'compiler',version:'18.1.3'},{name:'libc',version:'2.39'},{name:'runtime',version:'18.1.3'}]);
+  assert.throws(()=>resolveBootstrapPackages(records.slice(0,2),roots,compare),/闭包缺失/u);
+  assert.throws(()=>resolveBootstrapPackages(records,[{name:'compiler',version:'18.1.4'}],compare),/版本漂移/u);
+  assert.throws(()=>resolveBootstrapPackages([...records,records[0]],roots,compare),/身份重复/u);
+  const changed=structuredClone(records);changed[1].version='18.1.2';
+  assert.throws(()=>resolveBootstrapPackages(changed,roots,compare),/闭包缺失/u);
 });

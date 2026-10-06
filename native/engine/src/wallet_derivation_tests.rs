@@ -158,10 +158,10 @@ fn mnemonic_generation_and_index_validation_keep_the_public_boundary_narrow() {
         Arc::new(Sr25519SoftwareSigner),
         &eighteen,
         "",
-        &[0, 1, 1989],
+        &[0, 1, 1989, 1990, MAX_WALLET_ACCOUNT_INDEX],
     ))
     .expect("18 词必须支持恢复和派生");
-    assert_eq!(eighteen_accounts.len(), 3);
+    assert_eq!(eighteen_accounts.len(), 5);
     let protected = block_on(derive_wallet_accounts(
         Arc::new(Sr25519SoftwareSigner),
         &eighteen,

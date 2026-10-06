@@ -11,6 +11,20 @@ import FlutterMacOS
 #endif
 
 final class CitizenSDKFlutterCodecTests: XCTestCase {
+    func testHighWalletIndicesAreIndependentOfBatchSize() throws {
+        for indices in [[1, 1989, 1990, 19_890_604], [60000]] {
+            let request = try CitizenSdkFlutterCodec.decode(method: "addWalletAccounts",
+                arguments: [2, "synthetic", 1, "synthetic", "", indices])
+            if case let .walletInput(_, _, _, _, _, _, decoded) = request {
+                XCTAssertEqual(decoded, indices.map { UInt32($0) })
+            } else { XCTFail("wallet input required") }
+        }
+        for indices in [[0], [-1], [19_890_605], [8, 19_890_605], [8, 8], Array(1...1990)] {
+            XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method: "addWalletAccounts",
+                arguments: [2, "synthetic", 1, "synthetic", "", indices]))
+        }
+    }
+
     func testRealChannelNullCursorsAndRejectedParametersKeepCoreSequenceUsable() async throws {
         // 仅QR实例与测试临时根；不打开用户金库、不启动链，不以Swift手写nil代替通道空值。
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -51,19 +65,6 @@ final class CitizenSDKFlutterCodecTests: XCTestCase {
 
     }
 
-    func testApplicationPreparationMessageHasClosedBound() throws {
-        let account = "0x" + String(repeating: "11", count: 32)
-        for count in [0, 32] {
-            XCTAssertNoThrow(try CitizenSdkFlutterCodec.decode(method: "prepareApplicationKeys",
-                arguments: [2, "session-1", 1, account, FlutterStandardTypedData(bytes: Data(count: 32)),
-                    [FlutterStandardTypedData(bytes: Data([1]))], FlutterStandardTypedData(bytes: Data(count: count))]))
-        }
-        for count in [1, 31, 33] {
-            XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method: "prepareApplicationKeys",
-                arguments: [2, "session-1", 1, account, FlutterStandardTypedData(bytes: Data(count: 32)),
-                    [FlutterStandardTypedData(bytes: Data([1]))], FlutterStandardTypedData(bytes: Data(count: count))]))
-        }
-    }
 
     func testWalletMetadataSeparatesRevisionSelectionAndName() throws {
         let select = try CitizenSdkFlutterCodec.decode(method: "setActiveWallet", arguments: [2, "sdk", 1, "18446744073709551615", Int64(UInt32.max)])
@@ -313,9 +314,6 @@ final class CitizenSDKFlutterCodecTests: XCTestCase {
             "deleteWallet",
             "reconcileWalletCleanup",
             "signWalletPayload",
-            "deriveApplicationKey",
-            "deriveApplicationKeys",
-            "prepareApplicationKeys",
             "beginSigning",
             "consumeExternalSignature",
             "cancelSigning",
@@ -396,15 +394,6 @@ final class CitizenSDKFlutterCodecTests: XCTestCase {
             "7", [account, destination]]
         requests["signWalletPayload"] = [version, "session-1", sequence, account,
                                           FlutterStandardTypedData(bytes: Data([1]))]
-        requests["deriveApplicationKey"] = [version, "session-1", sequence, account,
-            FlutterStandardTypedData(bytes: Data(repeating: 0, count: 32)),
-            FlutterStandardTypedData(bytes: Data([1]))]
-        requests["deriveApplicationKeys"] = [version, "session-1", sequence, account,
-            FlutterStandardTypedData(bytes: Data(repeating: 0, count: 32)),
-            [FlutterStandardTypedData(bytes: Data([1])), FlutterStandardTypedData(bytes: Data([2]))]]
-        requests["prepareApplicationKeys"] = [version, "session-1", sequence, account,
-            FlutterStandardTypedData(bytes: Data(count: 32)), [FlutterStandardTypedData(bytes: Data([1]))],
-            FlutterStandardTypedData(bytes: Data(count: 32))]
         requests["beginSigning"] = [version, "session-1", sequence, account,
             FlutterStandardTypedData(bytes: Data([1])), "raw",
             FlutterStandardTypedData(bytes: Data()), "none", NSNumber(value: 0), NSNumber(value: 120)]

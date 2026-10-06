@@ -124,16 +124,6 @@ internal object CitizenSdkNativeCodec {
                 ),
             )
             28L -> CitizenSdkNativeResult.TransactionExecution(reader.transactionExecution())
-            29L -> CitizenSdkNativeResult.ApplicationKey(reader.fixed(32))
-            30L -> CitizenSdkNativeResult.ApplicationKeys(
-                List(reader.boundedCount(16, "application key count").also { check(it > 0) }) { reader.fixed(32) },
-            )
-            31L -> CitizenSdkNativeResult.ApplicationKeyPreparation(
-                org.citizen.sdk.CitizenApplicationKeyPreparation(
-                    List(reader.boundedCount(16, "application key count").also { check(it > 0) }) { reader.fixed(32) },
-                    if (reader.u32Long().also { check(it <= 1) } == 1L) reader.fixed(64) else null,
-                ),
-            )
             else -> throw CitizenSdkException(
                 CitizenSdkErrorCode.INTEGRITY,
                 "JNI returned unsupported result kind $kind",
@@ -250,7 +240,7 @@ internal object CitizenSdkNativeCodec {
             val created = u64Text()
             val master = fixed(32)
             val active = fixed(32)
-            val count = boundedCount(1990, "wallet account count")
+            val count = boundedCount(CitizenSdkInputLimits.MAX_WALLET_ACCOUNTS, "wallet account count", 32)
             val accounts = walletAccounts(count)
             return CitizenWalletProfile(origin, walletIndex, created, master, active, accounts, text())
         }
@@ -269,14 +259,14 @@ internal object CitizenSdkNativeCodec {
             val header = if (bool()) ProfileHeader(
                 oneBasedEnum(CitizenWalletOrigin.entries, "wallet origin"),
                 u32Long(), u64Text(), fixed(32), fixed(32),
-                boundedCount(1990, "hot wallet account count"), text(),
+                boundedCount(CitizenSdkInputLimits.MAX_WALLET_ACCOUNTS, "hot wallet account count", 32), text(),
             ) else null
-            val count = boundedCount(3980, "wallet state account count")
+            val count = boundedCount(CitizenSdkInputLimits.MAX_WALLET_CATALOG_ACCOUNTS, "wallet state account count", 32)
             val accounts = ArrayList<CitizenWalletStateAccount>(count)
             repeat(count) { index ->
                 val mode = oneBasedEnum(CitizenWalletSignMode.entries, "wallet sign mode")
                 val walletIndex = u32Long()
-                val accountIndex = if (bool()) boundedU32Long(1989, "wallet account index") else null
+                val accountIndex = if (bool()) boundedU32Long(CitizenSdkInputLimits.MAX_ACCOUNT_INDEX.toLong(), "wallet account index") else null
                 val accountId = fixed(32)
                 val value = CitizenWalletStateAccount(
                     mode, walletIndex, accountIndex, accountId, text(), text(), u64Text(), bool(),
@@ -327,7 +317,7 @@ internal object CitizenSdkNativeCodec {
                 check(address == null || address.toByteArray(Charsets.UTF_8).size <= 128)
                 val rawMode = boundedU32Long(2, "diagnostic sign mode").toInt()
                 val mode = if (rawMode == 0) null else CitizenWalletSignMode.entries[rawMode - 1]
-                val targetCount = boundedCount(1990, "cleanup account count")
+                val targetCount = boundedCount(CitizenSdkInputLimits.MAX_WALLET_ACCOUNTS, "cleanup account count", 32)
                 val wide = bool()
                 check(targetCount > 0 || !wide)
                 val ids = List(targetCount) { fixed(32) }
@@ -384,13 +374,13 @@ internal object CitizenSdkNativeCodec {
         }
 
         fun walletAccounts(): List<CitizenWalletAccount> =
-            walletAccounts(boundedCount(1990, "wallet account result count"))
+            walletAccounts(boundedCount(CitizenSdkInputLimits.MAX_WALLET_ACCOUNTS, "wallet account result count", 32))
 
         private fun walletAccounts(count: Int): List<CitizenWalletAccount> =
             ArrayList<CitizenWalletAccount>(count).also { accounts ->
                 repeat(count) {
                     accounts += CitizenWalletAccount(
-                        index = boundedU32Long(1989, "wallet account index"),
+                        index = boundedU32Long(CitizenSdkInputLimits.MAX_ACCOUNT_INDEX.toLong(), "wallet account index"),
                         accountId = fixed(32),
                         ss58Address = text(),
                         name = if (bool()) text() else null,
@@ -467,9 +457,10 @@ internal object CitizenSdkNativeCodec {
             )
         }
 
-        fun boundedCount(maximum: Int, label: String): Int {
+        fun boundedCount(maximum: Int, label: String, minimumBytes: Int = 1): Int {
             val value = u32Long()
-            check(value <= maximum.toLong()) { "$label exceeds $maximum" }
+            // 每项至少一个字节；先核实真实余量，拒绝巨大伪造计数后再分配。
+            check(value <= maximum.toLong() && value <= (buffer.remaining() / minimumBytes).toLong()) { "$label exceeds its boundary" }
             return value.toInt()
         }
 

@@ -141,14 +141,14 @@ void validate_profile(const Value &value) {
   (void)u64_text(profile[2]);
   const auto master = account(profile[3]), active_id = account(profile[4]);
   const auto *accounts = std::get_if<Value::List>(&profile[5].data);
-  require(accounts != nullptr && !accounts->empty() && accounts->size() <= 1990,
+  require(accounts != nullptr && !accounts->empty() && accounts->size() <= kMaximumWalletAccounts,
           CITIZENSDK_ERROR_INTEGRITY, "Wallet account closure is invalid");
   std::set<std::array<uint8_t, 32>> ids;
   std::set<int64_t> indices;
   unsigned active_count = 0; bool master_found = false, active_matches = false;
   for (const auto &item : *accounts) {
     const auto &fields = semantic_tuple(item, 6);
-    const auto index = semantic_int(fields[0], 1989);
+    const auto index = semantic_int(fields[0], kMaximumAccountIndex);
     const auto id = account(fields[1]); std::array<uint8_t, 32> key{};
     std::copy(std::begin(id.bytes), std::end(id.bytes), key.begin());
     require(ids.insert(key).second && indices.insert(index).second,
@@ -179,7 +179,7 @@ void validate_wallet_state(const Value &value) {
           CITIZENSDK_ERROR_INTEGRITY, "Wallet initialization flags are invalid");
   validate_profile(state[1]);
   const auto *accounts = std::get_if<Value::List>(&state[2].data);
-  require(accounts != nullptr && accounts->size() <= 3980,
+  require(accounts != nullptr && accounts->size() <= kMaximumCatalogAccounts,
           CITIZENSDK_ERROR_INTEGRITY, "Wallet state account collection is invalid");
   const auto *diagnostics = std::get_if<Value::List>(&state[6].data);
   require(diagnostics != nullptr && diagnostics->size() <= 1991,
@@ -196,7 +196,7 @@ void validate_wallet_state(const Value &value) {
     const auto wallet_index = semantic_int(fields[1], UINT32_MAX);
     wallet_indices.insert(wallet_index);
     const bool has_account_index = !null_value(fields[2]);
-    if (has_account_index) (void)semantic_int(fields[2], 1989);
+    if (has_account_index) (void)semantic_int(fields[2], kMaximumAccountIndex);
     const auto id = account(fields[3]); std::array<uint8_t, 32> key{};
     std::copy(std::begin(id.bytes), std::end(id.bytes), key.begin());
     const auto ss58 = semantic_text(fields[4]);
@@ -235,7 +235,7 @@ void validate_wallet_state(const Value &value) {
             CITIZENSDK_ERROR_INTEGRITY, "Diagnostic sign mode is invalid");
     if (!null_value(fields[6])) {
       const auto &targets = semantic_tuple(fields[6], 2);
-      const auto &accounts = bounded_list(targets[0], 1990, 1);
+      const auto &accounts = bounded_list(targets[0], kMaximumWalletAccounts, 1);
       (void)semantic_bool(targets[1]);
       std::optional<std::array<uint8_t, 32>> previous;
       for (const auto &value : accounts) {
@@ -263,7 +263,7 @@ void validate_wallet_state(const Value &value) {
       });
       require(projected != accounts->end(), CITIZENSDK_ERROR_INTEGRITY, "Missing hot account projection");
       const auto &record = semantic_tuple(*projected, 8);
-      require(semantic_int(record[2], 1989) == semantic_int(fields[0], 1989) &&
+      require(semantic_int(record[2], kMaximumAccountIndex) == semantic_int(fields[0], kMaximumAccountIndex) &&
               semantic_text(record[4]) == semantic_text(fields[2]) && semantic_text(record[5]) == semantic_text(fields[3]) &&
               u64_text(record[6]) == u64_text(fields[4]), CITIZENSDK_ERROR_INTEGRITY, "Hot account projection drifted");
     }
@@ -405,9 +405,6 @@ constexpr const char *kMethods[] = {
     "deleteWallet",
     "reconcileWalletCleanup",
     "signWalletPayload",
-    "deriveApplicationKey",
-    "deriveApplicationKeys",
-    "prepareApplicationKeys",
     "beginSigning",
     "consumeExternalSignature",
     "cancelSigning",
@@ -1179,8 +1176,8 @@ DecodedRequest decode_request(const std::string &name, FlValue *arguments) {
           std::set<uint32_t> unique;
           for (const auto &item : bounded_list(fields[5], 1989)) {
             const auto index = integer(item);
-            require(index >= 1 && index <= 1989 && unique.insert(static_cast<uint32_t>(index)).second,
-                    CITIZENSDK_ERROR_INVALID_ARGUMENT, "indices must be unique values in 1...1989");
+            require(index >= 1 && index <= kMaximumAccountIndex && unique.insert(static_cast<uint32_t>(index)).second,
+                    CITIZENSDK_ERROR_INVALID_ARGUMENT, "indices must be unique values in 1...19890604");
             result.indices.push_back(static_cast<uint32_t>(index));
           }
         }
@@ -1283,7 +1280,7 @@ DecodedRequest decode_request(const std::string &name, FlValue *arguments) {
                                             result.wallet_revision);
         require(parsed.ec == std::errc{} && parsed.ptr == revision.data() + revision.size(),
                 CITIZENSDK_ERROR_INVALID_ARGUMENT, "expectedRevision is outside uint64");
-        for (const auto &item : bounded_list(fields[4], 3980))
+        for (const auto &item : bounded_list(fields[4], kMaximumCatalogAccounts))
           result.account_ids.push_back(account(item));
         break;
       }
@@ -1293,49 +1290,6 @@ DecodedRequest decode_request(const std::string &name, FlValue *arguments) {
         require(bytes != nullptr && bytes->size() <= kMaximumBytes,
                 CITIZENSDK_ERROR_INVALID_ARGUMENT, "Signing payload must be bytes of at most 16 MiB");
         result.payload = *bytes; break;
-      }
-      case Method::derive_application_key: {
-        (void)list(root, 6); result.account_id = account(fields[3]);
-        const auto *salt = std::get_if<Value::Bytes>(&fields[4].data);
-        const auto *info = std::get_if<Value::Bytes>(&fields[5].data);
-        require(salt != nullptr && salt->size() == 32 && info != nullptr &&
-                    !info->empty() && info->size() <= 256,
-                CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                "Application key salt/info is invalid");
-        result.application_key_salt = *salt;
-        result.application_key_info = *info; break;
-      }
-      case Method::derive_application_keys: {
-        (void)list(root, 6); result.account_id = account(fields[3]);
-        const auto *salt = std::get_if<Value::Bytes>(&fields[4].data);
-        require(salt != nullptr && salt->size() == 32,
-                CITIZENSDK_ERROR_INVALID_ARGUMENT, "Application key batch salt is invalid");
-        result.application_key_salt = *salt;
-        for (const auto &item : bounded_list(fields[5], 16)) {
-          const auto *info = std::get_if<Value::Bytes>(&item.data);
-          require(info != nullptr && !info->empty() && info->size() <= 256,
-                  CITIZENSDK_ERROR_INVALID_ARGUMENT, "Application key batch info is invalid");
-          result.application_key_infos.push_back(*info);
-        }
-        break;
-      }
-      case Method::prepare_application_keys: {
-        (void)list(root, 7); result.account_id = account(fields[3]);
-        const auto *salt = std::get_if<Value::Bytes>(&fields[4].data);
-        require(salt != nullptr && salt->size() == 32,
-                CITIZENSDK_ERROR_INVALID_ARGUMENT, "Application key batch salt is invalid");
-        result.application_key_salt = *salt;
-        for (const auto &item : bounded_list(fields[5], 16)) {
-          const auto *info = std::get_if<Value::Bytes>(&item.data);
-          require(info != nullptr && !info->empty() && info->size() <= 256,
-                  CITIZENSDK_ERROR_INVALID_ARGUMENT, "Application key batch info is invalid");
-          result.application_key_infos.push_back(*info);
-        }
-        const auto *message = std::get_if<Value::Bytes>(&fields[6].data);
-        require(message != nullptr && (message->empty() || message->size() == 32),
-                CITIZENSDK_ERROR_INVALID_ARGUMENT, "Preparation message must be empty or 32 bytes");
-        result.payload = *message;
-        break;
       }
       case Method::begin_signing: {
         (void)list(root, 10); result.account_id = account(fields[3]);
@@ -2179,44 +2133,6 @@ Value copy_public_result(Method method, citizensdk_result_handle_t result) {
       Value::Bytes bytes(64); check_code(citizensdk_result_get_signature(result, bytes.data()));
       return checked(tuple({Value::bytes(std::move(bytes))}));
     }
-    case Method::derive_application_key: {
-      (void)inspect_result(result, CITIZENSDK_RESULT_APPLICATION_KEY);
-      Value::Bytes bytes(32);
-      check_code(citizensdk_result_get_application_key(result, bytes.data()));
-      return checked(tuple({Value::sensitive_bytes(std::move(bytes))}));
-    }
-    case Method::derive_application_keys: {
-      const auto info = inspect_result(result, CITIZENSDK_RESULT_APPLICATION_KEYS);
-      require(info.payload_len >= 32 && info.payload_len <= 16 * 32 &&
-                  info.payload_len % 32 == 0,
-              CITIZENSDK_ERROR_INTEGRITY, "Application key batch result size is invalid");
-      Value::List keys;
-      for (uint32_t index = 0; index < info.payload_len / 32; ++index) {
-        auto key = Value::sensitive_bytes(Value::Bytes(32));
-        auto &bytes = std::get<Value::Bytes>(key.data);
-        check_code(citizensdk_result_get_application_key_at(result, index, bytes.data()));
-        keys.push_back(std::move(key));
-      }
-      return checked(tuple({Value::list(std::move(keys))}));
-    }
-    case Method::prepare_application_keys: {
-      const auto info = inspect_result(result, CITIZENSDK_RESULT_APPLICATION_KEY_PREPARATION);
-      require(info.payload_len >= 32 && info.payload_len <= 16 * 32 &&
-                  info.payload_len % 32 == 0,
-              CITIZENSDK_ERROR_INTEGRITY, "Application key batch result size is invalid");
-      Value::List keys;
-      for (uint32_t index = 0; index < info.payload_len / 32; ++index) {
-        auto key = Value::sensitive_bytes(Value::Bytes(32));
-        auto &bytes = std::get<Value::Bytes>(key.data);
-        check_code(citizensdk_result_get_application_key_at(result, index, bytes.data()));
-        keys.push_back(std::move(key));
-      }
-      Value::Bytes signature(64); uint8_t present = 0;
-      check_code(citizensdk_result_get_application_preparation_signature(result, signature.data(), &present));
-      require(present <= 1, CITIZENSDK_ERROR_INTEGRITY, "Preparation signature presence is invalid");
-      if (!present) signature.clear();
-      return checked(tuple({Value::list(std::move(keys)), Value::bytes(std::move(signature))}));
-    }
     case Method::begin_signing: case Method::consume_external_signature:
       (void)inspect_result(result, CITIZENSDK_RESULT_SIGNING_OUTCOME);
       return checked(tuple({copy_signing_outcome(result)}));
@@ -2413,7 +2329,7 @@ void validate_public_value(Method method, const Value &value) {
       (void)semantic_tuple(value, 0);
       return;
     }
-    const auto &fields = semantic_tuple(value, method == Method::prepare_application_keys ? 2 : 1);
+    const auto &fields = semantic_tuple(value, 1);
     const auto &item = fields[0];
     switch (method) {
       case Method::respond_credential: case Method::cancel_credential:
@@ -2569,37 +2485,6 @@ void validate_public_value(Method method, const Value &value) {
         const auto *bytes = std::get_if<Value::Bytes>(&item.data);
         require(bytes != nullptr && bytes->size() == 64, CITIZENSDK_ERROR_INTEGRITY,
                 "sr25519 public signature must be 64 bytes"); return;
-      }
-      case Method::derive_application_key: {
-        const auto *bytes = std::get_if<Value::Bytes>(&item.data);
-        require(bytes != nullptr && bytes->size() == 32,
-                CITIZENSDK_ERROR_INTEGRITY,
-                "Application key must contain exactly 32 bytes"); return;
-      }
-      case Method::derive_application_keys: {
-        const auto *keys = std::get_if<Value::List>(&item.data);
-        require(keys != nullptr && !keys->empty() && keys->size() <= 16,
-                CITIZENSDK_ERROR_INTEGRITY, "Application key batch count is invalid");
-        for (const auto &key : *keys) {
-          const auto *bytes = std::get_if<Value::Bytes>(&key.data);
-          require(bytes != nullptr && bytes->size() == 32,
-                  CITIZENSDK_ERROR_INTEGRITY, "Application key batch item is invalid");
-        }
-        return;
-      }
-      case Method::prepare_application_keys: {
-        const auto *keys = std::get_if<Value::List>(&item.data);
-        require(keys != nullptr && !keys->empty() && keys->size() <= 16,
-                CITIZENSDK_ERROR_INTEGRITY, "Application key batch count is invalid");
-        for (const auto &key : *keys) {
-          const auto *bytes = std::get_if<Value::Bytes>(&key.data);
-          require(bytes != nullptr && bytes->size() == 32,
-                  CITIZENSDK_ERROR_INTEGRITY, "Application key batch item is invalid");
-        }
-        const auto *signature = std::get_if<Value::Bytes>(&fields[1].data);
-        require(signature != nullptr && (signature->empty() || signature->size() == 64),
-                CITIZENSDK_ERROR_INTEGRITY, "Preparation signature size is invalid");
-        return;
       }
       case Method::begin_signing: case Method::consume_external_signature: {
         const auto &outcome = semantic_tuple(item, 7);

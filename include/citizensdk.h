@@ -64,7 +64,7 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_verify_signature(
  * Parsing returns the Core's expanded JSON, including canonical_text and kind.
  * The SDK owns expiry time. No platform decodes QR_V1 wire fields itself.
  * QR_V1码型及用途允许集由Core唯一解释；冷导入只允许账户码，
- * 其它原有用户/转账/用途钥码型按各自用途保留。 */
+ * 用户与转账码型按各自用途保留；码型只允许1至5，用途只允许1至5、7、8。 */
 CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_parse(
     citizensdk_handle_t handle, citizensdk_bytes_view_t text,
     uint8_t *output, uint64_t output_capacity, uint64_t *out_required);
@@ -468,22 +468,6 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_sign_wallet_payload(
     citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
     citizensdk_bytes_view_t message,
     citizensdk_request_id_t *out_request_id);
-CITIZENSDK_API citizensdk_error_code_t citizensdk_derive_application_key(
-    citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
-    citizensdk_bytes_view_t salt, citizensdk_bytes_view_t info,
-    citizensdk_request_id_t *out_request_id);
-/* 1..16 个 info 在一次金库认证内逐项执行与单钥接口相同的 HKDF。 */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_derive_application_keys(
-    citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
-    citizensdk_bytes_view_t salt, const citizensdk_bytes_view_t *infos,
-    uint32_t info_count, citizensdk_request_id_t *out_request_id);
-/* 同一认证派生并可选签32字节原始消息，空消息表示不签名。 */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_prepare_application_keys(
-    citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
-    citizensdk_bytes_view_t salt, const citizensdk_bytes_view_t *infos,
-    uint32_t info_count, citizensdk_bytes_view_t signing_message, citizensdk_request_id_t *out_request_id);
-CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_application_preparation_signature(
-    citizensdk_result_handle_t result, uint8_t *out_signature_64, uint8_t *out_present);
 
 /* Product-independent transaction preparation. call_data is one complete canonical opaque SCALE
  * RuntimeCall of 1..1MiB. Core reads the exact best runtime and source nonce; callers cannot
@@ -656,10 +640,6 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_wallet_account(
     uint64_t *out_name_required);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_signature(
     citizensdk_result_handle_t result, uint8_t *out_signature_64);
-CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_application_key(
-    citizensdk_result_handle_t result, uint8_t *out_key_32);
-CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_application_key_at(
-    citizensdk_result_handle_t result, uint32_t index, uint8_t *out_key_32);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_prepared_wallet(
     citizensdk_result_handle_t result,
     citizensdk_prepared_wallet_info_t *out_info);

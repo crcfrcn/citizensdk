@@ -177,7 +177,7 @@ void main() {
     await sdk.close();
   });
 
-  test('链分页、Runtime API 与应用派生钥只投影固定通用合同', () async {
+  test('链分页与Runtime API只投影固定通用合同', () async {
     final sdk = await CitizenSdk.open();
     final block = CitizenBlockRef(
       hash: '0x${'11' * 32}',
@@ -194,46 +194,8 @@ void main() {
       'CitizenApi_items',
       Uint8List(0),
     );
-    final key = await sdk.wallet
-        .deriveApplicationKey(
-          accountId: '0x${'22' * 32}',
-          salt: Uint8List(32),
-          info: Uint8List.fromList(<int>[1]),
-        )
-        .result;
-    final batch = await (sdk.wallet as CitizenSdkWalletBatch)
-        .deriveApplicationKeys(
-          accountId: '0x${'22' * 32}',
-          salt: Uint8List(32),
-          infos: <Uint8List>[
-            Uint8List.fromList(<int>[1]),
-            Uint8List.fromList(<int>[2]),
-          ],
-        )
-        .result;
     expect(keys, hasLength(2));
     expect(runtime, <int>[7, 8]);
-    expect(key, hasLength(32));
-    expect(batch, hasLength(2));
-    final prepared = await (sdk.wallet as CitizenSdkWalletBatch)
-        .prepareApplicationKeys(
-          accountId: '0x${'22' * 32}',
-          salt: Uint8List(32),
-          infos: [
-            Uint8List.fromList([1]),
-            Uint8List.fromList([2]),
-          ],
-          signingMessage: Uint8List(32),
-        )
-        .result;
-    expect(prepared.keys, hasLength(2));
-    expect(prepared.signature, hasLength(64));
-    prepared.dispose();
-    expect(
-      prepared.keys.every((key) => key.every((byte) => byte == 0)),
-      isTrue,
-    );
-    expect(batch.every((value) => value.length == 32), isTrue);
     await sdk.close();
   });
 }
@@ -367,29 +329,6 @@ final class _FacadePlatform implements CitizenSdkPlatform {
         arguments[2],
         <Object?>[
           Uint8List.fromList(<int>[7, 8]),
-        ],
-      ],
-      'deriveApplicationKey' => <Object?>[
-        2,
-        'session-1',
-        arguments[2],
-        <Object?>[Uint8List(32)],
-      ],
-      'prepareApplicationKeys' => <Object?>[
-        2,
-        'session-1',
-        arguments[2],
-        <Object?>[
-          <Uint8List>[Uint8List(32), Uint8List(32)],
-          Uint8List(64),
-        ],
-      ],
-      'deriveApplicationKeys' => <Object?>[
-        2,
-        'session-1',
-        arguments[2],
-        <Object?>[
-          <Uint8List>[Uint8List(32), Uint8List(32)],
         ],
       ],
       _ => throw StateError('未预期 method：$method'),

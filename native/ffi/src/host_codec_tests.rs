@@ -749,3 +749,35 @@ fn wallet_v3_round_trips_independent_hot_name_without_changing_account_label() {
         assert!(decode_wallet_state(&encoded[..length]).is_err(), "截断不能返回部分目录");
     }
 }
+
+#[test]
+fn sparse_high_hot_index_and_independent_cold_index_survive_record_roundtrip() {
+    use citizen_sdk_contracts::{WalletAccount, WalletOrigin, WalletProfile, MAX_WALLET_ACCOUNT_INDEX};
+    let generation = VaultGeneration::from_bytes([1; 16]);
+    let master = AccountId32::from_bytes([4; 32]);
+    let child = AccountId32::from_bytes([5; 32]);
+    let cold_id = AccountId32::from_bytes([6; 32]);
+    let zero = WalletAccount::try_new(0, master, secret_ref(0, 1, 2, 4),
+        citizen_ss58_address(master), "账户0", 1).unwrap();
+    let high = WalletAccount::try_new(MAX_WALLET_ACCOUNT_INDEX, child, secret_ref(0, 1, 3, 5),
+        citizen_ss58_address(child), "高序号", 2).unwrap();
+    let profile = WalletProfile::try_new(0, generation, master, WalletOrigin::Imported,
+        1, child, vec![zero, high]).unwrap();
+    let cold_index = MAX_WALLET_ACCOUNT_INDEX + 1;
+    let cold = ColdWalletAccount::try_new(cold_index, cold_id,
+        citizen_ss58_address(cold_id), "独立冷账户", 3).unwrap();
+    let state = WalletState::try_from_catalog_parts(1, Some(profile), vec![cold],
+        vec![master, child, cold_id], cold_index + 1, None, None, vec![]).unwrap();
+    let bytes = encode_wallet_state(&state).unwrap();
+    assert!(bytes.len() < 2048);
+    assert_eq!(decode_wallet_state(&bytes).unwrap(), state);
+    // 伪造计数仍在结构上限内，但不足以对应实际记录；必须在分配账户数组前拒绝。
+    let mut payload = decode_host_record(HostRecordDomain::WalletProfile, &bytes).unwrap().payload().to_vec();
+    let mut marker = 2_u32.to_le_bytes().to_vec();
+    marker.extend_from_slice(&0_u32.to_le_bytes());
+    marker.extend_from_slice(master.as_bytes());
+    let offset = payload.windows(marker.len()).position(|bytes| bytes == marker).unwrap();
+    payload[offset..offset + 4].copy_from_slice(&50_000_u32.to_le_bytes());
+    let malformed = encode_host_record(HostRecordDomain::WalletProfile, &payload).unwrap();
+    assert!(decode_wallet_state(&malformed).is_err());
+}

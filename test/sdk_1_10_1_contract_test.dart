@@ -21,8 +21,8 @@ void main() {
     expect(CitizenSdkModules.full, 63);
     expect(CitizenCapabilityName.values, hasLength(10));
     expect(CitizenSdkErrorCode.values, hasLength(22));
-    // 新增一次认证批量派生后，现行通道闭集为96；六模块与其它公开基数不变。
-    expect(CitizenSdkFlutterCodec.methods, hasLength(96));
+    // 现行通道仅保留93项公开方法；六模块与其它公开基数不变。
+    expect(CitizenSdkFlutterCodec.methods, hasLength(93));
 
     final facade = File('lib/src/api/citizen_sdk.dart').readAsStringSync();
     for (final declaration in <String>[

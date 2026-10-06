@@ -36,8 +36,8 @@ final class CitizenSDKWalletInputTests: XCTestCase {
     }
 
     func testExplicitIndicesAreBoundedWithoutAnAppAssignedNextIndex() {
-        XCTAssertNoThrow(try CitizenSDKInputLimits.additionalIndices([1, 1989]))
-        for values: [UInt32] in [[], [0], [1990], [1, 1], Array(repeating: 1, count: 1990)] {
+        XCTAssertNoThrow(try CitizenSDKInputLimits.additionalIndices([1, 1989, 1990, 19_890_604]))
+        for values: [UInt32] in [[], [0], [19_890_605], [8, 19_890_605], [1, 1], Array(repeating: 1, count: 1990)] {
             XCTAssertThrowsError(try CitizenSDKInputLimits.additionalIndices(values))
         }
     }

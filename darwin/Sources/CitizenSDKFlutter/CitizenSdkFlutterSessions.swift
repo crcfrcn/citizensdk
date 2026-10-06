@@ -398,21 +398,6 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         case let .sign(_, _, accountID, payload): runOperation(session, request, result, {
             try session.sdk.signing.sign(accountID: accountID, message: payload)
         }) { [CitizenSdkFlutterCodec.signature($0)] }
-        case let .deriveApplicationKey(_, _, accountID, salt, info): runOperation(session, request, result, {
-            try session.sdk.deriveApplicationKey(accountID: accountID, salt: salt, info: info)
-        }) { [FlutterStandardTypedData(bytes: $0)] }
-        case let .deriveApplicationKeys(_, _, accountID, salt, infos): runOperation(session, request, result, {
-            try session.sdk.deriveApplicationKeys(accountID: accountID, salt: salt, infos: infos)
-        }) { [$0.map { FlutterStandardTypedData(bytes: $0) }] }
-        case let .prepareApplicationKeys(_, _, accountID, salt, infos, message): runOperation(session, request, result, {
-            try session.sdk.prepareApplicationKeys(accountID: accountID, salt: salt, infos: infos,
-                signingMessage: message.isEmpty ? nil : message)
-        }) { value in
-            var material = value
-            defer { material.dispose() }
-            return [material.keys.map { FlutterStandardTypedData(bytes: $0) },
-                    FlutterStandardTypedData(bytes: material.signature ?? Data())]
-        }
         case let .beginSigning(_, _, intent): runOperation(session, request, result, { try session.sdk.signing.begin(intent) }) {
             [CitizenSdkFlutterCodec.signingOutcome($0)]
         }

@@ -380,28 +380,6 @@ class HostTransport final : public NativeTransport, public std::enable_shared_fr
       case Method::reconcile_wallet_cleanup: return citizensdk_reconcile_wallet_cleanup(sdk, out);
       case Method::sign_wallet_payload:
         return citizensdk_sign_wallet_payload(sdk, &r.account_id, view(r.payload), out);
-      case Method::derive_application_key:
-        return citizensdk_derive_application_key(
-            sdk, &r.account_id, view(r.application_key_salt),
-            view(r.application_key_info), out);
-      case Method::derive_application_keys: {
-        // 一批 info 只交给 Core 一次，设备金库由同一请求认证和解封。
-        std::vector<citizensdk_bytes_view_t> infos;
-        infos.reserve(r.application_key_infos.size());
-        for (const auto &info : r.application_key_infos) infos.push_back(view(info));
-        return citizensdk_derive_application_keys(
-            sdk, &r.account_id, view(r.application_key_salt), infos.data(),
-            static_cast<uint32_t>(infos.size()), out);
-      }
-      case Method::prepare_application_keys: {
-        // 一批 info 只交给 Core 一次，设备金库由同一请求认证和解封。
-        std::vector<citizensdk_bytes_view_t> infos;
-        infos.reserve(r.application_key_infos.size());
-        for (const auto &info : r.application_key_infos) infos.push_back(view(info));
-        return citizensdk_prepare_application_keys(
-            sdk, &r.account_id, view(r.application_key_salt), infos.data(),
-            static_cast<uint32_t>(infos.size()), view(r.payload), out);
-      }
       case Method::begin_signing:
         return citizensdk_begin_signing(
             sdk, &r.account_id, view(r.payload), r.signing_transform,

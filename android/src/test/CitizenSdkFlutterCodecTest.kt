@@ -7,6 +7,22 @@ import org.junit.Test
 
 class CitizenSdkFlutterCodecTest {
     @Test
+    fun arbitraryHighWalletIndicesKeepTheBatchBoundAndRejectOverflow() {
+        for (indices in listOf(listOf(1, 1989, 1990, 19890604), listOf(60000))) {
+            val request = CitizenSdkFlutterCodec.decode("addWalletAccounts",
+                listOf(2, "synthetic", 1L, "synthetic", "", indices))
+            assertEquals("addWalletAccounts", CitizenSdkFlutterCodec.requestMethod(request))
+        }
+        for (indices in listOf(listOf(0), listOf(-1), listOf(19890605),
+                listOf(8, 19890605), listOf(8, 8), List(1990) { it + 1 })) {
+            assertThrows(CitizenSdkFlutterCodec.ContractFailure::class.java) {
+                CitizenSdkFlutterCodec.decode("addWalletAccounts",
+                    listOf(2, "synthetic", 1L, "synthetic", "", indices))
+            }
+        }
+    }
+
+    @Test
     fun inspectionFactsAndOwnedRequestsNeverConstructNormalAccounts() {
         val id = ByteArray(32) { 1 }
         val diagnostic = CitizenWalletDiagnostic(0, "异常", id, null, 3, CitizenWalletSignMode.HOT,
@@ -316,9 +332,6 @@ class CitizenSdkFlutterCodecTest {
                 "deleteWallet",
                 "reconcileWalletCleanup",
                 "signWalletPayload",
-                "deriveApplicationKey",
-                "deriveApplicationKeys",
-                "prepareApplicationKeys",
                 "beginSigning",
                 "consumeExternalSignature",
                 "cancelSigning",
@@ -418,14 +431,6 @@ class CitizenSdkFlutterCodecTest {
         requests["reorderWalletAccountsWithoutDefaultChange"] =
             listOf(2, "session-1", 1L, "7", listOf(account, destination))
         requests["signWalletPayload"] = listOf(2, "session-1", 1L, account, byteArrayOf(1))
-        requests["deriveApplicationKey"] = listOf(
-            2, "session-1", 1L, account, ByteArray(32), byteArrayOf(1),
-        )
-        requests["deriveApplicationKeys"] = listOf(
-            2, "session-1", 1L, account, ByteArray(32), listOf(byteArrayOf(1), byteArrayOf(2)),
-        )
-        requests["prepareApplicationKeys"] = listOf(2, "session-1", 1L, account, ByteArray(32),
-            listOf(byteArrayOf(1), byteArrayOf(2)), ByteArray(32))
         requests["beginSigning"] = listOf(
             2, "session-1", 1L, account, byteArrayOf(1), "raw", byteArrayOf(), "none", 0, 120L,
         )
@@ -568,19 +573,6 @@ class CitizenSdkFlutterCodecTest {
         }
     }
 
-    @Test
-    fun applicationPreparationMessageHasClosedBound() {
-        val account = "0x" + "11".repeat(32)
-        for (size in listOf(0, 32)) {
-            val request = CitizenSdkFlutterCodec.decode("prepareApplicationKeys",
-                listOf(2, "session-1", 1L, account, ByteArray(32), listOf(byteArrayOf(1)), ByteArray(size)))
-            assertTrue(request is CitizenSdkFlutterCodec.Request.PrepareApplicationKeys)
-        }
-        for (size in listOf(1, 31, 33)) assertThrows(CitizenSdkFlutterCodec.ContractFailure::class.java) {
-            CitizenSdkFlutterCodec.decode("prepareApplicationKeys",
-                listOf(2, "session-1", 1L, account, ByteArray(32), listOf(byteArrayOf(1)), ByteArray(size)))
-        }
-    }
 
     @Test
     fun `request resource limits are enforced before projection copies`() {

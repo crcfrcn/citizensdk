@@ -78,9 +78,6 @@ internal enum CitizenSdkFlutterCodec {
         "deleteWallet",
         "reconcileWalletCleanup",
         "signWalletPayload",
-        "deriveApplicationKey",
-        "deriveApplicationKeys",
-        "prepareApplicationKeys",
         "beginSigning",
         "consumeExternalSignature",
         "cancelSigning",
@@ -142,12 +139,6 @@ internal enum CitizenSdkFlutterCodec {
         case coldSS58(session: String, sequence: Int64, address: String, name: String)
         case reorder(session: String, sequence: Int64, expectedRevision: UInt64, accountIDs: [Data])
         case sign(session: String, sequence: Int64, accountID: Data, payload: Data)
-        case deriveApplicationKey(session: String, sequence: Int64, accountID: Data,
-                                  salt: Data, info: Data)
-        case deriveApplicationKeys(session: String, sequence: Int64, accountID: Data,
-                                   salt: Data, infos: [Data])
-        case prepareApplicationKeys(session: String, sequence: Int64, accountID: Data,
-                                    salt: Data, infos: [Data], message: Data)
         case beginSigning(session: String, sequence: Int64, intent: CitizenSigningIntent)
         case externalSignature(method: String, session: String, sequence: Int64,
                                signingSessionID: String, response: String)
@@ -180,9 +171,6 @@ internal enum CitizenSdkFlutterCodec {
                  let .storage(value, _, _, _), let .storageBatch(value, _, _, _),
                  let .storageKeysPage(value, _, _, _, _, _),
                  let .runtimeAPI(value, _, _, _, _),
-                 let .deriveApplicationKey(value, _, _, _, _),
-                 let .deriveApplicationKeys(value, _, _, _, _),
-                 let .prepareApplicationKeys(value, _, _, _, _, _),
                  let .importState(value, _, _): return value
             }
         }
@@ -203,9 +191,6 @@ internal enum CitizenSdkFlutterCodec {
                  let .storage(_, value, _, _), let .storageBatch(_, value, _, _),
                  let .storageKeysPage(_, value, _, _, _, _),
                  let .runtimeAPI(_, value, _, _, _),
-                 let .deriveApplicationKey(_, value, _, _, _),
-                 let .deriveApplicationKeys(_, value, _, _, _),
-                 let .prepareApplicationKeys(_, value, _, _, _, _),
                  let .importState(_, value, _): return value
             }
         }
@@ -232,9 +217,6 @@ internal enum CitizenSdkFlutterCodec {
             case .coldSS58: return "importColdAccountSs58"
             case .reorder: return "reorderWalletAccountsWithoutDefaultChange"
             case .sign: return "signWalletPayload"
-            case .deriveApplicationKey: return "deriveApplicationKey"
-            case .deriveApplicationKeys: return "deriveApplicationKeys"
-            case .prepareApplicationKeys: return "prepareApplicationKeys"
             case .beginSigning: return "beginSigning"
             case .cancelSigning: return "cancelSigning"
             case .beginDefaultChange: return "beginDefaultAccountChange"
@@ -447,8 +429,8 @@ internal enum CitizenSdkFlutterCodec {
                 if method == "addWalletAccounts" {
                     guard let raw = tuple[5] as? [Any?], (1...1989).contains(raw.count) else { throw failure(.invalidArgument, "indices length is invalid") }
                     let values = try raw.map { try integer($0, "index") }
-                    guard values.allSatisfy({ (1...1989).contains($0) }), Set(values).count == values.count else {
-                        throw failure(.invalidArgument, "indices must be unique within 1...1989")
+                    guard values.allSatisfy({ (1...19_890_604).contains($0) }), Set(values).count == values.count else {
+                        throw failure(.invalidArgument, "indices must be unique within 1...19890604")
                     }
                     indices = values.map { UInt32($0) }
                 }
@@ -497,8 +479,8 @@ internal enum CitizenSdkFlutterCodec {
             case "reorderWalletAccountsWithoutDefaultChange":
                 try length(5)
                 let revision = try uint64Decimal(tuple[3], "expectedRevision")
-                guard let raw = tuple[4] as? [Any?], (1...3_980).contains(raw.count) else {
-                    throw failure(.invalidArgument, "accountIds must contain 1...3980 accounts")
+                guard let raw = tuple[4] as? [Any?], (1...19_892_595).contains(raw.count) else {
+                    throw failure(.invalidArgument, "accountIds exceed wallet catalog count boundary")
                 }
                 return .reorder(session: session, sequence: sequence, expectedRevision: revision,
                                 accountIDs: try raw.map(hash32))
@@ -506,48 +488,6 @@ internal enum CitizenSdkFlutterCodec {
                 try length(5)
                 return .sign(session: session, sequence: sequence, accountID: try hash32(tuple[3]),
                              payload: try bytes(tuple[4], maximum: 16 * 1_024 * 1_024))
-            case "deriveApplicationKey":
-                try length(6)
-                let salt = try bytes(tuple[4], maximum: 32)
-                let info = try bytes(tuple[5], maximum: 256)
-                guard salt.count == 32, !info.isEmpty else {
-                    throw failure(.invalidArgument, "application key salt/info is invalid")
-                }
-                return .deriveApplicationKey(
-                    session: session, sequence: sequence, accountID: try hash32(tuple[3]),
-                    salt: salt, info: info)
-            case "deriveApplicationKeys":
-                try length(6)
-                let salt = try bytes(tuple[4], maximum: 32)
-                guard salt.count == 32, let rawInfos = tuple[5] as? [Any],
-                      (1...16).contains(rawInfos.count) else {
-                    throw failure(.invalidArgument, "application key batch is invalid")
-                }
-                let infos = try rawInfos.map { try bytes($0, maximum: 256) }
-                guard infos.allSatisfy({ !$0.isEmpty }) else {
-                    throw failure(.invalidArgument, "application key info is empty")
-                }
-                return .deriveApplicationKeys(
-                    session: session, sequence: sequence, accountID: try hash32(tuple[3]),
-                    salt: salt, infos: infos)
-            case "prepareApplicationKeys":
-                try length(7)
-                let salt = try bytes(tuple[4], maximum: 32)
-                guard salt.count == 32, let rawInfos = tuple[5] as? [Any],
-                      (1...16).contains(rawInfos.count) else {
-                    throw failure(.invalidArgument, "application key batch is invalid")
-                }
-                let infos = try rawInfos.map { try bytes($0, maximum: 256) }
-                guard infos.allSatisfy({ !$0.isEmpty }) else {
-                    throw failure(.invalidArgument, "application key info is empty")
-                }
-                let message = try bytes(tuple[6], maximum: 32)
-                guard message.isEmpty || message.count == 32 else {
-                    throw failure(.invalidArgument, "preparation message must be empty or 32 bytes")
-                }
-                return .prepareApplicationKeys(
-                    session: session, sequence: sequence, accountID: try hash32(tuple[3]),
-                    salt: salt, infos: infos, message: message)
             case "beginSigning":
                 try length(10)
                 let payload = try bytes(tuple[4], maximum: 16 * 1_024 * 1_024)

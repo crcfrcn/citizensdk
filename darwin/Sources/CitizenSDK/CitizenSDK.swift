@@ -252,35 +252,8 @@ public final class CitizenSdk: @unchecked Sendable {
         }
     }
 
-    public func deriveApplicationKey(accountID: Data, salt: Data, info: Data) throws -> CitizenSDKOperation<Data> {
-        let account = try CitizenSDKInputLimits.accountID(accountID)
-        guard salt.count == 32, (1...256).contains(info.count) else {
-            throw CitizenSDKError(.invalidArgument, "application key salt/info is invalid")
-        }
-        return try native.deriveApplicationKey(accountID: account, salt: salt, info: info)
-    }
 
-    public func deriveApplicationKeys(accountID: Data, salt: Data, infos: [Data])
-        throws -> CitizenSDKOperation<[Data]> {
-        let account = try CitizenSDKInputLimits.accountID(accountID)
-        guard salt.count == 32, (1...16).contains(infos.count),
-              infos.allSatisfy({ (1...256).contains($0.count) }) else {
-            throw CitizenSDKError(.invalidArgument, "application key batch salt/infos are invalid")
-        }
-        return try native.deriveApplicationKeys(accountID: account, salt: salt, infos: infos)
-    }
 
-    /// 派生与可选32字节证明共用一次金库认证。
-    public func prepareApplicationKeys(accountID: Data, salt: Data, infos: [Data], signingMessage: Data? = nil)
-        throws -> CitizenSDKOperation<CitizenApplicationKeyPreparation> {
-        let account = try CitizenSDKInputLimits.accountID(accountID)
-        guard salt.count == 32, (1...16).contains(infos.count),
-              infos.allSatisfy({ (1...256).contains($0.count) }),
-              signingMessage == nil || signingMessage?.count == 32 else {
-            throw CitizenSDKError(.invalidArgument, "application key batch salt/infos are invalid")
-        }
-        return try native.prepareApplicationKeys(accountID: account, salt: salt, infos: infos, signingMessage: signingMessage)
-    }
 
     public func importColdAccount(accountID: Data, name: String = "") throws -> CitizenSDKOperation<CitizenWalletState> {
         let account = try CitizenSDKInputLimits.accountID(accountID)
@@ -310,7 +283,7 @@ public final class CitizenSdk: @unchecked Sendable {
     }
 
     public func reorderWalletAccountsWithoutDefaultChange(expectedRevision: UInt64, accountIDs: [Data]) throws -> CitizenSDKOperation<CitizenWalletState> {
-        guard (1...3_980).contains(accountIDs.count) else { throw CitizenSDKError(.invalidArgument, "wallet catalog size is invalid") }
+        guard (1...CitizenSDKInputLimits.maximumCatalogAccounts).contains(accountIDs.count) else { throw CitizenSDKError(.invalidArgument, "wallet catalog size is invalid") }
         return try native.reorderWalletAccounts(expectedRevision: expectedRevision,
             accountIDs: accountIDs.map { try CitizenSDKInputLimits.accountID($0) })
     }

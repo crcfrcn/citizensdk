@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
 
-
 /// 公民身份上链确认(对齐 OP_SIGN_CITIZEN_IDENTITY)。
 const int kOpSignCitizenIdentity = 0x10;
 
@@ -34,12 +33,8 @@ const int kOpSignActivateAdmin = 0x18;
 /// 解密授权(对齐 OP_SIGN_DECRYPT)。
 const int kOpSignDecrypt = 0x19;
 
-/// 广场 BFF 登录挑战(对齐 OP_SIGN_SQUARE_LOGIN;链下 Worker 验签,设备子钥 ES256 签 digest)。
-const int kOpSignSquareLogin = 0x1B;
-
-/// 广场 BFF 设备子钥绑定(对齐 OP_SIGN_SQUARE_DEVICE_BIND；链下 Worker 验签，
-/// 由当前 `account_id` 对应的 sr25519 账户密钥签名)。
-const int kOpSignSquareDeviceBind = 0x1C;
+/// 同一MLS公钥登记；当前CID绑定账户授权，签名域与OP_SIGN_MLS_DEVICE_BIND一致。
+const int kOpSignMlsDeviceBind = 0x1C;
 
 /// 广场 BFF 账户敏感动作：注销/退订(对齐 OP_SIGN_SQUARE_ACTION；链下 Worker 验签，
 /// 由当前 `account_id` 对应的 sr25519 账户密钥签名)。
@@ -48,10 +43,6 @@ const int kOpSignSquareAction = 0x1D;
 /// 本机默认账户切换：由变化前的原默认账户签署完整目标账户顺序。
 /// 只作本机动权校验，不包含 CID/绑定版本，也不提交链。
 const int kOpSignSwitchDefaultAccount = 0x21;
-
-/// 冷钱包账户数据用途钥加密交付：当前绑定账户签署精确 CID/绑定版本、用途、
-/// 一次性会话公钥、nonce 与密文摘要。只作本机验签，不提交链。
-const int kOpSignAccountDataKeyProvision = 0x22;
 
 /// 钱包账户签名模式确认：本机私钥签署目标账户、`hot` 模式与一次性挑战。
 /// 只用于钱包本机重标验证，不提交链。
@@ -87,32 +78,58 @@ const int kAdminNonceLength = 16;
 /// 签名域分隔符 GMB(3 字节 ASCII),单源对齐 core_const::GMB。
 const List<int> kGmbSignDomain = [0x47, 0x4D, 0x42]; // "GMB"
 
-
 /// 原有签名载荷原语的封闭输入；这里仅投影字段，不实现哈希或SCALE算法。
 final class CitizenSigningPayload {
-  CitizenSigningPayload._(this.kind, Map<String, Object?> fields, Uint8List bytes)
-    : fieldsJson = jsonEncode(fields), payloadBytes = Uint8List.fromList(bytes).asUnmodifiableView();
+  CitizenSigningPayload._(
+    this.kind,
+    Map<String, Object?> fields,
+    Uint8List bytes,
+  ) : fieldsJson = jsonEncode(fields),
+      payloadBytes = Uint8List.fromList(bytes).asUnmodifiableView();
   final int kind;
   final String fieldsJson;
   final Uint8List payloadBytes;
 
-  factory CitizenSigningPayload.message({required int opTag, required Uint8List scalePayload}) =>
-    CitizenSigningPayload._(1, {'op_tag': opTag}, scalePayload);
+  factory CitizenSigningPayload.message({
+    required int opTag,
+    required Uint8List scalePayload,
+  }) => CitizenSigningPayload._(1, {'op_tag': opTag}, scalePayload);
   factory CitizenSigningPayload.binaryPrefix(int opTag) =>
-    CitizenSigningPayload._(2, {'op_tag': opTag}, Uint8List(0));
-  factory CitizenSigningPayload.activateAdmin({required String cidNumber, required Uint8List institutionCode,
-    required int kind, required Uint8List signerPublicKey, required BigInt timestamp, required Uint8List nonce}) =>
-    CitizenSigningPayload._(3, {'cid_number': cidNumber, 'institution_code': _payloadHex(institutionCode),
-      'kind': kind, 'signer_public_key': _payloadHex(signerPublicKey),
-      'timestamp': timestamp.toString(), 'nonce': _payloadHex(nonce)}, Uint8List(0));
-  factory CitizenSigningPayload.decryptAdmin({required String cidNumber,
-    required Uint8List signerPublicKey, required BigInt timestamp, required Uint8List nonce}) =>
-    CitizenSigningPayload._(4, {'cid_number': cidNumber, 'signer_public_key': _payloadHex(signerPublicKey),
-      'timestamp': timestamp.toString(), 'nonce': _payloadHex(nonce)}, Uint8List(0));
+      CitizenSigningPayload._(2, {'op_tag': opTag}, Uint8List(0));
+  factory CitizenSigningPayload.activateAdmin({
+    required String cidNumber,
+    required Uint8List institutionCode,
+    required int kind,
+    required Uint8List signerPublicKey,
+    required BigInt timestamp,
+    required Uint8List nonce,
+  }) => CitizenSigningPayload._(3, {
+    'cid_number': cidNumber,
+    'institution_code': _payloadHex(institutionCode),
+    'kind': kind,
+    'signer_public_key': _payloadHex(signerPublicKey),
+    'timestamp': timestamp.toString(),
+    'nonce': _payloadHex(nonce),
+  }, Uint8List(0));
+  factory CitizenSigningPayload.decryptAdmin({
+    required String cidNumber,
+    required Uint8List signerPublicKey,
+    required BigInt timestamp,
+    required Uint8List nonce,
+  }) => CitizenSigningPayload._(4, {
+    'cid_number': cidNumber,
+    'signer_public_key': _payloadHex(signerPublicKey),
+    'timestamp': timestamp.toString(),
+    'nonce': _payloadHex(nonce),
+  }, Uint8List(0));
   factory CitizenSigningPayload.scaleString(String value) =>
-    CitizenSigningPayload._(5, const {}, Uint8List.fromList(utf8.encode(value)));
+      CitizenSigningPayload._(
+        5,
+        const {},
+        Uint8List.fromList(utf8.encode(value)),
+      );
   factory CitizenSigningPayload.u64Le(BigInt value) =>
-    CitizenSigningPayload._(6, {'value': value.toString()}, Uint8List(0));
+      CitizenSigningPayload._(6, {'value': value.toString()}, Uint8List(0));
 }
 
 String _payloadHex(Uint8List bytes) =>

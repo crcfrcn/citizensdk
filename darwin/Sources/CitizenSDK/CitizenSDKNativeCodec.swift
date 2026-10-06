@@ -252,7 +252,7 @@ internal enum CitizenSDKNativeCodec {
             prepare(&stateInfo.struct_size, &stateInfo.abi_version, citizensdk_wallet_state_info_t.self)
             try CitizenSDKChecks.requireOK(citizensdk_result_get_wallet_state(result, &stateInfo),
                                            "Core wallet state is invalid")
-            guard stateInfo.account_count <= 3_980,
+            guard stateInfo.account_count <= UInt32(CitizenSDKInputLimits.maximumCatalogAccounts),
                   stateInfo.has_default_account == 0 || stateInfo.has_default_account == 1,
                   (stateInfo.account_count == 0) == (stateInfo.has_default_account == 0) else {
                 throw CitizenSDKError(.integrity, "Core wallet state descriptor is inconsistent")
@@ -288,7 +288,7 @@ internal enum CitizenSDKNativeCodec {
             }
             let coldWalletIndices = accounts.filter { $0.signMode == .cold }.map(\.walletIndex)
             let hotAccountIndices = accounts.filter { $0.signMode == .hot }.compactMap(\.accountIndex)
-            guard accounts.allSatisfy({ $0.signMode == .cold || ($0.accountIndex ?? 1_990) <= 1_989 }),
+            guard accounts.allSatisfy({ $0.signMode == .cold || ($0.accountIndex ?? UInt32.max) <= CitizenSDKInputLimits.maximumAccountIndex }),
                   Set(accounts.map(\.accountID)).count == accounts.count,
                   Set(coldWalletIndices).count == coldWalletIndices.count,
                   Set(hotAccountIndices).count == hotAccountIndices.count,
@@ -343,7 +343,7 @@ internal enum CitizenSDKNativeCodec {
                 try CitizenSDKChecks.requireOK(citizensdk_wallet_state_get_diagnostic_at(result, index, &info), "诊断读取失败")
                 let id = fixed(info.account_id.bytes, 32)
                 guard info.has_ss58_address <= 1, info.sign_mode <= 2, (1...3).contains(info.diagnostic_reason),
-                      info.cleanup_account_count <= 1990, info.delete_wallet_wide_key <= 1,
+                      info.cleanup_account_count <= UInt32(CitizenSDKInputLimits.maximumWalletAccounts), info.delete_wallet_wide_key <= 1,
                       info.cleanup_account_count > 0 || info.delete_wallet_wide_key == 0,
                       (1...120).contains(info.wallet_name_len), info.ss58_address_len <= 128,
                       info.has_ss58_address != 0 || info.ss58_address_len == 0,
@@ -407,78 +407,8 @@ internal enum CitizenSDKNativeCodec {
         }
     }
 
-    /// Copies the secret result exactly once into caller-owned memory. Core
-    /// zeroizes its retained result when the operation releases the handle.
-    static func applicationKey(_ result: UInt64) throws -> Data {
-        try inspect(result, kind: 29) {
-            var bytes = Data(count: 32)
-            let code = bytes.withUnsafeMutableBytes {
-                citizensdk_result_get_application_key(
-                    result, $0.bindMemory(to: UInt8.self).baseAddress)
-            }
-            try CitizenSDKChecks.requireOK(code, "Core application key result is invalid")
-            return bytes
-        }
-    }
 
-    static func applicationKeys(_ result: UInt64, count: Int) throws -> [Data] {
-        try inspect(result, kind: 30) {
-            var info = citizensdk_result_info_t()
-            prepare(&info.struct_size, &info.abi_version, citizensdk_result_info_t.self)
-            try CitizenSDKChecks.requireOK(citizensdk_result_get_info(result, &info),
-                                           "Core application key batch identity is invalid")
-            guard (1...16).contains(count), info.payload_len == UInt64(count * 32) else {
-                throw CitizenSDKError(.integrity, "Core application key batch size is invalid")
-            }
-            return try (0..<count).map { index in
-                var bytes = Data(count: 32)
-                let code = bytes.withUnsafeMutableBytes {
-                    citizensdk_result_get_application_key_at(
-                        result, UInt32(index), $0.bindMemory(to: UInt8.self).baseAddress)
-                }
-                try CitizenSDKChecks.requireOK(code, "Core application key batch item is invalid")
-                return bytes
-            }
-        }
-    }
 
-    static func applicationKeyPreparation(_ result: UInt64, count: Int, signed: Bool) throws -> CitizenApplicationKeyPreparation {
-        try inspect(result, kind: 31) {
-            var info = citizensdk_result_info_t()
-            prepare(&info.struct_size, &info.abi_version, citizensdk_result_info_t.self)
-            try CitizenSDKChecks.requireOK(citizensdk_result_get_info(result, &info),
-                                           "Core application key batch identity is invalid")
-            guard (1...16).contains(count), info.payload_len == UInt64(count * 32) else {
-                throw CitizenSDKError(.integrity, "Core application key batch size is invalid")
-            }
-            var keys: [Data] = []
-            var committed = false
-            defer { if !committed {
-                for index in keys.indices { keys[index].resetBytes(in: 0..<keys[index].count) }
-            } }
-            for index in 0..<count {
-                var bytes = Data(count: 32)
-                let code = bytes.withUnsafeMutableBytes {
-                    citizensdk_result_get_application_key_at(
-                        result, UInt32(index), $0.bindMemory(to: UInt8.self).baseAddress)
-                }
-                try CitizenSDKChecks.requireOK(code, "Core application key batch item is invalid")
-                keys.append(bytes)
-            }
-            var signature = Data(count: 64)
-            var present: UInt8 = 0
-            let code = signature.withUnsafeMutableBytes {
-                citizensdk_result_get_application_preparation_signature(
-                    result, $0.bindMemory(to: UInt8.self).baseAddress, &present)
-            }
-            try CitizenSDKChecks.requireOK(code, "Core application preparation signature is invalid")
-            guard present == (signed ? 1 : 0) else {
-                throw CitizenSDKError(.integrity, "Core application preparation signature presence is invalid")
-            }
-            committed = true
-            return CitizenApplicationKeyPreparation(keys: keys, signature: signed ? signature : nil)
-        }
-    }
 
     static func signingOutcome(_ result: UInt64) throws -> CitizenSigningOutcome {
         try inspect(result, kind: 22) {
@@ -772,7 +702,7 @@ internal enum CitizenSDKNativeCodec {
         try CitizenSDKChecks.requireOK(citizensdk_result_get_wallet_profile(result, &info), "Core wallet profile is invalid")
         guard info.present == 0 || info.present == 1 else { throw CitizenSDKError(.integrity, "Core profile presence is invalid") }
         if info.present == 0 { return nil }
-        guard info.account_count <= 1_990, let origin = CitizenWalletOrigin(rawValue: info.origin) else {
+        guard info.account_count <= UInt32(CitizenSDKInputLimits.maximumWalletAccounts), let origin = CitizenWalletOrigin(rawValue: info.origin) else {
             throw CitizenSDKError(.integrity, "Core wallet profile descriptor is invalid")
         }
         let accounts = try walletAccounts(result)
@@ -786,7 +716,7 @@ internal enum CitizenSDKNativeCodec {
     private static func walletAccounts(_ result: UInt64) throws -> [CitizenWalletAccount] {
         var count: UInt32 = 0
         try CitizenSDKChecks.requireOK(citizensdk_result_get_wallet_account_count(result, &count), "Core wallet account count is invalid")
-        guard count <= 1_990 else { throw CitizenSDKError(.integrity, "Core wallet account count exceeds the contract") }
+        guard count <= UInt32(CitizenSDKInputLimits.maximumWalletAccounts) else { throw CitizenSDKError(.integrity, "Core wallet account count exceeds the contract") }
         return try (0..<count).map { index in
             var info = citizensdk_wallet_account_info_t()
             prepare(&info.struct_size, &info.abi_version, citizensdk_wallet_account_info_t.self)
@@ -800,7 +730,7 @@ internal enum CitizenSDKNativeCodec {
                 citizensdk_result_get_wallet_account(result, index, &info, ss58, ss58Capacity, ss58Out,
                                                      name, nameCapacity, nameOut)
             }
-            guard info.is_active == 0 || info.is_active == 1 else { throw CitizenSDKError(.integrity, "Core wallet active flag is invalid") }
+            guard (info.is_active == 0 || info.is_active == 1), info.index <= CitizenSDKInputLimits.maximumAccountIndex else { throw CitizenSDKError(.integrity, "Core wallet active flag is invalid") }
             return CitizenWalletAccount(index: info.index, accountID: fixed(info.account_id.bytes, 32),
                                         ss58Address: try text(pair.0), name: pair.1.isEmpty ? nil : try text(pair.1),
                                         createdAtMillis: info.created_at_millis, active: info.is_active == 1)

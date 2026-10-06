@@ -402,8 +402,7 @@ final class _CitizenChain implements CitizenChain {
   }
 }
 
-final class _CitizenSdkWallet
-    implements CitizenSdkWallet, CitizenSdkWalletBatch {
+final class _CitizenSdkWallet implements CitizenSdkWallet {
   const _CitizenSdkWallet(this._session, this._codec);
   final CitizenSdkFlutterSession _session;
   final CitizenSdkFlutterCodec _codec;
@@ -624,111 +623,6 @@ final class _CitizenSdkWallet
           message: '默认账户签名消费没有返回完成事实',
         );
       return result;
-    },
-  );
-  @override
-  CitizenSdkOperation<Uint8List> deriveApplicationKey({
-    required String accountId,
-    required Uint8List salt,
-    required Uint8List info,
-  }) => _session.operation(
-    'deriveApplicationKey',
-    fields: [accountId, Uint8List.fromList(salt), Uint8List.fromList(info)],
-    decode: (value) {
-      final raw = value[0]! as Uint8List;
-      try {
-        if (raw.length != 32)
-          throw const CitizenSdkException(
-            code: CitizenSdkErrorCode.decode,
-            message: '应用派生钥必须是32字节',
-          );
-        return Uint8List.fromList(raw);
-      } finally {
-        raw.fillRange(0, raw.length, 0);
-      }
-    },
-  );
-  @override
-  CitizenSdkOperation<CitizenApplicationKeyPreparation> prepareApplicationKeys({
-    required String accountId,
-    required Uint8List salt,
-    required List<Uint8List> infos,
-    Uint8List? signingMessage,
-  }) => _session.operation(
-    'prepareApplicationKeys',
-    fields: [
-      accountId,
-      Uint8List.fromList(salt),
-      infos.map(Uint8List.fromList).toList(growable: false),
-      signingMessage == null
-          ? Uint8List(0)
-          : Uint8List.fromList(signingMessage),
-    ],
-    decode: (value) {
-      final raw = value[0] as List;
-      final signature = value[1] as Uint8List;
-      final keys = <Uint8List>[];
-      try {
-        if (raw.length != infos.length ||
-            signature.length != (signingMessage == null ? 0 : 64)) {
-          throw const CitizenSdkException(
-            code: CitizenSdkErrorCode.decode,
-            message: '应用材料准备结果与请求不一致',
-          );
-        }
-        for (final item in raw) {
-          keys.add(Uint8List.fromList(item as Uint8List));
-        }
-        return CitizenApplicationKeyPreparation(
-          keys: keys,
-          signature: signature.isEmpty ? null : Uint8List.fromList(signature),
-        );
-      } catch (_) {
-        for (final key in keys) {
-          key.fillRange(0, key.length, 0);
-        }
-        rethrow;
-      } finally {
-        for (final item in raw) {
-          if (item is Uint8List) item.fillRange(0, item.length, 0);
-        }
-        signature.fillRange(0, signature.length, 0);
-      }
-    },
-  );
-  @override
-  CitizenSdkOperation<List<Uint8List>> deriveApplicationKeys({
-    required String accountId,
-    required Uint8List salt,
-    required List<Uint8List> infos,
-  }) => _session.operation(
-    'deriveApplicationKeys',
-    fields: [
-      accountId,
-      Uint8List.fromList(salt),
-      infos.map(Uint8List.fromList).toList(growable: false),
-    ],
-    decode: (value) {
-      final raw = value[0];
-      if (raw is! List || raw.length != infos.length) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '应用派生钥批次结果数量无效',
-        );
-      }
-      return raw
-          .map((item) {
-            if (item is! Uint8List || item.length != 32) {
-              throw const CitizenSdkException(
-                code: CitizenSdkErrorCode.decode,
-                message: '应用派生钥批次条目无效',
-              );
-            }
-            final copy = Uint8List.fromList(item);
-            item.fillRange(0, item.length, 0);
-            return copy;
-          })
-          .toList(growable: false);
     },
   );
 }

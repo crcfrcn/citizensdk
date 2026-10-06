@@ -423,14 +423,3 @@ public struct CitizenTransactionHistoryPage: Equatable, Sendable {
     public let records: [CitizenTransactionHistoryRecord]
     public let nextBeforeExecutionID: String?
 }
-
-/// 一次授权的短期应用材料，钥副本由调用方负责擦除。
-public struct CitizenApplicationKeyPreparation: Sendable {
-    public private(set) var keys: [Data]
-    public private(set) var signature: Data?
-    internal init(keys: [Data], signature: Data?) { self.keys = keys; self.signature = signature }
-    public mutating func dispose() {
-        for index in keys.indices { keys[index].resetBytes(in: 0..<keys[index].count) }
-        if let count = signature?.count { signature?.resetBytes(in: 0..<count) }
-    }
-}

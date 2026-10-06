@@ -37,11 +37,554 @@
   "tools": {
     "node": "25.2.1",
     "actionlint": "1.7.12",
-    "rust": null
+    "rust": null,
+    "git": "2.54.0",
+    "bash": "5.3.20",
+    "grep": "3.12",
+    "sed": "4.10"
   },
   "platform_forbidden_values": [
     "macOS ARM64",
     "macos-arm64",
     "macos_arm64"
-  ]
+  ],
+  "tool_sources": {
+    "sources": {
+      "git": {
+        "version": "2.54.0",
+        "url": "https://www.kernel.org/pub/software/scm/git/git-2.54.0.tar.xz",
+        "sha256": "f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3",
+        "root": "git-2.54.0",
+        "executable": "bin/git",
+        "upstream_patches": []
+      },
+      "bash": {
+        "version": "5.3.20",
+        "url": "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz",
+        "sha256": "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba",
+        "root": "bash-5.3",
+        "executable": "bin/bash",
+        "upstream_patches": [
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-001",
+            "sha256": "1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-002",
+            "sha256": "e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-003",
+            "sha256": "f245d9c7dc3f5a20d84b53d249334747940936f09dc97e1dcb89fc3ab37d60ed"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-004",
+            "sha256": "9591d245045529f32f0812f94180b9d9ce9023f5a765c039b852e5dfc99747d0"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-005",
+            "sha256": "cca1ef52dbbf433bc98e33269b64b2c814028efe2538be1e2c9a377da90bc99d"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-006",
+            "sha256": "29119addefed8eff91ae37fd51822c31780ee30d4a28376e96002706c995ff10"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-007",
+            "sha256": "c0976bbfffa1453c7cfdd62058f206a318568ff2d690f5d4fa048793fa3eb299"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-008",
+            "sha256": "097cd723cbfb8907674ac32214063a3fd85282657ec5b4e544d2c0f719653fb4"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-009",
+            "sha256": "eee30fe78a4b0cb2fe20e010e00308899cfc613e0774ebb3c8557a1552f24f8c"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-010",
+            "sha256": "cf76f1cce2ea300c18bff9f002d21f280cc931acd17c28518110b93fe6e72569"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-011",
+            "sha256": "0298df8f5ea2a31d3be43ed7d269c5b3c7c342dd5b570bea7f64d66dcbbe7531"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-012",
+            "sha256": "d71379b39bebaedaf123414414e77fb458a0a43b9ad3116594c6df7ca6754573"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-013",
+            "sha256": "042f9cda967e24bf4211944697441e93d06ff42b4b998629a98a1b249279f200"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-014",
+            "sha256": "bd4360b401d38507e358783dcad8536a99c6789f0d3a5bd0cfb8c4a34144696c"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-015",
+            "sha256": "55b79ceee2fc27f6767eed697e939a7eb2fe2a28c01556bd75f18d581014f46e"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-016",
+            "sha256": "9ea29b266b7d24cb34d0ff3f1c4631e4d527bfe2d1ef15d17cdb924bf31ef767"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-017",
+            "sha256": "443b927b45c1558ca72052410f8b8f6e5152b617ed707061a2781d4375b0d1c3"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-018",
+            "sha256": "ae715d76c50341d7d7095e9a8d2eeed1ca9546152c2ac7289206f90cf30ac697"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-019",
+            "sha256": "a25c581e4d0057dea3833918438a930e2e86ee4c6dc17fe15267b7f04cbc4e3d"
+          },
+          {
+            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-020",
+            "sha256": "df217ed3a9122aa2286d9b67bbe348661b6a9db262b580c29150dae55d532896"
+          }
+        ]
+      },
+      "grep": {
+        "version": "3.12",
+        "url": "https://ftp.gnu.org/gnu/grep/grep-3.12.tar.xz",
+        "sha256": "2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9",
+        "root": "grep-3.12",
+        "executable": "bin/grep",
+        "upstream_patches": []
+      },
+      "sed": {
+        "version": "4.10",
+        "url": "https://ftp.gnu.org/gnu/sed/sed-4.10.tar.xz",
+        "sha256": "b8e72182b2ec96a3574e2998c47b7aaa64cc20ce000d8e9ac313cc07cecf28c7",
+        "root": "sed-4.10",
+        "executable": "bin/sed",
+        "upstream_patches": []
+      },
+      "actionlint": {
+        "version": "1.7.12",
+        "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+        "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+        "root": ".",
+        "executable": "actionlint",
+        "upstream_patches": []
+      }
+    },
+    "bootstrap": {
+      "platform": "linux",
+      "architecture": "x64",
+      "os": "24.04",
+      "commands": [
+        {
+          "name": "basename",
+          "path": "/usr/bin/basename",
+          "package": "coreutils"
+        },
+        {
+          "name": "cat",
+          "path": "/usr/bin/cat",
+          "package": "coreutils"
+        },
+        {
+          "name": "chmod",
+          "path": "/usr/bin/chmod",
+          "package": "coreutils"
+        },
+        {
+          "name": "cp",
+          "path": "/usr/bin/cp",
+          "package": "coreutils"
+        },
+        {
+          "name": "cut",
+          "path": "/usr/bin/cut",
+          "package": "coreutils"
+        },
+        {
+          "name": "date",
+          "path": "/usr/bin/date",
+          "package": "coreutils"
+        },
+        {
+          "name": "dd",
+          "path": "/usr/bin/dd",
+          "package": "coreutils"
+        },
+        {
+          "name": "dirname",
+          "path": "/usr/bin/dirname",
+          "package": "coreutils"
+        },
+        {
+          "name": "du",
+          "path": "/usr/bin/du",
+          "package": "coreutils"
+        },
+        {
+          "name": "echo",
+          "path": "/usr/bin/echo",
+          "package": "coreutils"
+        },
+        {
+          "name": "env",
+          "path": "/usr/bin/env",
+          "package": "coreutils"
+        },
+        {
+          "name": "expr",
+          "path": "/usr/bin/expr",
+          "package": "coreutils"
+        },
+        {
+          "name": "false",
+          "path": "/usr/bin/false",
+          "package": "coreutils"
+        },
+        {
+          "name": "head",
+          "path": "/usr/bin/head",
+          "package": "coreutils"
+        },
+        {
+          "name": "install",
+          "path": "/usr/bin/install",
+          "package": "coreutils"
+        },
+        {
+          "name": "ln",
+          "path": "/usr/bin/ln",
+          "package": "coreutils"
+        },
+        {
+          "name": "ls",
+          "path": "/usr/bin/ls",
+          "package": "coreutils"
+        },
+        {
+          "name": "mkdir",
+          "path": "/usr/bin/mkdir",
+          "package": "coreutils"
+        },
+        {
+          "name": "mv",
+          "path": "/usr/bin/mv",
+          "package": "coreutils"
+        },
+        {
+          "name": "od",
+          "path": "/usr/bin/od",
+          "package": "coreutils"
+        },
+        {
+          "name": "printf",
+          "path": "/usr/bin/printf",
+          "package": "coreutils"
+        },
+        {
+          "name": "pwd",
+          "path": "/usr/bin/pwd",
+          "package": "coreutils"
+        },
+        {
+          "name": "readlink",
+          "path": "/usr/bin/readlink",
+          "package": "coreutils"
+        },
+        {
+          "name": "realpath",
+          "path": "/usr/bin/realpath",
+          "package": "coreutils"
+        },
+        {
+          "name": "rm",
+          "path": "/usr/bin/rm",
+          "package": "coreutils"
+        },
+        {
+          "name": "rmdir",
+          "path": "/usr/bin/rmdir",
+          "package": "coreutils"
+        },
+        {
+          "name": "sleep",
+          "path": "/usr/bin/sleep",
+          "package": "coreutils"
+        },
+        {
+          "name": "sort",
+          "path": "/usr/bin/sort",
+          "package": "coreutils"
+        },
+        {
+          "name": "stat",
+          "path": "/usr/bin/stat",
+          "package": "coreutils"
+        },
+        {
+          "name": "tail",
+          "path": "/usr/bin/tail",
+          "package": "coreutils"
+        },
+        {
+          "name": "tee",
+          "path": "/usr/bin/tee",
+          "package": "coreutils"
+        },
+        {
+          "name": "test",
+          "path": "/usr/bin/test",
+          "package": "coreutils"
+        },
+        {
+          "name": "touch",
+          "path": "/usr/bin/touch",
+          "package": "coreutils"
+        },
+        {
+          "name": "tr",
+          "path": "/usr/bin/tr",
+          "package": "coreutils"
+        },
+        {
+          "name": "true",
+          "path": "/usr/bin/true",
+          "package": "coreutils"
+        },
+        {
+          "name": "uname",
+          "path": "/usr/bin/uname",
+          "package": "coreutils"
+        },
+        {
+          "name": "uniq",
+          "path": "/usr/bin/uniq",
+          "package": "coreutils"
+        },
+        {
+          "name": "wc",
+          "path": "/usr/bin/wc",
+          "package": "coreutils"
+        },
+        {
+          "name": "bash",
+          "path": "/usr/bin/bash",
+          "package": "bash"
+        },
+        {
+          "name": "grep",
+          "path": "/usr/bin/grep",
+          "package": "grep"
+        },
+        {
+          "name": "sed",
+          "path": "/usr/bin/sed",
+          "package": "sed"
+        },
+        {
+          "name": "make",
+          "path": "/usr/bin/make",
+          "package": "make"
+        },
+        {
+          "name": "patch",
+          "path": "/usr/bin/patch",
+          "package": "patch"
+        },
+        {
+          "name": "tar",
+          "path": "/usr/bin/tar",
+          "package": "tar"
+        },
+        {
+          "name": "gzip",
+          "path": "/usr/bin/gzip",
+          "package": "gzip"
+        },
+        {
+          "name": "xz",
+          "path": "/usr/bin/xz",
+          "package": "xz-utils"
+        },
+        {
+          "name": "awk",
+          "path": "/usr/bin/mawk",
+          "package": "mawk"
+        },
+        {
+          "name": "diff",
+          "path": "/usr/bin/diff",
+          "package": "diffutils"
+        },
+        {
+          "name": "cmp",
+          "path": "/usr/bin/cmp",
+          "package": "diffutils"
+        },
+        {
+          "name": "find",
+          "path": "/usr/bin/find",
+          "package": "findutils"
+        },
+        {
+          "name": "xargs",
+          "path": "/usr/bin/xargs",
+          "package": "findutils"
+        },
+        {
+          "name": "clang",
+          "path": "/usr/lib/llvm-18/bin/clang",
+          "package": "clang-18"
+        },
+        {
+          "name": "ar",
+          "path": "/usr/bin/x86_64-linux-gnu-ar",
+          "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "as",
+          "path": "/usr/bin/x86_64-linux-gnu-as",
+          "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "ld",
+          "path": "/usr/bin/x86_64-linux-gnu-ld.bfd",
+          "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "nm",
+          "path": "/usr/bin/x86_64-linux-gnu-nm",
+          "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "ranlib",
+          "path": "/usr/bin/x86_64-linux-gnu-ranlib",
+          "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "strip",
+          "path": "/usr/bin/x86_64-linux-gnu-strip",
+          "package": "binutils-x86-64-linux-gnu"
+        }
+      ],
+      "packages": [
+        {
+          "name": "dpkg",
+          "version": "1.22.6ubuntu6.6",
+          "source": "https://packages.ubuntu.com/noble/dpkg"
+        },
+        {
+          "name": "bash",
+          "version": "5.2.21-2ubuntu4",
+          "source": "https://packages.ubuntu.com/noble/bash"
+        },
+        {
+          "name": "grep",
+          "version": "3.11-4build1",
+          "source": "https://packages.ubuntu.com/noble/grep"
+        },
+        {
+          "name": "sed",
+          "version": "4.9-2ubuntu0.24.04.1",
+          "source": "https://packages.ubuntu.com/noble/sed"
+        },
+        {
+          "name": "coreutils",
+          "version": "9.4-3ubuntu6.3",
+          "source": "https://packages.ubuntu.com/noble/coreutils"
+        },
+        {
+          "name": "make",
+          "version": "4.3-4.1build2",
+          "source": "https://packages.ubuntu.com/noble/make"
+        },
+        {
+          "name": "patch",
+          "version": "2.7.6-7build3",
+          "source": "https://packages.ubuntu.com/noble/patch"
+        },
+        {
+          "name": "mawk",
+          "version": "1.3.4.20240123-1build1",
+          "source": "https://packages.ubuntu.com/noble/mawk"
+        },
+        {
+          "name": "diffutils",
+          "version": "1:3.10-1ubuntu0.1",
+          "source": "https://packages.ubuntu.com/noble/diffutils"
+        },
+        {
+          "name": "findutils",
+          "version": "4.9.0-5build1",
+          "source": "https://packages.ubuntu.com/noble/findutils"
+        },
+        {
+          "name": "tar",
+          "version": "1.35+dfsg-3ubuntu0.4",
+          "source": "https://packages.ubuntu.com/noble/tar"
+        },
+        {
+          "name": "gzip",
+          "version": "1.12-1ubuntu3.2",
+          "source": "https://packages.ubuntu.com/noble/gzip"
+        },
+        {
+          "name": "xz-utils",
+          "version": "5.6.1+really5.4.5-1ubuntu0.3",
+          "source": "https://packages.ubuntu.com/noble/xz-utils"
+        },
+        {
+          "name": "clang-18",
+          "version": "1:18.1.3-1ubuntu1",
+          "source": "https://packages.ubuntu.com/noble/clang-18"
+        },
+        {
+          "name": "binutils-x86-64-linux-gnu",
+          "version": "2.42-4ubuntu2.10",
+          "source": "https://packages.ubuntu.com/noble/binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "libcurl4-openssl-dev",
+          "version": "8.5.0-2ubuntu10.15",
+          "source": "https://packages.ubuntu.com/noble/libcurl4-openssl-dev"
+        },
+        {
+          "name": "libexpat1-dev",
+          "version": "2.6.1-2ubuntu0.6",
+          "source": "https://packages.ubuntu.com/noble/libexpat1-dev"
+        },
+        {
+          "name": "zlib1g-dev",
+          "version": "1:1.3.dfsg-3.1ubuntu2.2",
+          "source": "https://packages.ubuntu.com/noble/zlib1g-dev"
+        },
+        {
+          "name": "libc6",
+          "version": "2.39-0ubuntu8.9",
+          "source": "https://packages.ubuntu.com/noble/libc6"
+        },
+        {
+          "name": "libc6-dev",
+          "version": "2.39-0ubuntu8.9",
+          "source": "https://packages.ubuntu.com/noble/libc6-dev"
+        },
+        {
+          "name": "libc-dev-bin",
+          "version": "2.39-0ubuntu8.9",
+          "source": "https://packages.ubuntu.com/noble/libc-dev-bin"
+        },
+        {
+          "name": "libgcc-13-dev",
+          "version": "13.3.0-6ubuntu2~24.04.1",
+          "source": "https://packages.ubuntu.com/noble/libgcc-13-dev"
+        },
+        {
+          "name": "libstdc++-13-dev",
+          "version": "13.3.0-6ubuntu2~24.04.1",
+          "source": "https://packages.ubuntu.com/noble/libstdc++-13-dev"
+        }
+      ]
+    }
+  }
 }

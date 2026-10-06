@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-// 独立显式金标固定150项；包含应用准备及可选签名读取，不从生产头生成预期。
-const EXPECTED_EXPORTS: [&str; 150] = [
+// 独立显式金标固定144项；各函数与公开头逐项一致，不从生产头生成预期。
+const EXPECTED_EXPORTS: [&str; 144] = [
     "citizensdk_add_next_wallet_account",
     "citizensdk_delete_diagnostic_wallet",
     "citizensdk_encode_signing_payload",
@@ -47,10 +47,6 @@ const EXPECTED_EXPORTS: [&str; 150] = [
     "citizensdk_verify_signature",
     "citizensdk_delete_wallet",
     "citizensdk_delete_wallet_account",
-    "citizensdk_derive_application_key",
-    "citizensdk_derive_application_keys",
-    "citizensdk_prepare_application_keys",
-    "citizensdk_result_get_application_preparation_signature",
     "citizensdk_destroy",
     "citizensdk_export_state",
     "citizensdk_execute_prepared_transaction",
@@ -125,8 +121,6 @@ const EXPECTED_EXPORTS: [&str; 150] = [
     "citizensdk_result_get_transaction_history_record",
     "citizensdk_result_get_runtime_context",
     "citizensdk_result_get_signature",
-    "citizensdk_result_get_application_key",
-    "citizensdk_result_get_application_key_at",
     "citizensdk_result_get_signing_outcome",
     "citizensdk_result_get_storage_batch_count",
     "citizensdk_result_get_sync_status",
@@ -308,8 +302,8 @@ fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
         .into_keys()
         .collect();
 
-    assert_eq!(rust.len(), 150, "Rust export count changed");
-    assert_eq!(header.len(), 150, "C declaration count changed");
+    assert_eq!(rust.len(), 144, "Rust export count changed");
+    assert_eq!(header.len(), 144, "C declaration count changed");
     assert_eq!(rust, expected, "Rust export set changed");
     assert_eq!(header, expected, "C declaration set changed");
     assert!(!rust.contains("citizensdk_set_default_wallet_account"));

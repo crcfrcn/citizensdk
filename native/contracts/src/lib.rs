@@ -84,7 +84,7 @@ pub use wallet::{
     citizen_ss58_address, parse_citizen_ss58_address, ColdWalletAccount, WalletAccount,
     WalletCleanupPlan, WalletOrigin, WalletProfile, WalletProvisioningPlan, WalletSignMode,
     WalletState, WalletRecord, WalletRecordAccount, WalletDiagnosticReason, CITIZEN_SS58_PREFIX, CITIZEN_WALLET_INDEX, FIRST_COLD_WALLET_INDEX,
-    MAX_COLD_WALLET_ACCOUNTS, MAX_WALLET_ACCOUNT_INDEX, MAX_WALLET_ACCOUNT_NAME_SCALARS,
+    MAX_COLD_WALLET_ACCOUNTS, MAX_WALLET_ACCOUNTS, MAX_WALLET_ACCOUNT_INDEX, MAX_WALLET_ACCOUNT_NAME_SCALARS,
 };
 
 /// 对象安全合同使用的异步返回值；具体 executor 由调用者决定。

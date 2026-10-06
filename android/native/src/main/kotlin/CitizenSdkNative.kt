@@ -152,12 +152,6 @@ internal class CitizenSdkNative private constructor(
     fun reconcileWalletCleanup(): Long = call { nativeReconcileWalletCleanup(it) }
     fun signWalletPayload(accountId: ByteArray, message: ByteArray): Long =
         call { nativeSignWalletPayload(it, accountId, message) }
-    fun deriveApplicationKey(accountId: ByteArray, salt: ByteArray, info: ByteArray): Long =
-        call { nativeDeriveApplicationKey(it, accountId, salt, info) }
-    fun deriveApplicationKeys(accountId: ByteArray, salt: ByteArray, infos: Array<ByteArray>): Long =
-        call { nativeDeriveApplicationKeys(it, accountId, salt, infos) }
-    fun prepareApplicationKeys(accountId: ByteArray, salt: ByteArray, infos: Array<ByteArray>, message: ByteArray): Long =
-        call { nativePrepareApplicationKeys(it, accountId, salt, infos, message) }
     fun beginSigning(intent: CitizenSigningIntent): Long = call {
         nativeBeginSigning(
             it,
@@ -449,9 +443,6 @@ internal class CitizenSdkNative private constructor(
     private external fun nativeSignAndDeleteWallet(bridge: Long): Long
     private external fun nativeReconcileWalletCleanup(bridge: Long): Long
     private external fun nativeSignWalletPayload(bridge: Long, accountId: ByteArray, message: ByteArray): Long
-    private external fun nativeDeriveApplicationKey(bridge: Long, accountId: ByteArray, salt: ByteArray, info: ByteArray): Long
-    private external fun nativePrepareApplicationKeys(raw: Long, account: ByteArray, salt: ByteArray, infos: Array<ByteArray>, message: ByteArray): Long
-    private external fun nativeDeriveApplicationKeys(bridge: Long, accountId: ByteArray, salt: ByteArray, infos: Array<ByteArray>): Long
     private external fun nativeBeginSigning(
         bridge: Long,
         accountId: ByteArray,

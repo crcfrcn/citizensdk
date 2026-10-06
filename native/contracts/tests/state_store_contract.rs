@@ -18,7 +18,7 @@ use citizen_sdk_contracts::{
     VaultGeneration, VerifiedBlockRef, WalletAccount, WalletCleanupPlan, WalletOrigin,
     WalletProfile, WalletProfileStore, WalletProvisioningPlan, WalletSignMode, WalletState,
     WalletRecord, WalletDiagnosticReason,
-    MAX_PERSISTED_RUNTIME_CONTEXTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES,
+    MAX_WALLET_ACCOUNT_INDEX, MAX_COLD_WALLET_ACCOUNTS, MAX_PERSISTED_RUNTIME_CONTEXTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES,
 };
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -547,7 +547,7 @@ fn wallet_profile_requires_account_zero_master_and_bounded_indices() {
     ));
     let maximum_id = AccountId32::from_bytes([6; 32]);
     let maximum = value_or_panic(WalletAccount::try_new(
-        1989,
+        MAX_WALLET_ACCOUNT_INDEX,
         maximum_id,
         secret_ref(4, 6),
         citizen_ss58_address(maximum_id),
@@ -566,7 +566,7 @@ fn wallet_profile_requires_account_zero_master_and_bounded_indices() {
     .is_ok());
 
     let too_high = value_or_panic(WalletAccount::try_new(
-        1990,
+        MAX_WALLET_ACCOUNT_INDEX + 1,
         maximum_id,
         secret_ref(5, 6),
         citizen_ss58_address(maximum_id),
@@ -969,4 +969,16 @@ fn account_secret_presence_covers_generations_and_ignores_tombstones_without_hid
         *store.query_error.lock().unwrap_or_else(|_| panic!("合成测试锁不可用")) = Some(code);
         assert!(block_on(store.has_account_secret(account)).is_err());
     }
+}
+
+#[test]
+fn cold_catalog_index_is_independent_of_hot_derivation_range() {
+    assert_eq!(MAX_COLD_WALLET_ACCOUNTS, 1990);
+    let index = MAX_WALLET_ACCOUNT_INDEX + 1;
+    let id = AccountId32::from_bytes([29; 32]);
+    let cold = value_or_panic(ColdWalletAccount::try_new(index, id,
+        citizen_ss58_address(id), "独立冷账户", 200));
+    let state = value_or_panic(WalletState::try_from_catalog_parts(1, None,
+        vec![cold.clone()], vec![id], index + 1, None, None, Vec::new()));
+    assert_eq!(state.cold_account_by_index(index), Some(&cold));
 }

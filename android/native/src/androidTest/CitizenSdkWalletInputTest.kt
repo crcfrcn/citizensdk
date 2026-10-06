@@ -28,8 +28,8 @@ class CitizenSdkWalletInputTest {
 
     @Test
     fun explicitIndicesAreBoundedAndNextIndexIsNotAssignedByUi() {
-        CitizenSdkInputLimits.requireAddAccountIndices(intArrayOf(1, 1989))
-        for (indices in listOf(intArrayOf(0), intArrayOf(1990), intArrayOf(1, 1), IntArray(1990) { 1 })) {
+        CitizenSdkInputLimits.requireAddAccountIndices(intArrayOf(1, 1989, 1990, 19890604))
+        for (indices in listOf(intArrayOf(0), intArrayOf(19890605), intArrayOf(1, 1), IntArray(1990) { 1 })) {
             assertThrows(CitizenSdkException::class.java) { CitizenSdkInputLimits.requireAddAccountIndices(indices) }
         }
     }

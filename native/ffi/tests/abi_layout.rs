@@ -52,7 +52,6 @@ fn original_public_layout_remains_frozen() {
     assert_eq!(CitizenSdkFailureStage::Teardown as u32, 8);
     assert_eq!(CitizenSdkEventType::HistoryChanged as u32, 5);
     assert_eq!(CitizenSdkEventType::FinalizedBlockChanged as u32, 6);
-    assert_eq!(CitizenSdkResultKind::ApplicationKeys as u32, 30);
 
     assert_layout!(CitizenSdkBytesView, 16, 8, { data: 0, len: 8 });
     assert_layout!(CitizenSdkU128, 16, 8, { low: 0, high: 8 });
@@ -479,7 +478,6 @@ fn account_wallet_and_history_layout_and_constants_are_exact() {
     assert_eq!(CitizenSdkResultKind::TransactionHistoryPage as u32, 17);
     assert_eq!(CitizenSdkResultKind::PreparedTransaction as u32, 27);
     assert_eq!(CitizenSdkResultKind::TransactionExecution as u32, 28);
-    assert_eq!(CitizenSdkResultKind::ApplicationKey as u32, 29);
     assert_eq!(
         CitizenSdkTransactionExecutionStatus::ExternalPending as u32,
         1

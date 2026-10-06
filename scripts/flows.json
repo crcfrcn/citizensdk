@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "product_id": "citizensdk",
+  "entry": "scripts/build.mjs",
+  "platforms": {
+    "sdk": {
+      "tools": [
+        {
+          "id": "cmake",
+          "version": "3.31.6"
+        },
+        {
+          "id": "git",
+          "version": "2.54.0"
+        },
+        {
+          "id": "node",
+          "version": "25.2.1"
+        },
+        {
+          "id": "bash",
+          "version": "5.3.20"
+        },
+        {
+          "id": "grep",
+          "version": "3.12"
+        },
+        {
+          "id": "sed",
+          "version": "4.10"
+        },
+        {
+          "id": "rust",
+          "version": "1.97.1"
+        },
+        {
+          "id": "flutter",
+          "version": "3.47.2"
+        },
+        {
+          "id": "java",
+          "version": "17.0.20.1"
+        },
+        {
+          "id": "gradle",
+          "version": "9.1.0"
+        },
+        {
+          "id": "android",
+          "version": "37.0.1"
+        },
+        {
+          "id": "android-sdk",
+          "version": "22.0"
+        },
+        {
+          "id": "android-ndk",
+          "version": "28.2.13676358"
+        },
+        {
+          "id": "cocoapods",
+          "version": "1.17.0"
+        },
+        {
+          "id": "xcode",
+          "version": "27.0"
+        },
+        {
+          "id": "posix",
+          "version": "27.0"
+        }
+      ],
+      "locks": [
+        {
+          "ecosystem": "pub",
+          "path": "pubspec.lock"
+        },
+        {
+          "ecosystem": "cargo",
+          "path": "Cargo.lock"
+        }
+      ],
+      "ci": {
+        "entry": ".github/workflows/citizensdk-sdk-ci.yml",
+        "tools": [
+          {
+            "id": "cargo-audit",
+            "version": "0.22.2"
+          },
+          {
+            "id": "cmake",
+            "version": "3.31.6"
+          },
+          {
+            "id": "git",
+            "version": "2.54.0"
+          },
+          {
+            "id": "node",
+            "version": "25.2.1"
+          },
+          {
+            "id": "bash",
+            "version": "5.3.20"
+          },
+          {
+            "id": "grep",
+            "version": "3.12"
+          },
+          {
+            "id": "sed",
+            "version": "4.10"
+          },
+          {
+            "id": "rust",
+            "version": "1.97.1"
+          },
+          {
+            "id": "flutter",
+            "version": "3.47.2"
+          },
+          {
+            "id": "java",
+            "version": "17.0.20.1"
+          },
+          {
+            "id": "gradle",
+            "version": "9.1.0"
+          },
+          {
+            "id": "android",
+            "version": "37.0.1"
+          },
+          {
+            "id": "android-sdk",
+            "version": "22.0"
+          },
+          {
+            "id": "android-ndk",
+            "version": "28.2.13676358"
+          },
+          {
+            "id": "cocoapods",
+            "version": "1.17.0"
+          },
+          {
+            "id": "xcode",
+            "version": "27.0"
+          }
+        ]
+      },
+      "release": {
+        "entry": ".github/workflows/citizensdk-sdk-release.yml",
+        "tools": [
+          {
+            "id": "cargo-audit",
+            "version": "0.22.2"
+          },
+          {
+            "id": "cmake",
+            "version": "3.31.6"
+          },
+          {
+            "id": "git",
+            "version": "2.54.0"
+          },
+          {
+            "id": "node",
+            "version": "25.2.1"
+          },
+          {
+            "id": "bash",
+            "version": "5.3.20"
+          },
+          {
+            "id": "grep",
+            "version": "3.12"
+          },
+          {
+            "id": "sed",
+            "version": "4.10"
+          },
+          {
+            "id": "rust",
+            "version": "1.97.1"
+          },
+          {
+            "id": "flutter",
+            "version": "3.47.2"
+          },
+          {
+            "id": "java",
+            "version": "17.0.20.1"
+          },
+          {
+            "id": "gradle",
+            "version": "9.1.0"
+          },
+          {
+            "id": "android",
+            "version": "37.0.1"
+          },
+          {
+            "id": "android-sdk",
+            "version": "22.0"
+          },
+          {
+            "id": "android-ndk",
+            "version": "28.2.13676358"
+          },
+          {
+            "id": "cocoapods",
+            "version": "1.17.0"
+          },
+          {
+            "id": "xcode",
+            "version": "27.0"
+          }
+        ]
+      }
+    }
+  }
+}

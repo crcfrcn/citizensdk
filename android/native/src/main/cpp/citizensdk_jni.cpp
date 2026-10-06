@@ -9,6 +9,7 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,11 @@ constexpr uint32_t kWireVersion = 1;
 constexpr int32_t kOk = CITIZENSDK_OK;
 constexpr jsize kMaxWalletSecretBytes = 1024;
 constexpr jsize kMaxWalletAccountIndices = 1989;
+// 热派生范围独立于批次和冷账户容量，按实际输入增长集合。
+constexpr uint32_t kMaxWalletAccountIndex = 19890604;
+constexpr uint32_t kMaxWalletAccounts = kMaxWalletAccountIndex + 1;
+constexpr uint32_t kMaxColdAccounts = 1990;
+constexpr uint32_t kMaxCatalogAccounts = kMaxWalletAccounts + kMaxColdAccounts;
 constexpr size_t kMaxQrTextBytes = 2331;
 constexpr size_t kMaxQrReviewBytes = 1920;
 constexpr size_t kMaxQrImageBytes = 16U * 1024U * 1024U;
@@ -224,7 +230,7 @@ bool write_wallet_profile(citizensdk_result_handle_t result,
   if (info.present == 0) return true;
   uint32_t count = 0;
   if (citizensdk_result_get_wallet_account_count(result, &count) != kOk ||
-      count != info.account_count || count > 1990) {
+      count != info.account_count || count > kMaxWalletAccounts) {
     return false;
   }
   payload->u32(info.origin);
@@ -243,7 +249,7 @@ bool write_wallet_accounts(citizensdk_result_handle_t result,
                            WireWriter *payload) {
   uint32_t count = 0;
   if (citizensdk_result_get_wallet_account_count(result, &count) != kOk ||
-      count > 1990) {
+      count > kMaxWalletAccounts) {
     return false;
   }
   payload->u32(count);
@@ -259,7 +265,7 @@ bool write_wallet_state(citizensdk_result_handle_t result,
   auto profile = info_value<citizensdk_wallet_profile_info_t>();
   if (citizensdk_result_get_wallet_state(result, &state) != kOk ||
       citizensdk_result_get_wallet_profile(result, &profile) != kOk ||
-      state.account_count > 3980 || profile.account_count > 1990 ||
+      state.account_count > kMaxCatalogAccounts || profile.account_count > kMaxWalletAccounts ||
       profile.present > 1 || state.has_default_account > 1 ||
       ((state.account_count == 0) != (state.has_default_account == 0)) ||
       (profile.present != 0 &&
@@ -334,7 +340,7 @@ bool write_wallet_state(citizensdk_result_handle_t result,
     auto info = info_value<citizensdk_wallet_diagnostic_info_v1_t>();
     if (citizensdk_wallet_state_get_diagnostic_at(result, index, &info) != kOk ||
         info.has_ss58_address > 1 || info.sign_mode > 2 || info.diagnostic_reason < 1 || info.diagnostic_reason > 3 ||
-        info.cleanup_account_count > 1990 || info.delete_wallet_wide_key > 1 ||
+        info.cleanup_account_count > kMaxWalletAccounts || info.delete_wallet_wide_key > 1 ||
         (info.cleanup_account_count == 0 && info.delete_wallet_wide_key != 0) ||
         info.wallet_name_len == 0 || info.wallet_name_len > 120 || info.ss58_address_len > 128 ||
         (info.has_ss58_address == 0 && info.ss58_address_len != 0)) return false;
@@ -986,7 +992,7 @@ jlong native_reorder_wallet(JNIEnv *env, jobject, jlong raw, jlong revision,
                             jbyteArray account_bytes, jint count) {
   auto bridge = bridge_from(env, raw);
   std::vector<citizensdk_account_id_t> values;
-  if (bridge == nullptr || !accounts(env, account_bytes, count, &values, false, 3980)) return 0;
+  if (bridge == nullptr || !accounts(env, account_bytes, count, &values, false, kMaxCatalogAccounts)) return 0;
   return begin_request(env, bridge, [&values, revision](auto handle, auto *out) {
     return citizensdk_reorder_wallet_accounts_without_default_change(
         handle, static_cast<uint64_t>(revision), values.data(),
@@ -1165,116 +1171,6 @@ jlong native_sign(JNIEnv *env, jobject, jlong raw, jbyteArray account_bytes,
       !take_bytes(env, message_bytes, &message)) return 0;
   return begin_request(env, bridge, [&value, &message](auto handle, auto *out) {
     return citizensdk_sign_wallet_payload(handle, &value, view(message), out);
-  });
-}
-
-jlong native_derive_application_key(JNIEnv *env, jobject, jlong raw,
-                                    jbyteArray account_bytes,
-                                    jbyteArray salt_bytes,
-                                    jbyteArray info_bytes) {
-  auto bridge = bridge_from(env, raw);
-  citizensdk_account_id_t account_id{};
-  SensitiveBytes salt;
-  SensitiveBytes info;
-  if (bridge == nullptr || !account(env, account_bytes, &account_id) ||
-      !take_wallet_secret(env, salt_bytes, salt.out()) || salt.value().size() != 32 ||
-      !take_wallet_secret(env, info_bytes, info.out()) || info.value().empty() ||
-      info.value().size() > 256) {
-    if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                         "application key request is invalid");
-    return 0;
-  }
-  return begin_request(env, bridge, [&account_id, &salt, &info](auto handle, auto *out) {
-    return citizensdk_derive_application_key(
-        handle, &account_id, view(salt.value()), view(info.value()), out);
-  });
-}
-
-jlong native_derive_application_keys(JNIEnv *env, jobject, jlong raw,
-                                     jbyteArray account_bytes,
-                                     jbyteArray salt_bytes,
-                                     jobjectArray info_arrays) {
-  auto bridge = bridge_from(env, raw);
-  citizensdk_account_id_t account_id{};
-  SensitiveBytes salt;
-  if (bridge == nullptr || !account(env, account_bytes, &account_id) ||
-      !take_wallet_secret(env, salt_bytes, salt.out()) || salt.value().size() != 32 ||
-      info_arrays == nullptr) {
-    if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                         "application key batch is invalid");
-    return 0;
-  }
-  const jsize count = env->GetArrayLength(info_arrays);
-  if (env->ExceptionCheck() || count < 1 || count > 16) {
-    if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                         "application key batch size is invalid");
-    return 0;
-  }
-  std::vector<std::unique_ptr<SensitiveBytes>> owned;
-  std::vector<citizensdk_bytes_view_t> views;
-  owned.reserve(static_cast<size_t>(count));
-  views.reserve(static_cast<size_t>(count));
-  for (jsize index = 0; index < count; ++index) {
-    auto item = static_cast<jbyteArray>(env->GetObjectArrayElement(info_arrays, index));
-    auto bytes = std::make_unique<SensitiveBytes>();
-    const bool copied = item != nullptr && take_wallet_secret(env, item, bytes->out());
-    if (item != nullptr) env->DeleteLocalRef(item);
-    if (!copied || bytes->value().empty() || bytes->value().size() > 256) {
-      if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                           "application key info is invalid");
-      return 0;
-    }
-    views.push_back(view(bytes->value()));
-    owned.push_back(std::move(bytes));
-  }
-  return begin_request(env, bridge, [&account_id, &salt, &views](auto handle, auto *out) {
-    return citizensdk_derive_application_keys(handle, &account_id, view(salt.value()),
-        views.data(), static_cast<uint32_t>(views.size()), out);
-  });
-}
-
-jlong native_prepare_application_keys(JNIEnv *env, jobject, jlong raw,
-                                     jbyteArray account_bytes,
-                                     jbyteArray salt_bytes,
-                                     jobjectArray info_arrays, jbyteArray message_bytes) {
-  auto bridge = bridge_from(env, raw);
-  citizensdk_account_id_t account_id{};
-  SensitiveBytes salt;
-  SensitiveBytes message;
-  if (bridge == nullptr || !account(env, account_bytes, &account_id) ||
-      !take_wallet_secret(env, salt_bytes, salt.out()) || salt.value().size() != 32 ||
-      !take_wallet_secret(env, message_bytes, message.out()) ||
-      (!message.value().empty() && message.value().size() != 32) || info_arrays == nullptr) {
-    if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                         "application key batch is invalid");
-    return 0;
-  }
-  const jsize count = env->GetArrayLength(info_arrays);
-  if (env->ExceptionCheck() || count < 1 || count > 16) {
-    if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                         "application key batch size is invalid");
-    return 0;
-  }
-  std::vector<std::unique_ptr<SensitiveBytes>> owned;
-  std::vector<citizensdk_bytes_view_t> views;
-  owned.reserve(static_cast<size_t>(count));
-  views.reserve(static_cast<size_t>(count));
-  for (jsize index = 0; index < count; ++index) {
-    auto item = static_cast<jbyteArray>(env->GetObjectArrayElement(info_arrays, index));
-    auto bytes = std::make_unique<SensitiveBytes>();
-    const bool copied = item != nullptr && take_wallet_secret(env, item, bytes->out());
-    if (item != nullptr) env->DeleteLocalRef(item);
-    if (!copied || bytes->value().empty() || bytes->value().size() > 256) {
-      if (!env->ExceptionCheck()) throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                           "application key info is invalid");
-      return 0;
-    }
-    views.push_back(view(bytes->value()));
-    owned.push_back(std::move(bytes));
-  }
-  return begin_request(env, bridge, [&account_id, &salt, &views, &message](auto handle, auto *out) {
-    return citizensdk_prepare_application_keys(handle, &account_id, view(salt.value()),
-        views.data(), static_cast<uint32_t>(views.size()), view(message.value()), out);
   });
 }
 
@@ -2029,9 +1925,6 @@ const JNINativeMethod kMethods[] = {
     {const_cast<char *>("nativeSignAndDeleteWallet"), const_cast<char *>("(J)J"), reinterpret_cast<void *>(native_sign_and_delete_wallet)},
     {const_cast<char *>("nativeReconcileWalletCleanup"), const_cast<char *>("(J)J"), reinterpret_cast<void *>(native_reconcile)},
     {const_cast<char *>("nativeSignWalletPayload"), const_cast<char *>("(J[B[B)J"), reinterpret_cast<void *>(native_sign)},
-    {const_cast<char *>("nativeDeriveApplicationKey"), const_cast<char *>("(J[B[B[B)J"), reinterpret_cast<void *>(native_derive_application_key)},
-    {const_cast<char *>("nativePrepareApplicationKeys"), const_cast<char *>("(J[B[B[[B[B)J"), reinterpret_cast<void *>(native_prepare_application_keys)},
-    {const_cast<char *>("nativeDeriveApplicationKeys"), const_cast<char *>("(J[B[B[[B)J"), reinterpret_cast<void *>(native_derive_application_keys)},
     {const_cast<char *>("nativeBeginSigning"), const_cast<char *>("(J[B[BI[BIIJ)J"), reinterpret_cast<void *>(native_begin_signing)},
     {const_cast<char *>("nativeConsumeExternalSignature"), const_cast<char *>("(J[B[B)J"), reinterpret_cast<void *>(native_consume_external_signature)},
     {const_cast<char *>("nativeCancelSigningSession"), const_cast<char *>("(J[B)Z"), reinterpret_cast<void *>(native_cancel_signing_session)},
@@ -2125,14 +2018,14 @@ bool take_ints(JNIEnv *env, jintArray source, std::vector<uint32_t> *out) {
   env->GetIntArrayRegion(source, 0, length, values.data());
   if (env->ExceptionCheck()) return false;
   out->reserve(values.size());
-  std::array<bool, 1990> seen{};
+  std::unordered_set<jint> seen;
+  seen.reserve(values.size());
   for (const jint value : values) {
-    if (value < 1 || value > 1989 || seen[static_cast<size_t>(value)]) {
+    if (value < 1 || static_cast<uint32_t>(value) > kMaxWalletAccountIndex || !seen.insert(value).second) {
       throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                "Wallet indices must be unique values in 1..1989");
+                "Wallet indices must be unique values in 1..19890604");
       return false;
     }
-    seen[static_cast<size_t>(value)] = true;
     out->push_back(static_cast<uint32_t>(value));
   }
   return true;
@@ -2356,32 +2249,6 @@ bool encode_result(citizensdk_result_handle_t result, uint64_t prepared_token,
       valid = citizensdk_result_get_signature(result, signature) == kOk;
       if (valid) payload.fixed(signature, sizeof(signature));
       std::memset(signature, 0, sizeof(signature));
-      break;
-    }
-    case CITIZENSDK_RESULT_APPLICATION_KEY: {
-      uint8_t key[32]{};
-      valid = citizensdk_result_get_application_key(result, key) == kOk;
-      if (valid) payload.fixed(key, sizeof(key));
-      std::memset(key, 0, sizeof(key));
-      break;
-    }
-    case CITIZENSDK_RESULT_APPLICATION_KEY_PREPARATION:
-    case CITIZENSDK_RESULT_APPLICATION_KEYS: {
-      const uint32_t count = static_cast<uint32_t>(info.payload_len / 32);
-      valid = info.payload_len % 32 == 0 && count >= 1 && count <= 16;
-      if (valid) payload.u32(count);
-      for (uint32_t index = 0; valid && index < count; ++index) {
-        uint8_t key[32]{};
-        valid = citizensdk_result_get_application_key_at(result, index, key) == kOk;
-        if (valid) payload.fixed(key, sizeof(key));
-        std::memset(key, 0, sizeof(key));
-      }
-      if (valid && info.kind == CITIZENSDK_RESULT_APPLICATION_KEY_PREPARATION) {
-        uint8_t signature[64]{}; uint8_t present = 0;
-        valid = citizensdk_result_get_application_preparation_signature(result, signature, &present) == kOk;
-        if (valid) { payload.u32(present); if (present) payload.fixed(signature, sizeof(signature)); }
-        std::memset(signature, 0, sizeof(signature));
-      }
       break;
     }
     case CITIZENSDK_RESULT_PREPARED_WALLET: {

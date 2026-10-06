@@ -26,8 +26,6 @@ use citizen_sdk_contracts::{
     MAX_WALLET_ACCOUNT_INDEX,
 };
 use futures::lock::Mutex as AsyncMutex;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -289,120 +287,6 @@ impl SigningService {
         message: Vec<u8>,
     ) -> Result<Sr25519Signature, EngineError> {
         self.sign_guarded(account_id, message, &|| Ok(())).await
-    }
-
-    /// 同一受限操作只打开金库一次，批量派生与可选证明共用已验证秘密。
-    pub async fn prepare_application_keys(
-        &self,
-        account_id: AccountId32,
-        salt: [u8; 32],
-        infos: Vec<Vec<u8>>,
-        message: Option<Vec<u8>>,
-        ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
-    ) -> Result<(SecretBuffer, Option<Sr25519Signature>), EngineError> {
-        if infos.is_empty()
-            || infos.len() > 16
-            || infos.iter().any(|info| info.is_empty() || info.len() > 256)
-        {
-            return Err(error(
-                ContractErrorCode::InvalidArgument,
-                "应用派生钥批次必须包含 1..16 个 1..256 字节 info",
-            ));
-        }
-        if message.as_ref().is_some_and(|bytes| bytes.len() != 32) {
-            return Err(error(
-                ContractErrorCode::InvalidArgument,
-                "准备签名消息必须为32字节",
-            ));
-        }
-        ensure_current()?;
-        let salt = Zeroizing::new(salt);
-        let infos = Zeroizing::new(infos);
-        let _guard = wallet_operation_gate().lock().await;
-        require_secure_device(self.vault.as_ref()).await?;
-        let (profile, account) = current_account(self.profiles.as_ref(), account_id, None).await?;
-        let snapshot = self.encrypted_secrets.load(account.secret_ref()).await?;
-        let envelope = snapshot.envelope().cloned().ok_or_else(|| {
-            error(
-                ContractErrorCode::AuthenticationRequired,
-                "指定账户的设备密文不存在",
-            )
-        })?;
-        ensure_current()?;
-        let secret = self.vault.open(account.secret_ref(), envelope).await?;
-        // 金库future实际排空后再检查取消，禁止宿主拿到半批结果。
-        ensure_current()?;
-        let (_, current) = current_account(
-            self.profiles.as_ref(),
-            account_id,
-            Some((profile.generation(), account.secret_ref().owner())),
-        )
-        .await?;
-        if current.secret_ref() != account.secret_ref() {
-            return Err(conflict("应用派生钥账户 SecretRef 已改变"));
-        }
-        let public_key = self.signer.public_key(&secret).await?;
-        if public_key.as_bytes() != account_id.as_bytes() {
-            return Err(error(
-                ContractErrorCode::Integrity,
-                "设备密文与应用派生钥 AccountId 不一致",
-            ));
-        }
-        let output = secret.with_secret(|bytes| -> Result<Vec<u8>, EngineError> {
-            let mut extract = Hmac::<Sha256>::new_from_slice(salt.as_slice()).map_err(|_| {
-                error(
-                    ContractErrorCode::Internal,
-                    "无法初始化应用派生钥 HKDF extract",
-                )
-            })?;
-            extract.update(bytes);
-            let prk = Zeroizing::new(extract.finalize().into_bytes().to_vec());
-            let mut output = Zeroizing::new(Vec::with_capacity(infos.len() * 32));
-            for info in infos.iter() {
-                let mut expand = Hmac::<Sha256>::new_from_slice(prk.as_slice()).map_err(|_| {
-                    error(
-                        ContractErrorCode::Internal,
-                        "无法初始化应用派生钥 HKDF expand",
-                    )
-                })?;
-                expand.update(info.as_slice());
-                expand.update(&[1]);
-                output.extend_from_slice(&expand.finalize().into_bytes());
-            }
-            Ok(std::mem::take(&mut *output))
-        })?;
-        let keys = SecretBuffer::try_new(output).map_err(EngineError::from)?;
-        let signature = match message {
-            Some(message) => {
-                let signature = self
-                    .sign_verified_secret(account_id, &secret, message.clone(), ensure_current)
-                    .await?;
-                if !self
-                    .signer
-                    .verify(
-                        Sr25519PublicKey::from_bytes(account_id.into_bytes()),
-                        message,
-                        signature,
-                    )
-                    .await?
-                {
-                    return Err(error(
-                        ContractErrorCode::Integrity,
-                        "应用准备签名未通过原账户校验",
-                    ));
-                }
-                Some(signature)
-            }
-            None => None,
-        };
-        current_account(
-            self.profiles.as_ref(),
-            account_id,
-            Some((profile.generation(), account.secret_ref().owner())),
-        )
-        .await?;
-        ensure_current()?;
-        Ok((keys, signature))
     }
 
     /// QR 在认证前后复查有效期与取消；已经派发的金库 future 必须实际排空。
@@ -1422,10 +1306,11 @@ impl WalletService {
         indices: &[u32],
         state: WalletState,
     ) -> Result<WalletProfile, EngineError> {
-        if indices.is_empty() {
+        // 本机C接口既有批次边界独立于可选序号，不能按整个序号范围处理一批。
+        if indices.is_empty() || indices.len() > 1990 {
             return Err(error(
                 ContractErrorCode::InvalidArgument,
-                "追加账户 index 列表不能为空",
+                "追加账户 index 列表必须包含 1..1990 项",
             ));
         }
         let profile = state
@@ -1447,7 +1332,7 @@ impl WalletService {
             {
                 return Err(error(
                     ContractErrorCode::InvalidArgument,
-                    "追加账户 index 必须唯一、尚不存在且位于 1..1989",
+                    "追加账户 index 必须唯一、尚不存在且位于 1..19890604",
                 ));
             }
         }

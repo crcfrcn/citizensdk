@@ -17,7 +17,9 @@ internal object CitizenSdkFlutterCodec {
     const val EVENT_CHANNEL = "citizen/sdk/events/v2"
     const val PROTOCOL_VERSION = 2
     const val MAXIMUM_ADDITIONAL_WALLET_ACCOUNTS = 1989
-    const val MAXIMUM_WALLET_CATALOG_ACCOUNTS = 3980
+    // Flutter投影自身校验范围，不依赖独立原生模块的internal实现。
+    const val MAXIMUM_WALLET_ACCOUNT_INDEX = 19890604
+    const val MAXIMUM_WALLET_CATALOG_ACCOUNTS = MAXIMUM_WALLET_ACCOUNT_INDEX + 1 + 1990
     const val MAXIMUM_DEFAULT_ACCOUNT_CHANGE_ACCOUNTS = 256
     const val MAXIMUM_BALANCE_ACCOUNTS = 1990
     const val MAXIMUM_SIGNING_PAYLOAD_BYTES = 16 * 1024 * 1024
@@ -91,9 +93,6 @@ internal object CitizenSdkFlutterCodec {
         "deleteWallet",
         "reconcileWalletCleanup",
         "signWalletPayload",
-        "deriveApplicationKey",
-        "deriveApplicationKeys",
-        "prepareApplicationKeys",
         "beginSigning",
         "consumeExternalSignature",
         "cancelSigning",
@@ -269,28 +268,6 @@ internal object CitizenSdkFlutterCodec {
             val accountId: ByteArray,
             val payload: ByteArray,
         ) : SessionRequest
-        data class DeriveApplicationKey(
-            override val sessionId: String,
-            override val requestSequence: Long,
-            val accountId: ByteArray,
-            val salt: ByteArray,
-            val info: ByteArray,
-        ) : SessionRequest
-        data class DeriveApplicationKeys(
-            override val sessionId: String,
-            override val requestSequence: Long,
-            val accountId: ByteArray,
-            val salt: ByteArray,
-            val infos: List<ByteArray>,
-        ) : SessionRequest
-        data class PrepareApplicationKeys(
-            override val sessionId: String,
-            override val requestSequence: Long,
-            val accountId: ByteArray,
-            val salt: ByteArray,
-            val infos: List<ByteArray>,
-            val message: ByteArray,
-        ) : SessionRequest
         data class BeginSigning(
             override val sessionId: String,
             override val requestSequence: Long,
@@ -391,9 +368,6 @@ internal object CitizenSdkFlutterCodec {
         is Request.ColdSs58 -> "importColdAccountSs58"
         is Request.ReorderWalletAccounts -> "reorderWalletAccountsWithoutDefaultChange"
         is Request.SignWalletPayload -> "signWalletPayload"
-        is Request.DeriveApplicationKey -> "deriveApplicationKey"
-        is Request.DeriveApplicationKeys -> "deriveApplicationKeys"
-        is Request.PrepareApplicationKeys -> "prepareApplicationKeys"
         is Request.BeginSigning -> "beginSigning"
         is Request.ExternalSignature -> request.method
         is Request.CancelSigning -> "cancelSigning"
@@ -596,8 +570,8 @@ internal object CitizenSdkFlutterCodec {
                         val values = tuple[5] as? List<*> ?: badRequest("indices must be a tuple", sessionId, sequence)
                         if (values.size !in 1..MAXIMUM_ADDITIONAL_WALLET_ACCOUNTS) badRequest("indices length is invalid", sessionId, sequence)
                         values.map { exactInt(it, "index") }.toIntArray().also { valuesChecked ->
-                            if (valuesChecked.any { it !in 1..1989 } || valuesChecked.toSet().size != valuesChecked.size) {
-                                badRequest("indices must be unique values in 1..1989", sessionId, sequence)
+                            if (valuesChecked.any { it !in 1..MAXIMUM_WALLET_ACCOUNT_INDEX } || valuesChecked.toSet().size != valuesChecked.size) {
+                                badRequest("indices must be unique values in 1..19890604", sessionId, sequence)
                             }
                         }
                     } else intArrayOf()
@@ -658,7 +632,7 @@ internal object CitizenSdkFlutterCodec {
                     val values = tuple[4] as? List<*>
                         ?: badRequest("accountIds must be a tuple", sessionId, sequence)
                     if (values.size !in 1..MAXIMUM_WALLET_CATALOG_ACCOUNTS) {
-                        badRequest("accountIds must contain 1..3980 accounts", sessionId, sequence)
+                        badRequest("accountIds exceed wallet catalog count boundary", sessionId, sequence)
                     }
                     Request.ReorderWalletAccounts(sessionId, sequence, revision, values.map(::hash32))
                 }
@@ -678,42 +652,6 @@ internal object CitizenSdkFlutterCodec {
                         // 和 Dart codec 保持完全相同，避免 decoder 拒绝已消耗的序号。
                         payload,
                     )
-                }
-                "deriveApplicationKey" -> {
-                    length(6)
-                    val salt = bytes(tuple[4], "application key salt", false, 32)
-                    if (salt.size != 32) {
-                        badRequest("application key salt must be 32 bytes", sessionId, sequence)
-                    }
-                    Request.DeriveApplicationKey(
-                        sessionId,
-                        sequence,
-                        hash32(tuple[3]),
-                        salt,
-                        bytes(tuple[5], "application key info", false, 256),
-                    )
-                }
-                "deriveApplicationKeys" -> {
-                    length(6)
-                    val salt = bytes(tuple[4], "application key salt", false, 32)
-                    if (salt.size != 32) badRequest("application key salt must be 32 bytes", sessionId, sequence)
-                    val rawInfos = tuple[5] as? List<*>
-                        ?: badRequest("application key infos must be a tuple", sessionId, sequence)
-                    if (rawInfos.size !in 1..16) badRequest("application key info count must be 1..16", sessionId, sequence)
-                    Request.DeriveApplicationKeys(sessionId, sequence, hash32(tuple[3]), salt,
-                        rawInfos.map { bytes(it, "application key info", false, 256) })
-                }
-                "prepareApplicationKeys" -> {
-                    length(7)
-                    val salt = bytes(tuple[4], "application key salt", false, 32)
-                    if (salt.size != 32) badRequest("application key salt must be 32 bytes", sessionId, sequence)
-                    val rawInfos = tuple[5] as? List<*>
-                        ?: badRequest("application key infos must be a tuple", sessionId, sequence)
-                    if (rawInfos.size !in 1..16) badRequest("application key info count must be 1..16", sessionId, sequence)
-                    val message = bytes(tuple[6], "preparation signing message", true, 32)
-                    if (message.isNotEmpty() && message.size != 32) badRequest("preparation message must be empty or 32 bytes", sessionId, sequence)
-                    Request.PrepareApplicationKeys(sessionId, sequence, hash32(tuple[3]), salt,
-                        rawInfos.map { bytes(it, "application key info", false, 256) }, message)
                 }
                 "beginSigning" -> {
                     length(10)
@@ -841,7 +779,7 @@ internal object CitizenSdkFlutterCodec {
                 "openQrCapture" -> {
                     length(4)
                     val purpose = exactInt(tuple[3], "purpose")
-                    if (purpose !in 1..8) badRequest("scan purpose is invalid", sessionId, sequence)
+                    if (purpose !in 1..8 || purpose == 6) badRequest("scan purpose is invalid", sessionId, sequence)
                     Request.Qr(method, sessionId, sequence, listOf(purpose))
                 }
                 "setQrCaptureTorch" -> {
@@ -854,7 +792,7 @@ internal object CitizenSdkFlutterCodec {
                 "qrDecodeImage" -> {
                     length(5)
                     val purpose = exactInt(tuple[4], "purpose")
-                    if (purpose !in 1..8) badRequest("scan purpose is invalid", sessionId, sequence)
+                    if (purpose !in 1..8 || purpose == 6) badRequest("scan purpose is invalid", sessionId, sequence)
                     Request.Qr(method, sessionId, sequence, listOf(bytes(tuple[3], "image", false, MAXIMUM_QR_IMAGE_BYTES), purpose))
                 }
                 "qrParse", "qrConsumeSignResponse", "reviewQrRequest" -> {

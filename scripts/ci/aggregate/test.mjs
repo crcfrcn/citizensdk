@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { toolEnvironment } from '../../../.github/tatagate/tools.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 test('citizensdk.sdk.ci的aggregate远端Job物理独立', () => {
@@ -33,8 +34,10 @@ node() {
 }
 cp() { :; }
 ` + steps['7'].source;
-  const output = execFileSync('/bin/bash', ['--noprofile', '--norc', '-c', shell], {
-    encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GITHUB_WORKSPACE: '/SDK checkout',
+  // 执行真实汇总Shell片段，沿用门禁已验真的公开工具交付；不继承系统PATH。
+  const tools = toolEnvironment();
+  const output = execFileSync(tools.PRODUCT_BASH_BIN, ['--noprofile', '--norc', '-c', shell], {
+    encoding: 'utf8', env: { ...tools, GITHUB_WORKSPACE: '/SDK checkout',
       CITIZENSDK_WORK_DIR: '/outside task', CITIZENSDK_SOURCE_SHA: 'a'.repeat(40),
       CITIZENSDK_VERSION: '1.2.3', GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1',
       CITIZENSDK_ACTION: 'ci', CITIZENSDK_FLUTTER_ROOT: '/official flutter', PUB_CACHE: '/pub cache' },

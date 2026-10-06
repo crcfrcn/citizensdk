@@ -22,6 +22,12 @@
 
 namespace citizen_sdk {
 
+// 热序号范围、列表结构与冷账户容量独立，实际结果才决定分配大小。
+inline constexpr uint32_t kMaximumAccountIndex = 19890604;
+inline constexpr uint32_t kMaximumWalletAccounts = kMaximumAccountIndex + 1;
+inline constexpr uint32_t kMaximumColdAccounts = 1990;
+inline constexpr uint32_t kMaximumCatalogAccounts = kMaximumWalletAccounts + kMaximumColdAccounts;
+
 template <class T> class Operation final {
  public:
   Operation(std::string id, std::shared_future<T> result, std::function<bool()> cancel)
@@ -366,7 +372,7 @@ inline citizensdk_result_info_t result_info(citizensdk_result_handle_t result, c
   return info;
 }
 inline WalletProfile profile_header(citizensdk_result_handle_t result, const citizensdk_wallet_profile_info_t &info) {
-  if (info.present != 1 || info.wallet_index != 0 || info.account_count > 1990 ||
+  if (info.present != 1 || info.wallet_index != 0 || info.account_count > kMaximumWalletAccounts ||
       (info.origin != CITIZENSDK_WALLET_ORIGIN_CREATED && info.origin != CITIZENSDK_WALLET_ORIGIN_IMPORTED))
     throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core热钱包事实不符");
   WalletProfile profile;
@@ -402,7 +408,7 @@ inline std::optional<WalletProfile> read_wallet_profile(citizensdk_result_handle
     const auto text = account_text(account, [&](auto *out, uint8_t *a, uint64_t ac, uint64_t *ar, uint8_t *n, uint64_t nc, uint64_t *nr) {
       return citizensdk_result_get_wallet_account(result, index, out, a, ac, ar, n, nc, nr);
     });
-    if (account.is_active > 1 || account.index > 1989) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core热账户标志无效");
+    if (account.is_active > 1 || account.index > kMaximumAccountIndex) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core热账户标志无效");
     profile.accounts.push_back({account.index, public_account(account.account_id), text.first, text.second,
                                 account.created_at_millis, account.is_active != 0});
   }
@@ -414,7 +420,7 @@ inline WalletState read_wallet_state(citizensdk_result_handle_t result) {
   auto profile_info = output_info<citizensdk_wallet_profile_info_t>();
   require_core(citizensdk_result_get_wallet_state(result, &info), "Core钱包快照读取失败");
   require_core(citizensdk_result_get_wallet_profile(result, &profile_info), "Core热钱包读取失败");
-  if (info.account_count > 3980 || info.has_default_account > 1 ||
+  if (info.account_count > kMaximumCatalogAccounts || info.has_default_account > 1 ||
       (info.account_count == 0) != (info.has_default_account == 0) || profile_info.present > 1)
     throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core钱包快照数量或标志无效");
   WalletState state; state.revision = info.revision;
@@ -427,7 +433,7 @@ inline WalletState read_wallet_state(citizensdk_result_handle_t result) {
     });
     const bool hot = account.sign_mode == CITIZENSDK_WALLET_SIGN_HOT;
     if (account.has_account_index > 1 || account.is_default != (index == 0 ? 1U : 0U) ||
-        !(hot ? account.wallet_index == 0 && account.has_account_index == 1 && account.account_index <= 1989
+        !(hot ? account.wallet_index == 0 && account.has_account_index == 1 && account.account_index <= kMaximumAccountIndex
               : account.sign_mode == CITIZENSDK_WALLET_SIGN_COLD && account.wallet_index > 0 && account.has_account_index == 0))
       throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core钱包账户事实无效");
     const auto id = public_account(account.account_id);
@@ -452,7 +458,7 @@ inline WalletState read_wallet_state(citizensdk_result_handle_t result) {
     auto value = output_info<citizensdk_wallet_diagnostic_info_v1_t>();
     require_core(citizensdk_wallet_state_get_diagnostic_at(result, index, &value), "Core诊断读取失败");
     if (value.has_ss58_address > 1 || value.sign_mode > 2 || value.diagnostic_reason < 1 || value.diagnostic_reason > 3 ||
-        value.cleanup_account_count > 1990 || value.delete_wallet_wide_key > 1 ||
+        value.cleanup_account_count > kMaximumWalletAccounts || value.delete_wallet_wide_key > 1 ||
         (value.cleanup_account_count == 0 && value.delete_wallet_wide_key != 0) ||
         (value.has_ss58_address == 0 && value.ss58_address_len != 0))
       throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core诊断事实无效");
@@ -693,13 +699,13 @@ inline uint64_t decimal_u64(const std::string &text) {
 }
 inline QrDocument qr_document(std::string json) {
   if (json.size() > 65536) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core二维码文档超限");
-  const auto kind = qr_public_unsigned(json, "kind", 6);
+  const auto kind = qr_public_unsigned(json, "kind", 5);
   if (kind == 0) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Core二维码类型无效");
   return {static_cast<uint32_t>(kind), static_cast<uint32_t>(qr_public_unsigned(json, "scan_purpose_mask", 255)),
           qr_public_field(json, "canonical_text", 2331), std::move(json)};
 }
 inline void qr_purpose(const QrDocument &document, uint32_t purpose) {
-  if (purpose < 1 || purpose > 8 || (document.scan_purpose_mask & (1U << (purpose - 1))) == 0)
+  if (purpose < 1 || purpose > 8 || purpose == 6 || (document.scan_purpose_mask & (1U << (purpose - 1))) == 0)
     throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "二维码不符合请求用途");
 }
 inline SigningOutcome read_signing(citizensdk_result_handle_t result) {
@@ -1538,7 +1544,7 @@ class Host final {
     return detail::operation<void>(operations_, [](auto core, auto *out) { return citizensdk_reconcile_wallet_cleanup(core, out); }, detail::empty_result);
   }
   Operation<WalletState> reorderAccountsWithoutDefaultChange(uint64_t revision, std::vector<AccountId> accounts) {
-    if (accounts.size() > 3980) throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "账户目录数量无效");
+    if (accounts.size() > kMaximumCatalogAccounts) throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "账户目录数量无效");
     std::vector<citizensdk_account_id_t> ids; ids.reserve(accounts.size());
     for (const auto &account : accounts) ids.push_back(detail::core_account(account));
     return stateOperation([revision, ids = std::move(ids)](auto core, auto *out) {
@@ -1639,7 +1645,7 @@ class Host final {
     return value != 0;
   }
   Operation<DefaultAccountChange> beginDefaultAccountChange(uint64_t revision, std::vector<AccountId> accounts, uint64_t ttl_seconds = 90) {
-    if (accounts.empty() || accounts.size() > 3980) throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "账户目录数量无效");
+    if (accounts.empty() || accounts.size() > kMaximumCatalogAccounts) throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "账户目录数量无效");
     std::vector<citizensdk_account_id_t> ids; ids.reserve(accounts.size());
     for (const auto &account : accounts) ids.push_back(detail::core_account(account));
     return detail::operation<DefaultAccountChange>(operations_,
@@ -1652,20 +1658,6 @@ class Host final {
       [session_id = std::move(session_id), response = std::move(response)](auto core, auto *out) {
         return citizensdk_consume_default_account_change(core, bytes_view(session_id), bytes_view(response), out);
       }, [](detail::EventResultScope &owned) { return detail::read_default_change(owned.value); });
-  }
-  Operation<std::shared_ptr<SecretBytes>> deriveApplicationKey(AccountId account, std::array<uint8_t, 32> salt, std::vector<uint8_t> info) {
-    if (info.empty() || info.size() > 256) throw Error(CITIZENSDK_ERROR_INVALID_ARGUMENT, "派生域长度无效");
-    const auto owner = operations_;
-    return detail::operation<std::shared_ptr<SecretBytes>>(owner,
-      [account = detail::core_account(account), salt, info = std::move(info)](auto core, auto *out) {
-        return citizensdk_derive_application_key(core, &account, {salt.data(), salt.size()}, detail::bytes(info), out);
-      }, [owner](detail::EventResultScope &owned) {
-        (void)detail::result_info(owned.value, CITIZENSDK_RESULT_APPLICATION_KEY);
-        auto bytes = std::shared_ptr<SecretBytes>(new SecretBytes());
-        bytes->fill(32, [&](uint8_t *buffer, uint64_t) { return citizensdk_result_get_application_key(owned.value, buffer); });
-        owner->remember(bytes);
-        return bytes;
-      });
   }
   static std::vector<uint8_t> encodePayload(uint32_t kind, const std::string &fields_json, const std::vector<uint8_t> &payload = {}) {
     return detail::public_bytes([&](uint8_t *p, uint64_t n, uint64_t *size) {

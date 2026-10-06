@@ -22,7 +22,7 @@ use citizen_sdk_contracts::{
     TransactionHistoryQueryKind, VaultGeneration, VerifiedBlockRef,
     WalletCleanupPlan, WalletOrigin, WalletProfile, WalletProvisioningPlan, WalletState,
     WalletRecord, WalletRecordAccount,
-    MAX_COLD_WALLET_ACCOUNTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES, MAX_WALLET_ACCOUNT_INDEX,
+    MAX_COLD_WALLET_ACCOUNTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES, MAX_WALLET_ACCOUNTS,
 };
 
 const HOST_RECORD_MAGIC: [u8; 4] = *b"CSHR";
@@ -37,7 +37,6 @@ const TYPED_PAYLOAD_VERSION: u16 = 1;
 const WALLET_TYPED_PAYLOAD_VERSION: u16 = 3;
 const MAX_CHAIN_ID_BYTES: usize = 128;
 const RUNTIME_CONTEXT_FIXED_TYPED_BYTES: usize = 55;
-const MAX_WALLET_ACCOUNTS: usize = MAX_WALLET_ACCOUNT_INDEX as usize + 1;
 const MAX_ORDERED_WALLET_ACCOUNTS: usize = MAX_WALLET_ACCOUNTS + MAX_COLD_WALLET_ACCOUNTS;
 const MAX_WALLET_NAME_BYTES: usize = 120;
 const MAX_SS58_BYTES: usize = 128;
@@ -481,7 +480,7 @@ pub fn decode_wallet_state(encoded: &[u8]) -> Result<WalletState, HostCodecError
                     cold_accounts.push(record.validate_cold_identity().map_err(|_| model_integrity("persisted cold identity is invalid"))?);
                 } else { diagnostics.push(record); }
             }
-            let ordered_count = reader.count(MAX_ORDERED_WALLET_ACCOUNTS)?;
+            let ordered_count = reader.item_count(MAX_ORDERED_WALLET_ACCOUNTS, 32)?;
             let mut ordered_account_ids = Vec::with_capacity(ordered_count);
             for _ in 0..ordered_count {
                 ordered_account_ids.push(AccountId32::from_bytes(reader.fixed()?));
@@ -584,7 +583,7 @@ fn decode_profile_record(reader: &mut TypedReader<'_>) -> Result<WalletRecord, H
     };
     let created_at_millis = reader.u64()?;
     let active_account_id = AccountId32::from_bytes(reader.fixed()?);
-    let count = reader.count(MAX_WALLET_ACCOUNTS)?;
+    let count = reader.item_count(MAX_WALLET_ACCOUNTS, 121)?;
     let mut accounts = Vec::with_capacity(count);
     for _ in 0..count {
         accounts.push(WalletRecordAccount {
@@ -629,7 +628,7 @@ fn decode_provisioning_plan(
     let wallet_index = reader.u32()?;
     let generation = VaultGeneration::from_bytes(reader.fixed()?);
     let previous_profile = decode_optional(reader, decode_wallet_profile)?;
-    let count = reader.count(MAX_WALLET_ACCOUNTS)?;
+    let count = reader.item_count(MAX_WALLET_ACCOUNTS, 69)?;
     let mut secret_refs = Vec::with_capacity(count);
     for _ in 0..count {
         secret_refs.push(decode_secret_ref(reader)?);
@@ -665,7 +664,7 @@ fn decode_cleanup_plan(reader: &mut TypedReader<'_>) -> Result<WalletCleanupPlan
     let operation_id = reader.fixed()?;
     let wallet_index = reader.u32()?;
     let generation = VaultGeneration::from_bytes(reader.fixed()?);
-    let count = reader.count(MAX_WALLET_ACCOUNTS)?;
+    let count = reader.item_count(MAX_WALLET_ACCOUNTS, 69)?;
     let mut secret_refs = Vec::with_capacity(count);
     for _ in 0..count {
         secret_refs.push(decode_secret_ref(reader)?);
@@ -1519,13 +1518,23 @@ impl<'a> TypedReader<'a> {
                 "typed host collection count exceeds this platform",
             )
         })?;
-        if value > max {
+        // 集合至少每项一字节；先拒绝不可能的计数，不能按声明的序号范围预分配。
+        if value > max || value > self.bytes.len().saturating_sub(self.offset) {
             return Err(HostCodecError::new(
                 HostCodecErrorKind::PayloadTooLarge,
                 "typed host collection exceeds its limit",
             ));
         }
         Ok(value)
+    }
+
+    // 钱包账户/SecretRef/目录ID先按固定字段最小字节数核验，再按真实数量分配。
+    fn item_count(&mut self, max: usize, minimum_bytes: usize) -> Result<usize, HostCodecError> {
+        let count = self.count(max)?;
+        if count > self.bytes.len().saturating_sub(self.offset) / minimum_bytes {
+            return Err(model_integrity("typed wallet count exceeds remaining record bytes"));
+        }
+        Ok(count)
     }
 
     fn bytes(&mut self, max: usize) -> Result<Vec<u8>, HostCodecError> {

@@ -13,10 +13,10 @@ void validate_wallet_indices(const uint32_t *indices, uint32_t count) {
   std::unordered_set<uint32_t> unique;
   unique.reserve(count);
   for (uint32_t i = 0; i < count; ++i) {
-    require(indices[i] >= 1 && indices[i] <= kMaximumAdditionalAccounts &&
+    require(indices[i] >= 1 && indices[i] <= kMaximumAccountIndex &&
                 unique.insert(indices[i]).second,
             CITIZENSDK_ERROR_INVALID_ARGUMENT,
-            "wallet indices must be unique values in 1...1989");
+            "wallet indices must be unique values in 1...19890604");
   }
 }
 

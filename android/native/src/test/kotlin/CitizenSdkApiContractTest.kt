@@ -10,34 +10,7 @@ import java.lang.reflect.Modifier
 import org.citizen.sdk.internal.CitizenSdkNative
 
 class CitizenSdkApiContractTest {
-    @Test
-    fun preparationResultOwnsKeysAndOptionalSignature() {
-        assertEquals(CitizenSdkOperation::class.java,
-            CitizenSdk::class.java.getMethod("prepareApplicationKeys", ByteArray::class.java,
-                ByteArray::class.java, List::class.java, ByteArray::class.java).returnType)
-        val bytes = ByteBuffer.allocate(20 + 4 + 32 + 4 + 64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            .putInt(1).putInt(0).putInt(0).putInt(31).putInt(0)
-            .putInt(1).put(ByteArray(32) { 7 }).putInt(1).put(ByteArray(64) { 8 }).array()
-        val decoded = org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(bytes)
-        val value = (decoded.result as org.citizen.sdk.internal.CitizenSdkNativeResult.ApplicationKeyPreparation).value
-        assertEquals(32, value.keys.single().size); assertEquals(64, value.signature!!.size)
-        value.dispose(); assertTrue(value.keys.single().all { it == 0.toByte() })
-    }
 
-    @Test
-    fun batchDerivationKeepsOnePublicOperationAndIndexedNativeResult() {
-        assertEquals(CitizenSdkOperation::class.java,
-            CitizenSdk::class.java.getMethod("deriveApplicationKeys", ByteArray::class.java,
-                ByteArray::class.java, List::class.java).returnType)
-        val bytes = ByteBuffer.allocate(20 + 4 + 64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            .putInt(1).putInt(0).putInt(0).putInt(30).putInt(0)
-            .putInt(2).put(ByteArray(64) { it.toByte() }).array()
-        val decoded = org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(bytes)
-        val keys = (decoded.result as org.citizen.sdk.internal.CitizenSdkNativeResult.ApplicationKeys).values
-        assertEquals(2, keys.size)
-        assertEquals(32, keys[0].size)
-        assertEquals(32, keys[1].size)
-    }
 
     @Test
     fun lifecycleEntriesKeepTheSameZeroArgumentVoidFutureContract() {
@@ -248,7 +221,11 @@ class CitizenSdkApiContractTest {
                 CitizenSdkInputLimits.requireWalletSecret("mnemonic", 1025)
             }.code,
         )
-        CitizenSdkInputLimits.requireAddAccountIndices(intArrayOf(1, 1989))
+        CitizenSdkInputLimits.requireAddAccountIndices(intArrayOf(1, 1989, 1990, 19890604))
+        for (indices in listOf(intArrayOf(0), intArrayOf(-1), intArrayOf(19890605), intArrayOf(8, 19890605))) {
+            assertThrows(CitizenSdkException::class.java) { CitizenSdkInputLimits.requireAddAccountIndices(indices) }
+        }
+        assertEquals(1990, CitizenSdkInputLimits.MAX_COLD_WALLET_ACCOUNTS)
         assertEquals(
             CitizenSdkErrorCode.INVALID_ARGUMENT,
             assertThrows(CitizenSdkException::class.java) {
@@ -283,7 +260,7 @@ class CitizenSdkApiContractTest {
         assertTrue("syncTransactionHistory" in names)
         assertTrue("getStorageKeysPaged" in names)
         assertTrue("callRuntimeApi" in names)
-        assertTrue("deriveApplicationKey" in names)
+        assertTrue(names.none { it.contains("ApplicationKey") })
         assertTrue(names.none { it.contains("transferWithRemark", ignoreCase = true) })
         assertTrue(names.none { it.contains("handle", ignoreCase = true) })
         assertNotNull(CitizenSdkOperation::class.java.getMethod("cancel"))

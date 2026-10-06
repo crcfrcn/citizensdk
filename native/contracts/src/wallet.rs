@@ -9,15 +9,17 @@ use crate::{
 };
 
 /// 与当前已验证热钱包一致的最大硬派生账户 index。
-pub const MAX_WALLET_ACCOUNT_INDEX: u32 = 1989;
+pub const MAX_WALLET_ACCOUNT_INDEX: u32 = 19_890_604;
+/// 含创建锚点0的热账户结构边界；只按实际账户数分配，不预生成整个序号范围。
+pub const MAX_WALLET_ACCOUNTS: usize = MAX_WALLET_ACCOUNT_INDEX as usize + 1;
 /// 当前已验证公民链热钱包只有一只无根钱包，固定使用 wallet index 0。
 pub const CITIZEN_WALLET_INDEX: u32 = 0;
 /// CitizenChain Runtime 与现有稳定 Dart 钱包共同使用的 SS58 prefix。
 pub const CITIZEN_SS58_PREFIX: u16 = 2027;
 /// 本机账户名称最多包含 30 个 Unicode scalar，与现有 Dart `runes.length` 一致。
 pub const MAX_WALLET_ACCOUNT_NAME_SCALARS: usize = 30;
-/// 冷账户是独立导入的公开身份；上限只用于约束宿主持久化分配，不代表可派生范围。
-pub const MAX_COLD_WALLET_ACCOUNTS: usize = MAX_WALLET_ACCOUNT_INDEX as usize + 1;
+/// 冷账户是独立导入的公开身份；容量独立约束宿主持久化分配，wallet index 不受热派生序号上限限制。
+pub const MAX_COLD_WALLET_ACCOUNTS: usize = 1990;
 /// `0` 永久保留给唯一热钱包；冷账户使用单调且不复用的本机 wallet index。
 pub const FIRST_COLD_WALLET_INDEX: u32 = 1;
 
@@ -305,7 +307,7 @@ impl WalletProfile {
         {
             return Err(ContractError::new(
                 ContractErrorCode::InvalidArgument,
-                "账户0必须是 masterAccountId，且账户 index 不得超过 1989",
+                "账户0必须是 masterAccountId，且账户 index 不得超过 19890604",
             ));
         }
         if !account_ids.contains(&active_account_id)
@@ -695,7 +697,7 @@ impl WalletRecord {
         }
         match self {
             Self::Profile { wallet_index, accounts, .. } => {
-                if *wallet_index != CITIZEN_WALLET_INDEX || accounts.len() > MAX_WALLET_ACCOUNT_INDEX as usize + 1 {
+                if *wallet_index != CITIZEN_WALLET_INDEX || accounts.len() > MAX_WALLET_ACCOUNTS {
                     return Err(invalid_wallet_record());
                 }
                 for account in accounts { account.validate_shape()?; }

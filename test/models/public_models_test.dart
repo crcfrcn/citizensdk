@@ -4,32 +4,94 @@ import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('下一个热账户提示到顶停止且只查看实际账户', () {
+    CitizenWalletProfile profile(int index) => CitizenWalletProfile(
+      walletIndex: 0,
+      walletName: '钱包',
+      masterAccountId: _account(1),
+      origin: CitizenWalletOrigin.imported,
+      createdAtMillis: BigInt.one,
+      activeAccountId: _account(1),
+      accounts: [
+        CitizenAccount(
+          index: index,
+          accountId: _account(1),
+          ss58Address: 'synthetic',
+          name: '账户',
+          createdAtMillis: BigInt.one,
+          isActive: true,
+        ),
+      ],
+    );
+    expect(CitizenWalletProfile.maxAccountIndex, 19890604);
+    expect(profile(1990).nextAccountIndex, 1991);
+    expect(profile(19890603).nextAccountIndex, 19890604);
+    expect(profile(19890604).nextAccountIndex, isNull);
+  });
 
   test('付款钱包读取不把默认账户当选择，也不把热当前账户当钱包锚点', () {
-    final master = CitizenAccount(index: 0, accountId: _account(1), ss58Address: 'master',
-      name: '账户0', createdAtMillis: BigInt.one, isActive: false);
-    final child = CitizenAccount(index: 1, accountId: _account(2), ss58Address: 'child',
-      name: '账户1', createdAtMillis: BigInt.one, isActive: true);
-    final profile = CitizenWalletProfile(walletIndex: 0, walletName: '独立钱包',
-      masterAccountId: master.accountId, origin: CitizenWalletOrigin.created,
-      createdAtMillis: BigInt.one, activeAccountId: child.accountId, accounts: [master, child]);
+    final master = CitizenAccount(
+      index: 0,
+      accountId: _account(1),
+      ss58Address: 'master',
+      name: '账户0',
+      createdAtMillis: BigInt.one,
+      isActive: false,
+    );
+    final child = CitizenAccount(
+      index: 1,
+      accountId: _account(2),
+      ss58Address: 'child',
+      name: '账户1',
+      createdAtMillis: BigInt.one,
+      isActive: true,
+    );
+    final profile = CitizenWalletProfile(
+      walletIndex: 0,
+      walletName: '独立钱包',
+      masterAccountId: master.accountId,
+      origin: CitizenWalletOrigin.created,
+      createdAtMillis: BigInt.one,
+      activeAccountId: child.accountId,
+      accounts: [master, child],
+    );
     final rows = <CitizenWalletStateAccount>[
-      CitizenWalletStateAccount(signMode: CitizenWalletSignMode.cold, walletIndex: 2, accountIndex: null,
-        accountId: _account(3), ss58Address: 'cold', name: '冷钱包', createdAtMillis: BigInt.one, isDefault: true),
-      for (final account in [master, child]) CitizenWalletStateAccount(signMode: CitizenWalletSignMode.hot,
-        walletIndex: 0, accountIndex: account.index, accountId: account.accountId, ss58Address: account.ss58Address,
-        name: account.name, createdAtMillis: account.createdAtMillis, isDefault: false),
+      CitizenWalletStateAccount(
+        signMode: CitizenWalletSignMode.cold,
+        walletIndex: 2,
+        accountIndex: null,
+        accountId: _account(3),
+        ss58Address: 'cold',
+        name: '冷钱包',
+        createdAtMillis: BigInt.one,
+        isDefault: true,
+      ),
+      for (final account in [master, child])
+        CitizenWalletStateAccount(
+          signMode: CitizenWalletSignMode.hot,
+          walletIndex: 0,
+          accountIndex: account.index,
+          accountId: account.accountId,
+          ss58Address: account.ss58Address,
+          name: account.name,
+          createdAtMillis: account.createdAtMillis,
+          isDefault: false,
+        ),
     ];
-    CitizenWalletState snapshot(int? index) => CitizenWalletState(revision: BigInt.one,
-      hotProfile: profile, accounts: rows, initializationState: CitizenWalletInitializationState.ready,
-      cleanupPending: false, activeWalletIndex: index);
+    CitizenWalletState snapshot(int? index) => CitizenWalletState(
+      revision: BigInt.one,
+      hotProfile: profile,
+      accounts: rows,
+      initializationState: CitizenWalletInitializationState.ready,
+      cleanupPending: false,
+      activeWalletIndex: index,
+    );
     expect(snapshot(0).activeWalletAccount?.accountId, master.accountId);
     expect(snapshot(0).defaultAccount?.accountId, _account(3));
     expect(snapshot(0).hotProfile!.activeAccountId, child.accountId);
     expect(snapshot(2).activeWalletAccount?.accountId, _account(3));
     expect(snapshot(null).activeWalletAccount, isNull);
   });
-
 
   test('钱包公开模型复制列表与签名字节', () {
     final accounts = <CitizenAccount>[

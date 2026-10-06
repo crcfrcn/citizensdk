@@ -25,7 +25,7 @@ use citizen_sdk_contracts::{
     SecretBuffer, SecretOwner, SecretRef, SecretVault, SigningIntent, SigningTransform,
     Sr25519PublicKey, Sr25519Signature, VaultAvailability, VaultGeneration, WalletCleanupPlan,
     WalletDiagnosticReason, WalletOrigin, WalletProvisioningPlan, WalletRecord, WalletSignMode,
-    WalletState,
+    WalletState, MAX_WALLET_ACCOUNT_INDEX,
 };
 use citizen_signer::Sr25519SoftwareSigner;
 use futures::{executor::block_on, join};
@@ -1918,178 +1918,6 @@ fn create_add_accounts_usability_and_local_signing_form_one_complete_lifecycle()
 }
 
 #[test]
-fn application_key_is_deterministic_domain_separated_and_rejects_cold_accounts() {
-    use citizen_sdk_contracts::Modules;
-
-    block_on(async {
-        let harness = Harness::new();
-        let (profile, _) = create_confirmed(&harness.service, WalletWordCount::Words12, "").await;
-        let engine = harness.engine(Modules::try_new(Modules::WALLET | Modules::SIGNING).unwrap());
-        let account = profile.master_account_id();
-        let first = engine
-            .derive_application_key(account, [7; 32], b"consumer.example/data".to_vec())
-            .await
-            .unwrap();
-        let repeated = engine
-            .derive_application_key(account, [7; 32], b"consumer.example/data".to_vec())
-            .await
-            .unwrap();
-        let other = engine
-            .derive_application_key(account, [8; 32], b"consumer.example/data".to_vec())
-            .await
-            .unwrap();
-        let first_bytes = first.with_secret(ToOwned::to_owned);
-        let repeated_bytes = repeated.with_secret(ToOwned::to_owned);
-        let other_bytes = other.with_secret(ToOwned::to_owned);
-        assert_eq!(first_bytes.len(), 32);
-        assert_eq!(first_bytes, repeated_bytes);
-        assert_ne!(first_bytes, other_bytes);
-
-        let opens_before_batch = harness.vault.open_calls.load(Ordering::SeqCst);
-        let batch = engine
-            .derive_application_keys(
-                account,
-                [7; 32],
-                vec![
-                    b"consumer.example/data".to_vec(),
-                    b"consumer.example/index".to_vec(),
-                ],
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            harness.vault.open_calls.load(Ordering::SeqCst),
-            opens_before_batch + 1
-        );
-        let batch_bytes = batch.with_secret(ToOwned::to_owned);
-        assert_eq!(batch_bytes.len(), 64);
-        assert_eq!(&batch_bytes[..32], first_bytes.as_slice());
-        let separate_index = engine
-            .derive_application_key(account, [7; 32], b"consumer.example/index".to_vec())
-            .await
-            .unwrap();
-        assert_eq!(
-            &batch_bytes[32..],
-            separate_index.with_secret(ToOwned::to_owned).as_slice()
-        );
-        // 派生与证明共用一次打开，派生字节保持既有KDF，签名绑定原账户。
-        let opens = harness.vault.open_calls.load(Ordering::SeqCst);
-        let message = vec![0x42; 32];
-        let (prepared, signature) = engine
-            .prepare_application_keys(
-                account,
-                [7; 32],
-                vec![b"consumer.example/data".to_vec()],
-                Some(message.clone()),
-                &|| Ok(()),
-            )
-            .await
-            .unwrap();
-        assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), opens + 1);
-        assert_eq!(prepared.with_secret(ToOwned::to_owned), first_bytes);
-        assert!(harness
-            .signer
-            .verify(
-                Sr25519PublicKey::from_bytes(account.into_bytes()),
-                message,
-                signature.unwrap()
-            )
-            .await
-            .unwrap());
-        let opens = harness.vault.open_calls.load(Ordering::SeqCst);
-        assert_contract_code(
-            engine
-                .prepare_application_keys(
-                    account,
-                    [7; 32],
-                    vec![vec![1]],
-                    Some(vec![1; 31]),
-                    &|| Ok(()),
-                )
-                .await
-                .err()
-                .unwrap(),
-            ContractErrorCode::InvalidArgument,
-        );
-        assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), opens);
-        let checks = AtomicUsize::new(0);
-        let cancel_after_open = || {
-            if checks.fetch_add(1, Ordering::SeqCst) >= 2 {
-                Err(EngineError::Cancelled)
-            } else {
-                Ok(())
-            }
-        };
-        assert!(matches!(
-            engine
-                .prepare_application_keys(
-                    account,
-                    [7; 32],
-                    vec![vec![1]],
-                    Some(vec![1; 32]),
-                    &cancel_after_open
-                )
-                .await,
-            Err(EngineError::Cancelled)
-        ));
-        assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), opens + 1);
-        assert_eq!(
-            harness.vault.open_completed.load(Ordering::SeqCst),
-            opens + 1
-        );
-        let opens = harness.vault.open_calls.load(Ordering::SeqCst);
-        assert!(matches!(
-            engine
-                .prepare_application_keys(account, [7; 32], vec![vec![1]], None, &|| Err(
-                    EngineError::Cancelled
-                ))
-                .await,
-            Err(EngineError::Cancelled)
-        ));
-        assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), opens);
-
-        for infos in [Vec::new(), vec![vec![1]; 17], vec![Vec::new()]] {
-            assert_contract_code(
-                engine
-                    .derive_application_keys(account, [7; 32], infos)
-                    .await
-                    .expect_err("invalid batch must fail before vault open"),
-                ContractErrorCode::InvalidArgument,
-            );
-        }
-
-        let cold = AccountId32::from_bytes([0xc1; 32]);
-        harness
-            .service
-            .import_cold_account(cold, "独立外部设备")
-            .await
-            .unwrap();
-        assert_contract_code(
-            engine
-                .derive_application_key(cold, [7; 32], vec![1])
-                .await
-                .expect_err("冷账户不得进入本机派生"),
-            ContractErrorCode::Unsupported,
-        );
-        assert_contract_code(
-            engine
-                .derive_application_key(account, [7; 32], Vec::new())
-                .await
-                .expect_err("空 info 必须失败"),
-            ContractErrorCode::InvalidArgument,
-        );
-        assert_contract_code(
-            engine
-                .derive_application_key(account, [7; 32], vec![0; 257])
-                .await
-                .expect_err("超长 info 必须失败"),
-            ContractErrorCode::InvalidArgument,
-        );
-        engine.dispose().unwrap();
-    });
-}
-
-#[test]
 fn import_uses_the_same_verified_account_and_missing_ciphertext_is_not_usable() {
     block_on(async {
         let harness = Harness::new();
@@ -2479,7 +2307,7 @@ fn headless_next_account_is_atomic_and_does_not_reuse_a_deleted_hole() {
         assert_eq!(harness.profiles.snapshot(), before);
         harness
             .service
-            .add_accounts(&mnemonic, "", &[1989])
+            .add_accounts(&mnemonic, "", &[MAX_WALLET_ACCOUNT_INDEX])
             .await
             .unwrap();
         let before = harness.profiles.snapshot();
@@ -3459,7 +3287,13 @@ fn invalid_append_and_cancelled_authentication_leave_no_new_facts() {
         let mnemonic = known_mnemonic();
         h.service.import(&mnemonic, "").await.unwrap();
         let before = h.profiles.snapshot();
-        for indices in [&[][..], &[0], &[1, 1], &[1990]] {
+        for indices in [
+            &[][..],
+            &[0],
+            &[1, 1],
+            &[MAX_WALLET_ACCOUNT_INDEX + 1],
+            &[8, MAX_WALLET_ACCOUNT_INDEX + 1],
+        ] {
             assert!(h
                 .service
                 .add_accounts(&mnemonic, "", indices)
@@ -3576,5 +3410,40 @@ fn append_checks_fresh_persistent_envelope_instead_of_trusting_cas_response() {
         // 返回成功的CAS没有证明持久字节正确；损坏的新账户必须回滚。
         assert_eq!(h.service.profile().await.unwrap(), Some(base));
         assert_eq!(h.vault.authorize_calls.load(Ordering::SeqCst), 1);
+    });
+}
+
+#[test]
+fn sparse_high_indices_roundtrip_sign_and_stop_sequential_append_at_upper_bound() {
+    block_on(async {
+        let h = Harness::new();
+        let mnemonic = known_mnemonic();
+        h.service.import(&mnemonic, "").await.unwrap();
+        let max = MAX_WALLET_ACCOUNT_INDEX;
+        let profile = h
+            .service
+            .add_accounts(&mnemonic, "", &[max - 1, 1990, 1989])
+            .await
+            .unwrap();
+        assert_eq!(profile.accounts().len(), 4);
+        let profile = h.service.add_next_account(&mnemonic, "").await.unwrap();
+        assert!(profile.account_by_index(max).is_some());
+        let before = h.profiles.snapshot();
+        assert!(h.service.add_next_account(&mnemonic, "").await.is_err());
+        assert!(h.service.add_accounts(&mnemonic, "", &[max]).await.is_err());
+        assert_eq!(h.profiles.snapshot(), before);
+        // 到顶只禁止max+1，仍可指定空缺；回读和签名只使用实际选择的账户。
+        h.service.add_accounts(&mnemonic, "", &[8]).await.unwrap();
+        let reloaded = h.service.profile().await.unwrap().unwrap();
+        assert_eq!(reloaded.accounts().len(), 6);
+        for index in [8, 1989, 1990, max - 1, max] {
+            h.signing_service()
+                .sign(
+                    reloaded.account_by_index(index).unwrap().account_id(),
+                    b"synthetic-upper-bound".to_vec(),
+                )
+                .await
+                .unwrap();
+        }
     });
 }

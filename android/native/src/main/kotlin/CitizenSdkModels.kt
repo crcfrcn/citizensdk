@@ -474,8 +474,3 @@ object CitizenSdkModules {
     const val QR = 32
     const val FULL = 63
 }
-
-/** 单次金库授权返回的短期材料，使用完成必须清零。 */
-class CitizenApplicationKeyPreparation(val keys: List<ByteArray>, val signature: ByteArray?) {
-    fun dispose() { keys.forEach { it.fill(0) }; signature?.fill(0) }
-}

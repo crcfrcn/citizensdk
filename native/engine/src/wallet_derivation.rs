@@ -140,7 +140,7 @@ pub async fn derive_wallet_accounts(
     {
         return Err(EngineError::contract(
             ContractErrorCode::InvalidArgument,
-            "派生账户 index 必须唯一且位于 0..1989",
+            "派生账户 index 必须唯一且位于 0..19890604",
         ));
     }
 

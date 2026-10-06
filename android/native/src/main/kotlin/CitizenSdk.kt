@@ -74,7 +74,6 @@ class CitizenSdk private constructor(
             is CitizenSdkNativeResult.QrReview -> native.releaseQrReview(it.token)
             is CitizenSdkNativeResult.WalletState -> if (it.inspectionToken != 0L) native.releaseWalletInspection(it.inspectionToken)
             is CitizenSdkNativeResult.Prepared -> native.releasePreparedWallet(it.token)
-            is CitizenSdkNativeResult.ApplicationKey -> it.value.fill(0)
             else -> Unit
         }
     }
@@ -266,78 +265,8 @@ class CitizenSdk private constructor(
         }
     }
 
-    fun deriveApplicationKey(
-        accountId: ByteArray,
-        salt: ByteArray,
-        info: ByteArray,
-    ): CitizenSdkOperation<ByteArray> {
-        val checkedAccount = accountId.requireSize(32, "account id")
-        require(salt.size == 32 && info.size in 1..256) {
-            "application key requires 32-byte salt and 1..256-byte info"
-        }
-        val saltCopy = salt.clone()
-        val infoCopy = info.clone()
-        val operation = requestOperation({ native.deriveApplicationKey(checkedAccount, saltCopy, infoCopy) }) {
-            val source = (it as CitizenSdkNativeResult.ApplicationKey).value
-            source.clone().also { source.fill(0) }
-        }
-        operation.future.whenComplete { _, _ ->
-            saltCopy.fill(0)
-            infoCopy.fill(0)
-        }
-        return operation
-    }
 
-    /// 同一热账户认证一次，返回与逐项 deriveApplicationKey 完全相同的独立用途钥。
-    fun deriveApplicationKeys(
-        accountId: ByteArray,
-        salt: ByteArray,
-        infos: List<ByteArray>,
-    ): CitizenSdkOperation<List<ByteArray>> {
-        val checkedAccount = accountId.requireSize(32, "account id")
-        require(salt.size == 32 && infos.size in 1..16 && infos.all { it.size in 1..256 }) {
-            "application key batch requires 32-byte salt and 1..16 bounded infos"
-        }
-        val saltCopy = salt.clone()
-        val infoCopies = infos.map { it.clone() }.toTypedArray()
-        val operation = requestOperation({ native.deriveApplicationKeys(checkedAccount, saltCopy, infoCopies) }) {
-            val source = (it as CitizenSdkNativeResult.ApplicationKeys).values
-            try {
-                require(source.size == infoCopies.size && source.all { key -> key.size == 32 })
-                source.map { key -> key.clone() }
-            } finally {
-                source.forEach { key -> key.fill(0) }
-            }
-        }
-        operation.future.whenComplete { _, _ ->
-            saltCopy.fill(0)
-            infoCopies.forEach { it.fill(0) }
-        }
-        return operation
-    }
 
-    /** 批量派生及可选设备证明共用一次金库打开，绝不保留账户私钥。 */
-    fun prepareApplicationKeys(accountId: ByteArray, salt: ByteArray,
-        infos: List<ByteArray>, signingMessage: ByteArray? = null): CitizenSdkOperation<CitizenApplicationKeyPreparation> {
-        val checkedAccount = accountId.requireSize(32, "account id")
-        require(salt.size == 32 && infos.size in 1..16 && infos.all { it.size in 1..256 })
-        require(signingMessage == null || signingMessage.size == 32)
-        val saltCopy = salt.clone()
-        val infoCopies = infos.map { it.clone() }.toTypedArray()
-        val messageCopy = signingMessage?.clone() ?: ByteArray(0)
-        val operation = requestOperation({ native.prepareApplicationKeys(checkedAccount, saltCopy, infoCopies, messageCopy) }) {
-            val source = (it as CitizenSdkNativeResult.ApplicationKeyPreparation).value
-            try {
-                require(source.keys.size == infoCopies.size && source.keys.all { key -> key.size == 32 })
-                require((source.signature != null) == (signingMessage != null))
-                CitizenApplicationKeyPreparation(source.keys.map { key -> key.clone() }, source.signature?.clone())
-            } finally { source.dispose() }
-        }
-        operation.future.whenComplete { _, _ ->
-            saltCopy.fill(0); infoCopies.forEach { it.fill(0) }; messageCopy.fill(0)
-        }
-        return operation
-    }
 
     fun exportState(): CompletableFuture<CitizenChainState> =
         request({ native.exportState() }) { (it as CitizenSdkNativeResult.ChainState).value }
@@ -451,7 +380,7 @@ class CitizenSdk private constructor(
         expectedRevision: String,
         accountIds: List<ByteArray>,
     ): CitizenSdkOperation<CitizenWalletState> {
-        require(accountIds.size in 1..3980) { "wallet catalog must contain 1..3980 accounts" }
+        require(accountIds.size in 1..CitizenSdkInputLimits.MAX_WALLET_CATALOG_ACCOUNTS) { "wallet catalog exceeds structural count boundary" }
         val revision = java.lang.Long.parseUnsignedLong(expectedRevision)
         val checked = accountIds.map { it.requireSize(32, "accountId") }.toTypedArray()
         return requestOperation({ native.reorderWalletAccounts(revision, checked) }) {
@@ -1243,6 +1172,11 @@ internal object CitizenSdkInputLimits {
     const val MAX_SIGN_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_WALLET_SECRET_BYTES = 1024
     const val MAX_ADD_ACCOUNT_INDICES = 1989
+    // 热派生范围与冷账户容量、批次分别约束，按实际输入检查重复。
+    const val MAX_ACCOUNT_INDEX = 19890604
+    const val MAX_WALLET_ACCOUNTS = MAX_ACCOUNT_INDEX + 1
+    const val MAX_COLD_WALLET_ACCOUNTS = 1990
+    const val MAX_WALLET_CATALOG_ACCOUNTS = MAX_WALLET_ACCOUNTS + MAX_COLD_WALLET_ACCOUNTS
     const val MAX_WALLET_ACCOUNT_NAME_CODE_UNITS = 128
     const val MAX_STORAGE_KEY_BYTES = 4 * 1024
     const val MAX_STORAGE_BATCH_KEYS = 1024
@@ -1303,13 +1237,12 @@ internal object CitizenSdkInputLimits {
             CitizenSdkErrorCode.INVALID_ARGUMENT,
             "wallet index list must contain 1..$MAX_ADD_ACCOUNT_INDICES items",
         )
-        val seen = BooleanArray(MAX_ADD_ACCOUNT_INDICES + 1)
+        val seen = HashSet<Int>()
         for (index in indices) {
-            if (index !in 1..MAX_ADD_ACCOUNT_INDICES || seen[index]) throw CitizenSdkException(
+            if (index !in 1..MAX_ACCOUNT_INDEX || !seen.add(index)) throw CitizenSdkException(
                 CitizenSdkErrorCode.INVALID_ARGUMENT,
-                "wallet indices must be unique values in 1..$MAX_ADD_ACCOUNT_INDICES",
+                "wallet indices must be unique values in 1..$MAX_ACCOUNT_INDEX",
             )
-            seen[index] = true
         }
     }
 

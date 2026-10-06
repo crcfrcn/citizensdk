@@ -24,7 +24,12 @@ final class CitizenSdkFlutterCodec {
   static const int maximumWalletInputBytes = 1024;
   static const int maximumSessionIdCodeUnits = 128;
   static const int maximumAdditionalWalletAccounts = 1989;
-  static const int maximumWalletCatalogAccounts = 3980;
+  // 列表结构、冷账户容量与单次追加/余额批次分别约束。
+  static const int maximumWalletAccounts =
+      CitizenWalletProfile.maxAccountIndex + 1;
+  static const int maximumColdWalletAccounts = 1990;
+  static const int maximumWalletCatalogAccounts =
+      maximumWalletAccounts + maximumColdWalletAccounts;
   static const int maximumDefaultAccountChangeAccounts = 256;
   static const int maximumBalanceAccounts = 1990;
   static const int maximumSigningPayloadBytes = 16 * 1024 * 1024;
@@ -107,9 +112,6 @@ final class CitizenSdkFlutterCodec {
     'deleteWallet',
     'reconcileWalletCleanup',
     'signWalletPayload',
-    'deriveApplicationKey',
-    'deriveApplicationKeys',
-    'prepareApplicationKeys',
     'beginSigning',
     'consumeExternalSignature',
     'cancelSigning',
@@ -692,7 +694,8 @@ final class CitizenSdkFlutterCodec {
     if (raw == null) return null;
     final tuple = _tuple(raw, 7, 'wallet profile');
     final accountsRaw = _list(tuple[5], 'wallet accounts');
-    if (accountsRaw.length > 1990) throw _decodeFailure('钱包账户超过1990项');
+    if (accountsRaw.length > maximumWalletAccounts)
+      throw _decodeFailure('钱包账户超过结构数量上限');
     final walletName = _string(tuple[6], 'profile.walletName');
     if (!_validAccountName(walletName)) throw _decodeFailure('钱包名称无效');
     final activeAccountId = _hex32(tuple[4], 'profile.activeAccountId');
@@ -759,7 +762,7 @@ final class CitizenSdkFlutterCodec {
     final hotProfile = decodeWalletProfile(tuple[1]);
     final accountsRaw = _list(tuple[2], 'walletState.accounts');
     if (accountsRaw.length > maximumWalletCatalogAccounts) {
-      throw _decodeFailure('统一钱包目录超过 3980 项');
+      throw _decodeFailure('统一钱包目录超过结构数量上限');
     }
     final accounts = <CitizenWalletStateAccount>[];
     for (var index = 0; index < accountsRaw.length; index++) {
@@ -869,7 +872,7 @@ final class CitizenSdkFlutterCodec {
           'cleanup.accountIds',
         ).map((value) => _hex32(value, 'cleanup.accountId')).toList();
         if (ids.isEmpty ||
-            ids.length > 1990 ||
+            ids.length > maximumWalletAccounts ||
             ids.toSet().length != ids.length ||
             !Iterable<int>.generate(ids.length - 1)
                 .every((i) => ids[i].compareTo(ids[i + 1]) < 0)) {
@@ -1526,7 +1529,7 @@ final class CitizenSdkFlutterCodec {
         _u64Decimal(fields[0], '$method.expectedRevision');
         final ordered = _list(fields[1], '$method.accountIds');
         if (ordered.isEmpty || ordered.length > maximumWalletCatalogAccounts) {
-          throw _decodeFailure('统一钱包重排必须包含 1..3980 个账户');
+          throw _decodeFailure('统一钱包重排数量超出结构边界');
         }
         for (final accountId in ordered) {
           _hex32(accountId, '$method.accountId');
@@ -1538,45 +1541,6 @@ final class CitizenSdkFlutterCodec {
         final payload = _bytesView(fields[1], 'signWalletPayload.payload');
         if (payload.length > maximumSigningPayloadBytes) {
           throw _decodeFailure('签名 payload 不能超过 16 MiB');
-        }
-        return;
-      case 'deriveApplicationKey':
-        _expectLength(fields, 3, '$method fields');
-        _hex32(fields[0], '$method.accountId');
-        if (_bytesView(fields[1], '$method.salt').length != 32) {
-          throw _decodeFailure('deriveApplicationKey.salt 必须是 32 字节');
-        }
-        final applicationInfo = _bytesView(fields[2], '$method.info');
-        if (applicationInfo.isEmpty || applicationInfo.length > 256) {
-          throw _decodeFailure('deriveApplicationKey.info 必须包含 1..256 字节');
-        }
-        return;
-      case 'prepareApplicationKeys':
-      case 'deriveApplicationKeys':
-        _expectLength(
-          fields,
-          method == 'prepareApplicationKeys' ? 4 : 3,
-          '$method fields',
-        );
-        if (method == 'prepareApplicationKeys') {
-          final message = _bytesView(fields[3], '$method.signingMessage');
-          if (message.isNotEmpty && message.length != 32) {
-            throw _decodeFailure('准备签名消息必须为空或32字节');
-          }
-        }
-        _hex32(fields[0], '$method.accountId');
-        if (_bytesView(fields[1], '$method.salt').length != 32) {
-          throw _decodeFailure('deriveApplicationKeys.salt 必须是 32 字节');
-        }
-        final infos = fields[2];
-        if (infos is! List || infos.isEmpty || infos.length > 16) {
-          throw _decodeFailure('deriveApplicationKeys.infos 必须包含 1..16 项');
-        }
-        for (final info in infos) {
-          final bytes = _bytesView(info, '$method.info');
-          if (bytes.isEmpty || bytes.length > 256) {
-            throw _decodeFailure('deriveApplicationKeys.info 必须包含 1..256 字节');
-          }
         }
         return;
       case 'beginSigning':
@@ -1948,33 +1912,6 @@ final class CitizenSdkFlutterCodec {
           throw _decodeFailure('sr25519 signature 必须是 64 字节');
         }
         return;
-      case 'deriveApplicationKey':
-        _expectLength(value, 1, '$method value');
-        if (_bytesView(value[0], '$method.key').length != 32) {
-          throw _decodeFailure('应用派生钥结果必须是 32 字节');
-        }
-        return;
-      case 'prepareApplicationKeys':
-      case 'deriveApplicationKeys':
-        _expectLength(
-          value,
-          method == 'prepareApplicationKeys' ? 2 : 1,
-          '$method value',
-        );
-        if (method == 'prepareApplicationKeys') {
-          final signature = _bytesView(value[1], '$method.signature');
-          if (signature.isNotEmpty && signature.length != 64) {
-            throw _decodeFailure('准备签名结果必须为空或64字节');
-          }
-        }
-        final keys = value[0];
-        if (keys is! List ||
-            keys.isEmpty ||
-            keys.length > 16 ||
-            keys.any((key) => key is! Uint8List || key.length != 32)) {
-          throw _decodeFailure('应用派生钥批次结果无效');
-        }
-        return;
       case 'beginSigning':
       case 'consumeExternalSignature':
         _expectLength(value, 1, '$method value');
@@ -2203,16 +2140,6 @@ final class CitizenSdkFlutterCodec {
       });
     } else if (kind == 5) {
       keys.add('account_id');
-    } else if (kind == 6) {
-      keys.addAll(<String>{
-        'request_id',
-        'expires_at',
-        'signer_account_id',
-        'signature',
-        'key_exchange_public_key',
-        'encryption_nonce',
-        'ciphertext',
-      });
     } else {
       throw _decodeFailure('二维码kind不在闭集');
     }
@@ -2291,7 +2218,7 @@ final class CitizenSdkFlutterCodec {
           ? null
           : _positiveInt(decoded['expires_at'], 'qr.expiresAt'),
       action: kind == 1 ? _u32Int(decoded['action'], 'qr.action') : null,
-      signerAccountId: kind == 1 || kind == 2 || kind == 6
+      signerAccountId: kind == 1 || kind == 2
           ? (kind == 1 && decoded['signer_account_id'] == null
                 ? null
                 : _hex32(decoded['signer_account_id'], 'qr.signerAccountId'))
@@ -2304,7 +2231,7 @@ final class CitizenSdkFlutterCodec {
               maximumQrReviewPayloadBytes,
             )
           : null,
-      signature: kind == 2 || kind == 6
+      signature: kind == 2
           ? _hexByteString(decoded['signature'], 'qr.signature', 64, 64)
           : null,
       currentAccountId: kind == 2 && decoded['current_account_id'] != null
@@ -2333,30 +2260,6 @@ final class CitizenSdkFlutterCodec {
       memo: kind == 4 ? _string(decoded['memo'], 'qr.memo') : null,
       bankCidNumber: kind == 4
           ? _string(decoded['bank_cid_number'], 'qr.bankCidNumber')
-          : null,
-      keyExchangePublicKey: kind == 6
-          ? _hexByteString(
-              decoded['key_exchange_public_key'],
-              'qr.keyExchangePublicKey',
-              32,
-              32,
-            )
-          : null,
-      encryptionNonce: kind == 6
-          ? _hexByteString(
-              decoded['encryption_nonce'],
-              'qr.encryptionNonce',
-              12,
-              12,
-            )
-          : null,
-      ciphertext: kind == 6
-          ? _hexByteString(
-              decoded['ciphertext'],
-              'qr.ciphertext',
-              17,
-              maximumQrTextBytes,
-            )
           : null,
     );
   }
@@ -2681,7 +2584,7 @@ final class CitizenSdkFlutterCodec {
         .map<int>((value) => _accountIndex(value, 'account index'))
         .toList(growable: false);
     if (indices.any((index) => index == 0)) {
-      throw _decodeFailure('追加账户 index 必须在 1..1989；0 是 master 锚点');
+      throw _decodeFailure('追加账户 index 必须在 1..19890604；0 是 master 锚点');
     }
     if (indices.toSet().length != indices.length) {
       throw _decodeFailure('indices 不能重复');
@@ -2775,7 +2678,8 @@ final class CitizenSdkFlutterCodec {
 
   int _accountIndex(Object? raw, String name) {
     final value = _u32Int(raw, name);
-    if (value > 1989) throw _decodeFailure('$name 超出 CitizenSDK 账户范围');
+    if (value > CitizenWalletProfile.maxAccountIndex)
+      throw _decodeFailure('$name 超出 CitizenSDK 账户范围');
     return value;
   }
 
