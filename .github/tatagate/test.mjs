@@ -1,4 +1,5 @@
-import { toolEnvironment, exactExecutable, validateToolSources, prepareRunnerTools, resolveBootstrapPackages } from './tools.mjs';
+import { toolEnvironment, exactExecutable, validateToolSources, prepareRunnerTools, resolveBootstrapPackages,
+  validateCurlArtifacts, validateCurlControl, validateCurlTar, fetchOriginal } from './tools.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { gateContract, validateWorkflowSource, validateVectorGroup, validatePalletRegistry, readPublicChain } from './index.mjs';
@@ -271,10 +272,126 @@ test('Ubuntu根包与内部依赖完整核验，缺项和漂移在构建前拒�
     {name:'other',version:'1',status:'install ok installed',depends:'',preDepends:''},
   ], roots=[{name:'compiler',version:'18.1.3'}], compare=(a,op,b)=>op==='='?a===b:Number(a)>=Number(b);
   assert.deepEqual(resolveBootstrapPackages(records,roots,compare),[
-    {name:'compiler',version:'18.1.3'},{name:'libc',version:'2.39'},{name:'runtime',version:'18.1.3'}]);
+    {name:'compiler',version:'18.1.3',origin:'installed'},{name:'libc',version:'2.39',origin:'installed'},{name:'runtime',version:'18.1.3',origin:'installed'}]);
   assert.throws(()=>resolveBootstrapPackages(records.slice(0,2),roots,compare),/闭包缺失/u);
   assert.throws(()=>resolveBootstrapPackages(records,[{name:'compiler',version:'18.1.4'}],compare),/版本漂移/u);
   assert.throws(()=>resolveBootstrapPackages([...records,records[0]],roots,compare),/身份重复/u);
   const changed=structuredClone(records);changed[1].version='18.1.2';
   assert.throws(()=>resolveBootstrapPackages(changed,roots,compare),/闭包缺失/u);
+  assert.throws(()=>resolveBootstrapPackages([],roots,compare),/根包缺失.*compiler.*预期=18\.1\.3.*实际=缺失/u);
+  assert.throws(()=>resolveBootstrapPackages([{...records[0],status:'deinstall ok config-files'}],roots,compare),/安装状态错误.*状态=deinstall/u);
+  assert.throws(()=>resolveBootstrapPackages(records,[{name:'compiler',version:'18.1.4'}],compare),/预期=18\.1\.4.*实际=18\.1\.3/u);
+});
+
+// 两份固定Debian包不能伪报系统安装；开发包与runtime及现成内部依赖一起形成唯一来源闭包。
+test('curl原件来源控制字段与staged依赖闭包准确拒绝漂移', () => {
+  const artifacts = structuredClone(gateContract().tool_sources.bootstrap.artifacts);
+  assert.equal(validateCurlArtifacts(artifacts), artifacts);
+  for (const mutate of [
+    value=>value.pop(), value=>value.reverse(), value=>value.push(value[0]),
+    value=>{value[0].architecture='arm64';}, value=>{value[0].version='8.5.0';},
+    value=>{value[0].sha256='0'.repeat(64);}, value=>{value[0].size++;},
+    value=>{value[0].url='https://example.invalid/curl.deb';},
+    value=>{value[0].depends='';}, value=>{value[0].extra=true;},
+  ]) { const value=structuredClone(artifacts);mutate(value);assert.throws(()=>validateCurlArtifacts(value)); }
+  const controls=artifacts.map(record=>[record.name,record.version,record.architecture,record.depends,''].join('\t')+'\n');
+  const staged=artifacts.map((record,i)=>validateCurlControl(record,controls[i]));
+  assert.equal(staged[0].origin,'staged');assert.equal(staged[0].status,undefined);
+  for (const control of [controls[0].replace('amd64','arm64'),controls[0].replace(artifacts[0].version,'0'),controls[0]+'extra',controls[0].replace(/\t\n$/u,'\tother\n')]) {
+    assert.throws(()=>validateCurlControl(artifacts[0],control),/控制字段/u);
+  }
+  const installed=artifacts[1].depends.split(',').map(clause=>({name:clause.trim().split(' ')[0],version:'99.0',status:'install ok installed',depends:'',preDepends:''}));
+  const compare=(actual,op,expected)=>op==='='?actual===expected:actual==='99.0';
+  const closure=resolveBootstrapPackages(installed,artifacts,compare,staged);
+  assert.deepEqual(closure.filter(x=>x.origin==='staged').map(x=>x.name),['libcurl4-openssl-dev','libcurl4t64']);
+  assert.equal(closure.filter(x=>x.origin==='installed').length,installed.length);
+  assert.throws(()=>resolveBootstrapPackages(installed.slice(1),artifacts,compare,staged),/闭包缺失/u);
+  assert.throws(()=>resolveBootstrapPackages(installed,artifacts,compare,[{...staged[0],status:'install ok installed'},staged[1]]),/伪报/u);
+  assert.throws(()=>resolveBootstrapPackages(installed,artifacts,compare,[...staged,staged[0]]),/身份重复/u);
+});
+
+// 构造真实tar头与校验和，仅在内存验证路径和链接，不创建归档外文件或调用系统解包器。
+test('curl原件tar在解包前拒绝越界链接非法头及截断', () => {
+  const entry=(name,type='0',target='',body=Buffer.from('data'))=>{
+    const header=Buffer.alloc(512);
+    header.write(name,0,100);header.write('0000644\0',100,8);
+    header.write(body.length.toString(8).padStart(11,'0')+'\0',124,12);
+    header.fill(32,148,156);header.write(type,156,1);header.write(target,157,100);
+    header.write('ustar\0',257,6);const sum=[...header].reduce((a,b)=>a+b,0);
+    header.write(sum.toString(8).padStart(6,'0')+'\0 ',148,8);
+    return Buffer.concat([header,body,Buffer.alloc((512-body.length%512)%512)]);
+  };
+  const tar=(...entries)=>Buffer.concat([...entries,Buffer.alloc(1024)]);
+  const root=entry('./','5','',Buffer.alloc(0));
+  assert.ok(validateCurlTar(tar(root,entry('./usr/include/curl.h'))).has('usr/include/curl.h'));
+  assert.ok(validateCurlTar(tar(entry('./usr/lib/libcurl.so','2','libcurl.so.4',Buffer.alloc(0)))).has('usr/lib/libcurl.so'));
+  for(const value of [tar(entry('../outside')),tar(entry('/outside')),tar(entry('./usr/lib/link','2','../../../outside',Buffer.alloc(0))),
+    tar(entry('./usr/lib/link','2','/outside',Buffer.alloc(0))),tar(entry('./a','x')),tar(entry('./a'),entry('./a')),
+    Buffer.alloc(512),tar(entry('./a')).subarray(0,600)])assert.throws(()=>validateCurlTar(value));
+  const corrupt=tar(entry('./a'));corrupt[0]^=1;assert.throws(()=>validateCurlTar(corrupt),/摘要/u);
+});
+
+test('固定原件读取保留摘要大小HTTPS重定向及失败约束', async () => {
+  const {createHash}=await import('node:crypto');const {mkdtempSync,rmSync,readFileSync}=await import('node:fs');
+  const {join}=await import('node:path');const {tmpdir}=await import('node:os');
+  const root=mkdtempSync(join(tmpdir(),'curl-original-')),bytes=Buffer.from('official fixture');
+  const record={url:'https://archive.ubuntu.com/ubuntu/fixture',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+  try {
+    const destination=join(root,'original');await fetchOriginal(record,destination,async(_url,options)=>{assert.equal(options.redirect,'manual');return new Response(bytes);});
+    assert.deepEqual(readFileSync(destination),bytes);
+    await assert.rejects(fetchOriginal({...record,url:'http://archive.ubuntu.com/original'},join(root,'rejected'),async()=>assert.fail('非法来源不能联网')));
+    for(const response of [new Response('wrong'),new Response('',{status:404}),new Response('',{status:302,headers:{location:'https://example.invalid/original'}}),
+      new Response('',{status:302,headers:{location:'http://archive.ubuntu.com/original'}})]) {
+      await assert.rejects(fetchOriginal(record,join(root,'rejected'),async()=>response));
+    }
+  } finally {rmSync(root,{recursive:true});}
+});
+
+// 两个镜像必须保持同一原件身份；只模拟响应，真实获取仍由正常入口完整验真。
+test('GNU固定镜像的连接恢复摘要失败与来源闭集', async () => {
+  const {sourceMirrors, requestGNUOriginal} = await import("./tools.mjs");
+  const {fetchOriginal:readOriginal} = await import('./tools.mjs');
+  const {mkdtempSync, readFileSync, existsSync, rmSync} = await import('node:fs');
+  const {join} = await import('node:path'); const {tmpdir} = await import('node:os');
+  const {createHash} = await import('node:crypto');
+  const bytes = Buffer.from('same locked GNU fixture'), file = 'bash/bash-5.3.tar.gz';
+  const record = {url:'https://ftp.gnu.org/gnu/' + file,
+    sha256:createHash('sha256').update(bytes).digest('hex'),
+    mirrors:['https://mirrors.ocf.berkeley.edu/gnu/','https://mirror.csclub.uwaterloo.ca/gnu/'].map(base => base + file)};
+  const addresses = sourceMirrors(record);
+  assert.equal(addresses.length, 3);
+  for (const mirrors of [undefined, [], record.mirrors.slice(0,1), [...record.mirrors].reverse(),
+    [record.mirrors[0],record.mirrors[0]], record.mirrors.map(url => url.replace('https:', 'ht'+'tp:')),
+    record.mirrors.map(url => url + '?unregistered=1'), ['https://other.invalid/' + file,record.mirrors[1]]]) {
+    assert.throws(() => sourceMirrors({...record,mirrors}));
+  }
+  const calls = [];
+  const connected = await requestGNUOriginal(record, async (url, options) => {
+    calls.push(url); assert.equal(options.redirect, 'manual');
+    if (calls.length === 1) throw Object.assign(new TypeError('fixture connection timeout'), {cause:{code:'UND_ERR_CONNECT_TIMEOUT'}});
+    return new Response(bytes);
+  });
+  assert.deepEqual(calls, addresses.slice(0,2)); assert.deepEqual(Buffer.from(await connected.response.arrayBuffer()), bytes);
+  const unavailable = [];
+  await requestGNUOriginal(record, async url => {
+    unavailable.push(url); return unavailable.length < 3 ? new Response(null,{status:503}) : new Response(bytes);
+  });
+  assert.deepEqual(unavailable, addresses);
+  let tlsCalls = 0;
+  await assert.rejects(requestGNUOriginal(record, async () => {tlsCalls++; throw Object.assign(Error('fixture invalid TLS'),{cause:{code:'CERT_HAS_EXPIRED'}});}));
+  assert.equal(tlsCalls,1);
+  let redirectCalls = 0;
+  await assert.rejects(requestGNUOriginal(record, async () => {redirectCalls++; return new Response(null,{status:302,headers:{location:'https://other.invalid/original'}});}));
+  assert.equal(redirectCalls,1);
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(requestGNUOriginal(record, () => assert.fail('取消不得联网'), {signal:controller.signal}));
+  const root = mkdtempSync(join(tmpdir(),'gnu-mirror-'));
+  try {
+    const path = join(root,'original'); let attempts = 0;
+    await readOriginal(record, path, async () => ++attempts === 1 ? new Response(null,{status:503}) : new Response(bytes));
+    assert.equal(attempts,2); assert.deepEqual(readFileSync(path),bytes);
+    let corrupted = 0; const rejected = join(root,'rejected');
+    await assert.rejects(readOriginal({...record,sha256:'0'.repeat(64)}, rejected, async () => {corrupted++; return new Response(bytes);}));
+    assert.equal(corrupted,1); assert.equal(existsSync(rejected),false);
+  } finally {rmSync(root,{recursive:true,force:true});}
 });

@@ -67,84 +67,168 @@
         "upstream_patches": [
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-001",
-            "sha256": "1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f"
+            "sha256": "1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-001",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-001"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-002",
-            "sha256": "e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001"
+            "sha256": "e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-002",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-002"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-003",
-            "sha256": "f245d9c7dc3f5a20d84b53d249334747940936f09dc97e1dcb89fc3ab37d60ed"
+            "sha256": "f245d9c7dc3f5a20d84b53d249334747940936f09dc97e1dcb89fc3ab37d60ed",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-003",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-003"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-004",
-            "sha256": "9591d245045529f32f0812f94180b9d9ce9023f5a765c039b852e5dfc99747d0"
+            "sha256": "9591d245045529f32f0812f94180b9d9ce9023f5a765c039b852e5dfc99747d0",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-004",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-004"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-005",
-            "sha256": "cca1ef52dbbf433bc98e33269b64b2c814028efe2538be1e2c9a377da90bc99d"
+            "sha256": "cca1ef52dbbf433bc98e33269b64b2c814028efe2538be1e2c9a377da90bc99d",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-005",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-005"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-006",
-            "sha256": "29119addefed8eff91ae37fd51822c31780ee30d4a28376e96002706c995ff10"
+            "sha256": "29119addefed8eff91ae37fd51822c31780ee30d4a28376e96002706c995ff10",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-006",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-006"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-007",
-            "sha256": "c0976bbfffa1453c7cfdd62058f206a318568ff2d690f5d4fa048793fa3eb299"
+            "sha256": "c0976bbfffa1453c7cfdd62058f206a318568ff2d690f5d4fa048793fa3eb299",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-007",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-007"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-008",
-            "sha256": "097cd723cbfb8907674ac32214063a3fd85282657ec5b4e544d2c0f719653fb4"
+            "sha256": "097cd723cbfb8907674ac32214063a3fd85282657ec5b4e544d2c0f719653fb4",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-008",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-008"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-009",
-            "sha256": "eee30fe78a4b0cb2fe20e010e00308899cfc613e0774ebb3c8557a1552f24f8c"
+            "sha256": "eee30fe78a4b0cb2fe20e010e00308899cfc613e0774ebb3c8557a1552f24f8c",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-009",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-009"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-010",
-            "sha256": "cf76f1cce2ea300c18bff9f002d21f280cc931acd17c28518110b93fe6e72569"
+            "sha256": "cf76f1cce2ea300c18bff9f002d21f280cc931acd17c28518110b93fe6e72569",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-010",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-010"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-011",
-            "sha256": "0298df8f5ea2a31d3be43ed7d269c5b3c7c342dd5b570bea7f64d66dcbbe7531"
+            "sha256": "0298df8f5ea2a31d3be43ed7d269c5b3c7c342dd5b570bea7f64d66dcbbe7531",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-011",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-011"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-012",
-            "sha256": "d71379b39bebaedaf123414414e77fb458a0a43b9ad3116594c6df7ca6754573"
+            "sha256": "d71379b39bebaedaf123414414e77fb458a0a43b9ad3116594c6df7ca6754573",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-012",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-012"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-013",
-            "sha256": "042f9cda967e24bf4211944697441e93d06ff42b4b998629a98a1b249279f200"
+            "sha256": "042f9cda967e24bf4211944697441e93d06ff42b4b998629a98a1b249279f200",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-013",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-013"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-014",
-            "sha256": "bd4360b401d38507e358783dcad8536a99c6789f0d3a5bd0cfb8c4a34144696c"
+            "sha256": "bd4360b401d38507e358783dcad8536a99c6789f0d3a5bd0cfb8c4a34144696c",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-014",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-014"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-015",
-            "sha256": "55b79ceee2fc27f6767eed697e939a7eb2fe2a28c01556bd75f18d581014f46e"
+            "sha256": "55b79ceee2fc27f6767eed697e939a7eb2fe2a28c01556bd75f18d581014f46e",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-015",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-015"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-016",
-            "sha256": "9ea29b266b7d24cb34d0ff3f1c4631e4d527bfe2d1ef15d17cdb924bf31ef767"
+            "sha256": "9ea29b266b7d24cb34d0ff3f1c4631e4d527bfe2d1ef15d17cdb924bf31ef767",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-016",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-016"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-017",
-            "sha256": "443b927b45c1558ca72052410f8b8f6e5152b617ed707061a2781d4375b0d1c3"
+            "sha256": "443b927b45c1558ca72052410f8b8f6e5152b617ed707061a2781d4375b0d1c3",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-017",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-017"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-018",
-            "sha256": "ae715d76c50341d7d7095e9a8d2eeed1ca9546152c2ac7289206f90cf30ac697"
+            "sha256": "ae715d76c50341d7d7095e9a8d2eeed1ca9546152c2ac7289206f90cf30ac697",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-018",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-018"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-019",
-            "sha256": "a25c581e4d0057dea3833918438a930e2e86ee4c6dc17fe15267b7f04cbc4e3d"
+            "sha256": "a25c581e4d0057dea3833918438a930e2e86ee4c6dc17fe15267b7f04cbc4e3d",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-019",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-019"
+            ]
           },
           {
             "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-020",
-            "sha256": "df217ed3a9122aa2286d9b67bbe348661b6a9db262b580c29150dae55d532896"
+            "sha256": "df217ed3a9122aa2286d9b67bbe348661b6a9db262b580c29150dae55d532896",
+            "mirrors": [
+              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-020",
+              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-020"
+            ]
           }
+        ],
+        "mirrors": [
+          "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3.tar.gz",
+          "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz"
         ]
       },
       "grep": {
@@ -153,7 +237,11 @@
         "sha256": "2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9",
         "root": "grep-3.12",
         "executable": "bin/grep",
-        "upstream_patches": []
+        "upstream_patches": [],
+        "mirrors": [
+          "https://mirrors.ocf.berkeley.edu/gnu/grep/grep-3.12.tar.xz",
+          "https://mirror.csclub.uwaterloo.ca/gnu/grep/grep-3.12.tar.xz"
+        ]
       },
       "sed": {
         "version": "4.10",
@@ -161,7 +249,11 @@
         "sha256": "b8e72182b2ec96a3574e2998c47b7aaa64cc20ce000d8e9ac313cc07cecf28c7",
         "root": "sed-4.10",
         "executable": "bin/sed",
-        "upstream_patches": []
+        "upstream_patches": [],
+        "mirrors": [
+          "https://mirrors.ocf.berkeley.edu/gnu/sed/sed-4.10.tar.xz",
+          "https://mirror.csclub.uwaterloo.ca/gnu/sed/sed-4.10.tar.xz"
+        ]
       },
       "actionlint": {
         "version": "1.7.12",
@@ -466,6 +558,11 @@
           "name": "strip",
           "path": "/usr/bin/x86_64-linux-gnu-strip",
           "package": "binutils-x86-64-linux-gnu"
+        },
+        {
+          "name": "dpkg-deb",
+          "path": "/usr/bin/dpkg-deb",
+          "package": "dpkg"
         }
       ],
       "packages": [
@@ -545,11 +642,6 @@
           "source": "https://packages.ubuntu.com/noble/binutils-x86-64-linux-gnu"
         },
         {
-          "name": "libcurl4-openssl-dev",
-          "version": "8.5.0-2ubuntu10.15",
-          "source": "https://packages.ubuntu.com/noble/libcurl4-openssl-dev"
-        },
-        {
           "name": "libexpat1-dev",
           "version": "2.6.1-2ubuntu0.6",
           "source": "https://packages.ubuntu.com/noble/libexpat1-dev"
@@ -583,6 +675,26 @@
           "name": "libstdc++-13-dev",
           "version": "13.3.0-6ubuntu2~24.04.1",
           "source": "https://packages.ubuntu.com/noble/libstdc++-13-dev"
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "libcurl4-openssl-dev",
+          "version": "8.5.0-2ubuntu10.15",
+          "architecture": "amd64",
+          "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4-openssl-dev_8.5.0-2ubuntu10.15_amd64.deb",
+          "sha256": "c63393dd39d8bc49580e3e23be3eda63ce62ae4823d95f692c7547b25ade8a31",
+          "size": 446114,
+          "depends": "libcurl4t64 (= 8.5.0-2ubuntu10.15)"
+        },
+        {
+          "name": "libcurl4t64",
+          "version": "8.5.0-2ubuntu10.15",
+          "architecture": "amd64",
+          "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb",
+          "sha256": "02f8f39727a43d5a7057cba35cda866be00d929b91ea67ed02dd9d6402fa551c",
+          "size": 343472,
+          "depends": "libbrotli1 (>= 0.6.0), libc6 (>= 2.34), libgssapi-krb5-2 (>= 1.17), libidn2-0 (>= 2.0.0), libldap2 (>= 2.6.2), libnghttp2-14 (>= 1.50.0), libpsl5t64 (>= 0.16.0), librtmp1 (>= 2.3), libssh-4 (>= 0.9.0), libssl3t64 (>= 3.0.0), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)"
         }
       ]
     }

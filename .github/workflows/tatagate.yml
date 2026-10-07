@@ -34,7 +34,9 @@ jobs:
           const fs = require('node:fs'), path = require('node:path'), child = require('node:child_process');
           if (process.version !== 'v25.2.1') throw Error('Node版本不符');
           const parent = fs.realpathSync(process.env.RUNNER_TEMP);
-          const work = fs.mkdtempSync(path.join(parent, 'citizensdk-tools-'));
+          if (parent !== '/home/runner/work/_temp') throw Error('Runner临时根身份不符');
+          const work = path.join(parent, 'citizensdk-tools');
+          fs.mkdirSync(work, {recursive:false});
           child.execFileSync(process.execPath, ['.github/tatagate/tools.mjs', 'prepare-runner', '--bootstrap', work], {stdio:'inherit'});
       - name: 本仓完整塔塔门禁
         shell: node {0}
