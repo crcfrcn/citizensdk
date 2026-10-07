@@ -425,12 +425,17 @@ public final class CitizenSdk: @unchecked Sendable {
             }
             context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width), height: CGFloat(image.height)))
         }
-        luminance.withUnsafeMutableBytes { output in
-            let output = output.bindMemory(to: UInt8.self)
-            pixels.withUnsafeBytes { input in
-                let input = input.bindMemory(to: UInt8.self)
+        luminance.withUnsafeMutableBytes { (outputBytes: UnsafeMutableRawBufferPointer) in
+            let output = outputBytes.bindMemory(to: UInt8.self)
+            pixels.withUnsafeBytes { (inputBytes: UnsafeRawBufferPointer) in
+                let input = inputBytes.bindMemory(to: UInt8.self)
                 for index in 0..<output.count {
-                    output[index] = UInt8((Int(input[index * 4]) * 77 + Int(input[index * 4 + 1]) * 150 + Int(input[index * 4 + 2]) * 29) >> 8)
+                    let pixelOffset = index * 4
+                    let red = Int(input[pixelOffset]) * 77
+                    let green = Int(input[pixelOffset + 1]) * 150
+                    let blue = Int(input[pixelOffset + 2]) * 29
+                    let weightedLuminance = red + green + blue
+                    output[index] = UInt8(weightedLuminance >> 8)
                 }
             }
         }
