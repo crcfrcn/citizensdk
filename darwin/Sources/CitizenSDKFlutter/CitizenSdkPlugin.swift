@@ -10,11 +10,10 @@ import CitizenSDK
 
 /// v2仅注册数据通道与宿主纹理，不提供SDK业务界面。
 @MainActor
-public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
-    private let sessions = CitizenSdkFlutterSessions()
-    private let detachCoordinator = CitizenSdkFlutterDetachCoordinator()
-    private var methodChannel: FlutterMethodChannel?
-    private var eventChannel: FlutterEventChannel?
+public final class CitizenSdkPlugin: NSObject, FlutterPlugin {
+    // 主线程资源集中由独立隔离对象持有，销毁时不传递非Sendable通道。
+    private let binding = CitizenSdkFlutterBinding()
+    private var sessions: CitizenSdkFlutterSessions { binding.sessions }
 
     /// Flutter's generated iOS/macOS registrants expose a synchronous,
     /// nonisolated function. Engine registration is nevertheless a main-actor
@@ -42,8 +41,8 @@ public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
         #endif
         let method = FlutterMethodChannel(name: CitizenSdkFlutterCodec.methodChannel, binaryMessenger: messenger)
         let events = FlutterEventChannel(name: CitizenSdkFlutterCodec.eventChannel, binaryMessenger: messenger)
-        instance.methodChannel = method
-        instance.eventChannel = events
+        instance.binding.methodChannel = method
+        instance.binding.eventChannel = events
         registrar.addMethodCallDelegate(instance, channel: method)
         events.setStreamHandler(instance.sessions)
         // iOS invokes detachFromEngine(for:) only for published instances.
@@ -52,7 +51,12 @@ public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
         registrar.publish(instance)
     }
 
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    // Flutter同步入口先核验主线程隔离；协议遵循不以preconcurrency遮盖继承协议警告。
+    public nonisolated func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        MainActor.assumeIsolated { handleOnMainActor(call, result: result) }
+    }
+
+    private func handleOnMainActor(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         var envelope: CitizenSdkFlutterCodec.Request?
         do {
             // 参数失败不能使发送/接收序号失步；外壳接纳归SDK唯一Core实现。
@@ -85,11 +89,33 @@ public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
     /// teardown entry point. FlutterMacOS currently does not declare this
     /// callback in its registrar protocol, but publishing the instance gives a
     /// native host access to this same idempotent entry point before shutdown.
-    public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
-        beginDetach()
+    public nonisolated func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        MainActor.assumeIsolated { _ = binding.beginDetach() }
     }
 
-    private func beginDetach() {
+    deinit {
+        // 事件代际立即失效；仅发送天然Sendable的MainActor资源所有者，不捕获正在销毁的self。
+        // 真正通道撤销及会话关闭在主线程执行，显式卸载与销毁共用同一幂等边界。
+        let owned = binding
+        owned.invalidateEventEpochForDetach()
+        Task { @MainActor in _ = owned.beginDetach() }
+    }
+}
+
+// 此对象只能在主线程操作Flutter通道；销毁的异步收尾延长它的生命周期直到撤销完毕。
+@MainActor
+internal final class CitizenSdkFlutterBinding {
+    let sessions = CitizenSdkFlutterSessions()
+    private let detachCoordinator = CitizenSdkFlutterDetachCoordinator()
+    var methodChannel: FlutterMethodChannel?
+    var eventChannel: FlutterEventChannel?
+
+    nonisolated func invalidateEventEpochForDetach() {
+        sessions.invalidateEventEpochForDetach()
+    }
+
+    @discardableResult
+    func beginDetach() -> Bool {
         let method = methodChannel
         let events = eventChannel
         let sdkSessions = sessions
@@ -97,7 +123,7 @@ public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
             revokeMethodHandler: { method?.setMethodCallHandler(nil) },
             revokeEventHandler: { events?.setStreamHandler(nil) },
             invalidateEventEpoch: { sdkSessions.invalidateEventEpochForDetach() }
-        ) else { return }
+        ) else { return false }
 
         methodChannel = nil
         eventChannel = nil
@@ -105,13 +131,6 @@ public final class CitizenSdkPlugin: NSObject, @preconcurrency FlutterPlugin {
             sdkSessions.detachEventSink()
             await sdkSessions.closeAll()
         }
-    }
-
-    isolated deinit {
-        // A conforming iOS engine calls detach explicitly. The bundled
-        // FlutterMacOS API has no registrar detach callback, so deinit remains
-        // its final safety net.
-        // The coordinator makes this harmless after an explicit teardown.
-        beginDetach()
+        return true
     }
 }

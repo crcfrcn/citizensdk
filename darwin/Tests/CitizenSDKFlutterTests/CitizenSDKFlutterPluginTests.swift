@@ -19,6 +19,25 @@ private func citizenSDKGeneratedRegistrantCompileProbe(
 
 @MainActor
 final class CitizenSDKFlutterPluginTests: XCTestCase {
+    // Flutter的同步调用和卸载从非隔离协议入口进入，不能改成异步或依赖隔离遵循降级。
+    func testGeneratedCallbackProbesKeepSynchronousFunctionShape() {
+        withExtendedLifetime(citizenSDKGeneratedCallbackCompileProbe) {
+            XCTAssertTrue(Thread.isMainThread)
+        }
+    }
+
+    func testDetachedEpochInvalidationRejectsListenerBeforeActorCleanup() async {
+        let binding = CitizenSdkFlutterBinding()
+        // 模拟非主线程销毁先撤销事件资格；尚未进行主线程通道收尾时也必须拒绝监听。
+        await Task.detached { binding.invalidateEventEpochForDetach() }.value
+        let failure = binding.sessions.onListen(withArguments: [2]) { _ in
+            XCTFail("销毁后的事件不得交付")
+        }
+        XCTAssertEqual(failure?.code, "citizensdk.unavailable")
+        XCTAssertTrue(binding.beginDetach())
+        XCTAssertFalse(binding.beginDetach())
+    }
+
     func testGeneratedRegistrantProbeKeepsSynchronousFunctionShape() {
         // Assigning the generated-code-shaped probe to this exact function
         // type prevents an accidental async or actor-isolated public register
@@ -28,4 +47,14 @@ final class CitizenSDKFlutterPluginTests: XCTestCase {
             XCTAssertTrue(Thread.isMainThread)
         }
     }
+}
+
+private func citizenSDKGeneratedCallbackCompileProbe(
+    _ plugin: CitizenSdkPlugin,
+    _ call: FlutterMethodCall,
+    _ result: @escaping FlutterResult,
+    _ registrar: FlutterPluginRegistrar
+) {
+    plugin.handle(call, result: result)
+    plugin.detachFromEngine(for: registrar)
 }
