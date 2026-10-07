@@ -907,9 +907,10 @@ build_android() {
   prepare_safe_output_file "$output_dir" "$core_destination" "Android CitizenSDK Core 库"
   cp "$core_stage/libcitizensdk.so" "$core_destination"
 
+  # 默认按锁联网定位；只有调用方显式离线时才限制元数据解析使用已有缓存。
   # 仅链接本轮 Cargo 锁定包自带的 Maven 目录，不复制或重打包依赖原件。
   verifier_maven_dir="$(cargo metadata --manifest-path "$product_ffi_manifest" \
-    --format-version 1 --locked --offline | node -e '
+    --format-version 1 --locked ${gradle_network_arg:+"$gradle_network_arg"} | node -e '
       let input = "";
       process.stdin.on("data", chunk => input += chunk);
       process.stdin.on("end", () => {
