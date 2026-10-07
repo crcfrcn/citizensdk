@@ -3,7 +3,8 @@
 
 // citizensdk.sdk.release 的正式动作入口；SDK 打包逻辑只调用产品唯一真源，目录不重复包装 sdk。
 import { mkdtempSync, realpathSync, lstatSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { temporaryRoot } from '../build.mjs';
+const tmpdir=()=>temporaryRoot('sdk','release');
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';

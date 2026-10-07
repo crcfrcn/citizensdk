@@ -28,8 +28,7 @@ target_name="${1:-all}"
 # 六个显式参数表示消费最终包；没有参数的原生构建仍由各平台原入口负责。
 hosted_consumer=false
 if [[ "$#" -gt 1 ]]; then hosted_consumer=true; fi
-standalone_root="${TMPDIR:-/tmp}"
-standalone_root="${standalone_root%/}/citizensdk-${UID:-0}"
+standalone_root="$sdk_dir/target/build"
 : "${CITIZENSDK_WORK_DIR:=$standalone_root/work}"
 : "${CITIZENSDK_NATIVE_OUTPUT_DIR:=$standalone_root/output}"
 export CITIZENSDK_WORK_DIR CITIZENSDK_NATIVE_OUTPUT_DIR
@@ -60,7 +59,7 @@ windows_path_preflight() {
       const pieces=value.slice(3).split("/");
       if (pieces.some(x=>!x || x==="." || x===".." || /[ .:]$/.test(x) || x.includes(":") || /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(x))) throw Error("unsafe Windows path component");
       const normalized=p.resolve(value).toLowerCase(), root=p.resolve(source).toLowerCase();
-      if (normalized===root || normalized.startsWith(root+p.sep)) throw Error("Windows output is inside source");
+      if (normalized===root || normalized.startsWith(root+p.sep) && !normalized.startsWith(p.join(root,"target")+p.sep)) throw Error("Windows output is inside source");
       let current=value.slice(0,3);
       for (const part of pieces) {
         current=p.join(current,part);
@@ -109,7 +108,7 @@ output_paths_preflight() {
   for path in "$work" "$output"; do
     [[ -n "$path" ]] || fail "缺少 CitizenSDK 工作或产物目录"
     assert_safe_directory_path "$path" "CitizenSDK 输出目录"
-    case "$path/" in "$sdk_dir/"*) fail "工作目录或产物目录位于 CitizenSDK 源码树：$path" ;; esac
+    case "$path/" in "$sdk_dir/target/"*) ;; "$sdk_dir/"*) fail "工作目录或产物目录位于 CitizenSDK 源码树：$path" ;; esac
   done
   [[ "$work" != "$output" ]] || fail "工作目录与产物目录不能相同"
   case "$work/" in "$output/"*) fail "工作目录不能位于产物目录内" ;; esac
@@ -120,7 +119,7 @@ local_build_path_is_allowed() {
   local path="$1"
   # 产品入口只禁止写入自身源码；调用方可以选择任意其它绝对输出目录，
   # 不要求安装或使用任何外部控制程序。
-  case "$path/" in "$sdk_dir/"*) return 1 ;; esac
+  case "$path/" in "$sdk_dir/target/"*) ;; "$sdk_dir/"*) return 1 ;; esac
   [[ "$path" == /* && "$path" != / ]]
 }
 
@@ -154,6 +153,7 @@ fi
 # 回写到SDK源码树；除此之外，产品入口不要求调用方使用特定外部目录。
 for directory in "$work_dir" "$output_dir"; do
   case "$directory/" in
+    "$sdk_dir/target/"*) ;;
     "$sdk_dir/"*) fail "工作目录或产物目录位于 CitizenSDK 源码树：$directory" ;;
   esac
   if [[ "${GITHUB_ACTIONS:-}" != true ]]; then
@@ -3971,7 +3971,7 @@ hosted_preflight() {
   if [[ "$platform" == Windows ]]; then central="$(cygpath -u "$RUNNER_TEMP")/citizensdk"; fi
   assert_readonly_dependency_directory "$central" "Hosted Runner 根"
   assert_readonly_dependency_directory "$sdk_dir" "Hosted 校验器源码"
-  case "$central/" in "$sdk_dir/"*) fail "Hosted 工作根位于源码内" ;; esac
+  case "$central/" in "$sdk_dir/target/"*) ;; "$sdk_dir/"*) fail "Hosted 工作根位于源码内" ;; esac
   case "$sdk_dir/" in "$central/"*) fail "Hosted 源码位于工作根内" ;; esac
   for path in "$candidate" "$flutter" "$cache" "$work_dir" "$output_dir"; do
     assert_readonly_dependency_directory "$path" "Hosted 输入目录"

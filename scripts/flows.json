@@ -216,8 +216,50 @@
             "id": "xcode",
             "version": "27.0"
           }
-        ]
-      }
+        ],
+        "version_source": {
+          "kind": "pubspec-package",
+          "path": "pubspec.yaml"
+        },
+        "record_source": {
+          "kind": "body",
+          "asset_names": [
+            "citizensdk.tgz"
+          ],
+          "metadata_asset": null,
+          "source_field": null,
+          "version_field": null,
+          "marker_prefix": "GMB",
+          "immutable": false
+        }
+      },
+      "completion": "compile-only",
+      "files": []
     }
-  }
+  },
+  "remote_routes": [
+    {
+      "canonicalID": "citizensdk.sdk.ci",
+      "repository": "citizensdk",
+      "productID": "citizensdk",
+      "productTitle": "公民SDK",
+      "flow": "ci",
+      "platform": "sdk",
+      "expectedTitle": "公民SDK · CI · SDK",
+      "tagPrefix": null,
+      "recordsFormalRelease": false
+    },
+    {
+      "canonicalID": "citizensdk.sdk.release",
+      "repository": "citizensdk",
+      "productID": "citizensdk",
+      "productTitle": "公民SDK",
+      "flow": "release",
+      "platform": "sdk",
+      "expectedTitle": "公民SDK · Release · SDK",
+      "tagPrefix": "citizensdk-sdk-v",
+      "recordsFormalRelease": true
+    }
+  ],
+  "flow_entry": "scripts/flow.mjs"
 }

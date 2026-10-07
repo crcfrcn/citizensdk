@@ -3,9 +3,9 @@ import {test} from 'node:test';
 import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {existsSync,lstatSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,mkdirSync,symlinkSync,writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import { testRoot as tmpdir } from './build.mjs';
 import {dirname,join,resolve} from 'node:path';
-import {contract,requirements,resourceEnvironment,checkWork,createView,checkArchives} from './build.mjs';
+import {contract,requirements,resourceEnvironment,checkWork,productTarget,createView,checkArchives} from './build.mjs';
 
 const sandbox=()=>realpathSync(mkdtempSync(join(tmpdir(),contract.product_id+'-build-contract-')));
 const root=resolve(import.meta.dirname,'..'),base=existsSync(join(root,'app/pubspec.yaml'))?join(root,'app'):root;
@@ -33,7 +33,7 @@ test('每个平台从自身原始锁只读提出需求；缺失原始Pod锁按�
 test('平台、源码内工作根和链接工作根在任何写入前拒绝',async()=>{
  const work=sandbox();try{
   await assert.rejects(async()=>requirements('unknown',work),/平台/);
-  assert.throws(()=>checkWork(root),/源码外/);
+  assert.throws(()=>checkWork(root),/本产品target/);
   mkdirSync(join(work,'actual'));symlinkSync(join(work,'actual'),join(work,'linked'));
   assert.throws(()=>checkWork(join(work,'linked')),/链接/);
  }finally{rmSync(work,{recursive:true});}
@@ -106,4 +106,56 @@ test('独立命令行从自身声明输出JSON，未知平台失败且不写工�
   const invalid=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements','unknown','--work',work],{env:{HOME:work},encoding:'utf8'});
   assert.notEqual(invalid.status,0);assert.match(invalid.stderr,/平台/);
  }finally{rmSync(work,{recursive:true});}
+});
+
+// 完整入口控制边界：替身只替换耗时阶段，不调用真实编译或用户安全存储。
+test('产品独立execute完成全部自有阶段后才返回唯一结果',async()=>{
+ const {execute,outputDigest}=await import('./build.mjs');const work=sandbox(),platform=Object.keys(contract.platforms)[0],declared=contract.platforms[platform],calls=[];
+ try{
+  const result={schema:1,product_id:contract.product_id,platform,work,completion:declared.completion,run_id:'123456789',files:[]};
+  const stages={requirements:async()=>{calls.push('requirements');},resources:async()=>{calls.push('resources');return {};},prepare:async()=>{calls.push('prepare');},build:async()=>{
+   calls.push('build');for(const name of declared.files){const path=join(work,name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,'isolated-candidate-fixture');result.files.push({path,sha256:outputDigest(path)});}return result;
+  }};
+  assert.deepEqual(await execute(platform,work,{run_id:'123456789'},{stages}),result);
+  assert.deepEqual(calls,['requirements','resources','prepare','requirements','resources','build']);
+  assert.deepEqual(JSON.parse(readFileSync(join(work,'build-result.json'),'utf8')),result);
+  await assert.rejects(execute(platform,work,{}, {stages}),/已有结果/);
+ }finally{rmSync(work,{recursive:true});}
+});
+test('失败、取消、并发和伪造终态不能复用工作根或留下成功回执',async()=>{
+ const {execute}=await import('./build.mjs'),platform=Object.keys(contract.platforms)[0];
+ for(const failure of ['resources','prepare','build','identity','cancel']){
+  const work=sandbox(),abort=new AbortController(),calls=[];
+  try{
+   const stages={requirements:()=>{},resources:async()=>{calls.push('resources');if(failure==='resources')throw Error('fixture failure');return {};},prepare:async()=>{calls.push('prepare');if(failure==='prepare')throw Error('fixture failure');if(failure==='cancel')abort.abort();},build:async()=>{calls.push('build');if(failure==='build')throw Error('fixture failure');return {schema:1,product_id:'forged'};}};
+   await assert.rejects(execute(platform,work,{}, {stages,signal:abort.signal}));
+   assert.equal(existsSync(join(work,'build-result.json')),false);assert.equal(existsSync(join(work,'.product-build.lock')),false);
+   if(['resources','prepare','cancel'].includes(failure))assert.equal(calls.includes('build'),false);
+  }finally{rmSync(work,{recursive:true});}
+ }
+ const work=sandbox();try{writeFileSync(join(work,'.product-build.lock'),'owned');await assert.rejects(execute(platform,work,{}));assert.equal(readFileSync(join(work,'.product-build.lock'),'utf8'),'owned');}finally{rmSync(work,{recursive:true});}
+});
+
+test('产品取消等待工具进程组退出，不提前交付结果',async()=>{
+ const {runBuildProcess}=await import('./build.mjs'),work=sandbox(),abort=new AbortController();let polling,deadline;
+ try{
+  const pidFile=join(work,'descendant.pid');
+  const script="const fs=require('node:fs'),{spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(child.pid));setInterval(()=>{},1000);";
+  const execution=runBuildProcess(process.execPath,['-e',script,pidFile],process.env,work,{capture:true,signal:abort.signal,timeout:5000});
+  polling=setInterval(()=>{if(existsSync(pidFile))abort.abort();},20);deadline=setTimeout(()=>abort.abort(),2000);
+  await assert.rejects(execution,/取消/);assert.ok(existsSync(pidFile));const pid=Number(readFileSync(pidFile,'utf8'));
+  assert.throws(()=>process.kill(pid,0),error=>error.code==='ESRCH');
+ }finally{clearInterval(polling);clearTimeout(deadline);rmSync(work,{recursive:true});}
+});
+
+// 覆盖独立入口、单/多平台物理边界和源码输入排除，统一测试阶段才执行。
+test('本仓target由当前平台声明决定，外部或链接工作根不能越界',()=>{
+ for(const platform of Object.keys(contract.platforms)){
+  const expected=join(root,'target',...(Object.keys(contract.platforms).length===1?[]:[platform]));
+  assert.equal(productTarget(platform),expected);
+ }
+ assert.throws(()=>productTarget('undeclared-platform'));
+ assert.throws(()=>checkWork(join(root,'..','foreign-work')),/target/);
+ assert.throws(()=>checkWork(join(root,'target')),/target/);
+ const work=sandbox();try{assert.equal(checkWork(work),work);}finally{rmSync(work,{recursive:true,force:true});}
 });

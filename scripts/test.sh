@@ -10,7 +10,7 @@ while [[ -L "$script_path" ]]; do
 done
 script_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 sdk_dir="$(dirname "$script_dir")"
-test_root="${CITIZENSDK_TEST_WORK_DIR:-${TMPDIR:-/tmp}/citizensdk/test}"
+test_root="${CITIZENSDK_TEST_WORK_DIR:-$sdk_dir/target/test}"
 test_smoldot_library="${CITIZENSDK_TEST_SMOLDOT_LIBRARY:-}"
 
 flutter_bin="${FLUTTER:-$(command -v flutter || true)}"
@@ -39,8 +39,8 @@ while (!fs.existsSync(ancestor)) {
 if (!fs.statSync(ancestor).isDirectory()) throw new Error('测试目录祖先不是目录');
 const target = path.join(fs.realpathSync(ancestor), ...suffix);
 if (target === path.parse(target).root || target === source ||
-    target.startsWith(source + path.sep) || source.startsWith(target + path.sep)) {
-  throw new Error('CitizenSDK测试缓存禁止位于产品源码或其祖先');
+    !target.startsWith(path.join(source,"target") + path.sep) || source.startsWith(target + path.sep)) {
+  throw new Error('CitizenSDK测试缓存必须位于本产品target内');
 }
 for (const name of ['cargo', 'flutter', 'flutter-config', 'release-tmp', 'release-work']) {
   const child = path.join(target, name);
@@ -53,7 +53,7 @@ CHECK_OUTPUTS
 
 assert_read_only_source() {
   local name
-  for name in .dart_tool build target android/.kotlin; do
+  for name in .dart_tool build android/.kotlin; do
     [[ ! -e "$sdk_dir/$name" && ! -L "$sdk_dir/$name" ]] \
       || { echo "CitizenSDK 源码树已存在禁止的生成条目：$name" >&2; return 1; }
   done

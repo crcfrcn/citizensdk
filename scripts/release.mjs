@@ -1694,7 +1694,7 @@ function releaseCandidateEntries(root) {
 export function assertSmoldotDartSource(root) {
   const sourceRoot = resolve(root);
   if (existsSync(join(sourceRoot, 'docs'))) {
-    fail('CitizenSDK 产品源码禁止包含 docs 目录；文档和归档只允许存在塔塔文档库');
+    fail('CitizenSDK 产品源码禁止包含 docs 目录；技术文档只允许存在所属产品根，归档不进入源码');
   }
   const actualPaths = [];
   for (const relativeRoot of SMOLDOT_DART_ROOTS) {
@@ -2432,7 +2432,7 @@ export function assertDocumentationSource(
 ) {
   const sourceRoot = resolve(root);
   if (existsSync(join(sourceRoot, 'docs'))) {
-    fail('CitizenSDK 产品源码禁止包含 docs 目录；技术文档只允许存在塔塔文档库');
+    fail('CitizenSDK 产品源码禁止包含 docs 目录；技术文档只允许存在所属产品根');
   }
   if (Object.keys(DOCUMENTATION_SHA256).length !== DOCUMENTATION_FILE_COUNT) {
     fail(`CitizenSDK 文档固定清单必须精确为 ${DOCUMENTATION_FILE_COUNT} 文件`);

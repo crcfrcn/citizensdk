@@ -45,25 +45,13 @@ function parseArguments(values) {
   return result;
 }
 
-function developerCache() {
-  if (process.env.CITIZENSDK_DEPENDENCY_CACHE_DIR) {
-    return resolve(process.env.CITIZENSDK_DEPENDENCY_CACHE_DIR);
-  }
-  if (hostPlatform() === 'win32') {
-    const local = process.env.LOCALAPPDATA;
-    if (local) return resolve(local, 'CitizenSDK', 'dependencies');
-  }
-  const xdg = process.env.XDG_CACHE_HOME;
-  return resolve(xdg || join(homedir(), '.cache'), 'citizensdk', 'dependencies');
-}
+function developerCache() { return join(sdkDirectory, 'target', 'tmp', 'dependencies'); }
 
 function safeExternalDirectory(path, label, source = sdkDirectory) {
   const pathRoot = parse(path).root;
   if (!isAbsolute(path) || resolve(path) !== path || path === pathRoot) fail(`${label}必须是规范绝对路径`);
-  const normalizedSource = resolve(source);
-  if (path === normalizedSource || path.startsWith(`${normalizedSource}${sep}`)) {
-    fail(`${label}禁止位于CitizenSDK源码树`);
-  }
+  const normalizedSource = resolve(source), target = join(normalizedSource, 'target');
+  if ((path === normalizedSource || path.startsWith(normalizedSource + sep)) && !path.startsWith(target + sep)) fail(`${label}只能在源码树的target内生成`);
   let current = pathRoot;
   for (const part of path.slice(pathRoot.length).split(sep).filter(Boolean)) {
     if (part === '.' || part === '..') fail(`${label}包含非法路径段`);

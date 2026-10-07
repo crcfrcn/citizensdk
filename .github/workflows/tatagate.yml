@@ -33,8 +33,9 @@ jobs:
           // 首次构建只读取合同登记的官方Ubuntu输入，失败不使用系统工具执行正常门禁。
           const fs = require('node:fs'), path = require('node:path'), child = require('node:child_process');
           if (process.version !== 'v25.2.1') throw Error('Node版本不符');
-          const parent = fs.realpathSync(process.env.RUNNER_TEMP);
-          if (parent !== '/home/runner/work/_temp') throw Error('Runner临时根身份不符');
+          const parent = require('node:path').join(process.env.GITHUB_WORKSPACE, 'target/test/tatagate');
+          fs.mkdirSync(parent, {recursive:true});
+          if (fs.realpathSync(parent) !== parent || fs.lstatSync(parent).isSymbolicLink()) throw Error('产品测试临时根身份不符');
           const work = path.join(parent, 'citizensdk-tools');
           fs.mkdirSync(work, {recursive:false});
           child.execFileSync(process.execPath, ['.github/tatagate/tools.mjs', 'prepare-runner', '--bootstrap', work], {stdio:'inherit'});
