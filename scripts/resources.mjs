@@ -83,7 +83,48 @@ const inside=(base,path)=>path.startsWith(base+sep);
 const stat=async path=>lstat(path).catch(e=>{if(e.code==='ENOENT')return null;throw e;});
 async function regular(path){const s=await lstat(path);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||await realpath(path)!==path)fail('非独占普通文件：'+path);return s;}
 async function directory(path,create=false){if(!isAbsolute(path)||resolve(path)!==path||path===parse(path).root)fail('目录不是准确绝对路径');let at=parse(path).root;for(const name of relative(at,path).split(sep)){at=join(at,name);if(create&&!await stat(at))await mkdir(at,{mode:0o700}).catch(e=>{if(e.code!=='EEXIST')throw e;});const s=await lstat(at);if(!s.isDirectory()||s.isSymbolicLink()||await realpath(at)!==at)fail('目录经过链接或特殊项：'+at);}return path;}
-export async function inventory(base,path=base){const files=[];for(const name of (await readdir(path)).sort()){const file=join(path,name),s=await lstat(file),key=relative(base,file);if(s.isSymbolicLink()){const target=relative(base,await realpath(file));if(!safePath(target))fail('链接越界');files.push({path:key,target});}else if(s.isDirectory())files.push({path:key,directory:true},...await inventory(base,file));else if(s.isFile()){if(s.nlink!==1)fail('共享硬链接');files.push({path:key,sha256:hash(await readFile(file)),executable:Boolean(s.mode&0o111)});}else fail('特殊文件');}return files;}
+// 普通资源清单保持独占文件要求；工具内部硬链接只由同一扫描器的私有验真现场核对。
+export async function inventory(base,path=base){return inventoryFiles(base,path);}
+function inventoryStatMatches(before,after){
+ return ['dev','ino','nlink','mode','uid','gid','size','mtimeMs','ctimeMs','birthtimeMs'].every(key=>before[key]===after[key]);
+}
+async function inventoryFiles(base,path,toolScan){
+ if(toolScan){
+  const info=await lstat(path);
+  if(!info.isDirectory()||info.isSymbolicLink()||await realpath(path)!==path)fail('工具原件目录边界无效');
+  toolScan.entries.push({path,info});
+ }
+ const files=[];
+ for(const name of (await readdir(path)).sort()){
+  const file=join(path,name),s=await lstat(file),key=relative(base,file),entry={path:file,info:s};
+  if(s.isSymbolicLink()){
+   const target=relative(base,await realpath(file));if(!safePath(target))fail('链接越界');
+   entry.target=target;files.push({path:key,target});
+  }else if(s.isDirectory())files.push({path:key,directory:true},...await inventoryFiles(base,file,toolScan));
+  else if(s.isFile()){
+   let bytes;
+   if(toolScan){
+    if(!safePath(key)||await realpath(file)!==file)fail('工具原件文件边界无效');
+    const id=s.dev+':'+s.ino;let group=toolScan.hardlinks.get(id);
+    if(!group)toolScan.hardlinks.set(id,group={nlink:s.nlink,paths:[]});
+    if(group.nlink!==s.nlink)fail('工具清单读取期间硬链接计数变化');
+    group.paths.push(file);
+    // 不跟随末级链接；打开和读取后均核对同一文件身份，禁止替换或改权限后继续验真。
+    const handle=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);
+    try{
+     if(!inventoryStatMatches(s,await handle.stat()))fail('工具清单读取期间文件变化');
+     bytes=await handle.readFile();
+     if(!inventoryStatMatches(s,await handle.stat()))fail('工具清单读取期间文件变化');
+    }finally{await handle.close();}
+   }else{
+    if(s.nlink!==1)fail('共享硬链接');bytes=await readFile(file);
+   }
+   files.push({path:key,sha256:hash(bytes),executable:Boolean(s.mode&0o111)});
+  }else fail('特殊文件');
+  if(toolScan&&!s.isDirectory())toolScan.entries.push(entry);
+ }
+ return files;
+}
 async function permissions(path,writable){
  if(retainedResourcePath(path))throw Error('资源工具退出未确认，保留工作目录');const s=await lstat(path);if(s.isSymbolicLink())return;if(s.isDirectory()){if(writable)await chmod(path,0o700);for(const name of await readdir(path))await permissions(join(path,name),writable);if(!writable)await chmod(path,0o555);}else await chmod(path,writable?0o600:s.mode&0o111?0o555:0o444);}
 function checkedURL(input){const url=new URL(input);if(url.protocol!=='https:'||url.username||url.password||url.hash)fail('来源必须是无凭据HTTPS');return url.href;}
@@ -1081,12 +1122,50 @@ const parserDefinitions={"yaml":{"name":"yaml","version":"2.8.3","url":"https://
 const cleanEnvironment=environment=>Object.fromEntries(['HOME','USER','LOGNAME','LANG','LC_ALL'].filter(k=>typeof environment[k]==='string').map(k=>[k,environment[k]]));
 const objectRecipe=tool=>hash(JSON.stringify([tool,tool.id==='posix'?posixRecipe.buildPosixTool.toString():['native-source','gem'].includes(tool.archive?.kind)?sourceRecipe.buildSourceTool.toString():tool.id==='flutter'?flutterPatch:'locked-extract-v1']));
 function toolArchive(tool){if(tool.archive)return tool.archive;if(tool.id==='cmake')return {...tool.archives.macos,kind:'extract',executable:'bin/cmake'};return null;}
-async function toolInventory(payload,tool){const files=await inventory(payload);return tool.id==='flutter'?files.filter(e=>!(e.directory&&['packages/flutter_tools/gradle/.kotlin','packages/flutter_tools/gradle/.kotlin/sessions'].includes(e.path))):files;}
+async function toolInventory(payload,tool){
+ await directory(payload);
+ const scan={entries:[],hardlinks:new Map()},files=await inventoryFiles(payload,payload,scan);
+ // 真实名称数量必须与nlink完整闭合；原件外任何额外名称都使工具验真失败。
+ for(const group of scan.hardlinks.values())if(group.paths.length!==group.nlink)fail('工具硬链接跨原件边界');
+ for(const entry of scan.entries){
+  const after=await lstat(entry.path);
+  if(!inventoryStatMatches(entry.info,after))fail('工具清单读取期间身份、权限或硬链接计数变化');
+  const canonical=await realpath(entry.path);
+  if(entry.target===undefined?canonical!==entry.path:relative(payload,canonical)!==entry.target)fail('工具清单读取期间路径边界变化');
+ }
+ return tool.id==='flutter'?files.filter(e=>!(e.directory&&['packages/flutter_tools/gradle/.kotlin','packages/flutter_tools/gradle/.kotlin/sessions'].includes(e.path))):files;
+}
+// 编译身份保留官方来源、字节和全部配方输入；镜像仅是运输地址，不改原证明或本产品声明。
+function compilationToolInput(tool){
+ if(!tool||typeof tool!=='object'||Array.isArray(tool))fail('源码工具输入证明无效');
+ const input=structuredClone(tool);
+ const omitTransport=value=>{
+  if(!value||typeof value!=='object'||Array.isArray(value)||!Object.hasOwn(value,'mirrors'))return;
+  const mirrors=value.mirrors;
+  if(!Array.isArray(mirrors)||!mirrors.length||new Set(mirrors).size!==mirrors.length)fail('源码工具镜像运输地址无效');
+  for(const mirror of mirrors){
+   if(typeof mirror!=='string'||!mirror||/[\u0000-\u0020\u007f]/u.test(mirror))fail('源码工具镜像运输地址无效');
+   let address;try{address=new URL(mirror);}catch{fail('源码工具镜像运输地址无效');}
+   if(address.protocol!=='https:'||address.href!==mirror||address.username||address.password||address.hash)fail('源码工具镜像运输地址无效');
+  }
+  delete value.mirrors;
+ };
+ // 只移除这两处已验证字段；未知字段和其它位置的同名字段继续参加原严格比较。
+ omitTransport(input.archive);
+ if(Object.hasOwn(input,'upstream_patches')){
+  if(!Array.isArray(input.upstream_patches))fail('源码补丁输入证明无效');
+  for(const patch of input.upstream_patches){
+   if(!patch||typeof patch!=='object'||Array.isArray(patch))fail('源码补丁输入证明无效');
+   omitTransport(patch);
+  }
+ }
+ return input;
+}
 async function verifyToolObject(directory,tool,{produced=false}={}){
  if(!await stat(directory))return null;await directoryCheck(directory);const file=join(directory,'receipt.json');await regular(file);const receipt=JSON.parse(await readFile(file,'utf8')),archive=toolArchive(tool),payload=join(directory,'payload');await directoryCheck(payload);
  if(receipt.id!==tool.id||receipt.version!==tool.version||receipt.sha256!==archive.sha256||(tool.patch&&receipt.patch!==tool.patch.sha256)||JSON.stringify(receipt.files)!==JSON.stringify(await toolInventory(payload,tool)))fail('工具回执或字节不符：'+tool.id);
  if(produced&&receipt.request!==objectRecipe(tool))fail('工具配方漂移：'+tool.id);
- if(['native-source','gem'].includes(archive.kind)){const proof=JSON.parse(await readFile(join(payload,'build.json'),'utf8'));if(proof.xcode!==toolDefinitions.find(x=>x.id==='xcode')?.version||proof.posix_sha256!==toolDefinitions.find(x=>x.id==='posix')?.archive.sha256||JSON.stringify(proof.tool)!==JSON.stringify(tool)||proof.recipe!==hash(await readFile(join(payload,'recipe.source')))||archive.sha256!==hash(await readFile(join(payload,archive.kind==='gem'?'source.gem':'source.archive'))))fail('源码编译输入不符：'+tool.id);}
+ if(['native-source','gem'].includes(archive.kind)){const proof=JSON.parse(await readFile(join(payload,'build.json'),'utf8'));if(proof.xcode!==toolDefinitions.find(x=>x.id==='xcode')?.version||proof.posix_sha256!==toolDefinitions.find(x=>x.id==='posix')?.archive.sha256||JSON.stringify(compilationToolInput(proof.tool))!==JSON.stringify(compilationToolInput(tool))||proof.recipe!==hash(await readFile(join(payload,'recipe.source')))||archive.sha256!==hash(await readFile(join(payload,archive.kind==='gem'?'source.gem':'source.archive'))))fail('源码编译输入不符：'+tool.id);}
  if(tool.id==='posix'){const proof=JSON.parse(await readFile(join(payload,'build.json'),'utf8'));if(proof.source?.version!==tool.version||posixRecipe.posixManifestDigest(proof.source)!==archive.sha256||proof.signing!=='local-adhoc')fail('基础发行件输入不符');}
  if(tool.id==='rust'&&JSON.stringify(receipt.components)!==JSON.stringify(tool.components||[]))fail('Rust目标组件闭包不符');
  const path=join(payload,archive.executable);const s=await regular(path);if(!(s.mode&0o111))fail('工具入口不可执行');return {path,version:tool.version};

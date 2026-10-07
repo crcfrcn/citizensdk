@@ -306,7 +306,8 @@ async function completeBuild(platform,work,receipt,env) {
  if(receipt.run_id)result.run_id=receipt.run_id;return checkBuildResult(result,platform,work,receipt.run_id);
 }
 
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+// 模块先完成初始化，资源模块才能反向导入本文件的唯一校验；异步CLI在独立Promise中执行。
+async function runCLI(){
  const [command,platform,option,work,...extra]=process.argv.slice(2);
  if(command==='temporary-root') {
   if(work!==undefined||extra.length)fail('临时入口参数无效');
@@ -336,4 +337,9 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   process.stdout.write(JSON.stringify(result)+'\n');
  }
 }
+}
+
+// CLI拒绝必须真实失败，不能留成未完成顶层await或输出成功回执。
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ void runCLI().catch(error=>{console.error(error);process.exitCode=1;});
 }

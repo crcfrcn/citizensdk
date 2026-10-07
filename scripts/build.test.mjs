@@ -159,3 +159,70 @@ test('本仓target由当前平台声明决定，外部或链接工作根不能�
  assert.throws(()=>checkWork(join(root,'target')),/target/);
  const work=sandbox();try{assert.equal(checkWork(work),work);}finally{rmSync(work,{recursive:true,force:true});}
 });
+
+
+// 复制本产品真实入口到自有测试现场；只替换资源供给边界，反向导入和CLI子进程真实执行。
+test('CLI异步资源可反向导入唯一校验，正常参数和离线失败均准确收口',()=>{
+ const area=sandbox();
+ try{
+  const source=join(area,'source'),scripts=join(source,'scripts'),file=join(scripts,'build.mjs');
+  const platform=Object.keys(contract.platforms)[0];
+  const work=join(source,'target',...(Object.keys(contract.platforms).length>1?[platform]:[]),'build');
+  mkdirSync(scripts,{recursive:true});mkdirSync(work,{recursive:true});
+  writeFileSync(file,readFileSync(join(root,'scripts/build.mjs')));
+  writeFileSync(join(scripts,'flows.json'),JSON.stringify(contract));
+  const provider=[
+   "import {writeFileSync} from 'node:fs';",
+   "import {join} from 'node:path';",
+   "const refuse = false;",
+   "export async function bootstrapNode(work,options){",
+   " const owner=await import('./build.mjs');owner.checkWork(work);",
+   " writeFileSync(join(work,'bootstrap.json'),JSON.stringify({offline:options.offline,work}));",
+   " if(refuse&&options.offline)throw Error('合成离线缺少锁定资源');",
+   " return {path:process.execPath};",
+   "}",
+   "export async function resources(platform,work,request,options){",
+   " const owner=await import('./build.mjs');owner.checkWork(work);owner.platformContract(platform);",
+   " if(refuse&&options.offline)throw Error('合成离线缺少锁定资源');",
+   " return {schema:1,product_id:owner.contract.product_id,platform,work,offline:options.offline,request};",
+   "}",
+  ].join('\n');
+  writeFileSync(join(scripts,'resources.mjs'),provider);
+  const env={HOME:area,LANG:'C',PATH:''},marker=join(work,'bootstrap.json');
+  const options={cwd:source,env,input:'{}',encoding:'utf8',timeout:5000,maxBuffer:1024*1024};
+  const check=(result,status)=>{
+   assert.equal(result.error,undefined);assert.equal(result.signal,null);assert.equal(result.status,status);
+   assert.doesNotMatch(result.stderr,/unsettled top-level await/u);
+  };
+  // 普通模块导入不启动CLI；结果来自当前入口完整正文，不截取/重写其控制结构。
+  const imported=spawnSync(process.execPath,['--input-type=module','--eval',
+   "import {pathToFileURL} from 'node:url';await import(pathToFileURL("+JSON.stringify(file)+"));process.stdout.write('module-ready\\n');"],options);
+  check(imported,0);assert.equal(imported.stdout,'module-ready\n');assert.deepEqual(readdirSync(work),[]);
+  const input=JSON.stringify({schema:1,product_id:contract.product_id,platform,work});
+  for(const offline of [false,true]){
+   const result=spawnSync(process.execPath,[file,'resources',platform,'--work',work,...(offline?['--offline']:[])],{...options,input});
+   check(result,0);
+   assert.deepEqual(JSON.parse(result.stdout),{schema:1,product_id:contract.product_id,platform,work,offline,request:JSON.parse(input)});
+  }
+  // execute先真实完成反向导入和Node选择，再由原请求校验拒绝，不能以假Build成功代替。
+  const invalid=spawnSync(process.execPath,[file,'execute',platform,'--work',work,'--offline'],{...options,input:'{"schema":99}'});
+  check(invalid,1);assert.equal(invalid.stdout,'');assert.match(invalid.stderr,/公开Build请求身份或字段无效/u);
+  assert.deepEqual(JSON.parse(readFileSync(marker,'utf8')),{offline:true,work});
+  rmSync(marker);
+  for(const extra of [['--offline','--offline'],['--unknown']]){
+   const result=spawnSync(process.execPath,[file,'execute',platform,'--work',work,...extra],options);
+   check(result,1);assert.equal(result.stdout,'');assert.match(result.stderr,/固定入口参数无效/u);assert.equal(existsSync(marker),false);
+  }
+  const malformed=spawnSync(process.execPath,[file,'resources',platform,'--work',work],{...options,input:'{'});
+  check(malformed,1);assert.equal(malformed.stdout,'');assert.match(malformed.stderr,/SyntaxError/u);
+  const unknown=spawnSync(process.execPath,[file,'resources','unknown','--work',work],options);
+  check(unknown,1);assert.match(unknown.stderr,/平台未声明/u);
+  writeFileSync(join(scripts,'resources.mjs'),provider.replace('const refuse = false;','const refuse = true;'));
+  for(const command of ['execute','resources']){
+   const result=spawnSync(process.execPath,[file,command,platform,'--work',work,'--offline'],options);
+   check(result,1);assert.equal(result.stdout,'');assert.match(result.stderr,/合成离线缺少锁定资源/u);
+  }
+  assert.equal(existsSync(join(work,'.product-build.lock')),false);
+  assert.equal(existsSync(join(work,'build-result.json')),false);
+ }finally{rmSync(area,{recursive:true,force:true});}
+});

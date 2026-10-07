@@ -252,3 +252,176 @@ test('资源下载候选只属于当前产品target现场，永久库不接收�
  assert.equal(await readFile(file,'utf8'),body.toString());assert.deepEqual(await readdir(join(work,'resource-pending')),[]);
  await assert.rejects(acquireArchive(archive(Buffer.from('other')),{store,work:dirname(resolve(import.meta.dirname,'..')),fetcher}),/target/);
 });
+
+
+// 夹具复制本仓完整资源实现，只替换文件IO边界并暴露已有私有验真函数，生产接口不新增出口。
+test('工具内部硬链接完整闭合，默认独占、跨原件名称、回执漂移和读取变化仍拒绝',async t=>{
+ const area=await sandbox(t),source=join(area,'source'),entry=join(source,'resources.mjs');
+ const {link,unlink}=await import('node:fs/promises'),{pathToFileURL}=await import('node:url');
+ await mkdir(source);
+ const current=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');
+ const fsImport="from 'node:fs/promises';";
+ assert.ok(current.includes(fsImport));
+ const copied=current.replace(fsImport,"from './filesystem.mjs';");
+ assert.equal(copied.replace("from './filesystem.mjs';",fsImport),current);
+ await writeFile(entry,copied+'\nexport {toolInventory,verifyToolObject};\n');
+ await writeFile(join(source,'filesystem.mjs'),[
+  "export * from 'node:fs/promises';",
+  "import {open as actualOpen} from 'node:fs/promises';",
+  "let mutation=null;",
+  "export function armMutation(value){mutation=value;}",
+  "export async function open(...args){",
+  " const handle=await actualOpen(...args),read=handle.readFile.bind(handle);",
+  " handle.readFile=async(...options)=>{",
+  "  const bytes=await read(...options);",
+  "  if(mutation&&await mutation(args[0])!==false)mutation=null;",
+  "  return bytes;",
+  " };",
+  " return handle;",
+  "}",
+ ].join('\n'));
+ const owner=await import(pathToFileURL(entry).href),io=await import(pathToFileURL(join(source,'filesystem.mjs')).href);
+ const tool={id:'unit-fixture',version:'1.0.0',archive:{sha256:'a'.repeat(64),kind:'extract',executable:'bin/tool'}};
+ const object=async name=>{
+  const directory=join(area,name),payload=join(directory,'payload');
+  await mkdir(join(payload,'bin'),{recursive:true});
+  await writeFile(join(payload,'bin/tool'),'synthetic-tool');await chmod(join(payload,'bin/tool'),0o700);
+  await writeFile(join(payload,'helper'),'synthetic-helper');await link(join(payload,'helper'),join(payload,'alias'));
+  return {directory,payload};
+ };
+ const valid=await object('closed');
+ const before=(await lstat(join(valid.payload,'helper'))).nlink;assert.equal(before,2);
+ const files=await owner.toolInventory(valid.payload,tool);
+ assert.deepEqual(files,[
+  {path:'alias',sha256:hash('synthetic-helper'),executable:false},
+  {path:'bin',directory:true},
+  {path:'bin/tool',sha256:hash('synthetic-tool'),executable:true},
+  {path:'helper',sha256:hash('synthetic-helper'),executable:false},
+ ]);
+ assert.equal((await lstat(join(valid.payload,'helper'))).nlink,before);
+ await assert.rejects(owner.inventory(valid.payload),/共享硬链接/u);
+ const receipt={id:tool.id,version:tool.version,sha256:tool.archive.sha256,files};
+ await writeFile(join(valid.directory,'receipt.json'),JSON.stringify(receipt));
+ assert.deepEqual(await owner.verifyToolObject(valid.directory,tool),{path:join(valid.payload,'bin/tool'),version:tool.version});
+ await writeFile(join(valid.payload,'helper'),'changed-helper');
+ await assert.rejects(owner.verifyToolObject(valid.directory,tool),/工具回执或字节不符/u);
+ const shared=await object('external');
+ await link(join(shared.payload,'helper'),join(shared.directory,'outside-name'));
+ await assert.rejects(owner.toolInventory(shared.payload,tool),/硬链接跨原件边界/u);
+ const independent=join(area,'ordinary');await mkdir(independent);await writeFile(join(independent,'single'),'single');
+ assert.deepEqual(await owner.inventory(independent),[{path:'single',sha256:hash('single'),executable:false}]);
+ const links=await object('links'),outside=join(links.directory,'outside');await writeFile(outside,'outside');
+ await symlink('helper',join(links.payload,'internal'));
+ assert.ok((await owner.toolInventory(links.payload,tool)).some(value=>value.path==='internal'&&value.target==='helper'));
+ await symlink(outside,join(links.payload,'escape'));
+ await assert.rejects(owner.toolInventory(links.payload,tool),/链接越界/u);
+ const linked=join(area,'linked');await symlink(valid.payload,linked,'dir');
+ await assert.rejects(owner.toolInventory(linked,tool),/链接/u);
+ const parent=join(area,'parent');await symlink(valid.directory,parent,'dir');
+ await assert.rejects(owner.toolInventory(join(parent,'payload'),tool),/链接/u);
+ // 读取后在真实文件系统变更；同一生产扫描器必须拒绝计数、inode、权限、字节和路径漂移。
+ const races=[
+  ['count',async (value,file)=>{await link(file,join(value.directory,'outside-name'));}],
+  ['inode',async (value,file)=>{await unlink(file);await writeFile(file,'replacement');}],
+  ['mode',async (value,file)=>{await chmod(file,0o700);}],
+  ['bytes',async (value,file)=>{await writeFile(file,'different-size-and-bytes');}],
+  ['directory',async (value,file)=>{
+   if(file!==join(value.payload,'helper'))return false;
+   await rename(value.payload,join(value.directory,'moved'));await mkdir(value.payload);
+  }],
+  ['symlink',async (value,file)=>{
+   if(file!==join(value.payload,'last'))return false;
+   await unlink(join(value.payload,'internal'));await symlink(join(value.directory,'outside'),join(value.payload,'internal'));
+  }],
+ ];
+ for(const [name,mutate]of races){
+  const value=await object('race-'+name);
+  if(name==='symlink'){
+   await writeFile(join(value.directory,'outside'),'outside');await symlink('helper',join(value.payload,'internal'));
+   await writeFile(join(value.payload,'last'),'last');
+  }
+  io.armMutation(file=>mutate(value,file));
+  try{await assert.rejects(owner.toolInventory(value.payload,tool),/读取期间/u);}
+  finally{io.armMutation(null);}
+ }
+});
+
+
+// 全文复制本仓模块，合成回执逐次重算文件清单；只在测试副本暴露已有私有入口，不执行工具。
+test('源码工具只分离两处有效镜像运输字段，真实编译输入与物理证明仍严格验真',async t=>{
+ const area=await sandbox(t),entry=join(area,'resources-proof.mjs'),directory=join(area,'object'),payload=join(directory,'payload');
+ const {pathToFileURL}=await import('node:url');
+ const original=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');
+ await writeFile(entry,original+'\nexport {compilationToolInput,toolInventory,verifyToolObject};\n');
+ const owner=await import(pathToFileURL(entry).href),definitions=owner.resourceDeclarations().tools;
+ const source='synthetic-source-archive',recipe='synthetic-recipe';
+ const tool={id:'unit-fixture',version:'1.0.0',source:'https://example.invalid/releases.json',requires:['node'],dependencies:[],
+  archive:{url:'https://example.invalid/source.tgz',sha256:hash(source),root:'source',executable:'bin/tool',kind:'native-source'},
+  upstream_patches:[{url:'https://example.invalid/patch-1',sha256:'b'.repeat(64)},{url:'https://example.invalid/patch-2',sha256:'c'.repeat(64)}]};
+ const proof={xcode:definitions.find(x=>x.id==='xcode').version,posix_sha256:definitions.find(x=>x.id==='posix').archive.sha256,
+  tool:structuredClone(tool),recipe:hash(recipe)};
+ await mkdir(join(payload,'bin'),{recursive:true});await writeFile(join(payload,'bin/tool'),'synthetic-tool');await chmod(join(payload,'bin/tool'),0o700);
+ const check=async (value,declared=tool,bytes={source,recipe})=>{
+  await writeFile(join(payload,'build.json'),JSON.stringify(value));
+  await writeFile(join(payload,'recipe.source'),bytes.recipe);await writeFile(join(payload,'source.archive'),bytes.source);
+  await writeFile(join(directory,'receipt.json'),JSON.stringify({id:declared.id,version:declared.version,sha256:declared.archive.sha256,
+   files:await owner.toolInventory(payload,declared)}));
+  return owner.verifyToolObject(directory,declared);
+ };
+ const expected={path:join(payload,'bin/tool'),version:tool.version};
+ assert.deepEqual(await check(proof),expected);
+ const mirrored=structuredClone(proof);mirrored.tool.archive.mirrors=['https://mirror.example.invalid/source.tgz'];
+ mirrored.tool.upstream_patches[0].mirrors=['https://mirror.example.invalid/patch-1'];
+ mirrored.tool.upstream_patches[1].mirrors=['https://mirror.example.invalid/patch-2'];
+ const before=JSON.stringify(mirrored);
+ assert.deepEqual(owner.compilationToolInput(mirrored.tool),tool);assert.equal(JSON.stringify(mirrored),before);
+ assert.deepEqual(await check(mirrored),expected);
+ const declared=structuredClone(tool);declared.archive.mirrors=['https://other.example.invalid/source.tgz'];
+ declared.upstream_patches[0].mirrors=['https://other.example.invalid/patch-1'];
+ const declarationBefore=JSON.stringify(declared);
+ assert.deepEqual(await check(mirrored,declared),expected);assert.equal(JSON.stringify(declared),declarationBefore);
+ assert.deepEqual(await check(proof,declared),expected);
+ const drift=[
+  ['version',value=>{value.tool.version='2.0.0';}],
+  ['source',value=>{value.tool.source='https://other.example.invalid/releases.json';}],
+  ['archive-url',value=>{value.tool.archive.url='https://other.example.invalid/source.tgz';}],
+  ['archive-digest',value=>{value.tool.archive.sha256='d'.repeat(64);}],
+  ['archive-kind',value=>{value.tool.archive.kind='gem';}],
+  ['archive-root',value=>{value.tool.archive.root='changed';}],
+  ['archive-executable',value=>{value.tool.archive.executable='bin/other';}],
+  ['patch-url',value=>{value.tool.upstream_patches[0].url='https://other.example.invalid/patch-1';}],
+  ['patch-digest',value=>{value.tool.upstream_patches[0].sha256='d'.repeat(64);}],
+  ['patch-order',value=>{value.tool.upstream_patches.reverse();}],
+  ['requires',value=>{value.tool.requires.push('perl');}],
+  ['dependencies',value=>{value.tool.dependencies.push({name:'extra'});}],
+  ['unknown',value=>{value.tool.extra='unapproved';}],
+  ['other-mirrors',value=>{value.tool.mirrors=['https://mirror.example.invalid/source.tgz'];}],
+  ['nested-mirrors',value=>{value.tool.dependencies=[{name:'extra',mirrors:['https://mirror.example.invalid/source.tgz']}];}],
+  ['xcode',value=>{value.xcode='0.0';}],
+  ['posix',value=>{value.posix_sha256='d'.repeat(64);}],
+  ['recipe',value=>{value.recipe='d'.repeat(64);}],
+ ];
+ for(const [name,mutate]of drift){
+  const value=structuredClone(mirrored);mutate(value);
+  await assert.rejects(check(value),/源码编译输入不符/u,name);
+ }
+ await assert.rejects(check(mirrored,tool,{source:'changed-archive',recipe}),/源码编译输入不符/u);
+ await assert.rejects(check(mirrored,tool,{source,recipe:'changed-recipe'}),/源码编译输入不符/u);
+ const invalid=[
+  [],'',null,[''],['http://mirror.example.invalid/source.tgz'],
+  ['https://mirror.example.invalid/source.tgz','https://mirror.example.invalid/source.tgz'],
+  ['https://mirror.example.invalid/with space'],['https://mirror.example.invalid/source.tgz\u0000'],
+  ['https://user:password@mirror.example.invalid/source.tgz'],['https://mirror.example.invalid/source.tgz#fragment'],
+  ['https://mirror.example.invalid'],[42],
+ ];
+ for(const mirrors of invalid)for(const location of ['archive','patch'])for(const side of ['proof','declaration']){
+  const value=structuredClone(proof),requested=structuredClone(tool),target=side==='proof'?value.tool:requested;
+  (location==='archive'?target.archive:target.upstream_patches[0]).mirrors=mirrors;
+  await assert.rejects(check(value,requested),/镜像运输地址无效/u,side+' '+location);
+ }
+ for(const side of ['proof','declaration']){
+  const value=structuredClone(proof),requested=structuredClone(tool),target=side==='proof'?value.tool:requested;
+  target.upstream_patches={};
+  await assert.rejects(check(value,requested),/源码补丁输入证明无效/u);
+ }
+});
