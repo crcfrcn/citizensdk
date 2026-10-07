@@ -53,7 +53,10 @@ public final class CitizenSdkPlugin: NSObject, FlutterPlugin {
 
     // Flutter同步入口先核验主线程隔离；协议遵循不以preconcurrency遮盖继承协议警告。
     public nonisolated func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        MainActor.assumeIsolated { handleOnMainActor(call, result: result) }
+        let reply = CitizenSdkFlutterReply(result)
+        MainActor.assumeIsolated {
+            handleOnMainActor(call, result: { reply.complete($0) })
+        }
     }
 
     private func handleOnMainActor(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -132,5 +135,27 @@ internal final class CitizenSdkFlutterBinding {
             await sdkSessions.closeAll()
         }
         return true
+    }
+}
+
+// Flutter的Objective-C结果块没有Sendable标注。只在已核验的主线程接纳，
+// 唯一可调用入口由MainActor隔离，锁保护一次性取出并在回调前清空所有权。
+// unchecked仅用于这个封闭互操作对象，不暴露原始块或允许后台调用。
+internal final class CitizenSdkFlutterReply: @unchecked Sendable {
+    private let lock = NSLock()
+    private var callback: FlutterResult?
+
+    init(_ callback: @escaping FlutterResult) {
+        MainActor.assumeIsolated {}
+        self.callback = callback
+    }
+
+    @MainActor
+    func complete(_ value: Any?) {
+        lock.lock()
+        let owned = callback
+        callback = nil
+        lock.unlock()
+        owned?(value)
     }
 }

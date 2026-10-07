@@ -19,6 +19,19 @@ private func citizenSDKGeneratedRegistrantCompileProbe(
 
 @MainActor
 final class CitizenSDKFlutterPluginTests: XCTestCase {
+    func testReplyCompletesOnceBeforeReentrantCallback() {
+        var values: [String] = []
+        var reply: CitizenSdkFlutterReply?
+        reply = CitizenSdkFlutterReply { value in
+            values.append(value as? String ?? "invalid")
+            reply?.complete("reentrant")
+        }
+        reply?.complete("first")
+        reply?.complete("duplicate")
+        XCTAssertEqual(values, ["first"])
+        reply = nil
+    }
+
     // Flutter的同步调用和卸载从非隔离协议入口进入，不能改成异步或依赖隔离遵循降级。
     func testGeneratedCallbackProbesKeepSynchronousFunctionShape() {
         withExtendedLifetime(citizenSDKGeneratedCallbackCompileProbe) {
