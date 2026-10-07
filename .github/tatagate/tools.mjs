@@ -131,13 +131,15 @@ export function resolveBootstrapPackages(records, roots, compare, staged = []) {
     installed.set(record.name, record);
   }
   const ready = record => record && (record.origin === 'staged' || record.status === 'install ok installed');
- // 只从已交付包的官方Provides解析虚拟身份；版本依赖只比较声明的虚拟版本。
+ // 官方Provides的同名不同版本分别保留；仅名称与版本完全相同的声明拒绝重复。
  const providers=new Map();
  for(const record of [...installed.values()].filter(ready).sort((a,b)=>a.name.localeCompare(b.name))){
   const seen=new Set();
   for(const item of (record.provides||'').split(',').map(value=>value.trim()).filter(Boolean)){
    const match=/^([a-z0-9+.-]+)(?:\s*\(=\s*([^()\s]+)\))?$/u.exec(item);
-   if(!match||seen.has(match[1]))fail('Ubuntu虚拟包声明无效');seen.add(match[1]);
+   if(!match)fail('Ubuntu虚拟包声明无效');
+   const identity=JSON.stringify([match[1],match[2]??null]);
+   if(seen.has(identity))fail('Ubuntu虚拟包声明无效');seen.add(identity);
    const list=providers.get(match[1])||[];list.push({record,version:match[2]});providers.set(match[1],list);
   }
  }

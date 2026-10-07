@@ -435,3 +435,22 @@ test('Runner准备模块导入无副作用，直接入口仍拒绝缺少准确�
   assert.equal(direct.error,undefined);assert.equal(direct.signal,null);assert.equal(direct.status,1);
   assert.match(direct.stderr,/命令须准确声明Runner首次构建/u);
 });
+
+// Ubuntu官方dpkg-dev与debhelper可为同一虚拟名提供不同版本；每个版本须独立满足约束。
+test('Ubuntu同名不同版本Provides保留，完全重复声明仍拒绝',()=>{
+  const status='install ok installed',roots=[{name:'compiler',version:'1'}];
+  const records=[{name:'compiler',version:'1',status,depends:'dpkg-build-api (= 1), debhelper-compat (= 13)'},
+    {name:'dpkg-dev',version:'99',status,provides:'dpkg-build-api (= 0), dpkg-build-api (= 1)'},
+    {name:'debhelper',version:'99',status,provides:'debhelper-compat (= 9), debhelper-compat (= 10), debhelper-compat (= 11), debhelper-compat (= 12), debhelper-compat (= 13)'}];
+  const compare=(a,op,b)=>op==='='&&a===b;
+  const names=rows=>resolveBootstrapPackages(rows,roots,compare).map(record=>record.name);
+  for(const api of ['0','1'])for(const compat of ['9','10','11','12','13']){
+    assert.deepEqual(names([{...records[0],depends:'dpkg-build-api (= '+api+'), debhelper-compat (= '+compat+')'},...records.slice(1)]),
+      ['compiler','debhelper','dpkg-dev']);
+  }
+  for(const depends of ['dpkg-build-api (= 2)','debhelper-compat (= 14)'])assert.throws(()=>names([{...records[0],depends},...records.slice(1)]));
+  for(const provides of ['dpkg-build-api (= 0), dpkg-build-api (= 0)',
+    'dpkg-build-api (=0), dpkg-build-api (= 0)','dpkg-build-api, dpkg-build-api']){
+    assert.throws(()=>names([records[0],{...records[1],provides},records[2]]));
+  }
+});
