@@ -666,9 +666,10 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         } catch { fail(result, error, request) }
     }
 
+    // Flutter 编码值只在 MainActor 内传递；异步操作不把 Any 结果跨执行器发送。
     private func run(_ session: Session, _ request: CitizenSdkFlutterCodec.Request,
                      _ result: @escaping FlutterResult, cancel: (() -> Void)? = nil,
-                     accepted: Bool = false, operation: @escaping () async throws -> [Any?]) {
+                     accepted: Bool = false, operation: @escaping @MainActor () async throws -> [Any?]) {
         let id = UUID()
         let context = CitizenSdkFlutterCodec.Request.empty(method: request.method, session: request.sessionID!, sequence: request.sequence!)
         let task = Task { [weak self, weak session] in
