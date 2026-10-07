@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, mkdirSync, writeFileSync, readdirSync,
   symlinkSync, rmSync, readlinkSync, chmodSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const fail = message => { throw new Error('本仓工具交付：' + message); };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -132,6 +131,16 @@ export function resolveBootstrapPackages(records, roots, compare, staged = []) {
     installed.set(record.name, record);
   }
   const ready = record => record && (record.origin === 'staged' || record.status === 'install ok installed');
+ // 只从已交付包的官方Provides解析虚拟身份；版本依赖只比较声明的虚拟版本。
+ const providers=new Map();
+ for(const record of [...installed.values()].filter(ready).sort((a,b)=>a.name.localeCompare(b.name))){
+  const seen=new Set();
+  for(const item of (record.provides||'').split(',').map(value=>value.trim()).filter(Boolean)){
+   const match=/^([a-z0-9+.-]+)(?:\s*\(=\s*([^()\s]+)\))?$/u.exec(item);
+   if(!match||seen.has(match[1]))fail('Ubuntu虚拟包声明无效');seen.add(match[1]);
+   const list=providers.get(match[1])||[];list.push({record,version:match[2]});providers.set(match[1],list);
+  }
+ }
   const selected=new Map(), queue=roots.map(root=>root.name);
   for(const root of roots) {
     const record=installed.get(root.name);
@@ -153,6 +162,8 @@ export function resolveBootstrapPackages(records, roots, compare, staged = []) {
         if(ready(candidate)&&(!match[2]||compare(candidate.version,match[2],match[3]))) {
           found=match[1];break;
         }
+        const provider=(providers.get(match[1])||[]).find(p=>!match[2]||(p.version&&compare(p.version,match[2],match[3])));
+        if(provider){found=provider.record.name;break;}
       }
       if(!found)fail('Ubuntu内部依赖闭包缺失：'+clause);
       queue.push(found);
@@ -175,9 +186,9 @@ export function verifyBootstrap(plan, environment = process.env, execute = execF
   const run = (command, args) => String(execute(command, args, { env, encoding: 'utf8',
     timeout: 20_000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })).trim();
   const files = [];
-  const installed=run(query,['-W','-f=${Package}\t${Architecture}\t${Status}\t${Version}\t${Depends}\t${Pre-Depends}\n'])
+  const installed=run(query,['-W','-f=${Package}\t${Architecture}\t${Status}\t${Version}\t${Depends}\t${Pre-Depends}\t${Provides}\n'])
     .split('\n').filter(Boolean).map(line=>line.split('\t')).filter(row=>['amd64','all'].includes(row[1]))
-    .map(([name,architecture,status,version,depends,preDepends])=>({name,status,version,depends,preDepends}));
+    .map(([name,architecture,status,version,depends,preDepends,provides])=>({name,status,version,depends,preDepends,provides}));
   const packages=resolveBootstrapPackages(installed,[...plan.packages,...staged.map(({name,version})=>({name,version}))],(actual,op,expected)=>{
     try {execute(dpkg,['--compare-versions',actual,op,expected],{env,encoding:'utf8',timeout:20_000,stdio:['ignore','pipe','pipe']});return true;}
     catch(error){if(error.status===1)return false;throw error;}
@@ -433,7 +444,8 @@ export async function prepareRunnerTools({ work, environment = process.env, requ
   }
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+// 官方模块主入口只在直接执行时准备Runner；被检查器导入不得产生执行副作用。
+if (import.meta.main) {
   try {
     if (process.argv.length !== 5 || process.argv[2] !== 'prepare-runner' || process.argv[3] !== '--bootstrap') fail('命令须准确声明Runner首次构建');
     if (process.version !== 'v25.2.1') fail('Node版本不符');

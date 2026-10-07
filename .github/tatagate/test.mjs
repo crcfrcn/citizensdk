@@ -395,3 +395,43 @@ test('GNU固定镜像的连接恢复摘要失败与来源闭集', async () => {
     assert.equal(corrupted,1); assert.equal(existsSync(rejected),false);
   } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+// awk等虚拟依赖必须由已安装真实包提供，闭包继续核验提供包自身的依赖与版本。
+test('Ubuntu虚拟包按Provides核验，拒绝缺失、未安装与错误虚拟版本',()=>{
+  const status='install ok installed',roots=[{name:'compiler',version:'1'}];
+  const records=[{name:'compiler',version:'1',status,depends:'awk'},
+    {name:'mawk',version:'99',status,provides:'awk',depends:'libc (>= 2)'},
+    {name:'libc',version:'2',status}];
+  const compare=(a,op,b)=>op==='='?a===b:op==='>='&&Number(a)>=Number(b);
+  const names=rows=>resolveBootstrapPackages(rows,roots,compare).map(record=>record.name);
+  assert.deepEqual(names(records),['compiler','libc','mawk']);
+  assert.deepEqual(names([{...records[0],depends:'missing | awk:any'},...records.slice(1)]),['compiler','libc','mawk']);
+  for(const rows of [records.slice(0,1),records.slice(0,2),
+    [records[0],{...records[1],provides:''},records[2]],
+    [records[0],{...records[1],status:'deinstall ok config-files'},records[2]],
+    [records[0],{...records[1],provides:'awk (>= 2)'},records[2]],
+    [records[0],{...records[1],provides:'awk, awk'},records[2]]])assert.throws(()=>names(rows));
+  const versioned=[{...records[0],depends:'awk (>= 2)'},{...records[1],version:'1',provides:'awk (= 2)'},records[2]];
+  assert.deepEqual(names(versioned),['compiler','libc','mawk']);
+  assert.deepEqual(names([...versioned,{name:'awk',version:'1',status}]),['compiler','libc','mawk']);
+  for(const provides of ['awk','awk (= 1)'])assert.throws(()=>names([versioned[0],{...records[1],provides},records[2]]));
+  assert.throws(()=>resolveBootstrapPackages(records,[{name:'awk',version:'99'}],compare));
+});
+
+// 增量检查通过eval导入自身时argv仍指向文件；只有真实主入口才校验准备命令。
+test('Runner准备模块导入无副作用，直接入口仍拒绝缺少准确参数',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  const {fileURLToPath}=await import('node:url');
+  const entry=fileURLToPath(new URL('./tools.mjs',import.meta.url));
+  const source='await import((await import("node:url")).pathToFileURL(process.argv[1]).href);';
+  const options={encoding:'utf8',timeout:10000,env:{PATH:'',NODE_OPTIONS:'',NODE_PATH:''}};
+  for(const args of [['--input-type=module','-e',source,entry],['--input-type=module','--eval',source,entry],
+    ['--input-type=module','--eval='+source,entry]]){
+    const result=spawnSync(process.execPath,args,options);
+    assert.equal(result.error,undefined);assert.equal(result.signal,null);assert.equal(result.status,0,result.stderr);
+    assert.equal(result.stdout,'');assert.equal(result.stderr,'');
+  }
+  const direct=spawnSync(process.execPath,[entry],options);
+  assert.equal(direct.error,undefined);assert.equal(direct.signal,null);assert.equal(direct.status,1);
+  assert.match(direct.stderr,/命令须准确声明Runner首次构建/u);
+});
