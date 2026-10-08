@@ -690,3 +690,28 @@ test('注释检查区分模板正文、模板表达式、Python文串和真实�
  assert.equal(hasFirstPartyTemporaryComments('module.py','value="""# TODO text"""\nvalue=1 # FIXME actual\n'),true);
  assert.equal(hasFirstPartyTemporaryComments('module.py','value="""# TODO text"""\n'),false);
 });
+
+// 工具准备保持SDK模块归属和独占空现场，不能接受Runner全局目录或其它源码根。
+test('SDK工具现场严格绑定本模块target/test', async () => {
+  const { runnerToolWork } = await import('./tools.mjs');
+  const fs = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { join } = await import('node:path');
+  const root = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/u, '');
+  const testRoot = join(root, 'target', 'test');
+  assert.ok(fs.existsSync(testRoot), '既有产品测试根必须已经准备');
+  const work = fs.mkdtempSync(join(testRoot, 'runner-tools-boundary-'));
+  try {
+    const env = { GITHUB_WORKSPACE: root };
+    assert.equal(runnerToolWork(work, env), work);
+    for (const path of [testRoot, root, 'relative', join(work, 'missing')]) assert.throws(() => runnerToolWork(path, env));
+    assert.throws(() => runnerToolWork(work, {}));
+    assert.throws(() => runnerToolWork(work, { GITHUB_WORKSPACE: testRoot }));
+    fs.writeFileSync(join(work, 'used'), 'fixture');
+    assert.throws(() => runnerToolWork(work, env));
+    assert.throws(() => runnerToolWork(join(work, 'used'), env));
+    fs.unlinkSync(join(work, 'used'));
+    const link = join(work, 'linked'); fs.symlinkSync(work, link);
+    assert.throws(() => runnerToolWork(link, env));
+  } finally { fs.rmSync(work, { recursive: true, force: true }); }
+});

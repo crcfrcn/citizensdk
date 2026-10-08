@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, mkdirSync, writeFileSync, readdirSync,
   symlinkSync, rmSync, readlinkSync, chmodSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const fail = message => { throw new Error('本仓工具交付：' + message); };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -346,13 +347,24 @@ export async function stageCurlArtifacts({ work, artifacts, paths, run, request 
       'CURL_CONFIG=' + paths.false] });
 }
 
+// 工具现场必须属于当前模块的SDK根target/test，根目录、链接、错仓和非空现场均拒绝。
+export function runnerToolWork(work, environment = process.env) {
+  if (typeof environment.GITHUB_WORKSPACE !== 'string') fail('缺少本仓SDK源码根');
+  const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/u, '');
+  directory(repositoryRoot); directory(environment.GITHUB_WORKSPACE);
+  if (environment.GITHUB_WORKSPACE !== repositoryRoot) fail('工具必须绑定当前SDK模块的真实源码根');
+  const testRoot = join(repositoryRoot, 'target', 'test');
+  directory(testRoot); directory(work);
+  if (!work.startsWith(testRoot + '/') || readdirSync(work).length) fail('工具必须使用本仓target/test下的独占空目录');
+  return work;
+}
+
 export async function prepareRunnerTools({ work, environment = process.env, request = fetch,
   execute = execFileSync, bootstrap = false } = {}) {
   if (bootstrap !== true) fail('缺少本次准确Ubuntu首次构建许可');
   const contract = JSON.parse(readFileSync(new URL('contracts.json', import.meta.url), 'utf8'));
   const plan = validateToolSources(contract.tool_sources);
-  directory(work); directory(environment.RUNNER_TEMP);
-  if (!work.startsWith(environment.RUNNER_TEMP + '/') || readdirSync(work).length) fail('工具必须使用Runner临时根下的独占空目录');
+  runnerToolWork(work, environment);
   const owned = lstatSync(work); let inputs = verifyBootstrap(plan.bootstrap, environment, execute);
   const paths = Object.fromEntries(inputs.commands.map(record => [record.name, record.path]));
   mkdirSync(join(work,'tools'));
