@@ -667,3 +667,23 @@ test('依赖供给索引只识别固定夹具的真实字段且保留其它版�
  const unknown='const protocol = "example-'+'v'+'9";';
  assert.ok(dependencySupplySchemaLines(path,fragments[1]+unknown)[0][1].endsWith(unknown));
 });
+
+// 真实词法区分补丁文字与实现注释，模板表达式及行尾真实注释继续拒绝。
+test('资源中的注释文本与正则字面量不是第一方代码注释', async () => {
+  const { commentText, hasFirstPartyTemporaryComments } = await import('./index.mjs');
+  const source = 'const patch = "// TODO upstream\\n/* FIXME original */";\nconst literal = /\\/\\/ XXX/;\n// 正常中文实现说明\n';
+  assert.equal(hasFirstPartyTemporaryComments('scripts/resources.mjs', source), false);
+  assert.match(commentText('module.mjs', source), /正常中文实现说明/u);
+  assert.equal(hasFirstPartyTemporaryComments('module.mjs', source + '// TODO first party\n'), true);
+  assert.equal(hasFirstPartyTemporaryComments('module.rs', 'let raw = r##"// TODO raw"##;\n// 中文说明\n'), false);
+  assert.equal(hasFirstPartyTemporaryComments('module.rs', "fn bind<'a>() {} // FIXME actual\n"), true);
+});
+
+// 真实词法和消费者闭合，模板表达式中的真实注释仍参与检查。
+test('注释检查区分模板正文、模板表达式、Python文串和真实行尾注释',async()=>{
+ const {hasFirstPartyTemporaryComments}=await import('./index.mjs');
+ assert.equal(hasFirstPartyTemporaryComments('module.mjs','const value=`// TODO text ${1}`;'),false);
+ assert.equal(hasFirstPartyTemporaryComments('module.mjs','const value=`text ${(()=>{ // FIXME actual\n return 1; })()}`;'),true);
+ assert.equal(hasFirstPartyTemporaryComments('module.py','value="""# TODO text"""\nvalue=1 # FIXME actual\n'),true);
+ assert.equal(hasFirstPartyTemporaryComments('module.py','value="""# TODO text"""\n'),false);
+});

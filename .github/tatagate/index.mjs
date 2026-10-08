@@ -84,12 +84,58 @@ function isImplementationPath(path) {
     || ['Dockerfile', 'Makefile'].includes(basename(path));
 }
 
-function commentText(path, source) {
-  const extension = extname(path).toLowerCase();
-  if (['.sh', '.py'].includes(extension)) return source.split(/\r?\n/u).filter((line) => /^(?!#!)\s*#/u.test(line)).join('\n');
-  if (extension === '.sql') return source.split(/\r?\n/u).filter((line) => /^\s*--/u.test(line)).join('\n');
-  return [...source.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//gu)].map((match) => match[0]).join('\n');
+// 词法扫描保留真实代码与注释位置；字符串、正则及模板正文不作为实现注释。
+export function lexicalParts(path, source) {
+  const extension=extname(path).toLowerCase(), javascript=['.js','.jsx','.mjs','.ts','.tsx'].includes(extension);
+  const comments=[], code=source.split('');let index=0;
+  const blank=(begin,end)=>{for(let at=begin;at<end;at++)if(source[at]!=='\n'&&source[at]!=='\r')code[at]=' ';};
+  const quote=(delimiter,triple=false,interpolated=false)=>{
+    const size=triple?3:1;blank(index,index+size);index+=size;
+    while(index<source.length){
+      if(source[index]==='\\'){blank(index,index+2);index+=2;continue;}
+      if(interpolated&&source.startsWith('${',index)){blank(index,index+2);index+=2;scan(true);continue;}
+      if(source.startsWith(delimiter.repeat(size),index)){blank(index,index+size);index+=size;return;}
+      blank(index,index+1);index++;
+    }
+  };
+  const scan=(interpolation=false)=>{
+    let previous='',word='',depth=1;
+    while(index<source.length){
+      const value=source[index];
+      if(/\s/u.test(value)){index++;continue;}
+      if(interpolation&&value==='}'){if(--depth===0){blank(index,index+1);index++;return;}index++;previous='}';continue;}
+      if(interpolation&&value==='{')depth++;
+      const lineComment=(['.py','.sh'].includes(extension)&&value==='#'&&!source.startsWith('#!',index))
+        ||extension==='.sql'&&source.startsWith('--',index)
+        ||!['.py','.sh','.sql'].includes(extension)&&source.startsWith('//',index);
+      if(lineComment){const begin=index,end=source.indexOf('\n',index);index=end<0?source.length:end;comments.push(source.slice(begin,index));blank(begin,index);continue;}
+      if(!['.py','.sh'].includes(extension)&&source.startsWith('/*',index)){
+        const begin=index;let nested=1;index+=2;
+        while(index<source.length&&nested){if(extension==='.rs'&&source.startsWith('/*',index)){nested++;index+=2;}else if(source.startsWith('*/',index)){nested--;index+=2;}else index++;}
+        comments.push(source.slice(begin,index));blank(begin,index);continue;
+      }
+      if(extension==='.rs'){
+        const raw=/^(?:b)?r(#+)?"/u.exec(source.slice(index));
+        if(raw){const begin=index,close='"'+(raw[1]||''),end=source.indexOf(close,index+raw[0].length);index=end<0?source.length:end+close.length;blank(begin,index);previous='literal';continue;}
+        if(value==="'"&&!/^'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\n])'/u.test(source.slice(index))){index++;previous=value;continue;}
+      }
+      if(value==='"'||value==="'"||value==='`'){
+        quote(value,['.dart','.py'].includes(extension)&&source.startsWith(value.repeat(3),index),javascript&&value==='`'||extension==='.dart'&&source[index-1]!=='r');previous='literal';word='';continue;
+      }
+      if(javascript&&value==='/'&&(!previous||/[=(:,!\[{};?]/u.test(previous)||['return','throw','yield','case'].includes(word))){
+        const begin=index++;let bracket=false;
+        while(index<source.length){const current=source[index++];if(current==='\\'){index++;continue;}if(current==='[')bracket=true;else if(current===']')bracket=false;else if(current==='/'&&!bracket)break;else if(current==='\n')break;}
+        while(/[a-z]/iu.test(source[index]||''))index++;blank(begin,index);previous='literal';word='';continue;
+      }
+      if(/[A-Za-z_$]/u.test(value)){const begin=index++;while(/[A-Za-z0-9_$]/u.test(source[index]||''))index++;word=source.slice(begin,index);previous='word';continue;}
+      previous=value;word='';index++;
+    }
+  };
+  scan();return {comments:comments.join('\n'),code:code.join('')};
 }
+
+export function commentText(path, source) { return lexicalParts(path,source).comments; }
+
 
 function temporaryComments(path, source) {
   return commentText(path, source).split('\n').filter((line) => /(?:TODO|FIXME|HACK|XXX)\b/u.test(line));
