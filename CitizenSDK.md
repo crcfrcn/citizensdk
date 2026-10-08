@@ -2955,7 +2955,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 
 ##### 聊天服务接入边界
 
-CitizenSDK 不拥有聊天协议或服务接口。CitizenApp 依赖 TataChatSDK，CitizenChatServer 依赖 TataChatServer；CitizenServe 只提供产品身份与权益授权。原先由公民产品实现 WebRTC 协调、聊天推送、消息及附件传输的方案撤销。聊天接口及行为由 TataChatSDK、TataChatServer 各自唯一技术文档定义，本产品不再保存第二份合同。
+
 
 ##### P-API-CITIZENAPP-004：CitizenApp Chain Bootstrap Manifest
 
