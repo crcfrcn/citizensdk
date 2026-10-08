@@ -168,6 +168,10 @@ test('增量防护执行真实归属判断并支持超过argv单项限制的输�
       [testPath, 'test(() => {\n  ' + statement + '\n});\n', false],
       [testPath, 'test(() => {\n  ' + statement + '\n});\n' + protocol, true, '版本化标识'],
       [testPath, '`\n  ' + statement + '\n`\n', true, '版本化标识'],
+      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n', false],
+      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n'+protocol, true, '版本化标识'],
+      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':3,packages,git_sources:[],pods};\n', true, '版本化标识'],
+      ['scripts/fixture.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n', true, '版本化标识'],
       ['unregistered.test.mjs', '  ' + statement + '\n', true, '版本化标识'],
     ]) {
       for (const entry of ['scripts', 'lib', 'test', 'unregistered.test.mjs']) rmSync(join(root, entry), { recursive: true, force: true });
@@ -642,4 +646,24 @@ test('官方Flutter归档字段不冒充旧平台标识，其它残留和伪造�
     git('add', '--all');
     assert.throws(() => validatePlatformNaming(root), /禁用平台目录/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// 精确供给字段例外不能扩展为任意协议、源文件或字符串豁免。
+test('依赖供给索引只识别固定夹具的真实字段且保留其它版本标识', async () => {
+ const {dependencySupplySchemaLines}=await import('./index.mjs');
+ const field=['schema','version'].join('_'), path='scripts/resources.test.mjs';
+ const fragments=[
+  'JSON.stringify({'+field+':2,packages:[{archives:[{...entry,sha256:digest}]}],git_sources:[],pods:[]})',
+  'const index={'+field+':2,packages,git_sources:[],pods};',
+  '{'+field+':1,packages:[],git_sources:[],snapshots:[]}',
+ ];
+ for(const fragment of fragments){
+  const source='const fixture = '+fragment+'\n';
+  assert.deepEqual(dependencySupplySchemaLines(path,source),[[source.trimEnd(),source.trimEnd().replace(field,'supply_schema')]]);
+  for(const text of ['// '+source,'/* '+source+' */',JSON.stringify(source),'`'+source+'`'])assert.deepEqual(dependencySupplySchemaLines(path,text),[]);
+  for(const other of ['source.mjs','unregistered.test.mjs','.github/tatagate/test.mjs'])assert.deepEqual(dependencySupplySchemaLines(other,source),[]);
+  assert.deepEqual(dependencySupplySchemaLines(path,source.replace(field+':2',field+':3').replace(field+':1',field+':3')),[]);
+ }
+ const unknown='const protocol = "example-'+'v'+'9";';
+ assert.ok(dependencySupplySchemaLines(path,fragments[1]+unknown)[0][1].endsWith(unknown));
 });
