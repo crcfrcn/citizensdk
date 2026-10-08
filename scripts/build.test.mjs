@@ -226,3 +226,20 @@ test('CLI异步资源可反向导入唯一校验，正常参数和离线失败�
   assert.equal(existsSync(join(work,'build-result.json')),false);
  }finally{rmSync(area,{recursive:true,force:true});}
 });
+
+// 原生任务根脚本先加载唯一校验器；三个实际输出入口不得自行放宽GitHub边界。
+test('Android插件输出、JNI暂存和独立AAR绑定同一生产路径校验',()=>{
+ const plugin=readFileSync(join(root,'android/build.gradle'),'utf8');
+ const native=readFileSync(join(root,'android/native/build.gradle'),'utf8');
+ const builder=readFileSync(join(root,'scripts/build-native.sh'),'utf8');
+ assert.equal((plugin.match(/rootProject[.]ext[.]verifyCitizenSdkAndroidOutput =/g)||[]).length,1);
+ assert.equal((plugin.match(/rootProject[.]ext[.]verifyCitizenSdkAndroidOutput\(/g)||[]).length,2);
+ assert.equal((native.match(/rootProject[.]ext[.]verifyCitizenSdkAndroidOutput\(/g)||[]).length,1);
+ assert.match(plugin,/verifyCitizenSdkAndroidOutput\(androidBuildValue, 'Android output'\)/);
+ assert.match(plugin,/verifyCitizenSdkAndroidOutput\(stagedAndroidAbiValue, 'Android native staging'\)/);
+ assert.match(native,/verifyCitizenSdkAndroidOutput\(configuredBuildDir, 'Android output'\)/);
+ assert.doesNotMatch(plugin+native,/must (?:remain )?(?:in|out)side the GitHub source checkout/);
+ const prepare=builder.slice(builder.indexOf('prepare_android_gradle_project()'),builder.indexOf('build_android()'));
+ assert.match(prepare,/apply from: new File\(System[.]getenv\('CITIZENSDK_SOURCE_DIR'\), 'android\/build[.]gradle'\)/);
+ assert.match(prepare,/apply from: new File\(System[.]getenv\('CITIZENSDK_SOURCE_DIR'\), 'android\/native\/build[.]gradle'\)/);
+});

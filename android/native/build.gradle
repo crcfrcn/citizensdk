@@ -17,26 +17,7 @@ def configuredBuildDir = System.getenv('CITIZENSDK_ANDROID_BUILD_DIR')
 def fallbackRoot = new File(System.getProperty('java.io.tmpdir'), 'citizensdk-unconfigured')
 def normalizedTarget = configuredBuildDir == null || configuredBuildDir.trim().isEmpty()
     ? new File(fallbackRoot, 'android-native').canonicalFile
-    : file(configuredBuildDir).canonicalFile
-if (configuredBuildDir != null && !configuredBuildDir.trim().isEmpty()) {
-    if (!file(configuredBuildDir).isAbsolute()) {
-        throw new GradleException('CITIZENSDK_ANDROID_BUILD_DIR must be absolute')
-    }
-    def githubActions = System.getenv('GITHUB_ACTIONS') == 'true'
-    if (githubActions) {
-        def workspace = System.getenv('GITHUB_WORKSPACE')
-        if (workspace != null && !workspace.trim().isEmpty()) {
-            def sourceRoot = file(workspace).canonicalFile
-            if (normalizedTarget.path == sourceRoot.path ||
-                normalizedTarget.path.startsWith(sourceRoot.path + File.separator)) {
-                throw new GradleException('CitizenSDK Android output must be outside the GitHub source checkout')
-            }
-        }
-    }
-    if (normalizedTarget.toPath().startsWith(sdkProductRoot.toPath())) {
-        throw new GradleException('CitizenSDK Android build output must remain outside the source tree')
-    }
-}
+    : rootProject.ext.verifyCitizenSdkAndroidOutput(configuredBuildDir, 'Android output')
 def nativeTarget = new File(normalizedTarget, 'native')
 buildDir = nativeTarget
 

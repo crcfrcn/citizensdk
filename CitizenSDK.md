@@ -4207,6 +4207,8 @@ SBOM 或签名证明。本步只固定上述三项静态组件的法律原文与
 
 ## TataConsole本机编译生成边界
 
+GitHub上的Android插件输出、JNI暂存与独立AAR共用android/build.gradle定义的唯一物理路径校验；独立AAR由任务根脚本先装载该校验，再在native模块调用。输出必须是无链接、无路径别名的绝对目录，并位于实际GITHUB_WORKSPACE的既有target严格子目录；缺失工作区、缺失target、源码目录、target本身、越界路径及普通文件均拒绝，校验不创建或重建固定根。SDK作为依赖时源码原件整体只读；SDK自有Workflow只开放自身target，仍拒绝源码目录。已有本机输出与原件隔离合同保持，不新增工具、来源、版本、参数或签名配置。
+
 Android 原生构建中的 `CITIZENSDK_ANDROID_BUILD_DIR`、`CITIZENSDK_ANDROID_CORE_DIR`、`GRADLE_USER_HOME` 必须连续赋值给同一次 Gradle 子进程调用；注释放在赋值段前，禁止切断续行。SDK 自有 Gradle 工程、项目缓存、Kotlin 状态和原生产物必须位于 CitizenSDK 工作目录；调用产品显式提供的 `GRADLE_USER_HOME` 是产品任务的依赖缓存，只要求位于 CitizenSDK 源码树之外，不得错误要求它进入 SDK 子工作目录。Gradle 使用 `--no-problems-report` 阻止 HTML 问题报告写回 SDK 源码，受控日志继续保留完整错误栈，Gradle 非零退出码直接终止构建。回归测试执行生产脚本的调用段，用受控子进程核对环境、含空格路径、参数、外部依赖缓存边界及失败传播，不需要联网或编译 SDK。
 
 CitizenSDK本机编译只使用固定`citizensdk/target/`；它不写`target`、不生成正式包、清单或回执。产品源码直接从CitizenSDK完整仓读取，所有依赖展开与编译中间物位于该缓存容器，下一次同产品Build开始时清空容器内容。

@@ -10,6 +10,44 @@ def sdkProductRoot = sdkSourceValue == null
     ? project.projectDir.parentFile.canonicalFile : new File(sdkSourceValue).canonicalFile
 def androidSourceRoot = new File(sdkProductRoot, 'android')
 
+// Android插件与独立AAR共用同一输出校验；已有target只验真，不在配置阶段创建。
+rootProject.ext.verifyCitizenSdkAndroidOutput = { String value, String label ->
+    def input = new File(value)
+    def output = input.canonicalFile
+    if (!input.isAbsolute() || input.absoluteFile.toPath() != output.toPath()) {
+        throw new GradleException("CitizenSDK "+label+" must be an absolute real directory")
+    }
+    for (def ancestor = input.toPath(); ancestor != null; ancestor = ancestor.parent) {
+        if (java.nio.file.Files.isSymbolicLink(ancestor) ||
+            (java.nio.file.Files.exists(ancestor, java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+             !java.nio.file.Files.isDirectory(ancestor, java.nio.file.LinkOption.NOFOLLOW_LINKS))) {
+            throw new GradleException("CitizenSDK "+label+" must not contain links or files")
+        }
+    }
+    def workspace = null
+    if (System.getenv('GITHUB_ACTIONS') == 'true') {
+        def workspaceValue = System.getenv('GITHUB_WORKSPACE')
+        if (workspaceValue == null || workspaceValue.trim().isEmpty()) {
+            throw new GradleException('CitizenSDK GitHub Android output requires its source checkout')
+        }
+        def workspaceInput = new File(workspaceValue)
+        workspace = workspaceInput.canonicalFile
+        def target = new File(workspace, 'target')
+        if (!workspaceInput.isAbsolute() || workspaceInput.absoluteFile != workspace ||
+            !workspace.isDirectory() || !target.isDirectory() ||
+            target.absoluteFile != target.canonicalFile ||
+            !output.toPath().startsWith(target.toPath()) || output == target) {
+            throw new GradleException("CitizenSDK "+label+" must remain inside the owning product target")
+        }
+    }
+    // SDK作为依赖时原件整体只读；SDK自有Workflow只允许自身target，不放开源码目录。
+    if (output.toPath().startsWith(sdkProductRoot.toPath()) && sdkProductRoot != workspace) {
+        throw new GradleException("CitizenSDK "+label+" must remain outside the source tree")
+    }
+    return output
+}
+
+
 // 独立根工程测试复用调用方同一Flutter工具的官方embedding；宿主插件工程由
 // 官方Flutter Gradle插件提供类路径，不读取此测试输入，也不打包工具原件。
 def standaloneFlutterTests = project == rootProject && sdkSourceValue != null
@@ -30,23 +68,7 @@ if (flutterRootValue != null) {
 
 def androidBuildValue = System.getenv('CITIZENSDK_ANDROID_BUILD_DIR')
 if (androidBuildValue != null && !androidBuildValue.trim().isEmpty()) {
-    def androidBuildInput = file(androidBuildValue)
-    if (!androidBuildInput.isAbsolute()) {
-        throw new GradleException('CITIZENSDK_ANDROID_BUILD_DIR must be absolute')
-    }
-    def androidBuildRoot = androidBuildInput.canonicalFile
-    if (System.getenv('GITHUB_ACTIONS') == 'true') {
-        def githubWorkspaceValue = System.getenv('GITHUB_WORKSPACE')
-        if (githubWorkspaceValue != null && !githubWorkspaceValue.trim().isEmpty()) {
-            def githubWorkspace = file(githubWorkspaceValue).canonicalFile
-            if (androidBuildRoot.toPath().startsWith(githubWorkspace.toPath())) {
-                throw new GradleException('CitizenSDK Android output must remain outside the GitHub source checkout')
-            }
-        }
-    }
-    if (androidBuildRoot.toPath().startsWith(sdkProductRoot.toPath())) {
-        throw new GradleException('CitizenSDK Android output must remain outside the source tree')
-    }
+    def androidBuildRoot = rootProject.ext.verifyCitizenSdkAndroidOutput(androidBuildValue, 'Android output')
     buildDir = new File(androidBuildRoot, 'flutter')
 }
 
@@ -69,28 +91,9 @@ apply plugin: 'com.android.library'
 def sharedFacadeSource = new File(androidSourceRoot, 'native/src/main/kotlin').canonicalFile
 def packagedAndroidAbiDirectory = new File(androidSourceRoot, 'src/main/jniLibs/arm64-v8a').canonicalFile
 def stagedAndroidAbiValue = System.getenv('CITIZENSDK_ANDROID_CORE_DIR')
-def stagedAndroidAbiFile = stagedAndroidAbiValue == null || stagedAndroidAbiValue.trim().isEmpty()
-    ? null
-    : file(stagedAndroidAbiValue)
 def selectedAndroidAbiDirectory = stagedAndroidAbiValue == null || stagedAndroidAbiValue.trim().isEmpty()
     ? packagedAndroidAbiDirectory
-    : stagedAndroidAbiFile.canonicalFile
-
-if (stagedAndroidAbiValue != null && !stagedAndroidAbiValue.trim().isEmpty()) {
-    if (!stagedAndroidAbiFile.isAbsolute()) {
-        throw new GradleException('CITIZENSDK_ANDROID_CORE_DIR must be absolute')
-    }
-    if (System.getenv('GITHUB_ACTIONS') == 'true') {
-        def githubWorkspaceValue = System.getenv('GITHUB_WORKSPACE')
-        if (githubWorkspaceValue != null && !githubWorkspaceValue.trim().isEmpty() &&
-            selectedAndroidAbiDirectory.toPath().startsWith(file(githubWorkspaceValue).canonicalFile.toPath())) {
-            throw new GradleException('CitizenSDK Android native staging must remain outside the GitHub source checkout')
-        }
-    }
-    if (selectedAndroidAbiDirectory.toPath().startsWith(sdkProductRoot.toPath())) {
-        throw new GradleException('CitizenSDK Android native staging must remain outside the source tree')
-    }
-}
+    : rootProject.ext.verifyCitizenSdkAndroidOutput(stagedAndroidAbiValue, 'Android native staging')
 
 // 只把唯一chain三文件投影到本模块当前构建目录；Android标准assets容器保留chain层级，
 // 禁止把整个SDK源码根作为资产源，也不在源码中恢复assets包装目录。
