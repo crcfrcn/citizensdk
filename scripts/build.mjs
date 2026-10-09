@@ -8,7 +8,6 @@ import {dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 
-const {fixtureWork,removeFixture,writeFixture,copyFixture}=process.env.NODE_TEST_CONTEXT&&process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)?await import('./target-fixtures.mjs'):{};
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export const contract=JSON.parse(readFileSync(join(root,'scripts/flows.json'),'utf8'));
 const product=contract.product_id, prefix=product.toUpperCase();
@@ -21,9 +20,11 @@ export function productTarget(platform) {
  platformContract(platform);
  return join(root,'target');
 }
-export function temporaryRoot(platform=Object.keys(contract.platforms)[0],scope='test') {
+export function temporaryRoot(platform=Object.keys(contract.platforms)[0],scope='test',suppliedInput) {
  if(!['test','tmp','build','ci','release','publish'].includes(scope))fail('临时目录职责无效');
- platformContract(platform);return checkFixedWork(fixedWork(scope==='test'?'test':'build'),{create:true});
+ platformContract(platform);const expected=fixedWork(scope==='test'?'test':'build');
+ if(suppliedInput!=null&&suppliedInput!==expected)fail('临时工作根必须是本产品固定目录');
+ return checkFixedWork(expected,{create:true});
 }
 // 测试继承当前平台现场；独立执行没有任务身份时才选产品首个平台。
 export const testRoot=platform=>{
@@ -381,6 +382,25 @@ const tmpdir = testRoot;
 const {dirname,join,resolve} = await import('node:path');
 
 
+const {default:fs}=await import('node:fs');
+const {finishFixedWork}=await import('./target.mjs');
+// 本产品测试使用固定根；资源夹具的内部目录不成为另一套工作根。
+const scripts=import.meta.dirname;
+function fixtureWork(){const work=checkFixedWork(fixedWork('build'),{create:true});finishFixedWork(work);return work;}
+function removeFixture(path,options={}){if(path===fixedWork('build')||path===fixedWork('test')){if(fs.existsSync(path))clearFixedWork(path);return;}fs.rmSync(path,options);}
+
+function writeFixture(path,data,options){
+ fs.writeFileSync(path,data,options);
+ if(String(path).endsWith('/scripts/build.mjs')&&String(data).includes("from './target.mjs'")){
+  for(const name of ['target.mjs'])fs.copyFileSync(join(scripts,name),join(dirname(path),name));
+ }
+}
+
+function copyFixture(source,destination,...options){
+ fs.copyFileSync(source,destination,...options);
+ if(String(destination).endsWith('/scripts/build.mjs'))for(const name of ['target.mjs'])fs.copyFileSync(join(scripts,name),join(dirname(destination),name));
+}
+
 const sandbox=fixtureWork;
 const root=resolve(import.meta.dirname,'..'),base=root;
 const fixture=work=>{
@@ -546,7 +566,7 @@ test('CLI异步资源可反向导入唯一校验，正常参数和离线失败�
   const work=join(source,'target','build');
   mkdirSync(scripts,{recursive:true});mkdirSync(work,{recursive:true});
   writeFixture(file,readFileSync(join(root,'scripts/build.mjs')));
-  for(const name of ['target.mjs','target-fixtures.mjs'])writeFixture(join(scripts,name),readFileSync(join(root,'scripts',name)));
+  for(const name of ['target.mjs'])writeFixture(join(scripts,name),readFileSync(join(root,'scripts',name)));
   writeFixture(join(scripts,'flows.json'),JSON.stringify(contract));
   const provider=[
    "import {writeFileSync} from 'node:fs';",

@@ -14,7 +14,7 @@
     "scripts/ci/sdk.mjs",
     "scripts/release/index.mjs",
     "scripts/release/sdk.mjs",
-    "scripts/target.test.mjs"
+    "scripts/target.mjs"
   ],
   "checks": [
     "repository-contracts",
@@ -1333,6 +1333,12 @@
     {
       "function": "scripts-resources",
       "path": "scripts/resources.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts-target",
+      "path": "scripts/target.mjs",
       "runner": "node",
       "target": "node"
     },

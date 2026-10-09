@@ -523,9 +523,9 @@ export function workflowStep(job,index,environment=process.env) {
  return current.steps[String(index)];
 }
 export function runExactWorkflowStep(job,index,environment=process.env,run=spawnSync) {
- const step=workflowStep(job,index,environment),command=step.shell==='pwsh'?'pwsh':(process.platform==='win32'?'bash':'/bin/bash');
+ const declaredStep=workflowStep(job,index,environment),bound=run===spawnSync?remoteStep(declaredStep.source,environment,declaredStep.shell):{source:declaredStep.source,env:environment,cwd:process.cwd()},step={...declaredStep,source:bound.source},command=step.shell==='pwsh'?'pwsh':(process.platform==='win32'?'bash':'/bin/bash');
  const args=step.shell==='pwsh'?['-NoLogo','-NoProfile','-NonInteractive','-Command',step.source]:['--noprofile','--norc','-e','-o','pipefail','-c',step.source];
- const result=run(command,args,{cwd:process.cwd(),env:environment,stdio:'inherit'});
+ const result=run(command,args,{cwd:bound.cwd,env:bound.env,stdio:'inherit'});
  if(result.error)throw Error('准确远端Job阶段无法启动');return result.status??1;
 }
 export async function runJobCLI(values,environment=process.env) {

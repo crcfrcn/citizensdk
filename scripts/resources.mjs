@@ -2852,7 +2852,7 @@ test('链接原件目录、重复成员与解包取消拒绝且不写第三方�
 test('产品配方覆盖自身需求和递归工具，模块只使用内置依赖，独立CLI拒绝错误输入',async t=>{
  const root=await sandbox(t),declarations=resourceDeclarations(),tools=new Map(declarations.tools.map(x=>[x.id,x]));for(const platform of Object.values(contract.platforms))for(const tool of platform.tools){assert.equal(tools.get(tool.id)?.version,tool.version);}
  for(const tool of tools.values())for(const id of tool.requires||[])assert.ok(tools.has(id),'缺少递归工具 '+id);
- for(const name of ['node','posix','bash','grep','sed'])assert.ok(tools.has(name));const source=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');assert.doesNotMatch(source,/import\(['"]\.\.\//u);assert.ok([...source.matchAll(/^import .*? from ['"]([^'"]+)['"]/gmu)].every(m=>m[1].startsWith('node:')));
+ for(const name of ['node','posix','bash','grep','sed'])assert.ok(tools.has(name));const source=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');assert.doesNotMatch(source,/import\(['"]\.\.\//u);assert.ok([...source.matchAll(/^import .*? from ['"]([^'"]+)['"]/gmu)].every(m=>m[1].startsWith('node:')||m[1]==='./target.mjs'));
  const result=spawnSync(process.execPath,[join(import.meta.dirname,'resources.mjs'),'unknown','--work',root,'--offline'],{env:{HOME:root,LANG:'C',PATH:''},encoding:'utf8'});assert.notEqual(result.status,0);assert.match(result.stderr,/平台/);assert.deepEqual(await readdir(root),[]);
 });
 
@@ -3060,6 +3060,8 @@ test('工具内部硬链接完整闭合，默认独占、跨原件名称、回�
  assert.ok(current.includes(fsImport));
  const copied=current.replace(fsImport,"from './filesystem.mjs';");
  assert.equal(copied.replace("from './filesystem.mjs';",fsImport),current);
+ await writeFile(join(source,'target.mjs'),await readFile(new URL('./target.mjs',import.meta.url)));
+ await mkdir(join(area,'scripts'),{recursive:true});await writeFile(join(area,'scripts/flows.json'),JSON.stringify(contract));
  await writeFile(entry,copied+'\nexport {toolInventory,verifyToolObject};\n');
  await writeFile(join(source,'filesystem.mjs'),[
   "export * from 'node:fs/promises';",
@@ -3148,6 +3150,8 @@ test('源码工具只分离两处有效镜像运输字段，真实编译输入�
  const area=await sandbox(t),entry=join(area,'resources-proof.mjs'),directory=join(area,'object'),payload=join(directory,'payload');
  const {pathToFileURL}=await import('node:url');
  const original=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');
+ await writeFile(join(area,'target.mjs'),await readFile(new URL('./target.mjs',import.meta.url)));
+ await mkdir(join(dirname(area),'scripts'),{recursive:true});await writeFile(join(dirname(area),'scripts/flows.json'),JSON.stringify(contract));
  await writeFile(entry,original+'\nexport {compilationToolInput,toolInventory,verifyToolObject};\n');
  const owner=await import(pathToFileURL(entry).href),definitions=owner.resourceDeclarations().tools;
  const source='synthetic-source-archive',recipe='synthetic-recipe';
