@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {withFixedWork,remoteStep} from '../target.mjs';
 // 本仓作业阶段唯一集合；作业身份不依赖目录，导入只读取定义。
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
@@ -528,6 +529,9 @@ export function runExactWorkflowStep(job,index,environment=process.env,run=spawn
  if(result.error)throw Error('准确远端Job阶段无法启动');return result.status??1;
 }
 export async function runJobCLI(values,environment=process.env) {
+ return withFixedWork('build',()=>runJobTask(values,environment),{environment,retain:true});
+}
+async function runJobTask(values,environment=process.env) {
  const [job,command,index,...extra]=values;checkedJob(job,environment);
  if(extra.length)throw Error('准确远端Job参数无效');
 

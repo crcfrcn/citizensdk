@@ -1,8 +1,11 @@
 #!/usr/bin/env node
+import {claimFixedWork,releaseFixedWork,fixedWork,trackFixedProcess} from '../target.mjs';
+import {withFixedWork} from '../target.mjs';
+import {remoteStep} from '../target.mjs';
 // CI_BUILD: incremental
 
 // citizensdk.sdk.ci 的正式动作入口；SDK 打包逻辑只调用产品唯一真源，目录不重复包装 sdk。
-import { mkdtempSync, realpathSync, lstatSync, rmSync, writeFileSync, readdirSync, readFileSync, mkdirSync, symlinkSync, existsSync, copyFileSync, constants } from 'node:fs';
+import {mkdirSync, mkdtempSync, realpathSync, lstatSync, rmSync, writeFileSync, readdirSync, readFileSync, symlinkSync, existsSync, copyFileSync, constants} from 'node:fs';
 import { temporaryRoot } from '../build.mjs';
 const tmpdir=()=>temporaryRoot('sdk','ci');
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
@@ -452,7 +455,8 @@ export function runSdkCommand(command) {
   });
 }
 
-async function main() {
+async function main(){return withFixedWork('build',()=>mainTask(),{retain:process.env.GITHUB_ACTIONS==='true'});}
+async function mainTask() {
   const [command, ...argumentsList] = process.argv.slice(2);
   if (command === 'aggregate-native' || command === 'unpack-candidate') {
     const names = command === 'aggregate-native'
@@ -483,7 +487,9 @@ async function main() {
   }
   // 原有版本/正式动作保持原实现，依赖包装只定位受控真实文件；不在此重建另一套合同。
   const repositoryRoot = process.env.GITHUB_WORKSPACE || process.cwd();
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'gmb-action-'));
+  const actionSession=claimFixedWork('build',{retain:process.env.GITHUB_ACTIONS==='true'});
+const temporaryDirectory=join(actionSession.owner.work,'action');
+mkdirSync(temporaryDirectory,{recursive:true});
   const implementationPath = join(temporaryDirectory, 'implementation.mjs');
   try {
     writeFileSync(implementationPath, implementations[command], { mode: 0o700 });
@@ -495,7 +501,7 @@ async function main() {
     if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
   } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
+    rmSync(temporaryDirectory, { recursive: true, force: true });releaseFixedWork(actionSession);
   }
 }
 
@@ -684,14 +690,7 @@ function cachePathPlan(identity, runnerTemp, entries) {
       throw new Error(`缓存相对路径无效：${name}`);
     }
   }
-  const digest = createHash('sha256').update(identity.baseKey).digest('hex').slice(0, 20);
-  const rootName = `${identity.product}-${identity.platform}-${identity.component}-${digest}`;
-  const root = pathApi.resolve(temp, 'ci-cache', rootName);
-  const expectedParent = pathApi.resolve(temp, 'ci-cache');
-  const relative = pathApi.relative(expectedParent, root);
-  if (!relative || relative.startsWith('..') || pathApi.isAbsolute(relative)) {
-    throw new Error('缓存根目录逃出Runner临时目录');
-  }
+  const root = pathApi.resolve(temp, 'cache');
   return Object.freeze({
     root,
     successPaths: names.map((name) => pathApi.join(root, ...name.split('/'))),
@@ -718,6 +717,7 @@ function resolvedChild(pathApi, parent, relative, label) {
   return target;
 }
 
+function tempRootForView(value){return value;}
 function wireCacheLinks(identity, runnerTemp, entries, workspace, links) {
   const pathApi = pathImplementation(identity.runnerOs);
   const plan = cachePathPlan(identity, runnerTemp, entries);
@@ -731,7 +731,7 @@ function wireCacheLinks(identity, runnerTemp, entries, workspace, links) {
     const cacheRelative = row.slice(separator + 1);
     relativeEntries(sourceRelative, '工作区生成目录');
     relativeEntries(cacheRelative, '受控缓存目录');
-    const source = resolvedChild(pathApi, workspaceRoot, sourceRelative, '工作区生成目录');
+    const source = resolvedChild(pathApi, pathApi.join(tempRootForView(runnerTemp),'source'), sourceRelative, '工作区生成目录');
     const target = resolvedChild(pathApi, plan.root, cacheRelative, '受控缓存目录');
     mkdirSync(pathApi.dirname(source), { recursive: true });
     mkdirSync(target, { recursive: true });
@@ -991,6 +991,9 @@ export const cachePathPlan = ciCache.cachePathPlan;
 export const wireCacheLinks = ciCache.wireCacheLinks;
 export const sanitizeCacheFinals = ciCache.sanitizeCacheFinals;
 export async function runCacheCommand(command,environment=process.env){
+ return withFixedWork('build',()=>cacheCommandTask(command,environment),{environment,retain:true});
+}
+async function cacheCommandTask(command,environment=process.env){
  const actions={prepare:ciCache.prepare,wire:ciCache.wire,sanitize:ciCache.sanitize,record:ciCache.writeTerminalRecord,prune:ciCache.prune};
  if(!Object.hasOwn(actions,command))throw Error('CI缓存动作无效');return actions[command](environment);
 }

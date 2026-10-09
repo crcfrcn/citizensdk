@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+import {claimFixedWork,releaseFixedWork,fixedWork,trackFixedProcess} from '../target.mjs';
+import {withFixedWork} from '../target.mjs';
 // RELEASE_BUILD: full; CARGO_INCREMENTAL=0
 
 // citizensdk.sdk.release 的正式动作入口；SDK 打包逻辑只调用产品唯一真源，目录不重复包装 sdk。
-import { mkdtempSync, realpathSync, lstatSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, lstatSync, rmSync, writeFileSync } from 'node:fs';
 import { temporaryRoot } from '../build.mjs';
 const tmpdir=()=>temporaryRoot('sdk','release');
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
@@ -197,7 +199,8 @@ export function runSdkCommand(command) {
   });
 }
 
-async function main() {
+async function main(){return withFixedWork('build',()=>mainTask(),{retain:process.env.GITHUB_ACTIONS==='true'});}
+async function mainTask() {
   const [command, ...argumentsList] = process.argv.slice(2);
   if (command === 'citizensdk-release') {
     process.exitCode = await runSdkCommand(sdkCommand(argumentsList));
@@ -211,7 +214,9 @@ async function main() {
   // 原有版本/正式动作保持原实现，依赖包装只定位受控真实文件；不在此重建另一套合同。
   const repositoryRoot = process.env.GITHUB_WORKSPACE
     ? realpathSync(process.env.GITHUB_WORKSPACE) : process.cwd();
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'gmb-action-'));
+  const actionSession=claimFixedWork('build',{retain:process.env.GITHUB_ACTIONS==='true'});
+const temporaryDirectory=join(actionSession.owner.work,'action');
+mkdirSync(temporaryDirectory,{recursive:true});
   const implementationPath = join(temporaryDirectory, 'implementation.mjs');
   try {
     writeFileSync(implementationPath, implementations[command], { mode: 0o700 });
@@ -223,7 +228,7 @@ async function main() {
     if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
   } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
+    rmSync(temporaryDirectory, { recursive: true, force: true });releaseFixedWork(actionSession);
   }
 }
 

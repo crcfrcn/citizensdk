@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {withFixedWork,fixedWork,workEnvironment,claimFixedWork,releaseFixedWork} from './target.mjs';
 // 本产品完整CI/Release入口；独立执行和宿主调用使用同一候选、派发、验真与清理实现。
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
@@ -886,14 +887,14 @@ if(!(process.env.NODE_TEST_CONTEXT && process.argv.length === 2)&&!process.execA
  const recovering=command==='recover',records=command==='records';
  if(records?(flow!==undefined||platform!==undefined||extra.length):command!=='run'&&!recovering||!recovering&&extra.length||recovering&&(extra.length!==4||extra[0]!=='--run-id'||extra[2]!=='--result'||! /^[1-9][0-9]*$/u.test(extra[1])||!['success','failed'].includes(extra[3])))throw Error('产品远端固定入口参数无效');
  if(records)currentDeclaration();else remoteContract(flow,platform);
- const work=realpathSync(mkdtempSync(join(temporaryRoot(records?Object.keys(currentDeclaration().platforms)[0]:platform,records?'tmp':flow),productID+'-'+(records?'records':flow)+'-'))),cancellation=new AbortController();let unconfirmed=false;
+ const session=claimFixedWork('build'),work=session.owner.work,cancellation=new AbortController();let unconfirmed=false;
  for(const event of ['SIGTERM','SIGINT'])process.once(event,()=>cancellation.abort());
  try {
   const names=['HOME','USER','LOGNAME','LANG','LC_ALL','PRODUCT_TOOL_ROOT','PRODUCT_DEPENDENCY_ROOT','PRODUCT_CONTROL_FD','PRODUCT_RELEASE_RETRY_CONTEXT','GH_TOKEN',
    'PRODUCT_CHAIN_URL','PRODUCT_CHAIN_ACCESS_CLIENT_ID','PRODUCT_CHAIN_ACCESS_CLIENT_SECRET','PRODUCT_CHAIN_GENESIS_HASH'];
   const environment=Object.fromEntries(names.filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]]));
   if(records)delete environment.PRODUCT_CONTROL_FD;
-  const options={signal:cancellation.signal,environment};const node=await bootstrapNode(work,options);
+  const options={signal:cancellation.signal,environment:{...environment,PRODUCT_WORK_LEASE:session.owner.nonce}};const node=await bootstrapNode(work,options);
   const digest=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
   if(digest(node.path)!==digest(process.execPath)) {
    const args=records?[command]:[command,flow,platform,...extra];
@@ -904,7 +905,7 @@ if(!(process.env.NODE_TEST_CONTEXT && process.argv.length === 2)&&!process.execA
   else if(recovering)process.stdout.write(JSON.stringify(await recoverRemote(flow,platform,Number(extra[1]),extra[3],{environment,signal:cancellation.signal})));
   else await executeRemote(flow,platform,{environment,signal:cancellation.signal});
  }catch(error){unconfirmed=String(error.message).includes('退出未确认');process.stderr.write(String(error.message)+'\n');process.exitCode=1;}
- finally{if(!unconfirmed)rmSync(work,{recursive:true});}
+ finally{releaseFixedWork(session,{unsafe:unconfirmed});}
 }
 
 // 正式实现结束；仅直接使用 node --test 执行本文件时注册以下回归。

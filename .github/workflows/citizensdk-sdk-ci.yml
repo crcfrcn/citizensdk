@@ -275,6 +275,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 13
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_2:
     name: CitizenSDK 增量构建 iOS / macOS
     runs-on: macos-15
@@ -492,6 +496,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 13
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_3:
     name: CitizenSDK 增量构建 LinuxARM
     runs-on: ubuntu-24.04-arm
@@ -712,6 +720,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 14
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_4:
     name: CitizenSDK 增量构建 LinuxAMD
     runs-on: ubuntu-24.04
@@ -932,6 +944,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 14
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_5:
     name: CitizenSDK 增量构建 Windows
     runs-on: windows-2025
@@ -1149,6 +1165,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 13
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_6:
     name: CitizenSDK 同源汇总
     runs-on: macos-15
@@ -1393,6 +1413,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 11
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_7:
     name: CitizenSDK 最终同包验证 Android
     runs-on: ubuntu-24.04
@@ -1605,6 +1629,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 13
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_8:
     name: CitizenSDK 最终同包验证 iOS / macOS
     runs-on: macos-15
@@ -1815,6 +1843,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 12
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_9:
     name: CitizenSDK 最终同包验证 LinuxARM
     runs-on: ubuntu-24.04-arm
@@ -2030,6 +2062,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 14
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   stage_10:
     name: CitizenSDK 最终同包验证 LinuxAMD
     runs-on: ubuntu-24.04
@@ -2245,6 +2281,10 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 14
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build
   flow:
     name: CitizenSDK 最终同包验证 Windows
     runs-on: windows-2025
@@ -2457,3 +2497,7 @@ jobs:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 13
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build

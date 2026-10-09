@@ -3366,7 +3366,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
   - `citizenchain/runtime/src/lib.rs`
   - `citizenchain/runtime/votingengine/joint-vote/src/lib.rs`
 - 详细文档：
-  - `citizenchain/runtime/tests/fixtures/call_data.json`
+  - `citizenchain/runtime/primitives/tests/fixtures/call_data.json`
   - `tasks/`
 - 生产者：
   - `CitizenApp` 联合公投签名请求流程
@@ -3726,7 +3726,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 
 - 状态：共享类型与跨端 SCALE 已实现；内部、联合、选举、立法投票均已接入 `ProposalVotePlans`、岗位快照和完整岗位席位票据，现有正式业务入口已按岗位授权
 - 类型：授权主体契约 / storage 契约 / 投票参与者契约
-- 唯一真源：架构为 `../citizenwallet/CitizenWallet.md`；共享类型为 `citizenchain/runtime/entity/entity-primitives/src/institution_role.rs` 与 `citizenchain/runtime/votingengine/src/types.rs`；跨端字节金标为受保护测试资产 `citizenchain/runtime/tests/fixtures/role_permission.json`
+- 唯一真源：架构为 `../citizenwallet/CitizenWallet.md`；共享类型为 `citizenchain/runtime/entity/entity-primitives/src/institution_role.rs` 与 `citizenchain/runtime/votingengine/src/types.rs`；跨端字节金标为受保护测试资产 `citizenchain/runtime/primitives/tests/fixtures/role_permission.json`
 - 详细文档：`历史实施记录《机构岗位权限与投票职责统一》（卡已删除，规范以本文为准）`
 - 生产者：public/private entity、创世 seeder、依法通过的岗位治理业务模块
 - 消费者：全部机构业务模块、votingengine、Node、OnChina、CitizenApp、CitizenWallet
@@ -3739,7 +3739,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
   - 动态岗位码生成状态：`InstitutionRoleNonce[cid_number]`、`UsedRoleCodes[(cid_number, role_code)]`
 - 编码：结构字段按上述顺序 SCALE 编码；`action_code` 为 `u32` 小端；`RolePermissionOperation` 为 `Propose = 0`、`Vote = 1`；`AuthorizationSubject` 为 `Institution = 0`、`PersonalMultisig = 1`；`VotingEngineKind` 为 `Internal = 0`、`Joint = 1`、`Election = 2`、`Legislation = 3`
 - VotePlan 校验：`proposal_owner == business_action_id.module_tag`；`voter_subjects` 为 1..256 项且完整主体不重复；机构与个人多签不可混用；个人多签的 proposer 和唯一 voter 必须是同一账户
-- 金标：runtime/Node/OnChina/CitizenApp/CitizenWallet 统一读取 `citizenchain/runtime/tests/fixtures/role_permission.json`；客户端严格拒绝非法 UTF-8、非法枚举、越界长度、主体混用和尾随字节
+- 金标：runtime/Node/OnChina/CitizenApp/CitizenWallet 统一读取 `citizenchain/runtime/primitives/tests/fixtures/role_permission.json`；客户端严格拒绝非法 UTF-8、非法枚举、越界长度、主体混用和尾随字节
 - 动态岗位码：`R_<32 位大写十六进制>`；取 `blake2_256(SCALE(MODULE_TAG, cid_number, institution_role_nonce, proposal_id))` 前 16 字节。客户端不传 role_code，已用码永久不复用
 - 授权规则：`origin ∈ admins`、有效任职和岗位业务权限三项全部满足；admins 单独命中没有权限
 - 引擎规则：业务模块代码静态选择唯一投票引擎并绑定 VotePlan；调用方不得选择，投票引擎不得执行具体业务

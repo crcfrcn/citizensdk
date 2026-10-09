@@ -13,7 +13,8 @@
     "scripts/ci/index.mjs",
     "scripts/ci/sdk.mjs",
     "scripts/release/index.mjs",
-    "scripts/release/sdk.mjs"
+    "scripts/release/sdk.mjs",
+    "scripts/target.test.mjs"
   ],
   "checks": [
     "repository-contracts",
