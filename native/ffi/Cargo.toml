@@ -36,7 +36,7 @@ blake2 = "=0.10.6"
 citizen-sdk-contracts = { path = "../contracts" }
 citizen-sdk-engine = { path = "../engine", default-features = false }
 citizen-sdk-qr = { path = "../qr", optional = true }
-citizen-sdk-smoldot-provider = { path = "../smoldot/provider", optional = true }
+citizen-sdk-smoldot-provider = { path = "../provider", optional = true }
 # Product composition, rather than a host binding, selects CitizenSDK's one
 # audited sr25519 implementation. The public C ABI exposes account-scoped
 # signing but never exports secret material or lets a host inject a signer.

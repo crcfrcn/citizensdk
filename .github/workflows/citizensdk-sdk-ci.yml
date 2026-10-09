@@ -195,7 +195,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -203,29 +203,29 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__android
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 8
     - if: "${{ success() }}"
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__android
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 9
     - if: "${{ success() }}"
       name: 保存当前 run 的阶段0原生件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -239,7 +239,7 @@ jobs:
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -254,12 +254,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 11
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 12
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -274,7 +274,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/android/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" android workflow-step 13
   stage_2:
     name: CitizenSDK 增量构建 iOS / macOS
     runs-on: macos-15
@@ -412,7 +412,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -420,29 +420,29 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__apple
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 8
     - if: "${{ success() }}"
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__apple
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 9
     - if: "${{ success() }}"
       name: 保存当前 run 的阶段0原生件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -456,7 +456,7 @@ jobs:
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -471,12 +471,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 11
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 12
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -491,7 +491,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/apple/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" apple workflow-step 13
   stage_3:
     name: CitizenSDK 增量构建 LinuxARM
     runs-on: ubuntu-24.04-arm
@@ -629,7 +629,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -637,29 +637,29 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__linuxarm
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 8
     - if: "${{ success() }}"
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__linuxarm
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 9
     - if: "${{ success() }}"
       name: 保存当前 run 的阶段0原生件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -671,12 +671,12 @@ jobs:
         retention-days: 7
     - if: "${{ always() && steps.citizensdk_ci_identity.outcome == 'success' }}"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 11
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -691,12 +691,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 12
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 13
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -711,7 +711,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxarm/execute.mjs" workflow-step 14
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxarm workflow-step 14
   stage_4:
     name: CitizenSDK 增量构建 LinuxAMD
     runs-on: ubuntu-24.04
@@ -849,7 +849,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -857,29 +857,29 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__linuxamd
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 8
     - if: "${{ success() }}"
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__linuxamd
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 9
     - if: "${{ success() }}"
       name: 保存当前 run 的阶段0原生件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -891,12 +891,12 @@ jobs:
         retention-days: 7
     - if: "${{ always() && steps.citizensdk_ci_identity.outcome == 'success' }}"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 11
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -911,12 +911,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 12
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 13
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -931,7 +931,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/linuxamd/execute.mjs" workflow-step 14
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" linuxamd workflow-step 14
   stage_5:
     name: CitizenSDK 增量构建 Windows
     runs-on: windows-2025
@@ -1069,7 +1069,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -1077,29 +1077,29 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__windows
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 6
     - shell: pwsh
-      run: node "$env:GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 7
+      run: node "$env:GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 8
     - if: "${{ success() }}"
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__windows
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 9
     - if: "${{ success() }}"
       name: 保存当前 run 的阶段0原生件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1113,7 +1113,7 @@ jobs:
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -1128,12 +1128,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 11
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 12
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -1148,7 +1148,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/windows/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" windows workflow-step 13
   stage_6:
     name: CitizenSDK 同源汇总
     runs-on: macos-15
@@ -1292,7 +1292,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -1300,20 +1300,20 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__aggregate
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 6
     - name: 下载同次 android 原生分片
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
@@ -1340,7 +1340,7 @@ jobs:
         name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-citizensdk_${{ env.CITIZENSDK_ACTION }}_sdk__windows-${{ env.CITIZENSDK_SOURCE_SHA }}-${{ env.CITIZENSDK_VERSION }}
         path: "${{ env.CITIZENSDK_WORK_DIR }}/input/windows"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 7
     - name: 保存唯一完整候选四文件
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
@@ -1357,7 +1357,7 @@ jobs:
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 8
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -1372,12 +1372,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 9
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 10
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -1392,7 +1392,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/aggregate/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" aggregate workflow-step 11
   stage_7:
     name: CitizenSDK 最终同包验证 Android
     runs-on: ubuntu-24.04
@@ -1532,7 +1532,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -1540,36 +1540,36 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__consume_android
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 7
     - name: 下载同次同源唯一完整候选
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
         name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
         path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 8
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 9
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -1584,12 +1584,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 11
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 12
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -1604,7 +1604,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-android/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-android workflow-step 13
   stage_8:
     name: CitizenSDK 最终同包验证 iOS / macOS
     runs-on: macos-15
@@ -1744,7 +1744,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -1752,34 +1752,34 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__consume_apple
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 6
     - name: 下载同次同源唯一完整候选
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
         name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
         path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 8
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 9
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -1794,12 +1794,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 10
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 11
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -1814,7 +1814,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-apple/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-apple workflow-step 12
   stage_9:
     name: CitizenSDK 最终同包验证 LinuxARM
     runs-on: ubuntu-24.04-arm
@@ -1954,7 +1954,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -1962,39 +1962,39 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__consume_linuxarm
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 7
     - name: 下载同次同源唯一完整候选
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
         name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
         path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 8
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 9
     - if: "${{ always() && steps.citizensdk_ci_identity.outcome == 'success' }}"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 11
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -2009,12 +2009,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 12
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 13
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -2029,7 +2029,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxarm/execute.mjs" workflow-step 14
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxarm workflow-step 14
   stage_10:
     name: CitizenSDK 最终同包验证 LinuxAMD
     runs-on: ubuntu-24.04
@@ -2169,7 +2169,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -2177,39 +2177,39 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__consume_linuxamd
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 7
     - name: 下载同次同源唯一完整候选
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
         name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
         path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 8
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 9
     - if: "${{ always() && steps.citizensdk_ci_identity.outcome == 'success' }}"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 11
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -2224,12 +2224,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 12
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 13
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -2244,7 +2244,7 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-linuxamd/execute.mjs" workflow-step 14
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-linuxamd workflow-step 14
   flow:
     name: CitizenSDK 最终同包验证 Windows
     runs-on: windows-2025
@@ -2384,7 +2384,7 @@ jobs:
           cache/consumer/windows/cmake/release/citizensdk.dll
           cache/consumer/windows/cmake/release/citizensdk_host.dll
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -2392,36 +2392,36 @@ jobs:
         path: "${{ steps.citizensdk_ci_cache.outputs.success_paths }}"
         key: "${{ steps.citizensdk_ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 2
     - id: citizensdk_ci_identity
       env:
         CITIZENSDK_JOB: citizensdk_ci_sdk__consume_windows
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 4
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 5
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 6
     - shell: pwsh
-      run: node "$env:GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 7
+      run: node "$env:GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 7
     - name: 下载同次同源唯一完整候选
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
         name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
         path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 8
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 9
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 10
     - if: "${{ failure() && !cancelled() && steps.citizensdk_ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: citizensdk_ci_cache_save_failure
@@ -2436,12 +2436,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 11
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 12
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: citizensdk_ci_cache_save_success
@@ -2456,4 +2456,4 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/consume-windows/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/sdk.mjs" consume-windows workflow-step 13

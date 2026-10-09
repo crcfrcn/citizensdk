@@ -3,7 +3,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:citizen_sdk/src/smoldot/smoldot.dart';
+import 'package:citizen_sdk/smoldot/smoldot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -227,10 +227,21 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (!(process.env.NODE_TEST_CONTEXT && process.argv.length === 2) && !process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { await main(); }
   catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
+}
+
+// 正式实现结束；仅直接使用 node --test 执行本文件时注册以下回归。
+if (process.env.NODE_TEST_CONTEXT && process.argv.length === 2 && !process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const {default:test}=await import('node:test');
+const {default:assert}=await import('node:assert/strict');
+test('SDK调用入口在任何执行前拒绝未知动作和越界目录',()=>{
+ assert.throws(()=>sdkCommand(['unknown']));
+ assert.throws(()=>sdkCommand(['native','--source','relative']));
+});
+
 }

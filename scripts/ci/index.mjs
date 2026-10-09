@@ -499,10 +499,515 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (!(process.env.NODE_TEST_CONTEXT && process.argv.length === 2) && !process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { await main(); }
   catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
+}
+
+// CI 缓存身份、链接、恢复与收口只有这一份实现。
+const ciCache = await (async()=>{
+const { remoteEnvironment: productRemoteEnvironment } = await import('../build.mjs');
+const { spawnSync: runExactProcess } = await import('node:child_process');
+const { createHash } = await import('node:crypto');
+const {
+  appendFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} = await import('node:fs');
+const {default: path} = await import('node:path');
+const { pathToFileURL } = await import('node:url');
+
+// 缓存身份使用固定语义前缀，不把内部实现误当成版本化协议。
+const CI_CACHE_SCHEMA = 'ci';
+
+function required(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) throw new Error(`缺少${label}`);
+  return normalized;
+}
+
+function token(value, label) {
+  const normalized = required(value, label).toLowerCase();
+  // GitHub 作业名允许下划线；仍禁止路径分隔符、空白和越界长度。
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(normalized)) {
+    throw new Error(`${label}不是安全缓存标识`);
+  }
+  return normalized;
+}
+
+function positiveInteger(value, label) {
+  const normalized = required(value, label);
+  if (!/^[1-9][0-9]*$/.test(normalized)) throw new Error(`${label}必须是正整数`);
+  return normalized;
+}
+
+function repositoryIdentity(value) {
+  const normalized = required(value, '仓库身份');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalized)) {
+    throw new Error('仓库身份必须使用owner/repository');
+  }
+  return {
+    api: normalized,
+    key: normalized.toLowerCase().replace('/', '.'),
+  };
+}
+
+function cacheIdentity(input) {
+  const repository = repositoryIdentity(input.repository);
+  const toolchain = required(input.toolchainFingerprint, '工具链指纹').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(toolchain)) throw new Error('工具链指纹必须是SHA-256');
+  const identity = Object.freeze({
+    repository: repository.api,
+    repositoryKey: repository.key,
+    product: token(input.product, '产品'),
+    platform: token(input.platform, '平台'),
+    architecture: token(input.architecture, '架构'),
+    component: token(input.component, 'CI组件'),
+    runnerOs: token(input.runnerOs, 'Runner系统'),
+    runnerArch: token(input.runnerArch, 'Runner架构'),
+    toolchainFingerprint: toolchain,
+  });
+  const logicalKey = [
+    CI_CACHE_SCHEMA,
+    identity.product,
+    identity.platform,
+    identity.architecture,
+    identity.component,
+    identity.runnerOs,
+    identity.runnerArch,
+  ].join('-');
+  const baseKey = `${logicalKey}-${toolchain.slice(0, 16)}`;
+  if (baseKey.length > 400) throw new Error('缓存身份超过安全长度');
+  return Object.freeze({ ...identity, logicalKey, baseKey });
+}
+
+function cacheKeys(identity, runId, attempt) {
+  const run = positiveInteger(runId, 'GitHub Run ID');
+  const runAttempt = positiveInteger(attempt, 'GitHub Run Attempt');
+  return Object.freeze({
+    successPrefix: `${identity.baseKey}-success-`,
+    failurePrefix: `${identity.baseKey}-failure-`,
+    successKey: `${identity.baseKey}-success-${run}-${runAttempt}`,
+    failureKey: `${identity.baseKey}-failure-${run}-${runAttempt}`,
+  });
+}
+
+function parseCacheKey(identity, key) {
+  const parsed = parseLogicalCacheKey(identity, key);
+  return parsed?.toolchain === identity.toolchainFingerprint.slice(0, 16) ? parsed : null;
+}
+
+function parseLogicalCacheKey(identity, key) {
+  const prefix = `${identity.logicalKey}-`;
+  if (!String(key).startsWith(prefix)) return null;
+  const remainder = String(key).slice(prefix.length);
+  const toolchain = remainder.slice(0, 16);
+  if (!/^[0-9a-f]{16}$/.test(toolchain) || remainder[16] !== '-') return null;
+  const stateAndRun = remainder.slice(17);
+  for (const state of ['success', 'failure']) {
+    const statePrefix = `${state}-`;
+    if (!stateAndRun.startsWith(statePrefix)) continue;
+    const match = stateAndRun.slice(statePrefix.length).match(/^([1-9][0-9]*)-([1-9][0-9]*)$/);
+    if (!match) return null;
+    return Object.freeze({ toolchain, state, runId: match[1], attempt: match[2] });
+  }
+  return null;
+}
+
+function compareCache(left, right) {
+  for (const field of ['runId', 'attempt', 'id']) {
+    const difference = BigInt(left[field]) - BigInt(right[field]);
+    if (difference !== 0n) return difference > 0n ? 1 : -1;
+  }
+  return 0;
+}
+
+function recognizedCaches(identity, caches, ref, currentToolchainOnly = false) {
+  const rows = [];
+  for (const cache of caches) {
+    if (ref && cache.ref !== ref) continue;
+    const parsed = parseLogicalCacheKey(identity, cache.key);
+    if (!parsed || !/^[1-9][0-9]*$/.test(String(cache.id ?? ''))) continue;
+    if (currentToolchainOnly
+        && parsed.toolchain !== identity.toolchainFingerprint.slice(0, 16)) continue;
+    rows.push({ ...cache, ...parsed, id: String(cache.id) });
+  }
+  return rows;
+}
+
+function selectLatestCache(identity, caches, state = 'success', ref = '') {
+  if (!['success', 'failure'].includes(state)) throw new Error('缓存状态无效');
+  const rows = recognizedCaches(identity, caches, ref, true)
+    .filter((cache) => cache.state === state);
+  rows.sort(compareCache);
+  return rows.at(-1) ?? null;
+}
+
+function planCachePrune(identity, caches, ref = '') {
+  const rows = recognizedCaches(identity, caches, ref);
+  const retained = new Set();
+  for (const state of ['success', 'failure']) {
+    const candidates = rows.filter((cache) => cache.state === state).sort(compareCache);
+    const latest = candidates.at(-1);
+    if (latest) retained.add(latest.id);
+  }
+  return Object.freeze({
+    retain: rows.filter((cache) => retained.has(cache.id)),
+    remove: rows.filter((cache) => !retained.has(cache.id)),
+  });
+}
+
+function pathImplementation(runnerOs) {
+  return runnerOs === 'windows' ? path.win32 : path.posix;
+}
+
+function cachePathPlan(identity, runnerTemp, entries) {
+  const pathApi = pathImplementation(identity.runnerOs);
+  const temp = required(runnerTemp, 'Runner临时目录');
+  if (!pathApi.isAbsolute(temp)) throw new Error('Runner临时目录必须是绝对路径');
+  const names = String(entries ?? '')
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (names.length === 0) throw new Error('至少需要一个成功缓存路径');
+  if (new Set(names).size !== names.length) throw new Error('成功缓存路径不能重复');
+  for (const name of names) {
+    if (!/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/.test(name)) {
+      throw new Error(`缓存相对路径无效：${name}`);
+    }
+  }
+  const digest = createHash('sha256').update(identity.baseKey).digest('hex').slice(0, 20);
+  const rootName = `${identity.product}-${identity.platform}-${identity.component}-${digest}`;
+  const root = pathApi.resolve(temp, 'ci-cache', rootName);
+  const expectedParent = pathApi.resolve(temp, 'ci-cache');
+  const relative = pathApi.relative(expectedParent, root);
+  if (!relative || relative.startsWith('..') || pathApi.isAbsolute(relative)) {
+    throw new Error('缓存根目录逃出Runner临时目录');
+  }
+  return Object.freeze({
+    root,
+    successPaths: names.map((name) => pathApi.join(root, ...name.split('/'))),
+    failurePath: pathApi.join(root, 'failure-diagnostic'),
+  });
+}
+
+function relativeEntries(value, label) {
+  const entries = String(value ?? '').split(/[\n,]/).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    if (!/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/.test(entry)) {
+      throw new Error(`${label}相对路径无效：${entry}`);
+    }
+  }
+  return entries;
+}
+
+function resolvedChild(pathApi, parent, relative, label) {
+  const target = pathApi.resolve(parent, ...relative.split('/'));
+  const child = pathApi.relative(parent, target);
+  if (!child || child.startsWith('..') || pathApi.isAbsolute(child)) {
+    throw new Error(`${label}逃出允许根`);
+  }
+  return target;
+}
+
+function wireCacheLinks(identity, runnerTemp, entries, workspace, links) {
+  const pathApi = pathImplementation(identity.runnerOs);
+  const plan = cachePathPlan(identity, runnerTemp, entries);
+  const workspaceRoot = required(workspace, 'GitHub工作区');
+  if (!pathApi.isAbsolute(workspaceRoot)) throw new Error('GitHub工作区必须是绝对路径');
+  const rows = String(links ?? '').split(/\n/).map((entry) => entry.trim()).filter(Boolean);
+  for (const row of rows) {
+    const separator = row.indexOf('=');
+    if (separator <= 0) throw new Error(`缓存目录链接无效：${row}`);
+    const sourceRelative = row.slice(0, separator);
+    const cacheRelative = row.slice(separator + 1);
+    relativeEntries(sourceRelative, '工作区生成目录');
+    relativeEntries(cacheRelative, '受控缓存目录');
+    const source = resolvedChild(pathApi, workspaceRoot, sourceRelative, '工作区生成目录');
+    const target = resolvedChild(pathApi, plan.root, cacheRelative, '受控缓存目录');
+    mkdirSync(pathApi.dirname(source), { recursive: true });
+    mkdirSync(target, { recursive: true });
+    if (existsSync(source)) {
+      const status = lstatSync(source);
+      if (status.isSymbolicLink()) {
+        const linked = pathApi.resolve(pathApi.dirname(source), readlinkSync(source));
+        if (linked === target) continue;
+      }
+      throw new Error(`工作区生成目录已存在且不是准确缓存链接：${sourceRelative}`);
+    }
+    symlinkSync(target, source, identity.runnerOs === 'windows' ? 'junction' : 'dir');
+  }
+  return plan;
+}
+
+function sanitizeCacheFinals(identity, runnerTemp, entries, finals) {
+  const pathApi = pathImplementation(identity.runnerOs);
+  const plan = cachePathPlan(identity, runnerTemp, entries);
+  for (const relative of relativeEntries(finals, '最终候选')) {
+    rmSync(resolvedChild(pathApi, plan.root, relative, '最终候选'), {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
+function identityFromEnvironment(environment) {
+  return cacheIdentity({
+    repository: environment.GITHUB_REPOSITORY,
+    product: environment.CI_CACHE_PRODUCT,
+    platform: environment.CI_CACHE_PLATFORM,
+    architecture: environment.CI_CACHE_ARCHITECTURE,
+    component: environment.CI_CACHE_COMPONENT,
+    runnerOs: environment.RUNNER_OS,
+    runnerArch: environment.RUNNER_ARCH,
+    toolchainFingerprint: environment.CI_CACHE_TOOLCHAIN_FINGERPRINT,
+  });
+}
+
+function githubHeaders(tokenValue) {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${required(tokenValue, 'GitHub Actions令牌')}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'ci-cache',
+  };
+}
+
+async function githubRequest(url, tokenValue, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...githubHeaders(tokenValue), ...(options.headers ?? {}) },
+  });
+  if (!response.ok) throw new Error(`GitHub缓存API失败：${response.status}`);
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function listRepositoryCaches(repository, tokenValue) {
+  const caches = [];
+  for (let page = 1; ; page += 1) {
+    const endpoint = `https://api.github.com/repos/${repository}/actions/caches?per_page=100&page=${page}`;
+    const result = await githubRequest(endpoint, tokenValue);
+    const rows = Array.isArray(result?.actions_caches) ? result.actions_caches : [];
+    caches.push(...rows);
+    if (rows.length < 100) break;
+  }
+  return caches;
+}
+
+async function deleteRepositoryCache(repository, cacheId, tokenValue) {
+  await githubRequest(
+    `https://api.github.com/repos/${repository}/actions/caches/${cacheId}`,
+    tokenValue,
+    { method: 'DELETE' },
+  );
+}
+
+function output(name, value, environment) {
+  const target = environment.GITHUB_OUTPUT;
+  if (!target) return;
+  const text = String(value);
+  if (text.includes('\n')) {
+    const delimiter = `CI_CACHE_${name.toUpperCase()}_EOF`;
+    if (text.includes(delimiter)) throw new Error('GitHub多行输出包含保留分隔符');
+    appendFileSync(target, `${name}<<${delimiter}\n${text}\n${delimiter}\n`);
+  } else {
+    appendFileSync(target, `${name}=${text}\n`);
+  }
+}
+
+function persistEnvironment(name, value, environment) {
+  const target = environment.GITHUB_ENV;
+  if (!target) return;
+  const text = String(value ?? '');
+  if (text.includes('\n')) {
+    const delimiter = `CI_CACHE_ENV_${name}_EOF`;
+    if (text.includes(delimiter)) throw new Error('GitHub环境变量包含保留分隔符');
+    appendFileSync(target, `${name}<<${delimiter}\n${text}\n${delimiter}\n`);
+  } else {
+    appendFileSync(target, `${name}=${text}\n`);
+  }
+}
+
+function commandContext(environment) {
+  environment = productRemoteEnvironment(environment);
+  requireExactRemoteJobEnvironment();
+  const identity = identityFromEnvironment(environment);
+  const keys = cacheKeys(identity, environment.GITHUB_RUN_ID, environment.GITHUB_RUN_ATTEMPT);
+  const paths = cachePathPlan(identity, environment.RUNNER_TEMP, environment.CI_CACHE_PATHS);
+  const ref = required(environment.GITHUB_REF, 'GitHub Ref');
+  const tokenValue = environment.GH_TOKEN || environment.GITHUB_TOKEN;
+  return { identity, keys, paths, ref, tokenValue };
+}
+
+async function prepare(environment) {
+  environment = productRemoteEnvironment(environment);
+  const context = commandContext(environment);
+  const caches = await listRepositoryCaches(context.identity.repository, context.tokenValue);
+  const latest = selectLatestCache(context.identity, caches, 'success', context.ref);
+  for (const directory of [...context.paths.successPaths, context.paths.failurePath]) {
+    mkdirSync(directory, { recursive: true });
+  }
+  const restoreKey = latest?.key ?? `${context.keys.successPrefix}none`;
+  output('cache_root', context.paths.root, environment);
+  output('success_paths', context.paths.successPaths.join('\n'), environment);
+  output('failure_paths', context.paths.failurePath, environment);
+  output('restore_key', restoreKey, environment);
+  output('success_key', context.keys.successKey, environment);
+  output('failure_key', context.keys.failureKey, environment);
+  for (const name of [
+    'CI_CACHE_PRODUCT', 'CI_CACHE_PLATFORM', 'CI_CACHE_ARCHITECTURE',
+    'CI_CACHE_COMPONENT', 'CI_CACHE_TOOLCHAIN_FINGERPRINT', 'CI_CACHE_PATHS',
+    'CI_CACHE_LINKS', 'CI_CACHE_FINALS', 'CI_CACHE_WORKFLOW', 'CI_CACHE_JOB',
+  ]) persistEnvironment(name, environment[name] ?? '', environment);
+  persistEnvironment('CI_INCREMENTAL_ROOT', context.paths.root, environment);
+  const pathByName = new Map(
+    relativeEntries(environment.CI_CACHE_PATHS, '成功缓存').map(
+      (name, index) => [name, context.paths.successPaths[index]],
+    ),
+  );
+  const environmentPaths = {
+    'cargo-home': 'CARGO_HOME',
+    'cargo-target': 'CARGO_TARGET_DIR',
+    'dart-pub': 'PUB_CACHE',
+    gradle: 'GRADLE_USER_HOME',
+    cocoapods: 'CP_HOME_DIR',
+    npm: 'npm_config_cache',
+    xdg: 'XDG_CACHE_HOME',
+  };
+  for (const [cacheName, environmentName] of Object.entries(environmentPaths)) {
+    if (pathByName.has(cacheName)) persistEnvironment(environmentName, pathByName.get(cacheName), environment);
+  }
+  if (pathByName.has('cargo-target')) persistEnvironment('CARGO_INCREMENTAL', '1', environment);
+  if (pathByName.has('cargo-home') && environment.GITHUB_PATH) {
+    appendFileSync(environment.GITHUB_PATH, `${path.join(pathByName.get('cargo-home'), 'bin')}\n`);
+  }
+  if (!environment.GITHUB_OUTPUT) {
+    process.stdout.write(`${JSON.stringify({
+      cacheRoot: context.paths.root,
+      restoreKey,
+      successKey: context.keys.successKey,
+      failureKey: context.keys.failureKey,
+    })}\n`);
+  }
+}
+
+function wire(environment) {
+  const context = commandContext(environment);
+  wireCacheLinks(
+    context.identity,
+    environment.RUNNER_TEMP,
+    environment.CI_CACHE_PATHS,
+    environment.GITHUB_WORKSPACE,
+    environment.CI_CACHE_LINKS,
+  );
+}
+
+function sanitize(environment) {
+  const context = commandContext(environment);
+  sanitizeCacheFinals(
+    context.identity,
+    environment.RUNNER_TEMP,
+    environment.CI_CACHE_PATHS,
+    environment.CI_CACHE_FINALS,
+  );
+}
+
+function writeTerminalRecord(environment) {
+  const context = commandContext(environment);
+  const state = token(environment.CI_CACHE_TERMINAL_STATE, '终态');
+  if (!['success', 'failure'].includes(state)) throw new Error('终态只能是success或failure');
+  const sourceSha = required(environment.GITHUB_SHA, 'GitHub源码SHA').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('GitHub源码SHA无效');
+  const directory = state === 'success' ? context.paths.successPaths[0] : context.paths.failurePath;
+  mkdirSync(directory, { recursive: true });
+  const record = {
+    schema: CI_CACHE_SCHEMA,
+    state,
+    repository: context.identity.repository,
+    product: context.identity.product,
+    platform: context.identity.platform,
+    architecture: context.identity.architecture,
+    component: context.identity.component,
+    runner_os: context.identity.runnerOs,
+    runner_arch: context.identity.runnerArch,
+    source_sha: sourceSha,
+    run_id: positiveInteger(environment.GITHUB_RUN_ID, 'GitHub Run ID'),
+    run_attempt: positiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GitHub Run Attempt'),
+    workflow: token(environment.CI_CACHE_WORKFLOW, 'Workflow'),
+    job: token(environment.CI_CACHE_JOB, 'Job'),
+  };
+  const receipt = path.join(directory, `${state}.json`);
+  // 成功目录可能来自上一份成功缓存；新成功只替换旧成功回执，不累积代次文件。
+  rmSync(receipt, { force: true });
+  writeFileSync(
+    receipt,
+    `${JSON.stringify(record, null, 2)}\n`,
+    { flag: 'wx' },
+  );
+}
+
+async function prune(environment) {
+  environment = productRemoteEnvironment(environment);
+  const context = commandContext(environment);
+  const state = token(environment.CI_CACHE_TERMINAL_STATE, '终态');
+  if (!['success', 'failure'].includes(state)) throw new Error('终态只能是success或failure');
+  const currentKey = state === 'success' ? context.keys.successKey : context.keys.failureKey;
+  const caches = await listRepositoryCaches(context.identity.repository, context.tokenValue);
+  const currentExists = caches.some(
+    (cache) => cache.key === currentKey && cache.ref === context.ref,
+  );
+  if (!currentExists) throw new Error('新缓存槽尚未确认存在，拒绝删除历史缓存');
+  const plan = planCachePrune(context.identity, caches, context.ref);
+  for (const cache of plan.remove) {
+    await deleteRepositoryCache(context.identity.repository, cache.id, context.tokenValue);
+  }
+  process.stdout.write(
+    `CI缓存收口完成：保留${plan.retain.length}个，删除${plan.remove.length}个\n`,
+  );
+}
+
+
+
+function requireExactRemoteJobEnvironment(){if(process.env.GITHUB_REPOSITORY!=="crcfrcn/citizensdk")throw Error("准确远端Job仓库身份无效");}
+return {CI_CACHE_SCHEMA,cacheIdentity,cacheKeys,parseCacheKey,parseLogicalCacheKey,selectLatestCache,planCachePrune,cachePathPlan,wireCacheLinks,sanitizeCacheFinals,prepare,wire,sanitize,writeTerminalRecord,prune};
+})();
+export const CI_CACHE_SCHEMA = ciCache.CI_CACHE_SCHEMA;
+export const cacheIdentity = ciCache.cacheIdentity;
+export const cacheKeys = ciCache.cacheKeys;
+export const parseCacheKey = ciCache.parseCacheKey;
+export const parseLogicalCacheKey = ciCache.parseLogicalCacheKey;
+export const selectLatestCache = ciCache.selectLatestCache;
+export const planCachePrune = ciCache.planCachePrune;
+export const cachePathPlan = ciCache.cachePathPlan;
+export const wireCacheLinks = ciCache.wireCacheLinks;
+export const sanitizeCacheFinals = ciCache.sanitizeCacheFinals;
+export async function runCacheCommand(command,environment=process.env){
+ const actions={prepare:ciCache.prepare,wire:ciCache.wire,sanitize:ciCache.sanitize,record:ciCache.writeTerminalRecord,prune:ciCache.prune};
+ if(!Object.hasOwn(actions,command))throw Error('CI缓存动作无效');return actions[command](environment);
+}
+
+// 正式实现结束；仅直接使用 node --test 执行本文件时注册以下回归。
+if (process.env.NODE_TEST_CONTEXT && process.argv.length === 2 && !process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const {default:test}=await import('node:test');
+const {default:assert}=await import('node:assert/strict');
+test('CI缓存拒绝跨平台身份与不规范工作路径',()=>{
+ const input={repository:'crcfrcn/citizensdk',product:'citizensdk',platform:'Android',architecture:'arm64',component:'native',runnerOs:'linux',runnerArch:'arm64',toolchainFingerprint:'a'.repeat(64)};
+ const identity=cacheIdentity(input);assert.equal(parseCacheKey(identity,cacheKeys(identity,'1','1').successKey).state,'success');
+ assert.equal(parseCacheKey(cacheIdentity({...input,platform:'macos'}),cacheKeys(identity,'1','1').successKey),null);
+ assert.throws(()=>cachePathPlan(identity,'relative',[]));assert.throws(()=>cacheIdentity({...input,platform:'../android'}));
+});
+test('SDK调用入口在任何执行前拒绝未知动作和越界目录',()=>{
+ assert.throws(()=>sdkCommand(['unknown']));
+ assert.throws(()=>sdkCommand(['native','--source','relative']));
+});
+
 }

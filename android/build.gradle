@@ -88,7 +88,7 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 // AGP启用内置Kotlin；Flutter宿主或独立settings负责唯一版本选择。
 
-def sharedFacadeSource = new File(androidSourceRoot, 'native/src/main/kotlin').canonicalFile
+def sharedFacadeSource = new File(androidSourceRoot, 'native/source').canonicalFile
 def packagedAndroidAbiDirectory = new File(androidSourceRoot, 'src/main/jniLibs/arm64-v8a').canonicalFile
 def stagedAndroidAbiValue = System.getenv('CITIZENSDK_ANDROID_CORE_DIR')
 def selectedAndroidAbiDirectory = stagedAndroidAbiValue == null || stagedAndroidAbiValue.trim().isEmpty()
@@ -113,16 +113,21 @@ android {
 
     sourceSets {
         all { sourceSet ->
-            def sourceRoot = new File(androidSourceRoot, "src/${sourceSet.name}")
+            def names = ['main': 'source', 'test': 'tests']
+            def sourceRoot = new File(androidSourceRoot, names[sourceSet.name] ?: "sourceSets/${sourceSet.name}")
             sourceSet.setRoot(sourceRoot.path)
-            // 包名由源码的 package 声明决定；测试源码直接位于源集根，禁止单子目录包装层。
-            sourceSet.kotlin.srcDirs = [sourceSet.name == 'test' ? sourceRoot : new File(sourceRoot, 'kotlin')]
+            // 源码按类型从同一平面目录读取；package 声明保持原有 JVM/JNI 身份。
+            sourceSet.java.srcDirs = [sourceRoot]
+            sourceSet.kotlin.srcDirs = [sourceRoot]
         }
         main {
+            manifest.srcFile(new File(androidSourceRoot, 'source/AndroidManifest.xml'))
             // The Flutter plugin compiles the exact same public Android facade
             // as the native/AAR surface. There is no nested AAR or second adapter.
             // 内置Kotlin只识别Kotlin源集，不能再借Java源集加入共享门面。
             kotlin.srcDir(sharedFacadeSource)
+            // Flutter 的发布视图保留官方插件入口位置，仓库源码只有一份。
+            kotlin.srcDir(new File(androidSourceRoot, 'src/main/kotlin'))
             assets.srcDirs = [chainAssetDirectory.get().asFile]
             // Android's jniLibs root is the parent of the fixed arm64-v8a leaf.
             jniLibs.srcDirs = [selectedAndroidAbiDirectory.parentFile]

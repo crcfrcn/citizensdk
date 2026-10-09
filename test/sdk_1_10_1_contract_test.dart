@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -24,7 +24,7 @@ void main() {
     // 现行通道仅保留93项公开方法；六模块与其它公开基数不变。
     expect(CitizenSdkFlutterCodec.methods, hasLength(93));
 
-    final facade = File('lib/src/api/citizen_sdk.dart').readAsStringSync();
+    final facade = File('lib/api/citizen_sdk.dart').readAsStringSync();
     for (final declaration in <String>[
       'final CitizenChain chain;',
       'final CitizenSdkWallet wallet;',

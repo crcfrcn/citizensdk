@@ -5,13 +5,13 @@ members = [
     "native/ffi",
     "native/qr",
     "native/signer",
-    "native/smoldot/provider",
+    "native/provider",
 ]
 # smoldot 的收编快照继续由其既有嵌套 workspace/锁文件管理；provider 只把
 # `light-base` 当作路径依赖，不能让根 workspace 重新认领并改变已验证依赖闭包。
 exclude = [
-    "native/smoldot/pow/lib",
-    "native/smoldot/pow/light-base",
+    "native/smoldot/lib",
+    "native/smoldot/light-base",
 ]
 resolver = "2"
 

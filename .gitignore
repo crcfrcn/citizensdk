@@ -53,11 +53,7 @@ target/
 *.spec*-backup
 
 # OS / Editor junk
-.DS_Store
 **/.DS_Store
-*.swp
-*.tmp
-*.log
 
 # IDE local settings
 .vscode/

@@ -1,15 +1,15 @@
 import 'dart:convert';
 
-import 'package:citizen_sdk/src/api/citizen_sdk_error.dart';
-import 'package:citizen_sdk/src/api/citizen_qr.dart';
-import 'package:citizen_sdk/src/models/citizen_signing.dart';
-import 'package:citizen_sdk/src/api/citizen_sdk_events.dart';
-import 'package:citizen_sdk/src/account_codec.dart';
-import 'package:citizen_sdk/src/models/citizen_capability.dart';
-import 'package:citizen_sdk/src/models/citizen_chain_state.dart';
-import 'package:citizen_sdk/src/models/citizen_transaction.dart';
-import 'package:citizen_sdk/src/models/citizen_wallet.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_codec.dart';
+import 'package:citizen_sdk/api/citizen_sdk_error.dart';
+import 'package:citizen_sdk/api/citizen_qr.dart';
+import 'package:citizen_sdk/models/citizen_signing.dart';
+import 'package:citizen_sdk/api/citizen_sdk_events.dart';
+import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/models/citizen_capability.dart';
+import 'package:citizen_sdk/models/citizen_chain_state.dart';
+import 'package:citizen_sdk/models/citizen_transaction.dart';
+import 'package:citizen_sdk/models/citizen_wallet.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

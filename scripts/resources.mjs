@@ -1423,7 +1423,7 @@ async function materializeResources(platform,work,previous={},options={}){
  await prepareGradleResources(work,options,receipt.environment);options.signal?.throwIfAborted();if(JSON.stringify(request())!==JSON.stringify(requirement)){if((options.depth||0)>=8)fail('资源递归闭包超限');return materializeResources(platform,work,receipt,{...options,depth:(options.depth||0)+1});}owner.resourceEnvironment(platform,work,receipt,cleanEnvironment(environment));return receipt;
 }
 // CLI唯一JSON结果；资源日志由子工具stderr进入本轮调用者，信号取消贯穿全部阶段。
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+if(!(process.env.NODE_TEST_CONTEXT && process.argv.length === 2)&&!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(process.argv[2]==='rsync'){await flutterRecipe.copyFlutterArtifact(process.argv.slice(3));}
  else{const [platform,flag,work,...extra]=process.argv.slice(2);if(flag!=='--work'||extra.some(x=>x!=='--offline')||extra.length>1)fail('资源参数无效');const cancellation=new AbortController();for(const name of ['SIGTERM','SIGINT'])process.once(name,()=>cancellation.abort());let input='';for await(const chunk of process.stdin){input+=chunk;if(Buffer.byteLength(input)>2*1024**2)fail('资源请求超限');}process.stdout.write(JSON.stringify(await resources(platform,work,input?JSON.parse(input):{},{offline:extra.includes('--offline'),signal:cancellation.signal})));}
 }
@@ -2219,8 +2219,8 @@ async function gatePrepareDependencies(work,owner,options,environment){
  if(gateProductID==='citizenchain')for(const path of ['onchina/frontend/package-lock.json','node/snap/package-lock.json'])if(await stat(join(root,path)))records.push({ecosystem:'npm',path:join(root,path)});
  const functional=gateFunctionalHostPlan(JSON.parse(await readFile(join(root,'.github/tatagate/contracts.json'),'utf8')).functions);
  for(const lock of functional.locks){await regular(join(root,lock.path));records.push({...lock,path:join(root,lock.path)});}
- if(gateProductID==='citizensdk')for(const lock of ['native/smoldot/ffi/Cargo.lock','native/smoldot/pow/Cargo.lock'])records.push({ecosystem:'cargo',path:join(root,lock)});
- const compiler=options.library.installed.get('rust');if(compiler){const standardLock=join(dirname(dirname(compiler.path)),'lib/rustlib/src/rust/library/Cargo.lock');if(await stat(standardLock))records.push({ecosystem:'cargo',path:standardLock});}
+ if(gateProductID==='citizensdk')for(const lock of ['native/legacy/Cargo.lock','native/smoldot/Cargo.lock'])records.push({ecosystem:'cargo',path:join(root,lock)});
+ const compiler=options.library.installed.get('rust');if(compiler){const standardLock=join(dirname(dirname(compiler.path)),'lib/rustlib/rust/library/Cargo.lock');if(await stat(standardLock))records.push({ecosystem:'cargo',path:standardLock});}
  const dependencies={};
  for(const ecosystem of ['npm','pub','cargo']){
   const locks=[...new Set(records.filter(record=>record.ecosystem===ecosystem).map(record=>record.path))];if(!locks.length)continue;
@@ -2266,8 +2266,7 @@ export async function gateLanguageView(destination,receipt,{signal}={}){
  const archiveView=async(source,path)=>{const archive=path+'.tar';await runResourceProcess(environment.PRODUCT_GIT_BIN,['-C',source,'archive','--format=tar','--output='+archive,'HEAD'],{cwd:receipt.work,env:environment,signal,quietOutput:true});try{return await extractArchive(archive,path,{signal});}finally{await rm(archive);}};
  const view=await archiveView(root,destination);
  const sources=receipt.inputs?.sources||owner.lockedSources();
- const rootSource=await stat(join(root,'app/pubspec.yaml'))?join(root,'app'):root;
- const project=rootSource===root?view:join(view,'app');
+ const project=view;
  const library={root:receipt.schema===2?join(receipt.store,'tools'):join(receipt.work,'objects'),work:receipt.work,installed:new Map([['node',{path:environment.PRODUCT_NODE_BIN}]]),gateLinuxFoundation:receipt.schema===1?{path:environment.PATH}:undefined};
  const options={library,environment,signal,offline:true,dependencyRoot:join(homedir(),'.local/share/product-resources/rely')};
  if(sources.some(source=>['citizen_sdk','tatachat_sdk'].includes(source.name))&&gateProductID!=='citizenapp'){
@@ -2350,7 +2349,7 @@ export async function prepareGateFunctionalHost(receipt,languageView,{signal,nat
   const archive=receipt.inputs.archives.find(item=>item.name==='zxing-cpp');if(!archive)fail('门禁SDK缺少原锁ZXing');
   await run(env.PRODUCT_BASH_BIN,[join(sdk,'scripts/build-native.sh'),'abi-host'],sdk,{CITIZENSDK_WORK_DIR:work,CITIZENSDK_NATIVE_OUTPUT_DIR:output,CARGO_TARGET_DIR:join(work,'cargo'),CITIZENSDK_ZXING_SOURCE_DIR:archive.path,NODE:env.PRODUCT_NODE_BIN});
   result.CITIZENSDK_TEST_CORE_LIB_PATH=await prove(join(output,'abi-host/libcitizensdk.'+extension),['citizensdk_create','citizensdk_destroy']);
-  const legacy=join(work,'legacy-cargo');await run(env.CARGO,['build','--manifest-path',join(work,'native-source/native/smoldot/ffi/Cargo.toml'),'--locked','--offline'],sdk,{CARGO_TARGET_DIR:legacy});
+  const legacy=join(work,'legacy-cargo');await run(env.CARGO,['build','--manifest-path',join(work,'native-source/native/legacy/Cargo.toml'),'--locked','--offline'],sdk,{CARGO_TARGET_DIR:legacy});
   result.CITIZENSDK_TEST_SMOLDOT_LIBRARY=await prove(join(legacy,'debug/libsmoldot.'+extension),['smoldot_client_init','smoldot_client_destroy']);
  }
  const locks=[join(languageView.project,'pubspec.lock'),...['citizen_sdk','tatachat_sdk'].filter(name=>receipt.inputs.sources.some(source=>source.name===name)).map(name=>join(receipt.work,'language-sdk-'+name,'pubspec.lock'))];
@@ -2361,4 +2360,901 @@ export async function prepareGateFunctionalHost(receipt,languageView,{signal,nat
  }
  if(libraries.length){const paths=[...new Set(libraries.map(dirname))].join(':');result[process.platform==='darwin'?'DYLD_LIBRARY_PATH':'LD_LIBRARY_PATH']=paths;}
  signal?.throwIfAborted();return result;
+}
+
+// 原生依赖准备实现与资源交付共用唯一模块。
+const nativeDependencies = await (async()=>{
+
+// CitizenSDK原生依赖准备入口。依赖坐标只来自同目录锁文件；普通开发、CI和
+// 任意可选调用程序都只能选择工作目录，不能改写版本、来源、摘要或构建选项。
+const { createHash } = await import('node:crypto');
+const { spawnSync } = await import('node:child_process');
+const {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} = await import('node:fs');
+const { homedir, platform: hostPlatform } = await import('node:os');
+const { dirname, isAbsolute, join, parse, relative, resolve, sep } = await import('node:path');
+const { fileURLToPath } = await import('node:url');
+
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const sdkDirectory = resolve(scriptDirectory, '..');
+const lockPath = join(scriptDirectory, 'dependencies.lock.json');
+const readLock = () => JSON.parse(readFileSync(lockPath, 'utf8'));
+const lock = new Proxy({}, {get:(_target,key)=>readLock()[key]});
+const platforms = new Set(['Android', 'macOS', 'LinuxARM', 'LinuxAMD', 'Windows']);
+
+function fail(message) { throw new Error(`CitizenSDK依赖准备失败：${message}`); }
+function sha256(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
+function sha256File(path) { return sha256(readFileSync(path)); }
+
+function parseArguments(values) {
+  const result = {};
+  for (let index = 0; index < values.length; index += 1) {
+    const key = values[index];
+    if (!key.startsWith('--') || index + 1 >= values.length) fail(`参数无效：${key}`);
+    const name = key.slice(2);
+    if (Object.hasOwn(result, name)) fail(`参数重复：${key}`);
+    result[name] = values[index += 1];
+  }
+  return result;
+}
+
+function developerCache() { return join(sdkDirectory, 'target', 'build', 'dependencies'); }
+
+function safeExternalDirectory(path, label, source = sdkDirectory) {
+  const pathRoot = parse(path).root;
+  if (!isAbsolute(path) || resolve(path) !== path || path === pathRoot) fail(`${label}必须是规范绝对路径`);
+  const normalizedSource = resolve(source), target = join(normalizedSource, 'target');
+  if ((path === normalizedSource || path.startsWith(normalizedSource + sep)) && !path.startsWith(target + sep)) fail(`${label}只能在源码树的target内生成`);
+  let current = pathRoot;
+  for (const part of path.slice(pathRoot.length).split(sep).filter(Boolean)) {
+    if (part === '.' || part === '..') fail(`${label}包含非法路径段`);
+    current = join(current, part);
+    if (!existsSync(current)) break;
+    const info = lstatSync(current);
+    if (info.isSymbolicLink() || !info.isDirectory()) fail(`${label}祖先不是普通目录：${current}`);
+  }
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  if (realpathSync(path) !== path) fail(`${label}真实路径发生漂移`);
+  return path;
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    env: options.env || process.env,
+    encoding: 'utf8',
+    stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+  });
+  if (result.error || result.status !== 0) {
+    fail(`${command}执行失败${result.status === null ? '' : `(${result.status})`}${result.stderr ? `：${result.stderr.trim()}` : ''}`);
+  }
+  return (result.stdout || '').trim();
+}
+
+function archiveName(source) {
+  const suffix = new URL(source.url).pathname.endsWith('.zip') ? '.zip' : '.tar.gz';
+  return `${source.sha256}${suffix}`;
+}
+
+async function download(source, destination) {
+  const pending = `${destination}.pending-${process.pid}-${Date.now()}`;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    rmSync(pending, { force: true });
+    try {
+      const response = await fetch(source.url, { redirect: 'follow', signal: AbortSignal.timeout(120_000) });
+      if (!response.ok) fail(`下载HTTP状态${response.status}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length !== source.size || sha256(bytes) !== source.sha256) fail('下载字节长度或SHA256不符');
+      writeFileSync(pending, bytes, { flag: 'wx', mode: 0o600 });
+      renameSync(pending, destination);
+      return;
+    } catch (error) {
+      rmSync(pending, { force: true });
+      if (attempt === 3) fail(`${source.url}三次取得均失败：${error.message}`);
+    }
+  }
+}
+
+function validateArchiveEntries(entries, source) {
+  const root = `${source.archive_root}/`;
+  if (entries.length === 0) fail(`${source.archive_root}归档为空`);
+  for (const entry of entries) {
+    const normalized = entry.replace(/\/$/u, '');
+    if (!normalized || normalized.startsWith('/') || normalized.includes('\\')
+        || normalized.split('/').includes('..')
+        || (normalized !== source.archive_root && !normalized.startsWith(root))) {
+      fail(`${source.archive_root}归档路径越界：${entry}`);
+    }
+  }
+}
+
+function verifyExtractedTree(root, source) {
+  if (!existsSync(root) || !lstatSync(root).isDirectory() || lstatSync(root).isSymbolicLink()) {
+    fail(`${source.archive_root}没有解出唯一普通根目录`);
+  }
+  const visit = (directory) => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name);
+      const info = lstatSync(path);
+      if (info.isSymbolicLink()) {
+        // 官方ZXing的语言包装只链接同包core；准确路径/原始目标/真实目标三者同时校验。
+        // 不遍历链接以免重复或循环，不扩大为任意“包内链接”许可。
+        const allowed = {
+          'wrappers/python/core': '../../core',
+          'wrappers/rust/core': '../../core/',
+        };
+        const key = relative(root, path).split(sep).join('/');
+        if (source !== lock.environment['zxing-cpp'] || !Object.hasOwn(allowed, key)
+            || readlinkSync(path) !== allowed[key]) {
+          fail(`${source.archive_root}包含未许可链接`);
+        }
+        const core = join(root, 'core');
+        if (!existsSync(core) || !lstatSync(core).isDirectory()
+            || lstatSync(core).isSymbolicLink()
+            || realpathSync(path) !== join(realpathSync(root), 'core')) {
+          fail('ZXing链接目标必须是同包普通core目录');
+        }
+        continue;
+      }
+      if (!info.isDirectory() && !info.isFile()) fail(`${source.archive_root}包含非普通条目`);
+      if (info.isDirectory()) visit(path);
+    }
+  };
+  visit(root);
+  if (source.license && sha256File(join(root, source.license)) !== source.license_sha256) {
+    fail(`${source.archive_root}许可证摘要不符`);
+  }
+  if (source.archive_root.startsWith('zxing-cpp-')
+      && (!existsSync(join(root, 'CMakeLists.txt')) || !existsSync(join(root, 'core/src/ZXingC.h')))) {
+    fail('ZXing-C++源码闭包不完整');
+  }
+  if (source.archive_root.startsWith('sqlite-') && !existsSync(join(root, 'sqlite3.c'))) fail('SQLite源码闭包不完整');
+  if (source.archive_root.startsWith('openssl-') && !existsSync(join(root, 'Configure'))) fail('OpenSSL源码闭包不完整');
+  if (source.archive_root.startsWith('tpm2-tss-') && !existsSync(join(root, 'configure'))) fail('TPM2-TSS源码闭包不完整');
+}
+
+async function prepareSource(source, work) {
+  const archives = safeExternalDirectory(join(work, 'archives'), '依赖归档目录');
+  const archive = join(archives, archiveName(source));
+  if (existsSync(archive)) {
+    const info = lstatSync(archive);
+    if (!info.isFile() || info.isSymbolicLink() || info.size !== source.size || sha256File(archive) !== source.sha256) {
+      fail(`${source.archive_root}既有归档无效`);
+    }
+  } else await download(source, archive);
+
+  const destination = join(work, source.archive_root);
+  if (existsSync(destination)) {
+    verifyExtractedTree(destination, source);
+    return destination;
+  }
+  const staging = join(work, `.extract-${source.sha256}-${process.pid}`);
+  if (existsSync(staging)) fail(`${source.archive_root}暂存目录已存在`);
+  mkdirSync(staging, { mode: 0o700 });
+  try {
+    const zip = archive.endsWith('.zip');
+    const listing = run(zip ? 'unzip' : 'tar', zip ? ['-Z1', archive] : ['-tzf', archive], { capture: true });
+    validateArchiveEntries(listing.split(/\r?\n/u).filter(Boolean), source);
+    run(zip ? 'unzip' : 'tar', zip ? ['-q', archive, '-d', staging] : ['-xzf', archive, '-C', staging]);
+    const extracted = join(staging, source.archive_root);
+    verifyExtractedTree(extracted, source);
+    renameSync(extracted, destination);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+  return destination;
+}
+
+function sourceEntriesFor(platform) {
+  const result = [['zxing-cpp', lock.environment['zxing-cpp']]];
+  if (platform === 'LinuxARM' || platform === 'LinuxAMD') {
+    result.push(...Object.entries(lock.native.sources));
+  } else if (platform === 'Windows') result.push(['sqlite', lock.native.sources.sqlite]);
+  return result;
+}
+
+function sourcesFor(platform) {
+  return sourceEntriesFor(platform).map(([, source]) => source);
+}
+
+// 只把产品锁中的不可变归档坐标投影给可选调用方；计划没有缓存路径、控制程序身份
+// 或下载策略，CitizenSDK直接开发、CI和任意第三方构建仍使用同一份锁文件。
+function dependencyPlan(args) {
+  if (!platforms.has(args.platform)) fail(`平台无效：${args.platform || '<empty>'}`);
+  const archives = sourceEntriesFor(args.platform).map(([name, source]) => ({
+    name,
+    version: source.version,
+    url: source.url,
+    size: source.size,
+    sha256: source.sha256,
+    archive_root: source.archive_root,
+  })).sort((left, right) => left.name.localeCompare(right.name));
+  process.stdout.write(`${JSON.stringify({ schema: 1, platform: args.platform, archives })}\n`);
+}
+
+async function prepareEnvironment(args) {
+  if (args.scope && args.scope !== 'citizensdk') fail('scope只接受citizensdk');
+  if (!platforms.has(args.platform)) fail(`平台无效：${args.platform || '<empty>'}`);
+  const work = safeExternalDirectory(resolve(args.work || developerCache()), '依赖工作目录');
+  for (const source of sourcesFor(args.platform)) await prepareSource(source, work);
+  process.stdout.write(`${JSON.stringify({ schema: 1, platform: args.platform, work })}\n`);
+}
+
+function freshDirectory(path, label, source) {
+  if (existsSync(path)) fail(`${label}已存在，拒绝混入旧产物`);
+  return safeExternalDirectory(path, label, source);
+}
+
+function copySelectedFiles(source, destination, names) {
+  mkdirSync(destination, { recursive: true, mode: 0o700 });
+  for (const name of names) {
+    const input = join(source, name);
+    if (!existsSync(input) || !lstatSync(input).isFile() || lstatSync(input).isSymbolicLink()) fail(`缺少依赖文件：${input}`);
+    copyFileSync(input, join(destination, name));
+  }
+}
+
+function executable(name) {
+  const path = run(hostPlatform() === 'win32' ? 'where' : 'sh', hostPlatform() === 'win32' ? [name] : ['-c', `command -v "$1"`, 'resolve-tool', name], { capture: true })
+    .split(/\r?\n/u)[0];
+  const real = realpathSync(path);
+  if (!statSync(real).isFile()) fail(`工具不是普通文件：${name}`);
+  return real;
+}
+
+function buildTools(platform) {
+  const names = platform === 'Windows' ? ['cl', 'lib', 'tar'] : ['cc', 'ar', 'perl', 'make', 'sh', 'pkg-config', 'tar', 'unzip'];
+  return names.map((name) => {
+    const path = executable(name);
+    const result = { name, sha256: sha256File(path) };
+    if (name === 'cc') result.target = run(path, ['-dumpmachine'], { capture: true });
+    return result;
+  });
+}
+
+function collectFiles(root) {
+  const files = [];
+  const visit = (directory) => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = join(directory, name);
+      const info = lstatSync(path);
+      if (info.isSymbolicLink()) fail(`静态依赖前缀包含符号链接：${path}`);
+      if (info.isDirectory()) visit(path);
+      else if (info.isFile() && name !== 'native-dependencies.json') {
+        files.push({ path: relative(root, path).split(sep).join('/'), sha256: sha256File(path) });
+      } else if (!info.isFile()) fail(`静态依赖前缀包含非普通文件：${path}`);
+    }
+  };
+  visit(root);
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function buildSqlite(source, build, prefix, windows) {
+  const object = join(build, windows ? 'sqlite3.obj' : 'sqlite3.o');
+  mkdirSync(join(prefix, 'include'), { recursive: true, mode: 0o700 });
+  mkdirSync(join(prefix, 'lib'), { recursive: true, mode: 0o700 });
+  copyFileSync(join(source, 'sqlite3.h'), join(prefix, 'include/sqlite3.h'));
+  if (windows) {
+    run('cl', ['/nologo', '/c', '/O2', '/MD', '/DSQLITE_THREADSAFE=1', join(source, 'sqlite3.c'), `/Fo${object}`]);
+    run('lib', ['/nologo', `/OUT:${join(prefix, 'lib/sqlite3.lib')}`, object]);
+  } else {
+    run('cc', ['-O2', '-fPIC', '-DSQLITE_THREADSAFE=1', '-c', join(source, 'sqlite3.c'), '-o', object]);
+    run('ar', ['rcs', join(prefix, 'lib/libsqlite3.a'), object]);
+  }
+}
+
+function findArchive(root, name) {
+  for (const directory of ['lib', 'lib64']) {
+    const path = join(root, directory, name);
+    if (existsSync(path)) return path;
+  }
+  fail(`依赖构建缺少${name}`);
+}
+
+function buildLinuxNative(sources, build, prefix, platform) {
+  const contract = lock.native.platforms[platform];
+  const sqlite = join(sources, lock.native.sources.sqlite.archive_root);
+  const openssl = join(sources, lock.native.sources.openssl.archive_root);
+  const tss = join(sources, lock.native.sources['tpm2-tss'].archive_root);
+  buildSqlite(sqlite, freshDirectory(join(build, 'sqlite'), 'SQLite构建目录', sdkDirectory), prefix, false);
+
+  const opensslBuild = freshDirectory(join(build, 'openssl'), 'OpenSSL构建目录', sdkDirectory);
+  const opensslInstall = freshDirectory(join(build, 'openssl-install'), 'OpenSSL安装目录', sdkDirectory);
+  cpSync(openssl, opensslBuild, { recursive: true, errorOnExist: true, force: false });
+  run('perl', ['Configure', contract.openssl_target, ...lock.native.openssl_options,
+    `--prefix=${opensslInstall}`, `--openssldir=${join(opensslInstall, 'ssl')}`], { cwd: opensslBuild });
+  run('make', ['-j2'], { cwd: opensslBuild });
+  run('make', ['install_sw'], { cwd: opensslBuild });
+  copySelectedFiles(join(opensslInstall, 'include/openssl'), join(prefix, 'include/openssl'), lock.headers.openssl);
+  copyFileSync(findArchive(opensslInstall, 'libcrypto.a'), join(prefix, 'lib/libcrypto.a'));
+
+  const tssBuild = freshDirectory(join(build, 'tpm2-tss'), 'TPM2-TSS构建目录', sdkDirectory);
+  const tssInstall = freshDirectory(join(build, 'tpm2-tss-install'), 'TPM2-TSS安装目录', sdkDirectory);
+  const cryptoLibrary = dirname(findArchive(opensslInstall, 'libcrypto.a'));
+  const environment = {
+    ...process.env,
+    CPPFLAGS: `-I${join(opensslInstall, 'include')}`,
+    LDFLAGS: `-L${cryptoLibrary}`,
+    PKG_CONFIG_PATH: join(cryptoLibrary, 'pkgconfig'),
+  };
+  run(join(tss, 'configure'), [`--prefix=${tssInstall}`, ...lock.native.tss2_options], { cwd: tssBuild, env: environment });
+  run('make', ['-j2'], { cwd: tssBuild, env: environment });
+  run('make', ['install'], { cwd: tssBuild, env: environment });
+  copySelectedFiles(join(tssInstall, 'include/tss2'), join(prefix, 'include/tss2'),
+    lock.headers.tss2.map((name) => `tss2_${name}.h`));
+  for (const name of ['esys', 'mu', 'sys', 'rc', 'tcti-device']) {
+    copyFileSync(findArchive(tssInstall, `libtss2-${name}.a`), join(prefix, `lib/libtss2-${name}.a`));
+  }
+}
+
+function sourceSha(args, sdk) {
+  const supplied = args['source-sha'];
+  if (supplied) return supplied;
+  return run('git', ['-C', sdk, 'rev-parse', 'HEAD'], { capture: true });
+}
+
+async function prepareNative(args) {
+  if (args.scope && args.scope !== 'citizensdk') fail('scope只接受citizensdk');
+  if (!['LinuxARM', 'LinuxAMD', 'Windows'].includes(args.platform)) fail('prepare-native只支持LinuxARM、LinuxAMD或Windows');
+  if (!['ci', 'release'].includes(args.mode)) fail('mode只接受ci或release');
+  const sdk = resolve(args.sdk || sdkDirectory);
+  if (!existsSync(join(sdk, 'pubspec.yaml'))) fail('CitizenSDK源码目录无效');
+  const work = safeExternalDirectory(resolve(args.work || developerCache()), '原生依赖工作目录', sdk);
+  const sources = safeExternalDirectory(resolve(args.sources || join(work, 'sources')), '原生依赖源码目录', sdk);
+  for (const source of sourcesFor(args.platform)) await prepareSource(source, sources);
+  const build = freshDirectory(join(work, 'build'), '原生依赖构建根', sdk);
+  const prefix = freshDirectory(join(work, 'prefix'), '原生依赖前缀', sdk);
+  if (args.platform === 'Windows') {
+    buildSqlite(join(sources, lock.native.sources.sqlite.archive_root), build, prefix, true);
+  } else buildLinuxNative(sources, build, prefix, args.platform);
+
+  const version = /^version: (\d+\.\d+\.\d+)$/mu.exec(readFileSync(join(sdk, 'pubspec.yaml'), 'utf8'))?.[1];
+  if (!version || (args['software-version'] && args['software-version'] !== version)) fail('SDK软件版本与源码不一致');
+  const commit = sourceSha(args, sdk);
+  if (!/^[0-9a-f]{40}$/u.test(commit)) fail('源码提交必须是40位小写Git SHA');
+  const receipt = {
+    schema: 1,
+    platform: args.platform,
+    source_sha: commit,
+    software_version: version,
+    build_mode: args.mode,
+    native_dependencies: lock.native,
+    build_tools: buildTools(args.platform),
+    files: collectFiles(prefix),
+  };
+  const receiptPath = join(prefix, 'native-dependencies.json');
+  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+  const api = await import(new URL('./release.mjs', import.meta.url));
+  api.assertCitizenSdkDependencyInputs(receiptPath, args.platform);
+  process.stdout.write(`${JSON.stringify({ schema: 1, platform: args.platform, prefix, receipt: receiptPath })}\n`);
+}
+
+
+return {run:async(values)=>{
+const [command, ...rest] = values;
+const args = parseArguments(rest);
+try {
+  if (command === 'plan') dependencyPlan(args);
+  else if (command === 'prepare-environment') await prepareEnvironment(args);
+  else if (command === 'prepare-native') await prepareNative(args);
+  else fail('用法：dependencies.mjs <plan|prepare-environment|prepare-native> [--name value ...]');
+} catch (error) {
+  process.stderr.write(`${error?.message || error}\n`);
+  process.exitCode = 1;
+}
+
+}};
+})();
+export const runDependencyCLI = values => nativeDependencies.run(values);
+
+export function runnerWork(work, environment=process.env) {
+ const source=root,parent=join(source,'target','test');
+ const reject=()=>{throw Error('本仓工具交付：门禁工具工作根必须属于本仓既有target/test且为空');};
+ if(typeof work!=='string'||!isAbsolute(work)||resolve(work)!==work
+  ||environment.GITHUB_WORKSPACE!==undefined&&environment.GITHUB_WORKSPACE!==source||!work.startsWith(parent+'/'))reject();
+ const fs = gateLocalFS;
+ for(const path of [source,join(source,'target'),parent,work]){
+  const info=fs.lstatSync(path,{throwIfNoEntry:false});if(!info?.isDirectory()||info.isSymbolicLink()||fs.realpathSync(path)!==path)reject();
+ }if(fs.readdirSync(work).length)reject();return work;
+}
+const gateLocalFS = await import('node:fs');
+export const exactExecutable = gateToolInterfaces.exactExecutable;
+export const toolEnvironment = gateToolInterfaces.toolEnvironment;
+export const validateToolSources = gateToolInterfaces.validateToolSources;
+export const validateCurlArtifacts = gateToolInterfaces.validateCurlArtifacts;
+export const validateCurlControl = gateToolInterfaces.validateCurlControl;
+export const resolveBootstrapPackages = gateToolInterfaces.resolveBootstrapPackages;
+export const verifyBootstrap = gateToolInterfaces.verifyBootstrap;
+export const fetchOriginal = gateToolInterfaces.fetchOriginal;
+export const validateCurlTar = gateToolInterfaces.validateCurlTar;
+export const stageCurlArtifacts = gateToolInterfaces.stageCurlArtifacts;
+export const sourceMirrors = gateToolInterfaces.sourceMirrors;
+export const requestGNUOriginal = gateToolInterfaces.requestGNUOriginal;
+export function prepareRunnerTools(options) { if(options?.bootstrap===true)runnerWork(options.work,options.environment||process.env);return gateToolInterfaces.prepareRunnerTools(options); }
+
+// 正式实现结束；仅直接使用 node --test 执行本文件时注册以下回归。
+if (process.env.NODE_TEST_CONTEXT && process.argv.length === 2 && !process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const {BUILD_SHELL_SOURCES} = await import('./build.mjs');
+// 使用真实文件事务与受控HTTPS数据，禁止测试下载或安装真实工具。
+const {test} = await import('node:test');
+const {default: assert} = await import('node:assert/strict');
+const {createHash} = await import('node:crypto');
+const {mkdtemp,realpath,mkdir,readFile,writeFile,readdir,rm,symlink,chmod,lstat,rename} = await import('node:fs/promises');
+const {dirname,join,resolve} = await import('node:path');
+const { testRoot: tmpdir } = await import('./build.mjs');
+const {spawnSync} = await import('node:child_process');
+const {gzipSync} = await import('node:zlib');
+
+const {contract} = await import('./build.mjs');
+const hash=b=>createHash('sha256').update(b).digest('hex');
+async function sandbox(t){const root=await realpath(await mkdtemp(join(tmpdir(),contract.product_id+'-resources-')));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
+const archive=(body,url='https://example.invalid/locked.tgz')=>({url,sha256:hash(body)});
+function tar(entries){const records=[];for(const {name,body='',type='0',target=''}of entries){const b=Buffer.from(body),h=Buffer.alloc(512);h.write(name,0,100);h.write('0000644\0',100);h.write('0000000\0',108);h.write('0000000\0',116);h.write(b.length.toString(8).padStart(11,'0')+'\0',124);h.write('00000000000\0',136);h.fill(32,148,156);h.write(type,156);h.write(target,157,100);h.write('ustar\0',257);h.write('00',263);h.write([...h].reduce((a,b)=>a+b,0).toString(8).padStart(6,'0')+'\0 ',148);records.push(h,b,Buffer.alloc((512-b.length%512)%512));}return gzipSync(Buffer.concat([...records,Buffer.alloc(1024)]));}
+test('首次按锁取得；再次复用不联网，损坏原件不覆盖',async t=>{
+ const root=await sandbox(t),body=Buffer.from('locked-source'),entry=archive(body);let requests=0;
+ const options={store:root,fetcher:async()=>{requests++;return new Response(body);}};
+ const file=await acquireArchive(entry,options);assert.equal(await readFile(file,'utf8'),'locked-source');
+ assert.equal(await acquireArchive(entry,{...options,offline:true,fetcher:()=>assert.fail('离线联网')}),file);assert.equal(requests,1);
+ await chmod(file,0o600);await writeFile(file,'corrupt');await assert.rejects(acquireArchive(entry,options),/摘要/);assert.equal(requests,1);assert.equal(await readFile(file,'utf8'),'corrupt');
+});
+test('错摘要、错来源、离线缺失、来源越权均失败关闭且无正式原件',async t=>{
+ const root=await sandbox(t),body=Buffer.from('source'),entry=archive(body);let requests=0;
+ await assert.rejects(acquireArchive(entry,{store:root,offline:true,fetcher:()=>assert.fail('离线联网')}),/离线/);
+ await assert.rejects(acquireArchive(entry,{store:root,fetcher:async()=>{requests++;return new Response('wrong');}}),/摘要/);
+ // 合成URL只改变协议；仍验证非HTTPS在任何请求前被正式实现拒绝。
+ const insecure=new URL('https://example.invalid/source');insecure.protocol='http:';
+ await assert.rejects(acquireArchive({...entry,url:insecure.href},{store:root,fetcher:()=>assert.fail('非HTTPS不得发请求')}),/HTTPS/);
+ const file=await acquireArchive(entry,{store:root,fetcher:async()=>new Response(body)});
+ await assert.rejects(acquireArchive({...entry,url:'https://example.invalid/other'},{store:root,offline:true}),/离线/);
+ assert.equal(await readFile(file,'utf8'),'source');assert.equal(requests,1);assert.equal((await readdir(root)).filter(x=>x.endsWith('.pending')||x.endsWith('.lock')).length,0);
+});
+test('可选供给按准确内容摘要验真，独立运行不需要供给目录',async t=>{
+ const root=await sandbox(t),store=join(root,'store'),optional=join(root,'objects'),body=Buffer.from('shared-source'),entry=archive(body),source=join(optional,entry.sha256+'.blob');await mkdir(dirname(source),{recursive:true});await writeFile(source,body);
+ const file=await acquireArchive(entry,{store,optional,offline:true,fetcher:()=>assert.fail('供给命中联网')});assert.equal(await readFile(file,'utf8'),'shared-source');await writeFile(source,'altered');assert.equal(await readFile(file,'utf8'),'shared-source');
+ await assert.rejects(acquireArchive(entry,{store:join(root,'other'),optional,offline:true}),/摘要/);
+});
+test('取消下载清理本次候选；短锁只在提交阶段取得',async t=>{
+ const root=await sandbox(t),entry=archive(Buffer.from('ab')),abort=new AbortController();
+ const fetcher=async()=>new Response(new ReadableStream({start(controller){controller.enqueue(Buffer.from('a'));abort.abort();controller.close();}}));
+ await assert.rejects(acquireArchive(entry,{store:root,fetcher,signal:abort.signal}));assert.deepEqual(await readdir(root),[]);
+ let state;const file=await acquireArchive(entry,{store:root,fetcher:async()=>{state=await readdir(root);return new Response('ab');}});assert.deepEqual(state,[]);assert.equal(await readFile(file,'utf8'),'ab');
+});
+test('同对象并发提交只保留一份验真原件，不留全局下载锁',async t=>{
+ const root=await sandbox(t),body=Buffer.from('concurrent'),entry=archive(body);let calls=0;const options={store:root,fetcher:async()=>{calls++;await new Promise(r=>setTimeout(r,10));return new Response(body);}};
+ const paths=await Promise.all(Array.from({length:8},()=>acquireArchive(entry,options)));assert.equal(new Set(paths).size,1);assert.equal(await readFile(paths[0],'utf8'),'concurrent');assert.equal(calls,8);assert.deepEqual(await readdir(root),[paths[0].slice(root.length+1)]);
+});
+test('归档安全解包并隔离不同任务，拒绝路径和链接越界',async t=>{
+ const root=await sandbox(t),source=join(root,'source.tgz'),data=tar([{name:'package/a',body:'source'},{name:'package/b',type:'2',target:'a'}]);await writeFile(source,data);
+ const first=join(root,'first'),second=join(root,'second');await extractArchive(source,first,{prefix:'package'});await extractArchive(source,second,{prefix:'package'});assert.equal(await realpath(join(first,'b')),join(first,'a'));await writeFile(join(first,'a'),'task1');assert.equal(await readFile(join(second,'a'),'utf8'),'source');
+ for(const [name,entries]of [['path',[{name:'../outside',body:'x'}]],['link',[{name:'package/a',body:'x'},{name:'package/b',type:'2',target:'../../outside'}]],['parent',[{name:'package/a',type:'2',target:'b'},{name:'package/a/child',body:'x'},{name:'package/b',body:'x'}]]]){const file=join(root,name+'.tgz');await writeFile(file,tar(entries));await assert.rejects(extractArchive(file,join(root,name),{prefix:name==='path'?'':'package'}),/越界|父目录/);assert.equal((await readdir(root)).includes(name),false);}
+});
+test('链接原件目录、重复成员与解包取消拒绝且不写第三方目录',async t=>{
+ const root=await sandbox(t),external=join(root,'external'),link=join(root,'link');await mkdir(external);await symlink(external,link);await assert.rejects(acquireArchive(archive(Buffer.from('source')),{store:link,offline:true}),/链接/);assert.deepEqual(await readdir(external),[]);
+ const input=join(root,'input.tgz');await writeFile(input,tar([{name:'a',body:'x'},{name:'a',body:'y'}]));await assert.rejects(extractArchive(input,join(root,'duplicate')),/重复/);
+ const signal=AbortSignal.abort();await assert.rejects(extractArchive(input,join(root,'cancelled'),{signal}));assert.equal((await readdir(root)).includes('cancelled'),false);
+});
+test('产品配方覆盖自身需求和递归工具，模块只使用内置依赖，独立CLI拒绝错误输入',async t=>{
+ const root=await sandbox(t),declarations=resourceDeclarations(),tools=new Map(declarations.tools.map(x=>[x.id,x]));for(const platform of Object.values(contract.platforms))for(const tool of platform.tools){assert.equal(tools.get(tool.id)?.version,tool.version);}
+ for(const tool of tools.values())for(const id of tool.requires||[])assert.ok(tools.has(id),'缺少递归工具 '+id);
+ for(const name of ['node','posix','bash','grep','sed'])assert.ok(tools.has(name));const source=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');assert.doesNotMatch(source,/import\(['"]\.\.\//u);assert.ok([...source.matchAll(/^import .*? from ['"]([^'"]+)['"]/gmu)].every(m=>m[1].startsWith('node:')));
+ const result=spawnSync(process.execPath,[join(import.meta.dirname,'resources.mjs'),'unknown','--work',root,'--offline'],{env:{HOME:root,LANG:'C',PATH:''},encoding:'utf8'});assert.notEqual(result.status,0);assert.match(result.stderr,/平台/);assert.deepEqual(await readdir(root),[]);
+});
+
+test('Git Cargo工作区继承按当前产品锁展开，不留下跨包路径',()=>{
+ const input={package:{name:'one',version:{workspace:true}},dependencies:{two:{workspace:true},third:{path:'../third'}}};const workspace={workspace:{package:{version:'1.0.0'},dependencies:{two:{path:'two',version:'2.0.0',features:['a']}}}};const lock=[{name:'third',version:'3.0.0'}];
+ const result=normalizeCargoManifest(input,workspace,lock);assert.equal(result.package.version,'1.0.0');assert.equal(result.dependencies.two.path,undefined);assert.equal(result.dependencies.third.version,'=3.0.0');assert.deepEqual(input.package.version,{workspace:true});assert.throws(()=>normalizeCargoManifest(input,workspace,[]),/唯一锁定版本/);
+});
+test('资源子进程可取消，不能继续输出成功回执',async()=>{
+ const signal=AbortSignal.timeout(150);await assert.rejects(runResourceProcess(process.execPath,['-e','setInterval(()=>{},1000)'],{signal,env:{PATH:''}}),/abort|timeout|取消/iu);
+});
+
+// 使用产品真实源码工具生产器；编译/Apple能力边界受控，文件事务和输出验真实际执行。
+const registry=resourceDeclarations();
+async function sourceFixture(t, behavior = {}) {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'source-tool-')));
+  const owner = await lstat(root);
+  t.after(async () => {
+    const current = await lstat(root);
+    assert.equal(current.dev, owner.dev); assert.equal(current.ino, owner.ino);
+    await rm(root, { recursive: true, force: true });
+  });
+  const library = { root: join(root, 'tools'), work:join(root,'work'), tools: registry.tools };await mkdir(library.work);
+  const tool = structuredClone(registry.tools.find(tool => tool.id === 'perl'));
+  const bytes = Buffer.from('official-fixture-archive');
+  tool.archive.sha256 = createHash('sha256').update(bytes).digest('hex');
+  const pending = join(library.root, 'shared', tool.archive.sha256 + '.pending');
+  const payload = join(pending, 'payload'), source = join(pending, 'unpack', tool.archive.root);
+  const finalPayload = join(library.root, 'shared', tool.archive.sha256, 'payload');library.pending=pending;library.finalPayload=finalPayload;
+  const developerDirectory = join(root, 'Xcode.app/Contents/Developer');
+  const sdk = join(developerDirectory, 'Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk');
+  await mkdir(source, { recursive: true }); await mkdir(sdk, { recursive: true });
+  await writeFile(join(pending, 'archive'), bytes);
+  await writeFile(join(source, 'Artistic'), 'fixture upstream legal text');
+  // 本夹具只声明实际Configure安装路径和受控入口，不复制任何真实工具原件。
+  await writeFile(join(source,'config.sh'),
+    "installprivlib='"+finalPayload+"/lib/5.42.3'\ninstallarchlib='"+finalPayload+"/lib/5.42.3/aarch64-darwin'\n");
+  const posix=join(root,'verified/posix/bin');await mkdir(posix,{recursive:true});
+  for(const name of posixNames)await writeFile(join(posix,name),'fixture executable '+name,{mode:0o755});
+  // 完整基础工具交付属于夹具输入；不会复制或安装真实工具原件。
+  for(const id of ['bash','grep','sed']) {
+    const bin=join(root,'verified',id,'bin');await mkdir(bin,{recursive:true});
+    await writeFile(join(bin,id),'fixture executable '+id,{mode:0o755});
+  }
+  const calls = [];
+  const exec = async (command, args, options) => {
+    calls.push({ command, args, options });
+    if (command.endsWith('/xcrun')) return { stdout: sdk + '\n' };
+    if (args.includes('-MJSON::PP')) return { stdout: behavior.coreFails ? '' : 'controlled-perl-ok\n' };
+    if (behavior.compilerFails && args.includes('-j8')) throw new Error('compiler failed');
+    if (args.includes('install')) {
+      const destination = args.find(value => value.startsWith('DESTDIR=')).slice(8);
+      const staged = join(destination, finalPayload.slice(1));
+      await mkdir(join(staged, 'bin'), { recursive: true });
+      if (behavior.linkOutput) await symlink(join(pending, 'archive'), join(staged, 'bin/perl'));
+      else if (!behavior.missingOutput) {
+        const macho = Buffer.alloc(32); macho.writeUInt32LE(0xfeedfacf, 0); macho.writeUInt32LE(0x0100000c, 4);
+        await writeFile(join(staged, 'bin/perl'), macho, { mode: 0o755 });
+        await mkdir(join(staged, 'lib/5.42.3/aarch64-darwin'), { recursive: true });
+        await writeFile(join(staged, 'lib/5.42.3/aarch64-darwin/Config.pm'), 'fixture core module');
+      }
+    }
+    return { stdout: '' };
+  };
+  const input = { library, tool, pending, payload, source, archive: join(pending, 'archive'), finalPayload,
+    environment: { PATH: '/untrusted/bin', RUBYOPT: '-rmalicious', PYTHONPATH: '/untrusted',
+      DYLD_INSERT_LIBRARIES: '/untrusted', LD_PRELOAD: '/untrusted', ARCHFLAGS: '-arch x86_64', CFLAGS: 'malicious', PERL5OPT: '-Mmalicious' },
+    exec, verify: async (_, tool) => behavior.missingTool === tool.id ? null
+      : { path: join(root, 'verified', tool.id, 'bin', tool.command), version: tool.version },
+    apple: async () => ({ developerDirectory, version: '27.0',
+      tools: Object.fromEntries(['clang', 'clang++', 'ar', 'make', 'ld', 'as', 'nm', 'ranlib', 'strip', 'xcrun', 'otool', 'install_name_tool', 'codesign'].map(name => [name, join(developerDirectory, 'usr/bin', name)])) }),
+    // 产品依赖准备只返回归档映射，不创建旧工具库的originals目录。
+    prepare: async () => new Map() };
+  return { input, calls, bytes };
+}
+test('源码工具使用准确Apple编译入口并只在候选中收集输出、原件和编译输入', async t => {
+  const { input, calls, bytes } = await sourceFixture(t);
+  await buildSourceTool(input);
+  assert.deepEqual(await readFile(join(input.payload, 'source.archive')), bytes);
+  assert.equal(JSON.parse(await readFile(join(input.payload, 'build.json'))).tool.id, 'perl');
+  const configure = calls.find(call => call.args.includes('-des'));
+  assert.ok(configure.args.includes('-Dinstallusrbinperl=n'));
+  for (const key of ['RUBYOPT', 'PYTHONPATH', 'DYLD_INSERT_LIBRARIES', 'PERL5OPT', 'LD_PRELOAD']) assert.equal(configure.options.env[key], undefined);
+  assert.equal(configure.options.env.CFLAGS,'-O2');
+  assert.equal(configure.options.env.MACOSX_DEPLOYMENT_TARGET,registry.tools.find(t=>t.id==='posix').version);
+  assert.ok(configure.options.env.SDKROOT.startsWith(configure.options.env.DEVELOPER_DIR+'/'));
+  assert.equal(configure.options.env.CPP,configure.options.env.CC+' -E');
+  assert.ok(!configure.options.env.PATH.split(':').some(p=>['/usr/bin','/bin','/opt/homebrew/bin'].includes(p)));
+  const record=JSON.parse(await readFile(join(input.payload,'build.json'),'utf8'));
+  assert.equal(record.posix_sha256,registry.tools.find(t=>t.id==='posix').archive.sha256);
+  assert.equal(record.recipe,createHash('sha256').update(await readFile(join(input.payload,'recipe.source'))).digest('hex'));
+  assert.equal(configure.options.env.ARCHFLAGS, '-arch arm64');
+  assert.ok(configure.options.env.CC.startsWith(input.pending.split('/tools/')[0] + '/Xcode.app/'));
+  assert.ok(!configure.options.env.PATH.includes('/untrusted/'));
+  assert.ok(calls.some(call => call.args.includes('-MJSON::PP') && call.options.env.PERL5LIB.startsWith(input.payload + '/lib/')));
+  assert.equal(await readFile(join(input.payload, 'licenses/Artistic'), 'utf8'), 'fixture upstream legal text');
+});
+for (const behavior of [{ compilerFails: true }, { missingOutput: true }, { linkOutput: true }, { missingTool: 'node' }, { coreFails: true }]) {
+  test('源码工具失败边界保留失败且不写入最终工具对象：' + JSON.stringify(behavior), async t => {
+    const { input } = await sourceFixture(t, behavior);
+    await assert.rejects(buildSourceTool(input));
+    await assert.rejects(readFile(join(input.finalPayload, 'bin/perl')), { code: 'ENOENT' });
+  });
+}
+test('官方完整归档被替换时在任何编译前失败', async t => {
+  const { input, calls } = await sourceFixture(t);
+  await writeFile(input.archive, 'changed');
+  await assert.rejects(buildSourceTool(input), /归档摘要/);
+  assert.equal(calls.length, 0);
+});
+test('候选路径不属于当前工具摘要时在任何编译前失败', async t => {
+  const { input, calls } = await sourceFixture(t);
+  input.finalPayload += '-other';
+  await assert.rejects(buildSourceTool(input), /候选对象身份/);
+  assert.equal(calls.length, 0);
+});
+
+test('空可选供给不阻断产品取得，npm SRI原件按准确来源复用',async t=>{
+ const root=await sandbox(t),body=Buffer.from('sri-original'),entry={url:'https://example.invalid/sri.tgz',integrity:'sha512-'+createHash('sha512').update(body).digest('base64')};
+ const file=await acquireArchive(entry,{store:join(root,'first'),optional:join(root,'absent'),fetcher:async()=>new Response(body)});assert.equal(await readFile(file,'utf8'),'sri-original');
+ const optional=join(root,'shared/objects'),digest=hash(body),original=join(optional,digest+'.blob');await mkdir(dirname(original),{recursive:true});await writeFile(original,body);await writeFile(join(root,'shared/index.json'),JSON.stringify({schema_version:2,packages:[{archives:[{...entry,sha256:digest}]}],git_sources:[],pods:[]}));
+ const cached=await acquireArchive(entry,{store:join(root,'second'),optional,offline:true,fetcher:()=>assert.fail('SRI供给命中联网')});assert.equal(await readFile(cached,'utf8'),'sri-original');
+});
+
+test('Pod浮动tag必须由产品固定提交闭合，来源漂移或无摘要HTTP发行件失败',()=>{
+ const url='https://github.com/example/project.git',ref='a'.repeat(40),spec={name:'Example',version:'1.0.0',source:{git:url,tag:'v1.0.0'}},definitions=[{name:'Example',version:'1.0.0',url,tag:'v1.0.0',ref}];
+ assert.deepEqual(podSourceCoordinate(spec,definitions),{url,ref});assert.throws(()=>podSourceCoordinate(spec,[]),/锁定/);
+ assert.throws(()=>podSourceCoordinate({...spec,source:{git:'https://github.com/example/other.git',tag:'v1.0.0'}},definitions),/来源/);
+ assert.throws(()=>podSourceCoordinate({...spec,source:{git:url,tag:'v2.0.0'}},definitions),/来源/);
+ assert.throws(()=>podSourceCoordinate({name:'HTTP',version:'1',source:{http:'https://example.invalid/archive.zip'}},[]),/锁定/);
+ for(const entry of resourceDeclarations().pods){const source=entry.ref?{git:entry.url,tag:entry.tag}:{http:entry.url};const coordinate=podSourceCoordinate({name:entry.name,version:entry.version,source});assert.equal(coordinate.ref||coordinate.sha256,entry.ref||entry.sha256);}
+});
+
+// 真实进程退出顺序：取消回执必须晚于子工具完成清理，不能用发送信号代替退出确认。
+test('资源取消等待真实工具清理并确认退出后才返回失败',{timeout:20000},async t=>{
+ const directory=await sandbox(t),ready=join(directory,'ready'),closed=join(directory,'closed');
+ const code=`import {writeFileSync} from 'node:fs';process.once('SIGTERM',()=>setTimeout(()=>{writeFileSync(${JSON.stringify(closed)},'closed');process.exit(0);},600));writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000);`;
+ const controller=new AbortController();const running=runResourceProcess(process.execPath,['--input-type=module','-e',code],{cwd:directory,env:{PRODUCT_WORK_DIR:directory},signal:controller.signal});
+ for(let n=0;n<200;n++){try{await readFile(ready);break;}catch{await new Promise(ok=>setTimeout(ok,10));}}
+ assert.equal(await readFile(ready,'utf8'),'ready');const start=Date.now();controller.abort(Error('资源进程取消'));
+ await assert.rejects(running,/取消/u);assert.equal(await readFile(closed,'utf8'),'closed');assert.ok(Date.now()-start>=500);
+});
+test('资源超时等待退出，错误入口和输出超限不产生成功回执',{timeout:20000},async t=>{
+ const directory=await sandbox(t),closed=join(directory,'timeout-closed');
+ const code=`import {writeFileSync} from 'node:fs';process.once('SIGTERM',()=>setTimeout(()=>{writeFileSync(${JSON.stringify(closed)},'closed');process.exit(0);},400));setInterval(()=>{},1000);`;
+ await assert.rejects(runResourceProcess(process.execPath,['--input-type=module','-e',code],{cwd:directory,timeout:500}),/超时/u);
+ assert.equal(await readFile(closed,'utf8'),'closed');
+ await assert.rejects(runResourceProcess(join(directory,'missing'),[],{cwd:directory}),/无法启动/u);
+ await assert.rejects(runResourceProcess(process.execPath,['-e','process.stdout.write("x".repeat(4096))'],{cwd:directory,maxBuffer:64}),/输出超限/u);
+});
+
+// 依赖供给夹具只写真实独占文件，覆盖唯一协议及任务视图隔离，不下载和安装工具。
+async function dependencySupplyFixture(t,packages=[],pods=[]){const root=await sandbox(t),objects=join(root,'supply/objects'),work=join(root,'work');await mkdir(objects,{recursive:true});await mkdir(work);const index={schema_version:2,packages,git_sources:[],pods};await writeFile(join(dirname(objects),'index.json'),JSON.stringify(index));return {root,objects,work,index};}
+const suppliedMaven=(bytes,source='https://repo.maven.apache.org/maven2/',suffix='pom')=>({ecosystem:'maven',name:'example:library',version:'1.0.0',archives:[{url:source+'example/library/1.0.0/library-1.0.0.'+suffix,integrity:'sha256-'+createHash('sha256').update(bytes).digest('base64'),sha256:hash(bytes)}]});
+test('无可选依赖供给保持独立，旧schema与Pod整锁快照被拒绝',async t=>{
+ const f=await dependencySupplyFixture(t);assert.equal(await readDependencySupply(join(f.root,'absent')),null);assert.deepEqual(await materializeMavenCache(undefined,f.work),[]);
+ for(const value of [null,[],{schema_version:1,packages:[],git_sources:[],snapshots:[]},{...f.index,snapshots:[]}]){await writeFile(join(dirname(f.objects),'index.json'),JSON.stringify(value));await assert.rejects(readDependencySupply(f.objects),/协议/);}
+});
+test('Maven按上游分区重建，JAR分类器及module文件名保留，共享原件不承接写入',async t=>{
+ const a=Buffer.from('central-pom'),b=Buffer.from('portal-pom'),c=Buffer.from('classifier-original'),d=Buffer.from('{"formatVersion":"1.1"}');const entries=[suppliedMaven(a),suppliedMaven(b,'https://plugins.gradle.org/m2/'),suppliedMaven(c,undefined,'jar'),suppliedMaven(d,undefined,'module')];entries[2].archives[0].url=entries[2].archives[0].url.replace('.jar','-sources.jar');const f=await dependencySupplyFixture(t,entries);
+ for(const bytes of[a,b,c,d])await writeFile(join(f.objects,hash(bytes)+'.blob'),bytes);
+ const repos=await materializeMavenCache(f.objects,f.work);assert.equal(repos.length,2);const central=repos.find(x=>x.source.includes('repo.maven.apache.org')),portal=repos.find(x=>x.source.includes('plugins.gradle.org'));assert.equal(await readFile(join(central.directory,'example/library/1.0.0/library-1.0.0.pom'),'utf8'),'central-pom');assert.equal(await readFile(join(portal.directory,'example/library/1.0.0/library-1.0.0.pom'),'utf8'),'portal-pom');assert.equal(await readFile(join(central.directory,'example/library/1.0.0/library-1.0.0-sources.jar'),'utf8'),'classifier-original');
+ assert.deepEqual(await materializeMavenCache(f.objects,f.work),repos);const script=mavenSupplyInit(repos);assert.match(script,/beforeSettings/);assert.match(script,/beforeProject/);assert.match(script,/artifactUrls\(original.url\)/);assert.doesNotMatch(script,/modules-2|rely\/maven/);
+ await writeFile(join(central.directory,'example/library/1.0.0/library-1.0.0.pom'),'task-changed');assert.equal(await readFile(join(f.objects,hash(a)+'.blob'),'utf8'),'central-pom');await assert.rejects(materializeMavenCache(f.objects,f.work),/摘要/);
+});
+for(const change of ['sha','sri','source','version','duplicate','state','link','cancel'])test('Maven拒绝错误原件或状态并保留失败：'+change,async t=>{
+ const bytes=Buffer.from('maven-original'),entry=suppliedMaven(bytes),f=await dependencySupplyFixture(t,[entry]);await writeFile(join(f.objects,hash(bytes)+'.blob'),bytes);
+ if(change==='sha')await writeFile(join(f.objects,hash(bytes)+'.blob'),'changed');if(change==='sri')entry.archives[0].integrity='sha256-'+Buffer.alloc(32).toString('base64');if(change==='source')entry.archives[0].url='https://other.invalid/maven2/example/library/1.0.0/library-1.0.0.pom';if(change==='version')entry.version='LATEST';if(change==='duplicate')f.index.packages.push({...entry,archives:[{...entry.archives[0],sha256:'a'.repeat(64)}]});
+ await writeFile(join(dirname(f.objects),'index.json'),JSON.stringify(f.index));if(change==='state'){const [repo]=await materializeMavenCache(f.objects,f.work);await writeFile(join(repo.directory,'gc.properties'),'generated');}if(change==='link'){await mkdir(join(f.root,'outside'));await symlink(join(f.root,'outside'),join(f.work,'dependencies'));}
+ const signal=change==='cancel'?AbortSignal.abort(Error('取消')):undefined;await assert.rejects(materializeMavenCache(f.objects,f.work,{signal}));assert.equal(await readFile(join(f.objects,hash(bytes)+'.blob'),'utf8'),change==='sha'?'changed':'maven-original');assert.equal((await readdir(join(f.work,'dependencies')).catch(e=>{if(e.code==='ENOENT')return [];throw e;})).some(x=>x.startsWith('.maven-')),false);
+});
+async function podSupplyFixture(t){
+ // 合成Pod自带固定提交，不读取真实产品的Pod清单作为测试输入。
+ const name='PodFixture',version='1.0.0',source={git:'https://github.com/example/PodFixture.git',commit:'1'.repeat(40)},bytes=Buffer.from(JSON.stringify({name,version,source})),file=Buffer.from('pod-source'),md5=createHash('md5').update(name).digest('hex');
+ const pod={name,version,checksum:'a'.repeat(40),spec:{url:'https://cdn.cocoapods.org/Specs/'+md5[0]+'/'+md5[1]+'/'+md5[2]+'/'+name+'/'+version+'/'+name+'.podspec.json',sha256:hash(bytes)},source,files:[{type:'file',path:'Example.framework/Versions/A/Headers/source.h',sha256:hash(file),executable:false},{type:'link',path:'Example.framework/Versions/Current',target:'A'},{type:'link',path:'Example.framework/Headers',target:'Versions/Current/Headers'}]};const f=await dependencySupplyFixture(t,[],[pod]);for(const value of[bytes,file])await writeFile(join(f.objects,hash(value)+'.blob'),value);return {...f,pod,bytes,file};
+}
+test('Pod单坐标供给不依赖整锁与宿主，Framework多级链接仅在本轮物化',async t=>{
+ const f=await podSupplyFixture(t);assert.equal(await materializePodSupply(undefined,f.objects,f.work),false);assert.equal(await materializePodSupply(f.pod,f.objects,f.work),true);assert.equal(await materializePodSupply(f.pod,f.objects,f.work),true);const release=join(f.work,'cache/Pods/Release',f.pod.name,f.pod.version+'-aaaaa');assert.equal(await readFile(join(release,'Example.framework/Headers/source.h'),'utf8'),'pod-source');await writeFile(join(release,'Example.framework/Headers/source.h'),'task-write');assert.equal(await readFile(join(f.objects,hash(f.file)+'.blob'),'utf8'),'pod-source');await assert.rejects(materializePodSupply(f.pod,f.objects,f.work),/漂移/);
+});
+for(const change of ['sha','spec','source','escape','duplicate','cycle','state','cancel'])test('Pod错来源、摘要和不安全链接失败关闭：'+change,async t=>{
+ const f=await podSupplyFixture(t);if(change==='state'){await materializePodSupply(f.pod,f.objects,f.work);await writeFile(join(f.work,'cache/Pods/Release',f.pod.name,f.pod.version+'-aaaaa/generated.bin'),'state');}if(change==='sha')await writeFile(join(f.objects,hash(f.file)+'.blob'),'changed');if(change==='spec')f.pod.spec.url+='?other=1';if(change==='source')f.pod.source={git:'https://github.com/example/other.git',tag:'v1'};if(change==='escape')f.pod.files[1].target='../../../../outside';if(change==='duplicate')f.pod.files.push({...f.pod.files[0]});if(change==='cycle')f.pod.files[1].target='Current';const signal=change==='cancel'?AbortSignal.abort(Error('取消')):undefined;await assert.rejects(materializePodSupply(f.pod,f.objects,f.work,{signal}));assert.equal(await readFile(join(f.objects,hash(f.bytes)+'.blob'),'utf8'),f.bytes.toString());
+});
+
+// 真实文件事务验证下载候选的归属，不执行真实工具安装或编译。
+test('资源下载候选只属于当前产品target现场，永久库不接收半包',async t=>{
+ const root=await sandbox(t),work=join(root,'work'),store=join(root,'originals');await mkdir(work);await mkdir(store);
+ const body=Buffer.from('owned-pending'),entry=archive(body);let inspected=false;
+ const fetcher=async()=>({ok:true,headers:new Headers(),body:{async *[Symbol.asyncIterator](){
+  const candidates=await readdir(join(work,'resource-pending'));
+  assert.equal(candidates.filter(name=>name.endsWith('.pending')).length,1);
+  assert.deepEqual(await readdir(store),[]);inspected=true;yield body;
+ },cancel:async()=>{}}});
+ const file=await acquireArchive(entry,{store,work,fetcher});assert.equal(inspected,true);
+ assert.equal(await readFile(file,'utf8'),body.toString());assert.deepEqual(await readdir(join(work,'resource-pending')),[]);
+ await assert.rejects(acquireArchive(archive(Buffer.from('other')),{store,work:dirname(resolve(import.meta.dirname,'..')),fetcher}),/target/);
+});
+
+
+// 夹具复制本仓完整资源实现，只替换文件IO边界并暴露已有私有验真函数，生产接口不新增出口。
+test('工具内部硬链接完整闭合，默认独占、跨原件名称、回执漂移和读取变化仍拒绝',async t=>{
+ const area=await sandbox(t),source=join(area,'source'),entry=join(source,'resources.mjs');
+ const {link,unlink}=await import('node:fs/promises'),{pathToFileURL}=await import('node:url');
+ await mkdir(source);
+ const current=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');
+ const fsImport="from 'node:fs/promises';";
+ assert.ok(current.includes(fsImport));
+ const copied=current.replace(fsImport,"from './filesystem.mjs';");
+ assert.equal(copied.replace("from './filesystem.mjs';",fsImport),current);
+ await writeFile(entry,copied+'\nexport {toolInventory,verifyToolObject};\n');
+ await writeFile(join(source,'filesystem.mjs'),[
+  "export * from 'node:fs/promises';",
+  "import {open as actualOpen} from 'node:fs/promises';",
+  "let mutation=null;",
+  "export function armMutation(value){mutation=value;}",
+  "export async function open(...args){",
+  " const handle=await actualOpen(...args),read=handle.readFile.bind(handle);",
+  " handle.readFile=async(...options)=>{",
+  "  const bytes=await read(...options);",
+  "  if(mutation&&await mutation(args[0])!==false)mutation=null;",
+  "  return bytes;",
+  " };",
+  " return handle;",
+  "}",
+ ].join('\n'));
+ const owner=await import(pathToFileURL(entry).href),io=await import(pathToFileURL(join(source,'filesystem.mjs')).href);
+ const tool={id:'unit-fixture',version:'1.0.0',archive:{sha256:'a'.repeat(64),kind:'extract',executable:'bin/tool'}};
+ const object=async name=>{
+  const directory=join(area,name),payload=join(directory,'payload');
+  await mkdir(join(payload,'bin'),{recursive:true});
+  await writeFile(join(payload,'bin/tool'),'synthetic-tool');await chmod(join(payload,'bin/tool'),0o700);
+  await writeFile(join(payload,'helper'),'synthetic-helper');await link(join(payload,'helper'),join(payload,'alias'));
+  return {directory,payload};
+ };
+ const valid=await object('closed');
+ const before=(await lstat(join(valid.payload,'helper'))).nlink;assert.equal(before,2);
+ const files=await owner.toolInventory(valid.payload,tool);
+ assert.deepEqual(files,[
+  {path:'alias',sha256:hash('synthetic-helper'),executable:false},
+  {path:'bin',directory:true},
+  {path:'bin/tool',sha256:hash('synthetic-tool'),executable:true},
+  {path:'helper',sha256:hash('synthetic-helper'),executable:false},
+ ]);
+ assert.equal((await lstat(join(valid.payload,'helper'))).nlink,before);
+ await assert.rejects(owner.inventory(valid.payload),/共享硬链接/u);
+ const receipt={id:tool.id,version:tool.version,sha256:tool.archive.sha256,files};
+ await writeFile(join(valid.directory,'receipt.json'),JSON.stringify(receipt));
+ assert.deepEqual(await owner.verifyToolObject(valid.directory,tool),{path:join(valid.payload,'bin/tool'),version:tool.version});
+ await writeFile(join(valid.payload,'helper'),'changed-helper');
+ await assert.rejects(owner.verifyToolObject(valid.directory,tool),/工具回执或字节不符/u);
+ const shared=await object('external');
+ await link(join(shared.payload,'helper'),join(shared.directory,'outside-name'));
+ await assert.rejects(owner.toolInventory(shared.payload,tool),/硬链接跨原件边界/u);
+ const independent=join(area,'ordinary');await mkdir(independent);await writeFile(join(independent,'single'),'single');
+ assert.deepEqual(await owner.inventory(independent),[{path:'single',sha256:hash('single'),executable:false}]);
+ const links=await object('links'),outside=join(links.directory,'outside');await writeFile(outside,'outside');
+ await symlink('helper',join(links.payload,'internal'));
+ assert.ok((await owner.toolInventory(links.payload,tool)).some(value=>value.path==='internal'&&value.target==='helper'));
+ await symlink(outside,join(links.payload,'escape'));
+ await assert.rejects(owner.toolInventory(links.payload,tool),/链接越界/u);
+ const linked=join(area,'linked');await symlink(valid.payload,linked,'dir');
+ await assert.rejects(owner.toolInventory(linked,tool),/链接/u);
+ const parent=join(area,'parent');await symlink(valid.directory,parent,'dir');
+ await assert.rejects(owner.toolInventory(join(parent,'payload'),tool),/链接/u);
+ // 读取后在真实文件系统变更；同一生产扫描器必须拒绝计数、inode、权限、字节和路径漂移。
+ const races=[
+  ['count',async (value,file)=>{await link(file,join(value.directory,'outside-name'));}],
+  ['inode',async (value,file)=>{await unlink(file);await writeFile(file,'replacement');}],
+  ['mode',async (value,file)=>{await chmod(file,0o700);}],
+  ['bytes',async (value,file)=>{await writeFile(file,'different-size-and-bytes');}],
+  ['directory',async (value,file)=>{
+   if(file!==join(value.payload,'helper'))return false;
+   await rename(value.payload,join(value.directory,'moved'));await mkdir(value.payload);
+  }],
+  ['symlink',async (value,file)=>{
+   if(file!==join(value.payload,'last'))return false;
+   await unlink(join(value.payload,'internal'));await symlink(join(value.directory,'outside'),join(value.payload,'internal'));
+  }],
+ ];
+ for(const [name,mutate]of races){
+  const value=await object('race-'+name);
+  if(name==='symlink'){
+   await writeFile(join(value.directory,'outside'),'outside');await symlink('helper',join(value.payload,'internal'));
+   await writeFile(join(value.payload,'last'),'last');
+  }
+  io.armMutation(file=>mutate(value,file));
+  try{await assert.rejects(owner.toolInventory(value.payload,tool),/读取期间/u);}
+  finally{io.armMutation(null);}
+ }
+});
+
+
+// 全文复制本仓模块，合成回执逐次重算文件清单；只在测试副本暴露已有私有入口，不执行工具。
+test('源码工具只分离两处有效镜像运输字段，真实编译输入与物理证明仍严格验真',async t=>{
+ const area=await sandbox(t),entry=join(area,'resources-proof.mjs'),directory=join(area,'object'),payload=join(directory,'payload');
+ const {pathToFileURL}=await import('node:url');
+ const original=await readFile(new URL('./resources.mjs',import.meta.url),'utf8');
+ await writeFile(entry,original+'\nexport {compilationToolInput,toolInventory,verifyToolObject};\n');
+ const owner=await import(pathToFileURL(entry).href),definitions=owner.resourceDeclarations().tools;
+ const source='synthetic-source-archive',recipe='synthetic-recipe';
+ const tool={id:'unit-fixture',version:'1.0.0',source:'https://example.invalid/releases.json',requires:['node'],dependencies:[],
+  archive:{url:'https://example.invalid/source.tgz',sha256:hash(source),root:'source',executable:'bin/tool',kind:'native-source'},
+  upstream_patches:[{url:'https://example.invalid/patch-1',sha256:'b'.repeat(64)},{url:'https://example.invalid/patch-2',sha256:'c'.repeat(64)}]};
+ const proof={xcode:definitions.find(x=>x.id==='xcode').version,posix_sha256:definitions.find(x=>x.id==='posix').archive.sha256,
+  tool:structuredClone(tool),recipe:hash(recipe)};
+ await mkdir(join(payload,'bin'),{recursive:true});await writeFile(join(payload,'bin/tool'),'synthetic-tool');await chmod(join(payload,'bin/tool'),0o700);
+ const check=async (value,declared=tool,bytes={source,recipe})=>{
+  await writeFile(join(payload,'build.json'),JSON.stringify(value));
+  await writeFile(join(payload,'recipe.source'),bytes.recipe);await writeFile(join(payload,'source.archive'),bytes.source);
+  await writeFile(join(directory,'receipt.json'),JSON.stringify({id:declared.id,version:declared.version,sha256:declared.archive.sha256,
+   files:await owner.toolInventory(payload,declared)}));
+  return owner.verifyToolObject(directory,declared);
+ };
+ const expected={path:join(payload,'bin/tool'),version:tool.version};
+ assert.deepEqual(await check(proof),expected);
+ const mirrored=structuredClone(proof);mirrored.tool.archive.mirrors=['https://mirror.example.invalid/source.tgz'];
+ mirrored.tool.upstream_patches[0].mirrors=['https://mirror.example.invalid/patch-1'];
+ mirrored.tool.upstream_patches[1].mirrors=['https://mirror.example.invalid/patch-2'];
+ const before=JSON.stringify(mirrored);
+ assert.deepEqual(owner.compilationToolInput(mirrored.tool),tool);assert.equal(JSON.stringify(mirrored),before);
+ assert.deepEqual(await check(mirrored),expected);
+ const declared=structuredClone(tool);declared.archive.mirrors=['https://other.example.invalid/source.tgz'];
+ declared.upstream_patches[0].mirrors=['https://other.example.invalid/patch-1'];
+ const declarationBefore=JSON.stringify(declared);
+ assert.deepEqual(await check(mirrored,declared),expected);assert.equal(JSON.stringify(declared),declarationBefore);
+ assert.deepEqual(await check(proof,declared),expected);
+ const drift=[
+  ['version',value=>{value.tool.version='2.0.0';}],
+  ['source',value=>{value.tool.source='https://other.example.invalid/releases.json';}],
+  ['archive-url',value=>{value.tool.archive.url='https://other.example.invalid/source.tgz';}],
+  ['archive-digest',value=>{value.tool.archive.sha256='d'.repeat(64);}],
+  ['archive-kind',value=>{value.tool.archive.kind='gem';}],
+  ['archive-root',value=>{value.tool.archive.root='changed';}],
+  ['archive-executable',value=>{value.tool.archive.executable='bin/other';}],
+  ['patch-url',value=>{value.tool.upstream_patches[0].url='https://other.example.invalid/patch-1';}],
+  ['patch-digest',value=>{value.tool.upstream_patches[0].sha256='d'.repeat(64);}],
+  ['patch-order',value=>{value.tool.upstream_patches.reverse();}],
+  ['requires',value=>{value.tool.requires.push('perl');}],
+  ['dependencies',value=>{value.tool.dependencies.push({name:'extra'});}],
+  ['unknown',value=>{value.tool.extra='unapproved';}],
+  ['other-mirrors',value=>{value.tool.mirrors=['https://mirror.example.invalid/source.tgz'];}],
+  ['nested-mirrors',value=>{value.tool.dependencies=[{name:'extra',mirrors:['https://mirror.example.invalid/source.tgz']}];}],
+  ['xcode',value=>{value.xcode='0.0';}],
+  ['posix',value=>{value.posix_sha256='d'.repeat(64);}],
+  ['recipe',value=>{value.recipe='d'.repeat(64);}],
+ ];
+ for(const [name,mutate]of drift){
+  const value=structuredClone(mirrored);mutate(value);
+  await assert.rejects(check(value),/源码编译输入不符/u,name);
+ }
+ await assert.rejects(check(mirrored,tool,{source:'changed-archive',recipe}),/源码编译输入不符/u);
+ await assert.rejects(check(mirrored,tool,{source,recipe:'changed-recipe'}),/源码编译输入不符/u);
+ // 明文镜像仍是同一拒绝值，不把负例地址作为运行来源写入源码。
+ const insecure=new URL('https://mirror.example.invalid/source.tgz');insecure.protocol='http:';
+ const invalid=[
+  [],'',null,[''],[insecure.href],
+  ['https://mirror.example.invalid/source.tgz','https://mirror.example.invalid/source.tgz'],
+  ['https://mirror.example.invalid/with space'],['https://mirror.example.invalid/source.tgz\u0000'],
+  ['https://user:password@mirror.example.invalid/source.tgz'],['https://mirror.example.invalid/source.tgz#fragment'],
+  ['https://mirror.example.invalid'],[42],
+ ];
+ for(const mirrors of invalid)for(const location of ['archive','patch'])for(const side of ['proof','declaration']){
+  const value=structuredClone(proof),requested=structuredClone(tool),target=side==='proof'?value.tool:requested;
+  (location==='archive'?target.archive:target.upstream_patches[0]).mirrors=mirrors;
+  await assert.rejects(check(value,requested),/镜像运输地址无效/u,side+' '+location);
+ }
+ for(const side of ['proof','declaration']){
+  const value=structuredClone(proof),requested=structuredClone(tool),target=side==='proof'?value.tool:requested;
+  target.upstream_patches={};
+  await assert.rejects(check(value,requested),/源码补丁输入证明无效/u);
+ }
+});
+
+// Linux来源与对象回执使用产品自己的真实验真函数，整项完成后统一执行。
+test('本产品门禁资源来源同版闭合且不维护第二份Git坐标',async()=>{
+ const {gateResourcePlan,resourceDeclarations,verifyGateResourceDelivery,verifyGateObjectSource}=await import('./resources.mjs');
+ const declared=resourceDeclarations(),plan=gateResourcePlan();
+ for(const id of ['git','bash','grep','sed']){
+  const source=declared.tools.find(tool=>tool.id===id);
+  assert.equal(plan.sources[id].version,source.version);assert.equal(plan.sources[id].sha256,source.archive.sha256);
+  assert.equal(verifyGateObjectSource(id,plan.sources[id]),true);
+  for(const invalid of [{...plan.sources[id],url:'https://fake.invalid/archive'},{...plan.sources[id],sha256:'a'.repeat(64)},{...plan.sources[id],version:'0.0.0'}])assert.throws(()=>verifyGateObjectSource(id,invalid));
+ }
+ await assert.rejects(verifyGateResourceDelivery({schema:1,product_id:'foreign',work:'/memory/target/test',objects:[],executables:{}}));
+});
+
+test('门禁环境拒绝其它工作根、在线开关及伪造缓存值',async()=>{
+ const {validateGateEnvironment}=await import('./resources.mjs');
+ const work='/synthetic/target/test/owned',executables={bash:work+'/tools/bash',node:work+'/tools/node'};
+ const environment={HOME:work+'/home',TMPDIR:work+'/tmp',PRODUCT_WORK_DIR:work,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_TERMINAL_PROMPT:'0',CARGO_NET_OFFLINE:'true',npm_config_offline:'true',npm_config_script_shell:executables.bash,PRODUCT_SHELL_BIN:executables.bash,PRODUCT_POSIX_BIN:work+'/foundation/bin',NODE:executables.node,CARGO_TARGET_DIR:work+'/cargo-target',GIT_SSL_CAINFO:work+'/foundation/ca.pem',SSL_CERT_FILE:work+'/foundation/ca.pem'};
+ const receipt={work,executables,dependencies:{},environment};assert.equal(validateGateEnvironment(receipt),true);
+ for(const change of [{HOME:'/foreign/home'},{PRODUCT_WORK_DIR:'/foreign/work'},{CARGO_NET_OFFLINE:'false'},{npm_config_offline:'false'},{npm_config_cache:'/foreign/cache'},{CARGO_TARGET_DIR:'/foreign/target'},{SSL_CERT_FILE:'/foreign/ca.pem'}])assert.throws(()=>validateGateEnvironment({...receipt,environment:{...environment,...change}}));
+});
+
+// 资源需求由本仓功能入口推导，协议测试不下载、安装或替代真实原生库。
+test('门禁宿主按实际语言与原锁闭合，拒绝重复来源及越界',async()=>{
+ const {gateFunctionalHostPlan}=await import('./resources.mjs');
+ const list=[{path:'test/account_test.dart',runner:'flutter',target:'flutter'},{path:'host/tests/auth.rs',runner:'cargo',target:'host/Cargo.toml'},{path:'web/test/page.test.ts',runner:'vitest',target:'web'},{path:'logo/test_assets.py',runner:'python',target:'unittest'}];
+ const plan=gateFunctionalHostPlan(list,{platform:'linux',architecture:'x64'});assert.equal(plan.pub,true);assert.equal(plan.cargo,true);assert.equal(plan.python,true);assert.deepEqual(plan.locks,[{ecosystem:'cargo',path:'host/Cargo.lock'},{ecosystem:'npm',path:'web/package-lock.json'}]);
+ for(const invalid of [[],[...list,list[0]],[{...list[0],path:'../outside'}],[{...list[1],target:'/outside/Cargo.toml'}],[{...list[2],target:'../foreign'}]])assert.throws(()=>gateFunctionalHostPlan(invalid,{platform:'linux',architecture:'x64'}));
+ for(const host of [{platform:'linux',architecture:'arm64'},{platform:'win32',architecture:'x64'},{platform:'darwin',architecture:'x64'}])assert.throws(()=>gateFunctionalHostPlan(list,host));
+ assert.equal(gateFunctionalHostPlan([{path:'test/local.test.mjs',runner:'node',target:'node'}],{platform:'darwin',architecture:'arm64'}).python,false);
+});
+test('门禁取消及外仓工程在任何原生编译前失败',async()=>{
+ const {prepareGateFunctionalHost}=await import('./resources.mjs');const controller=new AbortController();controller.abort(Error('synthetic cancel'));
+ await assert.rejects(prepareGateFunctionalHost({},null,{signal:controller.signal}),/synthetic cancel/u);
+ await assert.rejects(prepareGateFunctionalHost({product_id:'foreign',work:'/foreign/source'}, {view:'/foreign/source/language-source'}));
+});
+
 }

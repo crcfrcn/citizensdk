@@ -3,7 +3,7 @@
   "policy": "离线固定全部收编文件；byte_identical 初始字节来自 CitizenApp，adapted 与 sdk_only 为已审查 SDK 边界。",
   "units": {
     "ffi": {
-      "root": "native/smoldot/ffi",
+      "root": "native/legacy",
       "source": "citizenapp/smoldot/ffi",
       "byte_identical": [
         {
@@ -11,11 +11,11 @@
           "sha256": "a0c1fc2a7fb3c42a129cc8285e78ea5b21f1c8e57e9d67485800f88baa5d3c7b"
         },
         {
-          "path": "src/error.rs",
+          "path": "source/error.rs",
           "sha256": "1b5ca5ab8ad027916df22b23a9b36cb8a1f6a4d0edc7f392fe1fd181b31c15f7"
         },
         {
-          "path": "src/ffi_types.rs",
+          "path": "source/ffi_types.rs",
           "sha256": "bf32868186129086190934a50a63576bc20b1d29715372ac78d2f2e1b46a0848"
         }
       ],
@@ -26,25 +26,25 @@
         },
         {
           "path": "Cargo.toml",
-          "sha256": "669ad0d776cb5421a62b35c377f9378847c460e2a2a229f5fd959605c0139044"
+          "sha256": "3d9708b4733eda8316fbd7fba6a70f0beed8353d5e91c4a4482050129392f268"
         },
         {
           "path": "build.rs",
-          "sha256": "e2766de6bf915e4571414adac072c064074667b5b7b55d9b82f4a431b032a1f2"
+          "sha256": "61f4f1f3fd5f9448191b0348b0e1ccfc99f0cecebf320d0b0299674b26871123"
         },
         {
-          "path": "src/lib.rs",
+          "path": "source/lib.rs",
           "sha256": "6e403a6087771c5195bc0fc68b569a31a232ed710374edcc19eb306e0b1f507f"
         }
       ],
       "sdk_only": [
         {
           "path": "tests/legacy_header_contract.rs",
-          "sha256": "7a81e166a80ff2c5f7edee7acba13c4e430eee6ce4cc492af5b50dd57da69f82"
+          "sha256": "b7a82158e1fffe181ef17db41f158968e43b244c2c392936a2f66ff704300154"
         },
         {
           "path": "tests/scope_guard.rs",
-          "sha256": "289dcd26131e90762f5c577507c8eac287d0e496fc81ee29a7af73fb9fe28301"
+          "sha256": "9f80775028fd397ed2d361fc172851534b206b85c65afc7cb05abaf54887bb78"
         }
       ],
       "excluded": [
@@ -53,65 +53,113 @@
       "recursive": true
     },
     "provider": {
-      "root": "native/smoldot/provider",
+      "root": "native/provider",
       "source": "citizensdk",
       "byte_identical": [],
       "adapted": [],
       "sdk_only": [
         {
           "path": "Cargo.toml",
-          "sha256": "6a84cc71bc9310f9b8ee8a9654f1340b43f5c946d335ac6ccf77aa4c3927dfb3"
+          "sha256": "477186a887eaa8d6a4463f98263e2f2ed22e2811cfd38960fa51476c62864e43"
         },
         {
-          "path": "src/account_nonce.rs",
+          "path": "source/account_nonce.rs",
           "sha256": "5cc10fae8704729cc481baf3b8f4975dbce5ff10a6d00aac1073518de5be3140"
         },
         {
-          "path": "src/bootstrap_tests.rs",
-          "sha256": "59579491f30dcb5423269fc0a1f29159255cd95963629a9bd650e03e49d01c1e"
+          "path": "source/bootstrap_tests.rs",
+          "sha256": "d0da6517b73637c7591c4ddb247fd5b13d3410a2dce89be3a881bea83c413eaf"
         },
         {
-          "path": "src/bootstrap.rs",
+          "path": "source/bootstrap.rs",
           "sha256": "763d86326179ccc3e99e536e21318b59cd64de01984ba6de688680b31c1f1c63"
         },
         {
-          "path": "src/client.rs",
+          "path": "source/client.rs",
           "sha256": "00a25c3c773578ddaf2b6bd65f2dba4cbc255ca13a27dcbb691454d165d0d988"
         },
         {
-          "path": "src/legacy.rs",
+          "path": "source/legacy.rs",
           "sha256": "218f560207f1d78e621bcc8d6017dd7ab7ef2bf75cad81de71c4b3bf70309483"
         },
         {
-          "path": "src/lib.rs",
+          "path": "source/lib.rs",
           "sha256": "e56627859301c7ab8ebba9e8f1aa07467a6b8ebb7055021d771037bd1fb95dec"
         },
         {
-          "path": "src/verified_chain_client.rs",
+          "path": "source/verified_chain_client.rs",
           "sha256": "06452d7b1796bcb3d998a6af81b9a5de1e6c1fc1c0b3074cc24b659d6039de35"
         },
         {
           "path": "tests/account_nonce_contract.rs",
-          "sha256": "7b3ea1752b1d96e2d54374ef2b45391f5281138fa7c63ae216185cb5bcb463c4"
+          "sha256": "60bffdbbf4c6ef316a7f04230add83005fe1229ad8ec26303ca2ab61558a59b5"
         },
         {
           "path": "tests/baseline_lifecycle_contract.rs",
-          "sha256": "17411f0c473d13b1d40d1058e51f66671e68e11855c1faccfbb41b9f1f58bc1e"
+          "sha256": "06cdd93b7acde7acf523046fd01648c8e4ad49635b3a06cf8448b014b90be595"
         },
         {
           "path": "tests/legacy_parity.rs",
-          "sha256": "7db2b3ef4959a7bd1c83b22597666b0448f48b3079b82821f624efd2ccb7d9dc"
+          "sha256": "32e91812adab4ececfc8146b7edb30a8d475f91b0b3bf3c1ac67110d695ae6e7"
         },
         {
           "path": "tests/verified_chain_client_contract.rs",
-          "sha256": "543f75c8a92a6e4e225a6c7d7c33f213687e4d6f14b25776320a2e3883a0f58d"
+          "sha256": "f255b7d661fbff105c6c16d714436dd91eedf2d3c222d4637b8a9f9dd534cd6a"
+        },
+        {
+          "path": "tests/capability_boundary.rs",
+          "sha256": "53a207034fdde1ce3a30a4ee801c1b0b5dc014668784b3a20484d4c781d80462",
+          "compile_path": "native/smoldot/light-base/tests/capability_boundary.rs",
+          "source_unit": "pow_light_base"
+        },
+        {
+          "path": "tests/source_manifest_contract.rs",
+          "sha256": "fa0d514c062befbe92568cebe807697d05d5a618b0f773b2395c55ed13256041",
+          "compile_path": "native/smoldot/light-base/tests/source_manifest_contract.rs",
+          "source_unit": "pow_light_base"
+        },
+        {
+          "path": "tests/consensus_source_manifest.rs",
+          "sha256": "168a7e7d8c6e5218d2b0bcaacf72274b4e945099ab3dd82c04bfc2cd1cd4907c",
+          "compile_path": "native/smoldot/lib/tests/consensus_source_manifest.rs",
+          "source_unit": "pow_lib"
+        },
+        {
+          "path": "tests/light_client_boundary.rs",
+          "sha256": "ab572e656f70dfb815dc967231a01401e9aaafdb702b041a0057a89c96c04070",
+          "compile_path": "native/smoldot/lib/tests/light_client_boundary.rs",
+          "source_unit": "pow_lib"
+        },
+        {
+          "path": "tests/network_sync_boundary.rs",
+          "sha256": "2bb132d2bd3d6ebd7765efa556afc9cfbb841659b6e8661c9bdf774c4bfcacc3",
+          "compile_path": "native/smoldot/lib/tests/network_sync_boundary.rs",
+          "source_unit": "pow_lib"
+        },
+        {
+          "path": "tests/network_sync_source_manifest.rs",
+          "sha256": "f3de0c6d3fdac76a248859accacd4c70f308cc576499edee6c77332253910634",
+          "compile_path": "native/smoldot/lib/tests/network_sync_source_manifest.rs",
+          "source_unit": "pow_lib"
+        },
+        {
+          "path": "tests/state_runtime_boundary.rs",
+          "sha256": "8c1880daa93ca8184f99b228fc0bc3e5928a631e94c536fcfec563fc50c797be",
+          "compile_path": "native/smoldot/lib/tests/state_runtime_boundary.rs",
+          "source_unit": "pow_lib"
+        },
+        {
+          "path": "tests/state_runtime_source_manifest.rs",
+          "sha256": "a98119dcd69aebfb9a5f23a1e75ac8fbf1f5c34102f177e23302fc618502fec4",
+          "compile_path": "native/smoldot/lib/tests/state_runtime_source_manifest.rs",
+          "source_unit": "pow_lib"
         }
       ],
       "excluded": [],
       "recursive": true
     },
     "pow_workspace": {
-      "root": "native/smoldot/pow",
+      "root": "native/smoldot",
       "source": "citizenapp/smoldot/pow",
       "byte_identical": [],
       "adapted": [
@@ -127,24 +175,14 @@
       "sdk_only": [],
       "excluded": [
         ".dockerignore",
-        ".gitignore",
-        "LICENSE",
-        "UPSTREAM.md"
+        ".gitignore"
       ],
       "recursive": false
     },
     "pow_light_base": {
-      "root": "native/smoldot/pow/light-base",
+      "root": "native/smoldot/light-base",
       "source": "citizenapp/smoldot/pow/light-base",
       "byte_identical": [
-        {
-          "path": "Cargo.toml",
-          "sha256": "3baf396efb453a99d1ca286bfe68fc9a2ac177f93544c1443146a958a0c0493d"
-        },
-        {
-          "path": "basic.rs",
-          "sha256": "ba610512aba7f8e26bcfc61a4407db947cf46a0a62fd860ac895b005b6d3755a"
-        },
         {
           "path": "src/database.rs",
           "sha256": "ced005bf95e2dfe8266fdc721aba5d10422c6be645d82180ddd50e4c8f662089"
@@ -210,23 +248,19 @@
         {
           "path": "src/transactions_service.rs",
           "sha256": "a22c5b78e047265031300d9d1d427355382b3456a7116dc0b06f851904c65318"
-        }
-      ],
-      "sdk_only": [
-        {
-          "path": "tests/capability_boundary.rs",
-          "sha256": "53a207034fdde1ce3a30a4ee801c1b0b5dc014668784b3a20484d4c781d80462"
         },
         {
-          "path": "tests/source_manifest_contract.rs",
-          "sha256": "61b0de179d08968a804be738585191482183d42d6a136481d642ebd02a3ec2c8"
+          "path": "Cargo.toml",
+          "sha256": "e4a0d9a95a7229afdf8a8ec5584b24618cce704030e3903d07253ec96dd9954e",
+          "reason": "按用户要求删除basic示例目标；不改变库实现和依赖"
         }
       ],
+      "sdk_only": [],
       "excluded": [],
       "recursive": true
     },
     "pow_lib": {
-      "root": "native/smoldot/pow/lib",
+      "root": "native/smoldot/lib",
       "source": "citizenapp/smoldot/pow/lib",
       "byte_identical": [
         {
@@ -869,32 +903,7 @@
           "sha256": "706931a38c55ae634ec46848bd60678d2340e28b4773a01859192340d12e28ec"
         }
       ],
-      "sdk_only": [
-        {
-          "path": "tests/consensus_source_manifest.rs",
-          "sha256": "168a7e7d8c6e5218d2b0bcaacf72274b4e945099ab3dd82c04bfc2cd1cd4907c"
-        },
-        {
-          "path": "tests/light_client_boundary.rs",
-          "sha256": "ab572e656f70dfb815dc967231a01401e9aaafdb702b041a0057a89c96c04070"
-        },
-        {
-          "path": "tests/network_sync_boundary.rs",
-          "sha256": "2bb132d2bd3d6ebd7765efa556afc9cfbb841659b6e8661c9bdf774c4bfcacc3"
-        },
-        {
-          "path": "tests/network_sync_source_manifest.rs",
-          "sha256": "f3de0c6d3fdac76a248859accacd4c70f308cc576499edee6c77332253910634"
-        },
-        {
-          "path": "tests/state_runtime_boundary.rs",
-          "sha256": "8c1880daa93ca8184f99b228fc0bc3e5928a631e94c536fcfec563fc50c797be"
-        },
-        {
-          "path": "tests/state_runtime_source_manifest.rs",
-          "sha256": "a98119dcd69aebfb9a5f23a1e75ac8fbf1f5c34102f177e23302fc618502fec4"
-        }
-      ],
+      "sdk_only": [],
       "excluded": [
         "src/author.rs",
         "src/author/aura.rs",

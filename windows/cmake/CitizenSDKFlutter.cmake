@@ -102,10 +102,10 @@ foreach(_kind Core Host)
 endforeach()
 
 set(CITIZENSDK_FLUTTER_ADAPTER_SOURCES
-  "${_citizensdk_windows_root}/src/citizen_sdk_plugin.cc"
-  "${_citizensdk_windows_root}/src/citizen_sdk_flutter_codec.cc"
-  "${_citizensdk_windows_root}/src/citizen_sdk_flutter_environment.cc"
-  "${_citizensdk_windows_root}/src/citizen_sdk_flutter_sessions.cc")
+  "${_citizensdk_windows_root}/source/citizen_sdk_plugin.cc"
+  "${_citizensdk_windows_root}/source/citizen_sdk_flutter_codec.cc"
+  "${_citizensdk_windows_root}/source/citizen_sdk_flutter_environment.cc"
+  "${_citizensdk_windows_root}/source/citizen_sdk_flutter_sessions.cc")
 
 # 自有目标统一异常模式，不调用会设置 _HAS_EXCEPTIONS=0 的宿主 helper，
 # 也不改 Flutter wrapper 或宿主全局编译选项。测试复用同一配置函数。
@@ -116,7 +116,7 @@ function(citizensdk_configure_flutter_target target)
     _HAS_EXCEPTIONS=1 FLUTTER_PLUGIN_IMPL
     CITIZENSDK_APPLICATION_ID="${CITIZENSDK_APPLICATION_ID}")
   target_include_directories(${target} PUBLIC "${_citizensdk_windows_root}"
-    PRIVATE "${_citizensdk_windows_root}/src")
+    PRIVATE "${_citizensdk_windows_root}/source")
   target_link_libraries(${target} PUBLIC flutter flutter_wrapper_plugin CitizenSDK::Host
     PRIVATE bcrypt user32 gdi32 comctl32 shell32 ole32)
   target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /EHsc
@@ -135,5 +135,5 @@ set(citizen_sdk_bundled_libraries
   PARENT_SCOPE)
 if(CITIZENSDK_BUILD_TESTS)
   enable_testing()
-  add_subdirectory("${_citizensdk_windows_root}/test" "${CMAKE_CURRENT_BINARY_DIR}/test")
+  add_subdirectory("${_citizensdk_windows_root}/tests" "${CMAKE_CURRENT_BINARY_DIR}/tests")
 endif()

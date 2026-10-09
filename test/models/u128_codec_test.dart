@@ -1,4 +1,4 @@
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

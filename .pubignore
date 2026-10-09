@@ -14,29 +14,29 @@
 /native/**
 /scripts/
 /test/
-/android/src/test/
-/darwin/Tests/
+/android/tests/
+/darwin/tests/
 /darwin/.build/
 /darwin/.swiftpm/
 /darwin/Pods/
 /darwin/DerivedData/
-/linux/test/
+/linux/tests/
 # Windows Hosted 精确保留 22 项同版安装件及 12 项插件输入；不重编 Host/Core。
-/windows/test/
+/windows/tests/
 /windows/README.md
 /windows/include/README.md
 /windows/cmake/*
 !/windows/cmake/CitizenSDKFlutter.cmake
-/windows/src/*
-!/windows/src/citizen_sdk_plugin.cc
-!/windows/src/citizen_sdk_flutter_codec.cc
-!/windows/src/citizen_sdk_flutter_codec.hpp
-!/windows/src/citizen_sdk_flutter_sessions.cc
-!/windows/src/citizen_sdk_flutter_sessions.hpp
-!/windows/src/citizen_sdk_flutter_wallet_flow.cc
-!/windows/src/citizen_sdk_flutter_wallet_flow.hpp
-!/windows/src/citizen_sdk_flutter_environment.cc
-!/windows/src/citizen_sdk_flutter_environment.hpp
+/windows/source/*
+!/windows/source/citizen_sdk_plugin.cc
+!/windows/source/citizen_sdk_flutter_codec.cc
+!/windows/source/citizen_sdk_flutter_codec.hpp
+!/windows/source/citizen_sdk_flutter_sessions.cc
+!/windows/source/citizen_sdk_flutter_sessions.hpp
+!/windows/source/citizen_sdk_flutter_wallet_flow.cc
+!/windows/source/citizen_sdk_flutter_wallet_flow.hpp
+!/windows/source/citizen_sdk_flutter_environment.cc
+!/windows/source/citizen_sdk_flutter_environment.hpp
 
 # Linux Hosted 精确保留 27 项同版合并安装件及 12 项插件输入；不重编 Host/Core。
 # 父目录保持可遍历，只排除子项再逐文件恢复官方插件所需源码；实际文件闭集由发布器反向核验。
@@ -44,35 +44,37 @@
 /linux/include/README.md
 /linux/cmake/*
 !/linux/cmake/CitizenSDKFlutter.cmake
-/linux/src/*
-!/linux/src/citizen_sdk_plugin.cc
-!/linux/src/citizen_sdk_flutter_codec.cc
-!/linux/src/citizen_sdk_flutter_codec.hpp
-!/linux/src/citizen_sdk_flutter_sessions.cc
-!/linux/src/citizen_sdk_flutter_sessions.hpp
-!/linux/src/citizen_sdk_flutter_wallet_flow.cc
-!/linux/src/citizen_sdk_flutter_wallet_flow.hpp
-!/linux/src/citizen_sdk_flutter_environment.cc
-!/linux/src/citizen_sdk_flutter_environment.hpp
+/linux/source/*
+!/linux/source/citizen_sdk_plugin.cc
+!/linux/source/citizen_sdk_flutter_codec.cc
+!/linux/source/citizen_sdk_flutter_codec.hpp
+!/linux/source/citizen_sdk_flutter_sessions.cc
+!/linux/source/citizen_sdk_flutter_sessions.hpp
+!/linux/source/citizen_sdk_flutter_wallet_flow.cc
+!/linux/source/citizen_sdk_flutter_wallet_flow.hpp
+!/linux/source/citizen_sdk_flutter_environment.cc
+!/linux/source/citizen_sdk_flutter_environment.hpp
 
 # CitizenSDK 在 Android/Apple/Linux/Windows 统一经固定 Flutter tuple 调用产品 C ABI。
-# 仅保留受保护的上游 smoldot Dart 来源快照作审计输入，不能成为 Hosted 运行闭包。
+# 仅保留SDK 自有 smoldot Dart 差分封装作审计输入，不能成为 Hosted 运行闭包。
 # account_codec.dart 只负责公开 AccountId/SS58 投影，不处理秘密。
-/lib/src/smoldot/
+/lib/smoldot/
 
 # Android Flutter compiles the one shared Kotlin facade directly. Native/AAR
 # build descriptions, C++ sources, tests and generated packages remain audit
-# inputs only; the shared production Kotlin under native/src/main/kotlin stays.
+# inputs only; the shared production Kotlin under native/source stays.
 /android/native/CMakeLists.txt
 /android/native/build.gradle
 /android/native/settings.gradle
 /android/native/consumer-rules.pro
 /android/native/README.md
-/android/native/src/main/AndroidManifest.xml
-/android/native/src/main/cpp/
+/android/native/source/AndroidManifest.xml
+/android/native/source/*.cpp
+/android/native/source/*.hpp
+/android/native/source/*.txt
 /android/native/src/main/jniLibs/
-/android/native/src/test/
-/android/native/src/androidTest/
+/android/native/tests/
+/android/native/device/
 /android/native/**/*.aar
 /android/native/**/*.pom
 /android/citizensdk.aar
@@ -88,3 +90,6 @@
 /lib/**/README.md
 /android/src/main/**/README.md
 /android/native/src/main/**/README.md
+
+# 自有兼容节点头不属于 Flutter 产品运行接口。
+/include/smoldot.h

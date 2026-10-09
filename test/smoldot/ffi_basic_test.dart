@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print -- FFI 来源测试保留句柄和版本诊断输出。
 
-import 'package:citizen_sdk/src/smoldot/bindings.dart';
+import 'package:citizen_sdk/smoldot/bindings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

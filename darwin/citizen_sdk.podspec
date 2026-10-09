@@ -16,7 +16,7 @@ API and a secret-free Flutter adapter for iOS and macOS.
   spec.ios.deployment_target = '16.0'
   spec.osx.deployment_target = '13.0'
   spec.swift_version    = '5.9'
-  spec.source_files     = 'Sources/CitizenSDKFlutter/**/*.swift'
+  spec.source_files     = 'source/flutter/**/*.swift'
   spec.vendored_frameworks = framework_path
   spec.frameworks = 'AVFoundation', 'CoreVideo'
   spec.ios.dependency 'Flutter'

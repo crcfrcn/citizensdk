@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'package:citizen_sdk/src/account_codec.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_codec.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_platform.dart';
-import 'package:citizen_sdk/src/platform/flutter_citizen_sdk_platform.dart';
+import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
+import 'package:citizen_sdk/platform/flutter_citizen_sdk_platform.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,13 +33,13 @@ void main() {
 
   test('源码中不保留第二套 Dart 钱包、轻节点或交易实现', () {
     for (final path in [
-      'lib/src/node',
-      'lib/src/wallet',
-      'lib/src/transaction',
+      'lib/node',
+      'lib/wallet',
+      'lib/transaction',
     ]) {
       expect(Directory(path).existsSync(), isFalse, reason: path);
     }
-    final platform = Directory('lib/src/platform').listSync().whereType<File>();
+    final platform = Directory('lib/platform').listSync().whereType<File>();
     expect(
       platform.where(
         (file) => file.path.split('/').last.startsWith('preferences_'),

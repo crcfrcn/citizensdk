@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'package:citizen_sdk/src/account_codec.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_codec.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_platform.dart';
+import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 使用真实Dart门面与严格通道夹具；合成数据不冒充Core密码学、设备认证或真实钱包。

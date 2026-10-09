@@ -70,32 +70,46 @@ set_target_properties(citizensdk_core PROPERTIES
 add_library(CitizenSDK::Core ALIAS citizensdk_core)
 
 # Windows 与其它四端使用相同的 SDK 窄包装和完整官方 ZXing-C++ 源码输入。
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../native/qr-image"
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../native/image"
                  "${CMAKE_CURRENT_BINARY_DIR}/citizensdk-qr-image")
 
 set(CITIZENSDK_HOST_SOURCES
-  src/citizen_sdk_assets.cc
-  src/citizen_sdk_host_api.cc
-  src/citizen_sdk_host_bridge.cc
-  src/citizen_sdk_host_record.cc
-  src/citizen_sdk_window.cc
-  src/citizen_sdk_input_limits.cc
-  src/citizen_sdk_lifecycle.cc
-  src/citizen_sdk_operation.cc
-  src/citizen_sdk_directory.cc
-  src/citizen_sdk_public_store.cc
-  src/citizen_sdk_record_key.cc
-  src/citizen_sdk_secure_store.cc
-  src/citizen_sdk_sensitive_buffer.cc
-  src/citizen_sdk_secret_vault.cc
-  src/citizen_sdk_sqlite.cc
-  src/citizen_sdk_cng.cc
-  src/citizen_sdk_user_auth.cc
-  src/citizen_sdk_qr_camera.cc
+  source/citizen_sdk_assets.cc
+  source/citizen_sdk_host_api.cc
+  source/citizen_sdk_host_bridge.cc
+  source/citizen_sdk_host_record.cc
+  source/citizen_sdk_window.cc
+  source/citizen_sdk_input_limits.cc
+  source/citizen_sdk_lifecycle.cc
+  source/citizen_sdk_operation.cc
+  source/citizen_sdk_directory.cc
+  source/citizen_sdk_public_store.cc
+  source/citizen_sdk_record_key.cc
+  source/citizen_sdk_secure_store.cc
+  source/citizen_sdk_sensitive_buffer.cc
+  source/citizen_sdk_secret_vault.cc
+  source/citizen_sdk_sqlite.cc
+  source/citizen_sdk_cng.cc
+  source/citizen_sdk_user_auth.cc
+  source/citizen_sdk_qr_camera.cc
 )
 
 add_library(citizensdk_host SHARED ${CITIZENSDK_HOST_SOURCES} cmake/citizensdk_host.def)
 add_library(CitizenSDK::Host ALIAS citizensdk_host)
+
+# 构建视图提供既有公共 include 名称，源码目录不产生复制文件。
+set(_citizensdk_headers "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk")
+file(MAKE_DIRECTORY "${_citizensdk_headers}")
+file(GLOB _citizensdk_platform_headers "${CMAKE_CURRENT_LIST_DIR}/headers/*")
+foreach(_header IN LISTS _citizensdk_platform_headers)
+  get_filename_component(_name "${_header}" NAME)
+  configure_file("${_header}" "${_citizensdk_headers}/${_name}" COPYONLY)
+endforeach()
+configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_error.hpp" "${_citizensdk_headers}/citizen_sdk_error.hpp" COPYONLY)
+configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_events.hpp" "${_citizensdk_headers}/citizen_sdk_events.hpp" COPYONLY)
+configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_models.hpp" "${_citizensdk_headers}/citizen_sdk_models.hpp" COPYONLY)
+target_include_directories(citizensdk_host PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/public>)
+
 target_compile_features(citizensdk_host PUBLIC cxx_std_17)
 target_compile_definitions(citizensdk_host PRIVATE
   WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00
@@ -104,7 +118,7 @@ target_include_directories(citizensdk_host PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
   $<BUILD_INTERFACE:${CITIZENSDK_CORE_INCLUDE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  PRIVATE src "${CITIZENSDK_INTERNAL_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}")
+  PRIVATE source "${CITIZENSDK_INTERNAL_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}")
 target_link_libraries(citizensdk_host PUBLIC
   "$<BUILD_INTERFACE:citizensdk_core>" "$<INSTALL_INTERFACE:CitizenSDK::Core>"
   PRIVATE CitizenSDK::QrImage "${CITIZENSDK_SQLITE_ARCHIVE}" winbio ncrypt bcrypt tbs advapi32 user32 gdi32 comctl32 ntdll wtsapi32 mfplat mfreadwrite mfuuid ole32 windowscodecs)
@@ -121,11 +135,17 @@ install(FILES "${CITIZENSDK_CORE_LIBRARY}" DESTINATION "${CMAKE_INSTALL_BINDIR}/
 install(FILES "${CITIZENSDK_CORE_IMPORT_LIBRARY}" DESTINATION "${CMAKE_INSTALL_LIBDIR}/Windows")
 install(FILES "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk.h"
   "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h"
-  "${CMAKE_CURRENT_LIST_DIR}/../native/qr-image/citizensdk_qr_image.h"
+  "${CMAKE_CURRENT_LIST_DIR}/../native/image/citizensdk_qr_image.h"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 # Flutter 注册头只供 generated registrant 使用，不进入纯原生七头安装合同。
-install(DIRECTORY citizen_sdk DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+# 源码公共头由本平台与唯一共享 include/ 合并投影，安装路径保持 citizen_sdk/。
+install(DIRECTORY headers/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/citizen_sdk"
   PATTERN "citizen_sdk_plugin.h" EXCLUDE)
+install(FILES
+  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_error.hpp"
+  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_events.hpp"
+  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_models.hpp"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/citizen_sdk")
 install(FILES "${CITIZENSDK_ASSET_DIR}/manifest.json" "${CITIZENSDK_ASSET_DIR}/chainspec.json"
   "${CITIZENSDK_ASSET_DIR}/light_sync_state.json" DESTINATION "${CMAKE_INSTALL_DATADIR}/citizensdk/chain")
 set(CITIZENSDK_PACKAGE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/Windows/cmake/CitizenSDK")
@@ -142,5 +162,5 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CitizenSDKConfig.cmake"
   DESTINATION "${CITIZENSDK_PACKAGE_INSTALL_DIR}")
 if(CITIZENSDK_BUILD_TESTS)
   enable_testing()
-  add_subdirectory(test)
+  add_subdirectory(tests)
 endif()

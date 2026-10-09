@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_platform.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

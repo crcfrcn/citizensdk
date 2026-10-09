@@ -6,33 +6,14 @@
     "citizensdk.sdk.release"
   ],
   "node_tests": [
-    "scripts/build.test.mjs",
-    "scripts/ci/aggregate/test.mjs",
-    "scripts/ci/android/test.mjs",
-    "scripts/ci/apple/test.mjs",
-    "scripts/ci/consume-android/test.mjs",
-    "scripts/ci/consume-apple/test.mjs",
-    "scripts/ci/consume-linuxamd/test.mjs",
-    "scripts/ci/consume-linuxarm/test.mjs",
-    "scripts/ci/consume-windows/test.mjs",
-    "scripts/ci/linuxamd/test.mjs",
-    "scripts/ci/linuxarm/test.mjs",
-    "scripts/ci/windows/test.mjs",
-    "scripts/flow.test.mjs",
-    "scripts/release.test.mjs",
-    "scripts/release/aggregate/test.mjs",
-    "scripts/release/android/test.mjs",
-    "scripts/release/apple/test.mjs",
-    "scripts/release/consume-android/test.mjs",
-    "scripts/release/consume-apple/test.mjs",
-    "scripts/release/consume-linuxamd/test.mjs",
-    "scripts/release/consume-linuxarm/test.mjs",
-    "scripts/release/consume-windows/test.mjs",
-    "scripts/release/finalize/test.mjs",
-    "scripts/release/linuxamd/test.mjs",
-    "scripts/release/linuxarm/test.mjs",
-    "scripts/release/windows/test.mjs",
-    "scripts/resources.test.mjs"
+    "scripts/build.mjs",
+    "scripts/flow.mjs",
+    "scripts/resources.mjs",
+    "scripts/release.mjs",
+    "scripts/ci/index.mjs",
+    "scripts/ci/sdk.mjs",
+    "scripts/release/index.mjs",
+    "scripts/release/sdk.mjs"
   ],
   "checks": [
     "repository-contracts",
@@ -55,8 +36,8 @@
   "github_repository": "crcfrcn/citizensdk",
   "functions": [
     {
-      "function": "native/contracts/src/chain",
-      "path": "native/contracts/src/chain.rs",
+      "function": "native/contracts/source/chain",
+      "path": "native/contracts/source/chain.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-contracts",
@@ -65,8 +46,8 @@
       ]
     },
     {
-      "function": "native/contracts/src/error",
-      "path": "native/contracts/src/error.rs",
+      "function": "native/contracts/source/error",
+      "path": "native/contracts/source/error.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-contracts",
@@ -76,8 +57,8 @@
       ]
     },
     {
-      "function": "native/contracts/src/signing",
-      "path": "native/contracts/src/signing.rs",
+      "function": "native/contracts/source/signing",
+      "path": "native/contracts/source/signing.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-contracts",
@@ -207,8 +188,8 @@
       ]
     },
     {
-      "function": "native/engine/src/engine",
-      "path": "native/engine/src/engine.rs",
+      "function": "native/engine/source/engine",
+      "path": "native/engine/source/engine.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -223,8 +204,8 @@
       ]
     },
     {
-      "function": "native/engine/src/metadata",
-      "path": "native/engine/src/metadata.rs",
+      "function": "native/engine/source/metadata",
+      "path": "native/engine/source/metadata.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -235,8 +216,8 @@
       ]
     },
     {
-      "function": "native/engine/src/qr_review_tests",
-      "path": "native/engine/src/qr_review_tests.rs",
+      "function": "native/engine/source/qr_review_tests",
+      "path": "native/engine/source/qr_review_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -253,8 +234,8 @@
       ]
     },
     {
-      "function": "native/engine/src/runtime_context",
-      "path": "native/engine/src/runtime_context.rs",
+      "function": "native/engine/source/runtime_context",
+      "path": "native/engine/source/runtime_context.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -265,8 +246,8 @@
       ]
     },
     {
-      "function": "native/engine/src/transaction_execution",
-      "path": "native/engine/src/transaction_execution.rs",
+      "function": "native/engine/source/transaction_execution",
+      "path": "native/engine/source/transaction_execution.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -275,8 +256,8 @@
       ]
     },
     {
-      "function": "native/engine/src/transaction_prepare",
-      "path": "native/engine/src/transaction_prepare.rs",
+      "function": "native/engine/source/transaction_prepare",
+      "path": "native/engine/source/transaction_prepare.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -285,8 +266,8 @@
       ]
     },
     {
-      "function": "native/engine/src/wallet_derivation_tests",
-      "path": "native/engine/src/wallet_derivation_tests.rs",
+      "function": "native/engine/source/wallet_derivation_tests",
+      "path": "native/engine/source/wallet_derivation_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -297,8 +278,8 @@
       ]
     },
     {
-      "function": "native/engine/src/wallet_input_tests",
-      "path": "native/engine/src/wallet_input_tests.rs",
+      "function": "native/engine/source/wallet_input_tests",
+      "path": "native/engine/source/wallet_input_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -311,8 +292,8 @@
       ]
     },
     {
-      "function": "native/engine/src/wallet_service_tests",
-      "path": "native/engine/src/wallet_service_tests.rs",
+      "function": "native/engine/source/wallet_service_tests",
+      "path": "native/engine/source/wallet_service_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-engine",
@@ -516,8 +497,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/assets",
-      "path": "native/ffi/src/assets.rs",
+      "function": "native/ffi/source/assets",
+      "path": "native/ffi/source/assets.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -528,8 +509,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/capabilities",
-      "path": "native/ffi/src/capabilities.rs",
+      "function": "native/ffi/source/capabilities",
+      "path": "native/ffi/source/capabilities.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -544,8 +525,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/chain_monitor_tests",
-      "path": "native/ffi/src/chain_monitor_tests.rs",
+      "function": "native/ffi/source/chain_monitor_tests",
+      "path": "native/ffi/source/chain_monitor_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -558,8 +539,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/composition_tests",
-      "path": "native/ffi/src/composition_tests.rs",
+      "function": "native/ffi/source/composition_tests",
+      "path": "native/ffi/source/composition_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -578,8 +559,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/error",
-      "path": "native/ffi/src/error.rs",
+      "function": "native/ffi/source/error",
+      "path": "native/ffi/source/error.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -590,8 +571,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/events",
-      "path": "native/ffi/src/events.rs",
+      "function": "native/ffi/source/events",
+      "path": "native/ffi/source/events.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -609,8 +590,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/host_codec_tests",
-      "path": "native/ffi/src/host_codec_tests.rs",
+      "function": "native/ffi/source/host_codec_tests",
+      "path": "native/ffi/source/host_codec_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -640,8 +621,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/host_providers",
-      "path": "native/ffi/src/host_providers.rs",
+      "function": "native/ffi/source/host_providers",
+      "path": "native/ffi/source/host_providers.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -665,8 +646,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/lib",
-      "path": "native/ffi/src/lib.rs",
+      "function": "native/ffi/source/lib",
+      "path": "native/ffi/source/lib.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -686,8 +667,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/ownership",
-      "path": "native/ffi/src/ownership.rs",
+      "function": "native/ffi/source/ownership",
+      "path": "native/ffi/source/ownership.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -698,8 +679,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/qr_abi",
-      "path": "native/ffi/src/qr_abi.rs",
+      "function": "native/ffi/source/qr_abi",
+      "path": "native/ffi/source/qr_abi.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -712,8 +693,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/requests",
-      "path": "native/ffi/src/requests.rs",
+      "function": "native/ffi/source/requests",
+      "path": "native/ffi/source/requests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -723,8 +704,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/runtime",
-      "path": "native/ffi/src/runtime.rs",
+      "function": "native/ffi/source/runtime",
+      "path": "native/ffi/source/runtime.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -748,8 +729,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/transaction_abi",
-      "path": "native/ffi/src/transaction_abi.rs",
+      "function": "native/ffi/source/transaction_abi",
+      "path": "native/ffi/source/transaction_abi.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -760,8 +741,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/wallet_abi",
-      "path": "native/ffi/src/wallet_abi.rs",
+      "function": "native/ffi/source/wallet_abi",
+      "path": "native/ffi/source/wallet_abi.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -771,8 +752,8 @@
       ]
     },
     {
-      "function": "native/ffi/src/wallet_abi_tests",
-      "path": "native/ffi/src/wallet_abi_tests.rs",
+      "function": "native/ffi/source/wallet_abi_tests",
+      "path": "native/ffi/source/wallet_abi_tests.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-ffi",
@@ -947,8 +928,274 @@
       ]
     },
     {
-      "function": "native/qr/src/codec",
-      "path": "native/qr/src/codec.rs",
+      "function": "native/legacy/source/lib",
+      "path": "native/legacy/source/lib.rs",
+      "runner": "cargo",
+      "target": "native/legacy/Cargo.toml",
+      "package": "smoldot_ffi",
+      "cases": [
+        "native_capability_executor_has_fixed_workers_and_bounded_queue",
+        "configured_log_level_matches_dart_contract"
+      ]
+    },
+    {
+      "function": "native/legacy/tests/legacy_header_contract",
+      "path": "native/legacy/tests/legacy_header_contract.rs",
+      "runner": "cargo",
+      "target": "native/legacy/Cargo.toml",
+      "package": "smoldot_ffi",
+      "cases": [
+        "legacy_node_header_keeps_every_current_operation",
+        "legacy_library_still_embeds_all_sr25519_exports"
+      ]
+    },
+    {
+      "function": "native/legacy/tests/scope_guard",
+      "path": "native/legacy/tests/scope_guard.rs",
+      "runner": "cargo",
+      "target": "native/legacy/Cargo.toml",
+      "package": "smoldot_ffi",
+      "cases": [
+        "forbidden_product_capabilities_are_absent",
+        "typed_provider_does_not_publish_arbitrary_rpc_or_legacy_abi"
+      ]
+    },
+    {
+      "function": "native/provider/source/account_nonce",
+      "path": "native/provider/source/account_nonce.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "matching_snapshot_preserves_account_block_and_nonce",
+        "snapshot_rejects_wrong_account_hash_and_number",
+        "middle_b_snapshot_is_rejected_even_if_outer_view_returns_to_a",
+        "finalized_request_is_never_relabelled_as_best",
+        "matching_snapshot_preserves_zero_and_maximum_runtime_nonce"
+      ]
+    },
+    {
+      "function": "native/provider/source/bootstrap_tests",
+      "path": "native/provider/source/bootstrap_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "advice_changes_only_bootnodes_and_preserves_bundled_nodes",
+        "rejects_unknown_fields_at_every_wire_boundary",
+        "rejects_wrong_identity_or_authority_even_with_valid_bootnodes",
+        "rejects_rpc_and_checkpoint_keys_recursively_and_case_insensitively",
+        "nodes_are_filtered_deduplicated_without_a_second_multiaddr_parser",
+        "endpoint_is_fixed_https_and_rejects_credentials_queries_and_fragments",
+        "malformed_or_oversized_responses_are_not_accepted"
+      ]
+    },
+    {
+      "function": "native/provider/source/client",
+      "path": "native/provider/source/client.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "config_fixes_chain_and_protocol_identity",
+        "owned_runtime_drives_future_from_plain_std_thread",
+        "start_future_panic_converges_once_without_changing_ordinary_results"
+      ]
+    },
+    {
+      "function": "native/provider/source/legacy",
+      "path": "native/provider/source/legacy.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "notification_filter_requires_exact_subscription",
+        "request_id_exhaustion_is_permanent_and_never_wraps_to_zero"
+      ]
+    },
+    {
+      "function": "native/provider/source/verified_chain_client",
+      "path": "native/provider/source/verified_chain_client.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "runtime_cache_reuses_exact_block_and_separates_forks_and_upgrades",
+        "runtime_cache_coalesces_requests_without_serializing_other_blocks",
+        "runtime_cache_failure_is_shared_and_retry_is_not_poisoned",
+        "runtime_cache_owner_cancel_wakes_waiters_and_stop_rejects_late_success",
+        "runtime_cache_waiter_cancel_preserves_owner_and_bounds_requests",
+        "runtime_cache_evicts_by_total_metadata_bytes",
+        "runtime_snapshot_rejects_wrong_identity_and_empty_metadata",
+        "transaction_diagnostics_only_expose_fixed_categories",
+        "strict_hash_parser_rejects_wrong_width_and_prefix",
+        "number_parser_accepts_rpc_hex_and_json_numbers",
+        "scale_compact_u64_covers_all_substrate_modes",
+        "header_decoder_rebuilds_and_verifies_the_exact_scale_header_hash",
+        "current_storage_batch_routes_only_exact_matching_heads",
+        "best_block_validation_uses_verified_heads_and_rejects_unproven_history",
+        "historical_storage_params_always_carry_the_requested_exact_hash",
+        "storage_key_pages_enforce_prefix_cursor_order_count_and_bytes",
+        "runtime_api_request_is_bounded_opaque_and_requires_trait_method_shape",
+        "typed_storage_snapshot_must_identify_the_exact_requested_block",
+        "submitted_hash_uses_complete_extrinsic_blake2_256",
+        "finalized_batch_projection_requires_exact_bounds_length_and_order",
+        "ancestry_error_kinds_preserve_security_classification"
+      ]
+    },
+    {
+      "function": "native/provider/tests/account_nonce_contract",
+      "path": "native/provider/tests/account_nonce_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "concrete_provider_and_arc_projection_implement_nonce_contract",
+        "nonce_reads_require_running_lifecycle_and_a_best_anchor",
+        "provider_consumes_one_identity_bearing_typed_nonce_snapshot"
+      ]
+    },
+    {
+      "function": "native/provider/tests/baseline_lifecycle_contract",
+      "path": "native/provider/tests/baseline_lifecycle_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "offline_start_export_stop_has_five_descriptive_samples",
+        "import_and_prestart_watch_keep_existing_fail_closed_lifecycle"
+      ]
+    },
+    {
+      "function": "native/provider/tests/capability_boundary",
+      "path": "native/provider/tests/capability_boundary.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot-light",
+      "cases": [
+        "required_light_node_services_remain_present",
+        "product_features_and_cross_product_paths_are_absent"
+      ]
+    },
+    {
+      "function": "native/provider/tests/consensus_source_manifest",
+      "path": "native/provider/tests/consensus_source_manifest.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "all_consensus_source_files_are_present_and_non_empty"
+      ]
+    },
+    {
+      "function": "native/provider/tests/legacy_parity",
+      "path": "native/provider/tests/legacy_parity.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "legacy_library_name_callbacks_and_symbols_remain_unchanged",
+        "provider_does_not_rename_or_reexport_legacy_symbols"
+      ]
+    },
+    {
+      "function": "native/provider/tests/light_client_boundary",
+      "path": "native/provider/tests/light_client_boundary.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "required_light_client_consensus_modules_remain_present",
+        "full_node_authoring_and_keystore_sources_are_absent",
+        "product_features_are_absent_from_consensus_roots"
+      ]
+    },
+    {
+      "function": "native/provider/tests/network_sync_boundary",
+      "path": "native/provider/tests/network_sync_boundary.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "light_client_module_closure_remains_present",
+        "workspace_contains_only_light_client_crates",
+        "validated_dependency_closure_is_retained_without_secret_sources",
+        "noise_keys_are_connection_scoped_and_zeroized",
+        "product_features_and_cross_product_paths_are_absent"
+      ]
+    },
+    {
+      "function": "native/provider/tests/network_sync_source_manifest",
+      "path": "native/provider/tests/network_sync_source_manifest.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "all_network_sync_and_transaction_sources_are_present_and_non_empty"
+      ]
+    },
+    {
+      "function": "native/provider/tests/source_manifest_contract",
+      "path": "native/provider/tests/source_manifest_contract.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot-light",
+      "cases": [
+        "all_required_upstream_files_are_present_and_non_empty"
+      ]
+    },
+    {
+      "function": "native/provider/tests/state_runtime_boundary",
+      "path": "native/provider/tests/state_runtime_boundary.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "required_light_client_state_and_runtime_modules_remain_present",
+        "identity_namespace_contains_only_public_ss58_capability",
+        "product_features_are_absent_from_state_runtime_roots"
+      ]
+    },
+    {
+      "function": "native/provider/tests/state_runtime_source_manifest",
+      "path": "native/provider/tests/state_runtime_source_manifest.rs",
+      "runner": "cargo",
+      "target": "native/smoldot/Cargo.toml",
+      "package": "smoldot",
+      "cases": [
+        "all_state_and_runtime_source_files_are_present_and_non_empty"
+      ]
+    },
+    {
+      "function": "native/provider/tests/verified_chain_client_contract",
+      "path": "native/provider/tests/verified_chain_client_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-smoldot-provider",
+      "cases": [
+        "concrete_provider_implements_the_formal_chain_contract",
+        "live_runtime_context_reuses_verified_exact_block",
+        "runtime_context_entry_preserves_pin_proof_and_history",
+        "live_nonce_queries_reuse_pinned_runtime_without_transaction_submission",
+        "nonce_entry_uses_one_pinned_runtime_path_and_retains_proof_execution",
+        "nonce_without_proof_never_returns_a_cached_or_fabricated_value",
+        "live_chain_status_observation_without_transaction_submission",
+        "finalized_subscription_before_start_fails_once_and_ends",
+        "live_idle_chain_rejects_inherent_without_a_new_block",
+        "real_smoldot_subscription_drops_and_drains_without_peers",
+        "static_identity_is_available_before_start_but_chain_reads_are_not",
+        "import_is_exact_idempotent_and_conflicting_replacement_fails_closed",
+        "public_source_does_not_expose_arbitrary_rpc",
+        "controlled_executor_is_usable_without_a_tokio_context",
+        "failed_start_is_one_way_and_fallback_requires_a_fresh_provider",
+        "transaction_watch_uses_the_upstream_v1_surface_without_legacy_fallback",
+        "typed_body_and_current_batches_have_single_native_call_sites",
+        "finalized_resolution_uses_verified_ancestry_not_best_or_recent_cache"
+      ]
+    },
+    {
+      "function": "native/qr/source/codec",
+      "path": "native/qr/source/codec.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-qr",
@@ -969,8 +1216,8 @@
       ]
     },
     {
-      "function": "native/qr/src/session",
-      "path": "native/qr/src/session.rs",
+      "function": "native/qr/source/session",
+      "path": "native/qr/source/session.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-sdk-qr",
@@ -984,8 +1231,8 @@
       ]
     },
     {
-      "function": "native/signer/src/lib",
-      "path": "native/signer/src/lib.rs",
+      "function": "native/signer/source/lib",
+      "path": "native/signer/source/lib.rs",
       "runner": "cargo",
       "target": "Cargo.toml",
       "package": "citizen-signer",
@@ -1041,164 +1288,50 @@
       ]
     },
     {
-      "function": "scripts/build.test",
-      "path": "scripts/build.test.mjs",
+      "function": "scripts-build",
+      "path": "scripts/build.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/aggregate/test",
-      "path": "scripts/ci/aggregate/test.mjs",
+      "function": "scripts-ci-index",
+      "path": "scripts/ci/index.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/android/test",
-      "path": "scripts/ci/android/test.mjs",
+      "function": "scripts-ci-sdk",
+      "path": "scripts/ci/sdk.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/apple/test",
-      "path": "scripts/ci/apple/test.mjs",
+      "function": "scripts-flow",
+      "path": "scripts/flow.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/consume-android/test",
-      "path": "scripts/ci/consume-android/test.mjs",
+      "function": "scripts-release",
+      "path": "scripts/release.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/consume-apple/test",
-      "path": "scripts/ci/consume-apple/test.mjs",
+      "function": "scripts-release-index",
+      "path": "scripts/release/index.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/consume-linuxamd/test",
-      "path": "scripts/ci/consume-linuxamd/test.mjs",
+      "function": "scripts-release-sdk",
+      "path": "scripts/release/sdk.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/ci/consume-linuxarm/test",
-      "path": "scripts/ci/consume-linuxarm/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/consume-windows/test",
-      "path": "scripts/ci/consume-windows/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/linuxamd/test",
-      "path": "scripts/ci/linuxamd/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/linuxarm/test",
-      "path": "scripts/ci/linuxarm/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/windows/test",
-      "path": "scripts/ci/windows/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/flow.test",
-      "path": "scripts/flow.test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release.test",
-      "path": "scripts/release.test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/aggregate/test",
-      "path": "scripts/release/aggregate/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/android/test",
-      "path": "scripts/release/android/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/apple/test",
-      "path": "scripts/release/apple/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/consume-android/test",
-      "path": "scripts/release/consume-android/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/consume-apple/test",
-      "path": "scripts/release/consume-apple/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/consume-linuxamd/test",
-      "path": "scripts/release/consume-linuxamd/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/consume-linuxarm/test",
-      "path": "scripts/release/consume-linuxarm/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/consume-windows/test",
-      "path": "scripts/release/consume-windows/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/finalize/test",
-      "path": "scripts/release/finalize/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/linuxamd/test",
-      "path": "scripts/release/linuxamd/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/linuxarm/test",
-      "path": "scripts/release/linuxarm/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/windows/test",
-      "path": "scripts/release/windows/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/resources.test",
-      "path": "scripts/resources.test.mjs",
+      "function": "scripts-resources",
+      "path": "scripts/resources.mjs",
       "runner": "node",
       "target": "node"
     },

@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
-import 'package:citizen_sdk/src/api/citizen_sdk.dart';
-import 'package:citizen_sdk/src/models/citizen_wallet.dart';
+import 'package:citizen_sdk/api/citizen_sdk.dart';
+import 'package:citizen_sdk/models/citizen_wallet.dart';
 
-import 'package:citizen_sdk/src/api/citizen_sdk_error.dart';
-import 'package:citizen_sdk/src/api/citizen_sdk_events.dart';
-import 'package:citizen_sdk/src/models/citizen_chain_state.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_flutter_sessions.dart';
-import 'package:citizen_sdk/src/platform/citizen_sdk_platform.dart';
+import 'package:citizen_sdk/api/citizen_sdk_error.dart';
+import 'package:citizen_sdk/api/citizen_sdk_events.dart';
+import 'package:citizen_sdk/models/citizen_chain_state.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_flutter_sessions.dart';
+import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

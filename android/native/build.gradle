@@ -67,7 +67,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            path = new File(nativeSourceRoot, 'src/main/cpp/CMakeLists.txt')
+            path = new File(nativeSourceRoot, 'source/CMakeLists.txt')
             version = cmakeVersion
             // CMake状态属于调用方当前任务，不写入源码或其它任务目录。
             buildStagingDirectory = new File(normalizedTarget, 'native-cmake')
@@ -76,12 +76,15 @@ android {
 
     sourceSets {
         all { sourceSet ->
-            def sourceRoot = new File(nativeSourceRoot, "src/${sourceSet.name}")
+            def names = ['main': 'source', 'test': 'tests', 'androidTest': 'device']
+            def sourceRoot = new File(nativeSourceRoot, names[sourceSet.name] ?: "sourceSets/${sourceSet.name}")
             sourceSet.setRoot(sourceRoot.path)
-            // 包名由源码的 package 声明决定；测试源码直接位于源集根，禁止单子目录包装层。
-            sourceSet.kotlin.srcDirs = [sourceSet.name == 'androidTest' ? sourceRoot : new File(sourceRoot, 'kotlin')]
+            // 源码按类型从同一平面目录读取；package 声明保持原有 JVM/JNI 身份。
+            sourceSet.java.srcDirs = [sourceRoot]
+            sourceSet.kotlin.srcDirs = [sourceRoot]
         }
         main {
+            manifest.srcFile(new File(nativeSourceRoot, 'source/AndroidManifest.xml'))
             // 独立AAR与Flutter均只打包当前模块投影的chain三文件。
             assets.srcDirs = [chainAssetDirectory.get().asFile]
             // jniLibs expects the parent whose direct child is arm64-v8a.

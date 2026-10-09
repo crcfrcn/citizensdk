@@ -1,6 +1,6 @@
 import {gateResourcePlan} from '../../scripts/resources.mjs';
 import { toolEnvironment, exactExecutable, validateToolSources, prepareRunnerTools, resolveBootstrapPackages,
-  validateCurlArtifacts, validateCurlControl, validateCurlTar, fetchOriginal } from './tools.mjs';
+  validateCurlArtifacts, validateCurlControl, validateCurlTar, fetchOriginal } from '../../scripts/resources.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { gateContract, validateWorkflowSource, validateVectorGroup, validatePalletRegistry, readPublicChain } from './index.mjs';
@@ -103,7 +103,7 @@ test('保留源码不按每文件汉字数量判定，真实第一方临时注�
 // 候选文只作为合成测试数据；准确负向断言可识别，同文伪装和运行地址继续被阻断。
 test('协议拒绝断言只归属本仓登记测试中的真实代码', async () => {
   const { protocolAssertionLines } = await import('./index.mjs');
-  const path = gateContract().node_tests.find(value => /(?:test|tests)[./_-]/u.test(value) && value.endsWith('.mjs'));
+  const path = gateContract().node_tests.find(value => value.endsWith('.mjs'));
   assert.ok(path);
   const statement = ['assert.doesNotMatch(source, /\\/', 'v', '1(?:\\/|\\b)/);'].join('');
   const line = '  ' + statement;
@@ -138,7 +138,7 @@ test('增量防护执行真实归属判断并支持超过argv单项限制的输�
   try {
     git('init', '--quiet', '--initial-branch=main');
     const base = git('hash-object', '-w', '-t', 'tree', '/dev/null');
-    const testPath = gateContract().node_tests.find(value => /(?:test|tests)[./_-]/u.test(value) && value.endsWith('.mjs'));
+    const testPath = gateContract().node_tests.find(value => value.endsWith('.mjs'));
     assert.ok(testPath);
     const statement = ['assert.doesNotMatch(source, /\\/', 'v', '1(?:\\/|\\b)/);'].join('');
     const log = ['console', '.log("result");\n'].join('');
@@ -161,9 +161,9 @@ test('增量防护执行真实归属判断并支持超过argv单项限制的输�
       [testPath, 'test(() => {\n  ' + statement + '\n});\n', false],
       [testPath, 'test(() => {\n  ' + statement + '\n});\n' + protocol, true, '版本化标识'],
       [testPath, '`\n  ' + statement + '\n`\n', true, '版本化标识'],
-      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n', false],
-      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n'+protocol, true, '版本化标识'],
-      ['scripts/resources.test.mjs', 'const index={'+['schema','version'].join('_')+':3,packages,git_sources:[],pods};\n', true, '版本化标识'],
+      ['scripts/resources.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n', false],
+      ['scripts/resources.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n'+protocol, true, '版本化标识'],
+      ['scripts/resources.mjs', 'const index={'+['schema','version'].join('_')+':3,packages,git_sources:[],pods};\n', true, '版本化标识'],
       ['scripts/fixture.mjs', 'const index={'+['schema','version'].join('_')+':2,packages,git_sources:[],pods};\n', true, '版本化标识'],
       ['unregistered.test.mjs', '  ' + statement + '\n', true, '版本化标识'],
     ]) {
@@ -187,13 +187,13 @@ test('编译及平台服务回归进入本仓门禁，原产品流程入口保�
   const { readFileSync } = await import('node:fs');
   const root = new URL('../../', import.meta.url);
   const read = path => readFileSync(new URL(path, root), 'utf8');
-  const required = ["scripts/release.test.mjs"];
+  const required = ["scripts/release.mjs"];
   for (const path of required) {
     assert.ok(read(path).length > 0);
     assert.ok(gateContract().node_tests.includes(path));
   }
-  assert.match(read('scripts/ci/apple/execute.mjs'), /node --test.*scripts\/release[.]test[.]mjs/u);
-  assert.match(read('scripts/release/apple/execute.mjs'), /node --test.*scripts\/release[.]test[.]mjs/u);
+  assert.match(read('scripts/ci/sdk.mjs'), /node --test.*scripts\/release[.]mjs/u);
+  assert.match(read('scripts/release/sdk.mjs'), /node --test.*scripts\/release[.]mjs/u);
 });
 
 // 中文注释：固定基线恢复原始路径，只消费唯一编译映射，不改上游源码字节。
@@ -203,8 +203,8 @@ test('上游固定来源复用真实模块映射', async () => {
   const { readFileSync } = await import('node:fs');
   const manifest = JSON.parse(readFileSync(new URL('../../native/smoldot/SOURCE_SHA256.json', import.meta.url), 'utf8'));
   const record = readFileSync(new URL('../../native/smoldot/UPSTREAM.md', import.meta.url), 'utf8');
-  const path = 'native/smoldot/pow/lib/src/chain/chain_information_build.rs';
-  assert.equal(nativeCompilePath(path), 'native/smoldot/pow/lib/src/chain/chain_information/build.rs');
+  const path = 'native/smoldot/lib/src/chain/chain_information_build.rs';
+  assert.equal(nativeCompilePath(path), 'native/smoldot/lib/src/chain/chain_information/build.rs');
   assert.match(smoldotUpstreamURL(path, manifest, record, nativeCompilePath), /\/lib\/src\/chain\/chain_information\/build[.]rs$/u);
   assert.throws(() => smoldotUpstreamURL(path + '.unknown', manifest, record, nativeCompilePath));
 });
@@ -346,8 +346,8 @@ test('固定原件读取保留摘要大小HTTPS重定向及失败约束', async 
 
 // 两个镜像必须保持同一原件身份；只模拟响应，真实获取仍由正常入口完整验真。
 test('GNU固定镜像的连接恢复摘要失败与来源闭集', async () => {
-  const {sourceMirrors, requestGNUOriginal} = await import("./tools.mjs");
-  const {fetchOriginal:readOriginal} = await import('./tools.mjs');
+  const {sourceMirrors, requestGNUOriginal} = await import("../../scripts/resources.mjs");
+  const {fetchOriginal:readOriginal} = await import('../../scripts/resources.mjs');
   const {mkdtempSync, readFileSync, existsSync, rmSync} = await import('node:fs');
   const {join} = await import('node:path'); const {testRoot:tmpdir} = await import('../../scripts/build.mjs');
   const {createHash} = await import('node:crypto');
@@ -416,10 +416,10 @@ test('Ubuntu虚拟包按Provides核验，拒绝缺失、未安装与错误虚拟
 });
 
 // 增量检查通过eval导入自身时argv仍指向文件；只有真实主入口才校验准备命令。
-test('工具转发模块导入无副作用，真实门禁入口仍拒绝缺少准确参数',async()=>{
+test('唯一资源模块导入无副作用，真实门禁入口仍拒绝缺少准确参数',async()=>{
   const {spawnSync}=await import('node:child_process');
   const {fileURLToPath}=await import('node:url');
-  const entry=fileURLToPath(new URL('./tools.mjs',import.meta.url));
+  const entry=fileURLToPath(new URL('../../scripts/resources.mjs',import.meta.url));
   const source='await import((await import("node:url")).pathToFileURL(process.argv[1]).href);';
   const options={encoding:'utf8',timeout:10000,env:{PATH:'',NODE_OPTIONS:'',NODE_PATH:''}};
   for(const args of [['--input-type=module','-e',source,entry],['--input-type=module','--eval',source,entry],
@@ -644,8 +644,8 @@ test('官方Flutter归档字段不冒充旧平台标识，其它残留和伪造�
 // 用真实门禁函数检查登记与执行回执；这些用例在整项实现后统一运行。
 test('本仓Git测试集合不得漏项、增项、重复或混入门禁自身', async () => {
   const { validateNodeInventory } = await import('./index.mjs');
-  const paths = ['scripts/build.mjs', 'scripts/build.test.mjs', 'test/api.spec.mjs', '.github/tatagate/test.mjs'];
-  const registered = ['scripts/build.test.mjs', 'test/api.spec.mjs'];
+  const paths = ['scripts/dependencies.mjs', 'scripts/build.mjs', 'test/api.spec.mjs', '.github/tatagate/test.mjs'];
+  const registered = ['scripts/build.mjs', 'test/api.spec.mjs'];
   assert.deepEqual(validateNodeInventory(paths, registered), registered);
   for (const listed of [registered.slice(1), [...registered, 'missing.test.mjs'], [...registered, registered[0]], []]) {
     assert.throws(() => validateNodeInventory(paths, listed));
@@ -767,7 +767,7 @@ test('本仓真实功能源码清单与登记准确闭合',async()=>{
 // 精确供给字段例外不能扩展为任意协议、源文件或字符串豁免。
 test('依赖供给索引只识别固定夹具的真实字段且保留其它版本标识', async () => {
  const {dependencySupplySchemaLines}=await import('./index.mjs');
- const field=['schema','version'].join('_'), path='scripts/resources.test.mjs';
+ const field=['schema','version'].join('_'), path='scripts/resources.mjs';
  const fragments=[
   'JSON.stringify({'+field+':2,packages:[{archives:[{...entry,sha256:digest}]}],git_sources:[],pods:[]})',
   'const index={'+field+':2,packages,git_sources:[],pods};',
@@ -786,7 +786,7 @@ test('依赖供给索引只识别固定夹具的真实字段且保留其它版�
 
 // 正常所有者与越界、别名、链接、错误工作区、非空目录都使用真实路径验证；不编译或下载工具。
 test('Ubuntu工具工作根绑定真实SDK及既有target/test，不依赖Runner临时根',async()=>{
- const {runnerWork}=await import('./tools.mjs');
+ const {runnerWork}=await import('../../scripts/resources.mjs');
  const {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,rmSync,unlinkSync,lstatSync}=await import('node:fs');
  const {join,resolve}=await import('node:path');
  const root=resolve(import.meta.dirname,'../..'),target=join(root,'target');
