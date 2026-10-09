@@ -8804,3 +8804,18 @@ test('原生装配拒绝源码输出、链接祖先与已有工程额外文件',
     assert.equal(readFileSync(join(output, 'unexpected.rs'), 'utf8'), 'unexpected');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// 执行正式Shell入口内的真实Node边界代码；夹具只提供文件，不代替验真算法。
+test('Flutter宿主库允许当前target现场，拒绝源码、其它轮次和链接',()=>{
+ const source=readFileSync(join(citizenSdkRoot,'scripts/test.sh'),'utf8');
+ const guard=source.match(/<<'CHECK_SMOLDOT_INPUT' \|\| return 1\n([\s\S]*?)\nCHECK_SMOLDOT_INPUT/u)?.[1];assert.ok(guard);
+ const root=mkdtempSync(join(workRoot,'smoldot-boundary-'));const work=join(root,'current');mkdirSync(work);
+ try{
+  const library=join(work,'library.dylib');writeFileSync(library,'resource protocol fixture');
+  const check=file=>runInNewContext(guard,{require:specifier=>{if(specifier==='node:fs')return {realpathSync,lstatSync};if(specifier==='node:path')return {isAbsolute,resolve,sep};throw Error('未知依赖');},process:{argv:['node','-',work,file]},Error});
+  check(library);
+  for(const file of [join(citizenSdkRoot,'scripts/test.sh'),join(root,'other.dylib'),join(work,'..','current','library.dylib')])assert.throws(()=>check(file));
+  const alias=join(work,'alias');symlinkSync(library,alias);assert.throws(()=>check(alias));
+  writeFileSync(library,'');assert.throws(()=>check(library));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

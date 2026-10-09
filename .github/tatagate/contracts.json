@@ -6,6 +6,7 @@
     "citizensdk.sdk.release"
   ],
   "node_tests": [
+    "scripts/build.test.mjs",
     "scripts/ci/aggregate/test.mjs",
     "scripts/ci/android/test.mjs",
     "scripts/ci/apple/test.mjs",
@@ -17,6 +18,8 @@
     "scripts/ci/linuxamd/test.mjs",
     "scripts/ci/linuxarm/test.mjs",
     "scripts/ci/windows/test.mjs",
+    "scripts/flow.test.mjs",
+    "scripts/release.test.mjs",
     "scripts/release/aggregate/test.mjs",
     "scripts/release/android/test.mjs",
     "scripts/release/apple/test.mjs",
@@ -28,7 +31,8 @@
     "scripts/release/finalize/test.mjs",
     "scripts/release/linuxamd/test.mjs",
     "scripts/release/linuxarm/test.mjs",
-    "scripts/release/windows/test.mjs"
+    "scripts/release/windows/test.mjs",
+    "scripts/resources.test.mjs"
   ],
   "checks": [
     "repository-contracts",
@@ -48,655 +52,1269 @@
     "macos-arm64",
     "macos_arm64"
   ],
-  "tool_sources": {
-    "sources": {
-      "git": {
-        "version": "2.54.0",
-        "url": "https://www.kernel.org/pub/software/scm/git/git-2.54.0.tar.xz",
-        "sha256": "f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3",
-        "root": "git-2.54.0",
-        "executable": "bin/git",
-        "upstream_patches": []
-      },
-      "bash": {
-        "version": "5.3.20",
-        "url": "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz",
-        "sha256": "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba",
-        "root": "bash-5.3",
-        "executable": "bin/bash",
-        "upstream_patches": [
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-001",
-            "sha256": "1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-001",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-001"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-002",
-            "sha256": "e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-002",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-002"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-003",
-            "sha256": "f245d9c7dc3f5a20d84b53d249334747940936f09dc97e1dcb89fc3ab37d60ed",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-003",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-003"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-004",
-            "sha256": "9591d245045529f32f0812f94180b9d9ce9023f5a765c039b852e5dfc99747d0",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-004",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-004"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-005",
-            "sha256": "cca1ef52dbbf433bc98e33269b64b2c814028efe2538be1e2c9a377da90bc99d",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-005",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-005"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-006",
-            "sha256": "29119addefed8eff91ae37fd51822c31780ee30d4a28376e96002706c995ff10",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-006",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-006"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-007",
-            "sha256": "c0976bbfffa1453c7cfdd62058f206a318568ff2d690f5d4fa048793fa3eb299",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-007",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-007"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-008",
-            "sha256": "097cd723cbfb8907674ac32214063a3fd85282657ec5b4e544d2c0f719653fb4",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-008",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-008"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-009",
-            "sha256": "eee30fe78a4b0cb2fe20e010e00308899cfc613e0774ebb3c8557a1552f24f8c",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-009",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-009"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-010",
-            "sha256": "cf76f1cce2ea300c18bff9f002d21f280cc931acd17c28518110b93fe6e72569",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-010",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-010"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-011",
-            "sha256": "0298df8f5ea2a31d3be43ed7d269c5b3c7c342dd5b570bea7f64d66dcbbe7531",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-011",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-011"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-012",
-            "sha256": "d71379b39bebaedaf123414414e77fb458a0a43b9ad3116594c6df7ca6754573",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-012",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-012"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-013",
-            "sha256": "042f9cda967e24bf4211944697441e93d06ff42b4b998629a98a1b249279f200",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-013",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-013"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-014",
-            "sha256": "bd4360b401d38507e358783dcad8536a99c6789f0d3a5bd0cfb8c4a34144696c",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-014",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-014"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-015",
-            "sha256": "55b79ceee2fc27f6767eed697e939a7eb2fe2a28c01556bd75f18d581014f46e",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-015",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-015"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-016",
-            "sha256": "9ea29b266b7d24cb34d0ff3f1c4631e4d527bfe2d1ef15d17cdb924bf31ef767",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-016",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-016"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-017",
-            "sha256": "443b927b45c1558ca72052410f8b8f6e5152b617ed707061a2781d4375b0d1c3",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-017",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-017"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-018",
-            "sha256": "ae715d76c50341d7d7095e9a8d2eeed1ca9546152c2ac7289206f90cf30ac697",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-018",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-018"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-019",
-            "sha256": "a25c581e4d0057dea3833918438a930e2e86ee4c6dc17fe15267b7f04cbc4e3d",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-019",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-019"
-            ]
-          },
-          {
-            "url": "https://ftp.gnu.org/gnu/bash/bash-5.3-patches/bash53-020",
-            "sha256": "df217ed3a9122aa2286d9b67bbe348661b6a9db262b580c29150dae55d532896",
-            "mirrors": [
-              "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3-patches/bash53-020",
-              "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-020"
-            ]
-          }
-        ],
-        "mirrors": [
-          "https://mirrors.ocf.berkeley.edu/gnu/bash/bash-5.3.tar.gz",
-          "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz"
-        ]
-      },
-      "grep": {
-        "version": "3.12",
-        "url": "https://ftp.gnu.org/gnu/grep/grep-3.12.tar.xz",
-        "sha256": "2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9",
-        "root": "grep-3.12",
-        "executable": "bin/grep",
-        "upstream_patches": [],
-        "mirrors": [
-          "https://mirrors.ocf.berkeley.edu/gnu/grep/grep-3.12.tar.xz",
-          "https://mirror.csclub.uwaterloo.ca/gnu/grep/grep-3.12.tar.xz"
-        ]
-      },
-      "sed": {
-        "version": "4.10",
-        "url": "https://ftp.gnu.org/gnu/sed/sed-4.10.tar.xz",
-        "sha256": "b8e72182b2ec96a3574e2998c47b7aaa64cc20ce000d8e9ac313cc07cecf28c7",
-        "root": "sed-4.10",
-        "executable": "bin/sed",
-        "upstream_patches": [],
-        "mirrors": [
-          "https://mirrors.ocf.berkeley.edu/gnu/sed/sed-4.10.tar.xz",
-          "https://mirror.csclub.uwaterloo.ca/gnu/sed/sed-4.10.tar.xz"
-        ]
-      },
-      "actionlint": {
-        "version": "1.7.12",
-        "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
-        "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
-        "root": ".",
-        "executable": "actionlint",
-        "upstream_patches": []
-      }
-    },
-    "bootstrap": {
-      "platform": "linux",
-      "architecture": "x64",
-      "os": "24.04",
-      "commands": [
-        {
-          "name": "basename",
-          "path": "/usr/bin/basename",
-          "package": "coreutils"
-        },
-        {
-          "name": "cat",
-          "path": "/usr/bin/cat",
-          "package": "coreutils"
-        },
-        {
-          "name": "chmod",
-          "path": "/usr/bin/chmod",
-          "package": "coreutils"
-        },
-        {
-          "name": "cp",
-          "path": "/usr/bin/cp",
-          "package": "coreutils"
-        },
-        {
-          "name": "cut",
-          "path": "/usr/bin/cut",
-          "package": "coreutils"
-        },
-        {
-          "name": "date",
-          "path": "/usr/bin/date",
-          "package": "coreutils"
-        },
-        {
-          "name": "dd",
-          "path": "/usr/bin/dd",
-          "package": "coreutils"
-        },
-        {
-          "name": "dirname",
-          "path": "/usr/bin/dirname",
-          "package": "coreutils"
-        },
-        {
-          "name": "du",
-          "path": "/usr/bin/du",
-          "package": "coreutils"
-        },
-        {
-          "name": "echo",
-          "path": "/usr/bin/echo",
-          "package": "coreutils"
-        },
-        {
-          "name": "env",
-          "path": "/usr/bin/env",
-          "package": "coreutils"
-        },
-        {
-          "name": "expr",
-          "path": "/usr/bin/expr",
-          "package": "coreutils"
-        },
-        {
-          "name": "false",
-          "path": "/usr/bin/false",
-          "package": "coreutils"
-        },
-        {
-          "name": "head",
-          "path": "/usr/bin/head",
-          "package": "coreutils"
-        },
-        {
-          "name": "install",
-          "path": "/usr/bin/install",
-          "package": "coreutils"
-        },
-        {
-          "name": "ln",
-          "path": "/usr/bin/ln",
-          "package": "coreutils"
-        },
-        {
-          "name": "ls",
-          "path": "/usr/bin/ls",
-          "package": "coreutils"
-        },
-        {
-          "name": "mkdir",
-          "path": "/usr/bin/mkdir",
-          "package": "coreutils"
-        },
-        {
-          "name": "mv",
-          "path": "/usr/bin/mv",
-          "package": "coreutils"
-        },
-        {
-          "name": "od",
-          "path": "/usr/bin/od",
-          "package": "coreutils"
-        },
-        {
-          "name": "printf",
-          "path": "/usr/bin/printf",
-          "package": "coreutils"
-        },
-        {
-          "name": "pwd",
-          "path": "/usr/bin/pwd",
-          "package": "coreutils"
-        },
-        {
-          "name": "readlink",
-          "path": "/usr/bin/readlink",
-          "package": "coreutils"
-        },
-        {
-          "name": "realpath",
-          "path": "/usr/bin/realpath",
-          "package": "coreutils"
-        },
-        {
-          "name": "rm",
-          "path": "/usr/bin/rm",
-          "package": "coreutils"
-        },
-        {
-          "name": "rmdir",
-          "path": "/usr/bin/rmdir",
-          "package": "coreutils"
-        },
-        {
-          "name": "sleep",
-          "path": "/usr/bin/sleep",
-          "package": "coreutils"
-        },
-        {
-          "name": "sort",
-          "path": "/usr/bin/sort",
-          "package": "coreutils"
-        },
-        {
-          "name": "stat",
-          "path": "/usr/bin/stat",
-          "package": "coreutils"
-        },
-        {
-          "name": "tail",
-          "path": "/usr/bin/tail",
-          "package": "coreutils"
-        },
-        {
-          "name": "tee",
-          "path": "/usr/bin/tee",
-          "package": "coreutils"
-        },
-        {
-          "name": "test",
-          "path": "/usr/bin/test",
-          "package": "coreutils"
-        },
-        {
-          "name": "touch",
-          "path": "/usr/bin/touch",
-          "package": "coreutils"
-        },
-        {
-          "name": "tr",
-          "path": "/usr/bin/tr",
-          "package": "coreutils"
-        },
-        {
-          "name": "true",
-          "path": "/usr/bin/true",
-          "package": "coreutils"
-        },
-        {
-          "name": "uname",
-          "path": "/usr/bin/uname",
-          "package": "coreutils"
-        },
-        {
-          "name": "uniq",
-          "path": "/usr/bin/uniq",
-          "package": "coreutils"
-        },
-        {
-          "name": "wc",
-          "path": "/usr/bin/wc",
-          "package": "coreutils"
-        },
-        {
-          "name": "bash",
-          "path": "/usr/bin/bash",
-          "package": "bash"
-        },
-        {
-          "name": "grep",
-          "path": "/usr/bin/grep",
-          "package": "grep"
-        },
-        {
-          "name": "sed",
-          "path": "/usr/bin/sed",
-          "package": "sed"
-        },
-        {
-          "name": "make",
-          "path": "/usr/bin/make",
-          "package": "make"
-        },
-        {
-          "name": "patch",
-          "path": "/usr/bin/patch",
-          "package": "patch"
-        },
-        {
-          "name": "tar",
-          "path": "/usr/bin/tar",
-          "package": "tar"
-        },
-        {
-          "name": "gzip",
-          "path": "/usr/bin/gzip",
-          "package": "gzip"
-        },
-        {
-          "name": "xz",
-          "path": "/usr/bin/xz",
-          "package": "xz-utils"
-        },
-        {
-          "name": "awk",
-          "path": "/usr/bin/mawk",
-          "package": "mawk"
-        },
-        {
-          "name": "diff",
-          "path": "/usr/bin/diff",
-          "package": "diffutils"
-        },
-        {
-          "name": "cmp",
-          "path": "/usr/bin/cmp",
-          "package": "diffutils"
-        },
-        {
-          "name": "find",
-          "path": "/usr/bin/find",
-          "package": "findutils"
-        },
-        {
-          "name": "xargs",
-          "path": "/usr/bin/xargs",
-          "package": "findutils"
-        },
-        {
-          "name": "clang",
-          "path": "/usr/lib/llvm-18/bin/clang",
-          "package": "clang-18"
-        },
-        {
-          "name": "ar",
-          "path": "/usr/bin/x86_64-linux-gnu-ar",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "as",
-          "path": "/usr/bin/x86_64-linux-gnu-as",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "ld",
-          "path": "/usr/bin/x86_64-linux-gnu-ld.bfd",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "nm",
-          "path": "/usr/bin/x86_64-linux-gnu-nm",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "ranlib",
-          "path": "/usr/bin/x86_64-linux-gnu-ranlib",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "strip",
-          "path": "/usr/bin/x86_64-linux-gnu-strip",
-          "package": "binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "dpkg-deb",
-          "path": "/usr/bin/dpkg-deb",
-          "package": "dpkg"
-        }
-      ],
-      "packages": [
-        {
-          "name": "dpkg",
-          "version": "1.22.6ubuntu6.6",
-          "source": "https://packages.ubuntu.com/noble/dpkg"
-        },
-        {
-          "name": "bash",
-          "version": "5.2.21-2ubuntu4",
-          "source": "https://packages.ubuntu.com/noble/bash"
-        },
-        {
-          "name": "grep",
-          "version": "3.11-4build1",
-          "source": "https://packages.ubuntu.com/noble/grep"
-        },
-        {
-          "name": "sed",
-          "version": "4.9-2ubuntu0.24.04.1",
-          "source": "https://packages.ubuntu.com/noble/sed"
-        },
-        {
-          "name": "coreutils",
-          "version": "9.4-3ubuntu6.3",
-          "source": "https://packages.ubuntu.com/noble/coreutils"
-        },
-        {
-          "name": "make",
-          "version": "4.3-4.1build2",
-          "source": "https://packages.ubuntu.com/noble/make"
-        },
-        {
-          "name": "patch",
-          "version": "2.7.6-7build3",
-          "source": "https://packages.ubuntu.com/noble/patch"
-        },
-        {
-          "name": "mawk",
-          "version": "1.3.4.20240123-1build1",
-          "source": "https://packages.ubuntu.com/noble/mawk"
-        },
-        {
-          "name": "diffutils",
-          "version": "1:3.10-1ubuntu0.1",
-          "source": "https://packages.ubuntu.com/noble/diffutils"
-        },
-        {
-          "name": "findutils",
-          "version": "4.9.0-5build1",
-          "source": "https://packages.ubuntu.com/noble/findutils"
-        },
-        {
-          "name": "tar",
-          "version": "1.35+dfsg-3ubuntu0.4",
-          "source": "https://packages.ubuntu.com/noble/tar"
-        },
-        {
-          "name": "gzip",
-          "version": "1.12-1ubuntu3.2",
-          "source": "https://packages.ubuntu.com/noble/gzip"
-        },
-        {
-          "name": "xz-utils",
-          "version": "5.6.1+really5.4.5-1ubuntu0.3",
-          "source": "https://packages.ubuntu.com/noble/xz-utils"
-        },
-        {
-          "name": "clang-18",
-          "version": "1:18.1.3-1ubuntu1",
-          "source": "https://packages.ubuntu.com/noble/clang-18"
-        },
-        {
-          "name": "binutils-x86-64-linux-gnu",
-          "version": "2.42-4ubuntu2.10",
-          "source": "https://packages.ubuntu.com/noble/binutils-x86-64-linux-gnu"
-        },
-        {
-          "name": "libexpat1-dev",
-          "version": "2.6.1-2ubuntu0.6",
-          "source": "https://packages.ubuntu.com/noble/libexpat1-dev"
-        },
-        {
-          "name": "zlib1g-dev",
-          "version": "1:1.3.dfsg-3.1ubuntu2.2",
-          "source": "https://packages.ubuntu.com/noble/zlib1g-dev"
-        },
-        {
-          "name": "libc6",
-          "version": "2.39-0ubuntu8.9",
-          "source": "https://packages.ubuntu.com/noble/libc6"
-        },
-        {
-          "name": "libc6-dev",
-          "version": "2.39-0ubuntu8.9",
-          "source": "https://packages.ubuntu.com/noble/libc6-dev"
-        },
-        {
-          "name": "libc-dev-bin",
-          "version": "2.39-0ubuntu8.9",
-          "source": "https://packages.ubuntu.com/noble/libc-dev-bin"
-        },
-        {
-          "name": "libgcc-13-dev",
-          "version": "13.3.0-6ubuntu2~24.04.1",
-          "source": "https://packages.ubuntu.com/noble/libgcc-13-dev"
-        },
-        {
-          "name": "libstdc++-13-dev",
-          "version": "13.3.0-6ubuntu2~24.04.1",
-          "source": "https://packages.ubuntu.com/noble/libstdc++-13-dev"
-        }
-      ],
-      "artifacts": [
-        {
-          "name": "libcurl4-openssl-dev",
-          "version": "8.5.0-2ubuntu10.15",
-          "architecture": "amd64",
-          "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4-openssl-dev_8.5.0-2ubuntu10.15_amd64.deb",
-          "sha256": "c63393dd39d8bc49580e3e23be3eda63ce62ae4823d95f692c7547b25ade8a31",
-          "size": 446114,
-          "depends": "libcurl4t64 (= 8.5.0-2ubuntu10.15)"
-        },
-        {
-          "name": "libcurl4t64",
-          "version": "8.5.0-2ubuntu10.15",
-          "architecture": "amd64",
-          "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb",
-          "sha256": "02f8f39727a43d5a7057cba35cda866be00d929b91ea67ed02dd9d6402fa551c",
-          "size": 343472,
-          "depends": "libbrotli1 (>= 0.6.0), libc6 (>= 2.34), libgssapi-krb5-2 (>= 1.17), libidn2-0 (>= 2.0.0), libldap2 (>= 2.6.2), libnghttp2-14 (>= 1.50.0), libpsl5t64 (>= 0.16.0), librtmp1 (>= 2.3), libssh-4 (>= 0.9.0), libssl3t64 (>= 3.0.0), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)"
-        }
+  "github_repository": "crcfrcn/citizensdk",
+  "functions": [
+    {
+      "function": "native/contracts/src/chain",
+      "path": "native/contracts/src/chain.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "range_limit_accepts_120_and_rejects_121_reverse_and_overflow"
       ]
+    },
+    {
+      "function": "native/contracts/src/error",
+      "path": "native/contracts/src/error.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "all_eight_stage_names_are_stable_and_business_neutral",
+        "explicit_boundary_stage_overrides_only_the_orthogonal_stage"
+      ]
+    },
+    {
+      "function": "native/contracts/src/signing",
+      "path": "native/contracts/src/signing.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "payload_primitives_keep_original_domains_layouts_and_compact_boundaries",
+        "transforms_have_exact_boundaries_and_domain_separation",
+        "three_unrelated_consumers_remain_opaque_to_the_contract",
+        "invalid_payloads_and_domains_fail_closed",
+        "default_account_payload_matches_the_independent_wallet_layout"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/account_contract",
+      "path": "native/contracts/tests/account_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "finalized_balance_keeps_exact_block_and_rejects_overflow_or_wrong_network",
+        "account_next_index_is_typed_and_bound_to_an_exact_best_block",
+        "fee_policy_matches_runtime_rounding_and_has_explicit_overflow_paths",
+        "wallet_profile_rebuild_helpers_preserve_identity_and_delete_only_children"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/capability_contract",
+      "path": "native/contracts/tests/capability_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "capability_names_are_the_exact_public_contract",
+        "capability_snapshot_is_complete_unique_and_revisioned",
+        "ready_and_not_ready_states_cannot_be_ambiguous",
+        "modules_validate_every_combination_and_reject_unknown_bits"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/chain_contract",
+      "path": "native/contracts/tests/chain_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "finalized_only_type_rejects_best_blocks",
+        "citizenchain_identity_is_the_single_fixed_engine_policy",
+        "runtime_context_keeps_version_metadata_and_exact_block_together",
+        "runtime_metadata_functional_limit_remains_sixty_four_mib",
+        "verified_client_is_object_safe_and_never_implies_submit_success"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/secret_contract",
+      "path": "native/contracts/tests/secret_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "secret_debug_is_redacted_and_direct_access_is_scoped_to_rust_closure",
+        "signer_and_vault_are_distinct_object_safe_contracts",
+        "wallet_key_presence_covers_all_generations_and_propagates_query_failure"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/state_store_contract",
+      "path": "native/contracts/tests/state_store_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "encrypted_blob_persisted_parts_accept_only_reachable_revisions",
+        "five_store_traits_are_separate_object_safe_boundaries",
+        "runtime_cache_capacity_is_a_persistence_limit_not_a_core_limit",
+        "citizen_ss58_profile_address_matches_the_existing_wallet_golden_vector",
+        "unified_wallet_catalog_requires_exact_unique_hot_and_cold_order",
+        "wallet_profile_rejects_duplicate_or_cross_generation_secret_refs",
+        "wallet_profile_requires_account_zero_master_and_bounded_indices",
+        "wallet_state_accepts_exact_create_and_append_provisioning",
+        "wallet_state_accepts_exact_import_provisioning",
+        "wallet_state_rejects_incomplete_or_misattributed_provisioning",
+        "cleanup_never_targets_current_wallet_and_physical_targets_do_not_overlap",
+        "cleanup_contract_requires_exact_nonempty_bounded_plans",
+        "runtime_cache_value_carries_its_exact_block_identity",
+        "encrypted_secret_tombstone_is_a_permanent_late_writer_fence",
+        "diagnostic_records_are_not_accounts_and_keep_original_mode_and_independent_name",
+        "diagnostic_identity_is_nullable_not_fabricated_and_cleanup_never_crosses_lifecycles",
+        "diagnostic_cleanup_targets_share_exact_validation_and_never_expand_from_display_facts",
+        "cold_diagnostic_index_counter_and_cross_record_identity_remain_strict",
+        "account_secret_presence_covers_generations_and_ignores_tombstones_without_hiding_errors",
+        "cold_catalog_index_is_independent_of_hot_derivation_range"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/transaction_build_contract",
+      "path": "native/contracts/tests/transaction_build_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "signing_payload_binds_account_nonce_runtime_and_genesis",
+        "signing_payload_rejects_cross_block_cross_account_and_wrong_network",
+        "signed_build_exposes_only_public_trace_signature_and_extrinsic"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/transaction_history_contract",
+      "path": "native/contracts/tests/transaction_history_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "four_thousand_ninety_six_small_records_remain_valid",
+        "aggregate_weight_rejects_before_the_host_record_limit"
+      ]
+    },
+    {
+      "function": "native/contracts/tests/transaction_prepare_contract",
+      "path": "native/contracts/tests/transaction_prepare_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-contracts",
+      "cases": [
+        "opaque_call_is_bounded_and_hashes_exact_bytes",
+        "summary_accepts_only_best_block_and_exposes_no_payload",
+        "durable_generic_execution_binds_exact_opaque_authorization_and_monotonic_status",
+        "durable_generic_mutation_rejects_duplicate_or_conflicting_execution_ids"
+      ]
+    },
+    {
+      "function": "native/engine/src/engine",
+      "path": "native/engine/src/engine.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "static_genesis_does_not_enable_an_uncompiled_chain_module",
+        "stopped_or_failed_history_does_not_block_local_wallet_mutations",
+        "wallet_mutation_failure_restores_only_its_own_temporary_pause",
+        "wallet_mutation_drains_history_rejects_overlap_and_does_not_undo_stop",
+        "disposed_engine_does_not_enter_local_wallet_mutation",
+        "monitor_can_start_while_syncing_but_not_when_stopped_or_disabled",
+        "chain_only_refresh_preserves_every_other_raw_probe"
+      ]
+    },
+    {
+      "function": "native/engine/src/metadata",
+      "path": "native/engine/src/metadata.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "three_unrelated_calls_share_one_opaque_validation_path",
+        "revive_metadata_preserves_native_calls_and_zero_byte_set_origin",
+        "unknown_truncated_and_trailing_calls_fail_closed"
+      ]
+    },
+    {
+      "function": "native/engine/src/qr_review_tests",
+      "path": "native/engine/src/qr_review_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "complete_scale_payload_exposes_all_confirmed_facts_without_wallet",
+        "incomplete_trailing_action_and_huge_sequence_are_rejected",
+        "wrong_chain_runtime_and_checkpoint_never_become_a_review",
+        "noncanonical_nonce_and_unknown_metadata_hash_mode_are_rejected",
+        "confirmed_review_allows_head_progress_but_not_request_changes",
+        "scale_string_review_makes_bidi_and_invisible_controls_visible_without_changing_chinese",
+        "mortal_checkpoint_is_verified_against_exact_finalized_chain",
+        "runtime_from_another_block_is_rejected_before_scale_review",
+        "qr_chain_review_requires_running_and_holds_lifecycle_until_real_work_drains"
+      ]
+    },
+    {
+      "function": "native/engine/src/runtime_context",
+      "path": "native/engine/src/runtime_context.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "invalidation_rejects_late_best_completion_but_keeps_exact_context",
+        "request_sequence_exhaustion_is_permanent_and_never_reuses_identity",
+        "runtime_contexts_are_bounded_and_current_best_is_not_evicted"
+      ]
+    },
+    {
+      "function": "native/engine/src/transaction_execution",
+      "path": "native/engine/src/transaction_execution.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "cancellation_wakes_an_in_flight_provider_wait"
+      ]
+    },
+    {
+      "function": "native/engine/src/transaction_prepare",
+      "path": "native/engine/src/transaction_prepare.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "registry_is_single_flight_per_source_and_bounded_across_sources"
+      ]
+    },
+    {
+      "function": "native/engine/src/wallet_derivation_tests",
+      "path": "native/engine/src/wallet_derivation_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "frozen_json_derivation_vectors_match_every_secret_public_key_and_ss58",
+        "frozen_json_password_contract_matches_acceptance_and_nfkd",
+        "mnemonic_generation_and_index_validation_keep_the_public_boundary_narrow"
+      ]
+    },
+    {
+      "function": "native/engine/src/wallet_input_tests",
+      "path": "native/engine/src/wallet_input_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "headless_input_results_share_the_real_parser_without_secret_echo",
+        "selected_word_count_and_checksum_share_the_derivation_contract",
+        "other_bip39_lengths_are_rejected_even_with_valid_checksum",
+        "errors_report_position_without_echoing_the_input",
+        "suggestions_are_local_official_words_bounded_and_deterministic"
+      ]
+    },
+    {
+      "function": "native/engine/src/wallet_service_tests",
+      "path": "native/engine/src/wallet_service_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "cold_accounts_share_one_order_and_never_call_the_secret_vault",
+        "diagnostic_hot_wallet_is_present_but_cannot_sign_create_or_select_until_real_proof",
+        "diagnostic_hot_proof_failure_and_stale_snapshot_never_relabel",
+        "diagnostic_proof_rechecks_record_after_pending_authentication_even_at_same_revision",
+        "cold_reimport_repairs_only_matching_invalid_mode_and_keeps_existing_wallet_facts",
+        "cold_reimport_never_treats_secrets_keys_errors_or_bad_identity_as_absence",
+        "diagnostic_rename_and_delete_preserve_other_records_and_use_existing_cleanup",
+        "diagnostic_changes_handle_cas_failures_and_plain_wipe_without_losing_pending_ownership",
+        "hot_mode_proof_uses_original_0x23_scale_domain_and_failed_verification_never_commits",
+        "missing_account_references_never_authorize_unprovable_cleanup",
+        "ordinary_account_and_metadata_changes_keep_unrelated_diagnostics_byte_for_byte",
+        "engine_internal_cold_wallet_surface_uses_the_same_catalog_state",
+        "public_catalog_reorder_uses_revision_and_cannot_change_the_default_account",
+        "generic_signing_intent_routes_hot_and_cold_accounts_without_business_payload_knowledge",
+        "hot_default_account_change_signs_the_frozen_order_and_commits_once",
+        "external_signature_can_authorize_cold_default_change_without_opening_the_sdk_vault",
+        "default_account_authorization_rejects_stale_or_expired_snapshots",
+        "hot_wallet_changes_preserve_cold_accounts_and_cross_mode_duplicates_fail",
+        "signing_guard_rejects_before_auth_without_wallet_management",
+        "wallet_name_is_independent_and_survives_account_mutations",
+        "payment_wallet_selection_is_revision_bound_and_independent_of_default",
+        "wallet_metadata_rejects_bad_names_and_preserves_failed_cas",
+        "deleting_selected_wallet_chooses_last_remaining_without_reordering_accounts",
+        "signing_guard_cancellation_drains_late_auth_and_never_returns_signature",
+        "every_supported_word_count_round_trips_backup_import_accounts_and_deletion",
+        "create_add_accounts_usability_and_local_signing_form_one_complete_lifecycle",
+        "import_uses_the_same_verified_account_and_missing_ciphertext_is_not_usable",
+        "unavailable_security_never_persists_creation_or_import_side_effects",
+        "public_profile_and_rename_need_no_unlock_and_invalid_names_never_commit",
+        "missing_key_or_any_existing_child_blocks_append_before_new_facts",
+        "mismatched_child_ciphertext_is_not_usable_and_cannot_sign",
+        "independent_signing_rechecks_device_security_before_opening_a_secret",
+        "create_converges_when_profile_and_ciphertext_cas_throw_after_writing",
+        "incomplete_create_never_exposes_the_uncommitted_target_profile",
+        "signed_deletion_authorizes_account_zero_but_plain_wipe_does_not_open_a_secret",
+        "signed_deletion_does_not_remove_a_snapshot_changed_during_authorization",
+        "headless_next_account_is_atomic_and_does_not_reuse_a_deleted_hole",
+        "headless_initialization_is_empty_or_ready_without_touching_hot_secrets",
+        "failed_create_recovers_orphan_ciphertext_and_owned_wallet_key",
+        "concurrent_instances_loser_never_deletes_the_winner_wallet",
+        "prepared_creation_is_storage_free_until_explicit_commit",
+        "add_accounts_write_after_errors_preserve_active_and_every_added_account",
+        "child_anchor_and_whole_wallet_deletion_honor_exact_ownership",
+        "deleted_generation_and_secret_ref_reject_every_late_writer",
+        "reconcile_drains_queued_cleanup_before_the_active_cleanup",
+        "private_key_view_requires_confirmation_and_holds_wallet_until_ui_and_notification_finish",
+        "private_key_view_cancel_and_finish_do_not_drop_pending_authentication_or_allow_late_display",
+        "private_key_view_cancel_before_work_never_loads_a_secret_and_missing_account_settles_once",
+        "private_key_view_rechecks_generation_after_pending_authorization",
+        "private_key_view_rejects_missing_ciphertext_invalidated_key_and_wrong_account_public_key",
+        "wallet_and_signing_modules_are_independent_without_a_chain_or_history",
+        "append_reuses_original_key_for_next_and_explicit_accounts",
+        "append_cannot_recreate_a_missing_original_wallet_key",
+        "append_authenticates_once_for_next_single_and_batch_without_opening_accounts",
+        "invalid_append_and_cancelled_authentication_leave_no_new_facts",
+        "append_rejects_late_authorization_after_cancellation_or_state_replacement",
+        "append_storage_failure_rolls_back_without_another_authentication",
+        "append_checks_fresh_persistent_envelope_instead_of_trusting_cas_response",
+        "sparse_high_indices_roundtrip_sign_and_stop_sequential_append_at_upper_bound"
+      ]
+    },
+    {
+      "function": "native/engine/tests/account_state",
+      "path": "native/engine/tests/account_state.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "production_metadata_and_balance_bytes_match_the_frozen_vector",
+        "finalized_batch_deduplicates_provider_keys_but_preserves_order_and_duplicates",
+        "finalized_batch_empty_and_limit_are_checked_before_any_chain_access",
+        "nonempty_batch_can_progress_after_chain_readiness_without_wallet_or_subscription",
+        "finalized_batch_rejects_provider_failure_wrong_count_and_overflow_without_partial_result",
+        "missing_and_short_account_info_are_zero_without_partial_field_guessing",
+        "fee_policy_is_decoded_only_from_one_exact_production_runtime_context",
+        "nonce_is_exact_best_runtime_typed_and_cross_block_or_cross_account_results_are_rejected",
+        "mismatched_runtime_context_is_rejected_before_chain_state_is_decoded",
+        "prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation",
+        "current_revive_metadata_reaches_native_cold_signing_without_more_nonce_reads"
+      ]
+    },
+    {
+      "function": "native/engine/tests/baseline_resource_contract",
+      "path": "native/engine/tests/baseline_resource_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "history_page_cost_is_measured_without_weakening_fixed_limits",
+        "single_execution_mutation_never_queries_or_rewrites_other_999_rows",
+        "runtime_and_session_cardinalities_remain_explicit_and_bounded",
+        "persistent_runtime_cache_retains_only_the_latest_sixty_four_contexts",
+        "runtime_metadata_above_persistent_capacity_remains_memory_usable"
+      ]
+    },
+    {
+      "function": "native/engine/tests/capabilities",
+      "path": "native/engine/tests/capabilities.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "chain_read_failure_closes_chain_dependent_capabilities",
+        "signing_requires_device_security_but_not_wallet_management",
+        "duplicate_or_missing_probes_fail_closed",
+        "unavailable_probe_preserves_an_explicit_not_ready_reason",
+        "tracker_advances_only_for_a_complete_semantic_change",
+        "disabling_wallet_management_does_not_disable_signing"
+      ]
+    },
+    {
+      "function": "native/engine/tests/chain_access",
+      "path": "native/engine/tests/chain_access.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "syncing_status_is_readable_without_opening_business_data_gates",
+        "sync_status_still_rejects_disabled_or_unavailable_chain",
+        "genesis_hash_is_static_but_still_obeys_module_and_dispose_gates",
+        "empty_balance_batch_requires_running_chain_and_never_reads_provider",
+        "chain_readiness_refresh_preserves_local_facts_and_cannot_open_a_stopped_engine",
+        "provider_contract_error_code_survives_the_engine_boundary",
+        "typed_chain_access_is_closed_before_start_and_open_while_running",
+        "raw_broadcast_entries_cannot_bypass_generic_pending_before_broadcast"
+      ]
+    },
+    {
+      "function": "native/engine/tests/engine_boundary",
+      "path": "native/engine/tests/engine_boundary.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "engine_gathers_provider_evidence_without_arbitrary_rpc",
+        "persistent_runtime_cache_is_never_transaction_execution_evidence",
+        "caller_finality_label_cannot_forge_the_provider_finalized_head",
+        "capability_change_is_rechecked_before_provider_evidence",
+        "missing_events_remain_unverified",
+        "failed_import_preflight_never_reaches_provider",
+        "engine_owns_import_startup_and_export_lifecycle",
+        "empty_chain_database_restore_is_a_pre_start_noop",
+        "stored_chain_database_is_restored_and_revision_committed_before_start",
+        "corrupt_persisted_chain_state_is_rejected_before_provider_import",
+        "restore_cas_conflict_after_provider_import_is_one_way_start_failed",
+        "restore_rejects_finalized_rollback_against_provisional_import",
+        "persistent_export_commits_the_exact_revisioned_snapshot",
+        "persistent_export_converges_only_the_exact_write_after_error",
+        "provider_stop_cannot_overtake_persistent_export_reservation",
+        "provider_import_failure_cannot_reopen_the_same_engine",
+        "rebuilt_engine_rejects_state_older_than_persisted_finalized_anchor",
+        "rebuilt_engine_rejects_same_height_persisted_finality_conflict",
+        "chain_database_write_after_error_converges_but_missing_write_closes_engine",
+        "chain_database_cas_detects_replacement_even_when_loaded_state_matches_import",
+        "lifecycle_closes_chain_capabilities_before_start_and_after_stop",
+        "concurrent_probe_updates_cannot_reopen_capabilities_after_stop"
+      ]
+    },
+    {
+      "function": "native/engine/tests/runtime_context",
+      "path": "native/engine/tests/runtime_context.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "late_old_best_completion_cannot_replace_new_best",
+        "context_must_match_request_and_remain_immutable",
+        "finalized_context_does_not_change_best_identity",
+        "same_hash_context_can_be_promoted_from_best_to_finalized"
+      ]
+    },
+    {
+      "function": "native/engine/tests/state_import",
+      "path": "native/engine/tests/state_import.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "import_accepts_exact_non_regressing_pre_start_state",
+        "import_rejects_lifecycle_identity_format_size_and_finality_drift",
+        "genesis_and_export_anchors_are_strict"
+      ]
+    },
+    {
+      "function": "native/engine/tests/transaction_outcome",
+      "path": "native/engine/tests/transaction_outcome.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-engine",
+      "cases": [
+        "production_events_prove_index_zero_success_and_index_one_bad_origin",
+        "hash_block_and_body_identity_fail_closed",
+        "malformed_metadata_events_and_wrong_index_never_guess_success",
+        "compact_length_prefix_is_part_of_the_transaction_hash",
+        "zero_body_match_and_duplicate_system_outcome_are_unverified",
+        "module_dispatch_error_preserves_raw_pallet_and_error_indices"
+      ]
+    },
+    {
+      "function": "native/ffi/src/assets",
+      "path": "native/ffi/src/assets.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "packaged_assets_verify_and_combine",
+        "digest_drift_fails_before_chain_json_is_consumed",
+        "caller_supplied_manifest_cannot_self_authorize_a_different_checkpoint"
+      ]
+    },
+    {
+      "function": "native/ffi/src/capabilities",
+      "path": "native/ffi/src/capabilities.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "cold_transaction_build_does_not_depend_on_local_vault_or_wallet_probe",
+        "provider_is_usable_is_the_only_chain_readiness_input",
+        "configured_wallet_is_supported_but_not_ready_before_host_probe",
+        "wallet_and_signing_selection_are_independent",
+        "signing_fails_closed_for_missing_device_security_or_account_storage",
+        "history_is_independent_of_wallet_and_requires_real_storage_probe",
+        "compile_support_and_host_selection_are_distinct_facts"
+      ]
+    },
+    {
+      "function": "native/ffi/src/chain_monitor_tests",
+      "path": "native/ffi/src/chain_monitor_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "history_invalidation_has_zero_payload_and_ordered_sequence",
+        "finalized_notification_owns_one_exact_block_result",
+        "worker_without_an_owner_stops_without_starting_a_provider",
+        "database_schedule_is_one_minute_and_retries_without_forgetting_success",
+        "finalized_resubscription_backoff_caps_at_thirty_seconds_and_success_resets_it"
+      ]
+    },
+    {
+      "function": "native/ffi/src/composition_tests",
+      "path": "native/ffi/src/composition_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "native_assets_reject_every_manifest_drift_before_provider_creation",
+        "private_receiver_cancel_finish_and_reentrant_settled_drain_real_pending_prepare",
+        "public_abi_composition_is_truthfully_chain_only",
+        "complete_wallet_bundle_derives_ready_wallet_facts_without_host_signer_or_nonce",
+        "unavailable_vault_closes_local_signing_but_preserves_transaction_build",
+        "wallet_storage_failure_closes_profile_and_local_signing_not_transaction_build",
+        "history_storage_failure_only_closes_history_dependents",
+        "session_chain_database_uses_monotonic_cas_without_wallet_state",
+        "signing_only_composition_has_no_chain_history_or_wallet_management",
+        "wallet_only_composition_keeps_signing_disabled_and_reads_no_chain_assets",
+        "missing_secure_resource_groups_fail_before_callbacks_or_provider_creation"
+      ]
+    },
+    {
+      "function": "native/ffi/src/error",
+      "path": "native/ffi/src/error.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "every_typed_contract_code_survives_engine_and_abi_mapping",
+        "explicit_contract_stage_survives_engine_and_abi_mapping",
+        "all_twenty_two_public_failure_codes_have_one_closed_default_stage"
+      ]
+    },
+    {
+      "function": "native/ffi/src/events",
+      "path": "native/ffi/src/events.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "wallet_invalidation_and_completion_keep_reserved_slots_when_queue_is_full",
+        "bounded_watch_queue_reports_stable_queue_full",
+        "completion_slots_are_bounded_and_released_before_acceptance",
+        "full_queue_completion_and_callback_reentry_never_wait_on_each_other",
+        "replacement_waits_for_old_context_before_returning",
+        "exhausted_sequence_never_wraps_or_reuses_zero",
+        "accepted_completion_capacity_cannot_be_stolen_at_sequence_boundary",
+        "rejected_request_releases_completion_capacity_without_reusing_sequence",
+        "concurrent_reserved_completions_consume_aggregate_capacity_in_queue_order",
+        "concurrent_producers_are_observed_in_strict_sequence_order"
+      ]
+    },
+    {
+      "function": "native/ffi/src/host_codec_tests",
+      "path": "native/ffi/src/host_codec_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "generic_execution_round_trips_complete_recovery_material_and_rejects_wrong_schema",
+        "execution_history_codec_is_per_record_and_query_batches_are_bounded",
+        "wallet_v3_preserves_invalid_mode_in_its_original_slot_without_creating_a_signable_account",
+        "wallet_v3_round_trips_hot_and_cold_diagnostics_with_strict_identity_boundaries",
+        "encrypted_secret_presence_uses_complete_codec_and_preserves_outputs_on_failure",
+        "execution_history_host_batch_round_trips_index_and_opaque_records",
+        "history_query_and_mutation_wire_shapes_are_fixed_and_descriptor_tampering_fails",
+        "runtime_metadata_persistence_limit_preserves_the_larger_core_contract",
+        "v1_wire_layout_has_a_frozen_cross_language_vector",
+        "every_typed_domain_round_trips_without_copying_the_decoded_payload",
+        "empty_typed_payload_has_one_canonical_representation",
+        "the_same_payload_cannot_cross_a_typed_store_domain",
+        "header_and_payload_corruption_are_detected_before_typed_decode",
+        "unsupported_versions_unknown_domains_and_length_mismatches_are_stable",
+        "each_domain_rejects_payloads_above_its_own_limit",
+        "malformed_records_map_to_decode_without_echoing_stored_bytes",
+        "singleton_models_and_per_execution_history_round_trip_through_strict_binary_codecs",
+        "wallet_v3_round_trips_selection_and_rejects_old_versions_without_fallback",
+        "encrypted_secret_records_bind_the_complete_secret_ref_even_for_tombstones",
+        "encrypted_secret_record_rejects_truncation_and_trailing_bytes",
+        "wallet_v3_round_trips_independent_hot_name_without_changing_account_label",
+        "sparse_high_hot_index_and_independent_cold_index_survive_record_roundtrip"
+      ]
+    },
+    {
+      "function": "native/ffi/src/host_providers",
+      "path": "native/ffi/src/host_providers.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "all_five_typed_store_adapters_have_domain_specific_empty_semantics",
+        "add_authorization_never_initializes_or_unwraps_a_key",
+        "wrapping_reuses_initialized_key_without_rebinding_and_retirement_stays_final",
+        "private_view_authorizing_uses_actual_operation_id_and_rejection_drains_without_unwrap",
+        "rust_aes_gcm_round_trip_binds_every_secret_ref_field_and_hides_the_secret",
+        "vault_envelope_rejects_truncation_tampering_and_incomplete_unwrap",
+        "mismatched_result_id_kind_domain_and_duplicate_never_settle_another_operation",
+        "every_non_null_completion_rejects_crossed_real_identities_before_claim",
+        "mismatched_result_id_is_ignored_but_null_first_completion_is_terminal",
+        "unknown_synchronous_status_rejects_without_leaking_pending_state",
+        "operation_gate_linearizes_close_reserve_scan_and_reopen",
+        "claimed_completion_remains_outstanding_until_sdk_completion_finishes",
+        "cancelled_future_keeps_pending_state_until_safe_late_completion",
+        "cancelled_wrap_future_keeps_rust_owned_dek_valid_only_until_completion",
+        "cas_write_after_error_converges_only_when_full_candidate_is_durable",
+        "secret_presence_registration_is_exact_once_and_queries_use_existing_completion_validation"
+      ]
+    },
+    {
+      "function": "native/ffi/src/lib",
+      "path": "native/ffi/src/lib.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "start_diagnostic_keeps_success_and_errors_but_replaces_panic_payload",
+        "host_lifecycle_uses_exclusive_admission_while_legacy_remains_shared",
+        "start_policy_restores_only_host_before_begin_and_provider_start",
+        "export_policy_persists_only_host_compositions",
+        "stop_policy_persists_host_before_every_stop_side_effect",
+        "block_round_trip_preserves_exact_finality",
+        "failure_stage_getter_accepts_only_ready_failed_results",
+        "chain_sync_header_and_body_results_copy_exact_bounded_values",
+        "unsupported_capabilities_are_not_present_as_exports",
+        "watch_terminal_policy_does_not_confuse_network_loss_with_finality",
+        "unverified_reason_numbers_match_the_public_header_contract",
+        "panic_boundary_returns_stable_code_and_does_not_poison_next_call"
+      ]
+    },
+    {
+      "function": "native/ffi/src/ownership",
+      "path": "native/ffi/src/ownership.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "release_is_exactly_once_and_handles_are_not_reused",
+        "exhaustion_is_reported_before_a_result_slot_is_reserved",
+        "dropped_reservation_removes_placeholder_without_reusing_handle"
+      ]
+    },
+    {
+      "function": "native/ffi/src/qr_abi",
+      "path": "native/ffi/src/qr_abi.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "cancellation_drains_pending_work_and_suppresses_its_late_success",
+        "cancellation_before_work_is_visible_before_any_authentication",
+        "expiry_and_cancel_guards_never_accept_a_caller_clock",
+        "review_claim_is_once_only_even_after_reparsing_and_is_bounded_per_owner",
+        "qr_result_copy_is_typed_bounded_and_invalid_after_release"
+      ]
+    },
+    {
+      "function": "native/ffi/src/requests",
+      "path": "native/ffi/src/requests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "saturated_watch_pool_never_starves_short_atomic_requests",
+        "executor_enforces_shared_then_exclusive_admission_barriers"
+      ]
+    },
+    {
+      "function": "native/ffi/src/runtime",
+      "path": "native/ffi/src/runtime.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "request_sequence_admission_is_per_instance_and_survives_parameter_rejection",
+        "request_sequence_admission_is_atomic_and_never_wraps",
+        "retained_wallet_state_uses_existing_owner_allocator_and_shutdown_gate",
+        "only_explicitly_cancellable_requests_accept_cancel",
+        "qr_cancel_after_work_before_commit_suppresses_success_and_keeps_destroy_busy_until_release",
+        "exclusive_lifecycle_request_blocks_controls_and_destroy_across_a_barrier",
+        "exclusive_stop_owner_can_unsubscribe_its_existing_monitor",
+        "exclusive_completion_callback_can_immediately_accept_the_next_request",
+        "post_start_failure_stops_provider_and_marks_engine_one_way",
+        "teardown_only_state_rejects_new_requests_callbacks_and_subscriptions",
+        "callback_clear_and_request_acceptance_have_one_linear_order",
+        "every_control_transition_blocks_requests_controls_and_destroy",
+        "active_monitor_keeps_callback_registered_until_unsubscribe_commits",
+        "event_sequence_exhaustion_rejects_before_acceptance_and_destroy_still_finishes",
+        "result_handle_exhaustion_rolls_back_event_capacity_before_rejecting",
+        "accepted_boundary_request_delivers_one_nonzero_result_and_can_destroy"
+      ]
+    },
+    {
+      "function": "native/ffi/src/transaction_abi",
+      "path": "native/ffi/src/transaction_abi.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "response_retry_is_owner_and_attempt_scoped_and_cancel_cannot_be_resurrected",
+        "handles_are_monotonic_owner_scoped_and_destroy_cleanup_is_exact",
+        "transaction_execution_projection_is_a_closed_safe_union"
+      ]
+    },
+    {
+      "function": "native/ffi/src/wallet_abi",
+      "path": "native/ffi/src/wallet_abi.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "private_table_has_exact_layout_and_rejects_invalid_inputs_without_admission",
+        "chain_symbols_reject_without_dereferencing_host_pointers"
+      ]
+    },
+    {
+      "function": "native/ffi/src/wallet_abi_tests",
+      "path": "native/ffi/src/wallet_abi_tests.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "pure_payload_abi_rejects_duplicate_fields_and_short_output_without_writes",
+        "headless_input_validation_checks_abi_and_returns_only_typed_facts",
+        "signing_and_default_change_results_preflight_and_project_each_variant_exactly",
+        "chain_query_inputs_and_static_genesis_are_validated_without_starting_provider",
+        "empty_batch_is_accepted_but_cannot_bypass_engine_running_gate",
+        "finite_batch_admission_rejects_cancel_and_close_until_request_and_result_drain",
+        "batch_result_projection_preserves_order_u128_and_checks_type_size_bounds_and_release",
+        "portable_u128_round_trips_boundary_values",
+        "wallet_word_count_accepts_only_the_three_supported_values",
+        "synchronous_wallet_input_never_needs_a_runtime_or_returns_secrets",
+        "invalid_secret_utf8_is_rejected_before_async_acceptance",
+        "multi_buffer_copy_validates_every_destination_before_writing_any",
+        "absent_wallet_profile_is_a_successful_zeroed_projection",
+        "diagnostic_projection_and_record_ownership_are_exact_and_atomic",
+        "wallet_state_projection_is_globally_ordered_and_multi_buffer_copy_is_atomic",
+        "prepared_wallet_handles_are_nonzero_monotonic_and_never_reused",
+        "prepared_wallet_owner_is_checked_even_while_the_handle_is_claimed",
+        "wallet_metadata_result_projection_is_atomic_and_rejects_wrong_or_released_handles",
+        "add_cancellation_drains_operation_and_preserves_already_committed_success"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/abi_layout",
+      "path": "native/ffi/tests/abi_layout.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "original_public_layout_remains_frozen",
+        "host_v1_layout_and_constants_are_exact",
+        "account_wallet_and_history_layout_and_constants_are_exact"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/asset_boundary",
+      "path": "native/ffi/tests/asset_boundary.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "assets_are_reverified_before_instance_creation"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/capability_contract",
+      "path": "native/ffi/tests/capability_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "snapshot_always_contains_ten_truthful_capabilities",
+        "unsubscribe_from_callback_is_rejected_before_monitor_join",
+        "subscribe_from_callback_is_rejected_before_monitor_start"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/error_contract",
+      "path": "native/ffi/tests/error_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "stable_error_code_and_thread_local_diagnostic_are_available"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/event_contract",
+      "path": "native/ffi/tests/event_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "every_accepted_request_has_one_completion_on_the_dispatch_thread"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/handle_contract",
+      "path": "native/ffi/tests/handle_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "instance_handles_are_nonzero_monotonic_and_never_reused"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/host_provider_contract",
+      "path": "native/ffi/tests/host_provider_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "five_domains_and_physical_key_shapes_are_frozen",
+        "stores_are_complete_only_with_every_explicit_typed_callback",
+        "secure_store_and_vault_are_an_all_or_none_wallet_bundle",
+        "public_store_groups_are_independent_and_each_group_is_complete",
+        "accepted_host_operation_consumes_exactly_one_matching_completion",
+        "wrong_completion_shape_is_terminal_and_rejected_operations_cannot_complete",
+        "completion_results_validate_identity_domain_and_borrowed_buffer_shape",
+        "vault_results_are_limited_to_availability_and_wrapped_dek_material",
+        "host_error_numbers_are_frozen_and_unknown_values_become_internal",
+        "versioned_defaults_are_canonical_and_do_not_own_host_buffers"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/ownership_contract",
+      "path": "native/ffi/tests/ownership_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "owned_result_blocks_destroy_and_releases_exactly_once"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/qr_abi_contract",
+      "path": "native/ffi/tests/qr_abi_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "qr_only_parses_one_normalized_model_without_chain_wallet_or_vault",
+        "qr_consume_verifies_binding_and_returns_signature_exactly_once",
+        "parser_rejects_expiry_utf8_overflow_and_short_output_without_write",
+        "disabled_qr_keeps_public_symbols_and_does_not_touch_outputs"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/request_contract",
+      "path": "native/ffi/tests/request_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "channel_sequence_crosses_public_abi_without_creating_native_requests",
+        "destroy_from_callback_is_busy_before_any_lifecycle_side_effect"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/symbol_contract",
+      "path": "native/ffi/tests/symbol_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "retired_private_view_exports_are_absent",
+        "rust_and_c_publish_exactly_the_reviewed_product_symbols",
+        "product_header_has_only_the_reviewed_mnemonic_crossings",
+        "product_exports_have_no_provider_rpc_or_secret_escape_hatch"
+      ]
+    },
+    {
+      "function": "native/ffi/tests/wallet_abi_contract",
+      "path": "native/ffi/tests/wallet_abi_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-ffi",
+      "cases": [
+        "base_wallet_and_qr_exports_are_exact_and_disjoint",
+        "new_exports_allow_only_the_reviewed_receiver_not_raw_rpc_or_secret_getters",
+        "appended_result_values_and_portable_product_layouts_are_frozen",
+        "chain_query_sources_keep_one_engine_path_and_no_wallet_probe_or_secret_dependency",
+        "host_v1_layout_matches_the_c_header_contract",
+        "header_exposes_mutable_dek_output_but_no_plaintext_completion_kind",
+        "module_validation_rejects_invalid_or_uncompiled_combinations",
+        "pure_signature_verification_needs_no_wallet_vault_or_chain_instance",
+        "local_signing_create_rejects_absent_or_partial_secure_resources"
+      ]
+    },
+    {
+      "function": "native/qr/src/codec",
+      "path": "native/qr/src/codec.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-qr",
+      "cases": [
+        "original_app_router_rejection_vectors_remain_closed_in_core",
+        "document_encoding_preserves_original_fields_and_explicit_deadline",
+        "rebind_response_round_trips_paired_current_account_proof",
+        "authorization_preparation_preserves_template_slots_and_rejects_malformed_inputs",
+        "sign_request_round_trip_is_strict",
+        "rejects_unknown_fields_but_accepts_any_opaque_u16_action",
+        "host_scan_purpose_does_not_allocate_a_wire_kind",
+        "original_business_codes_round_trip_without_changing_wire_fields",
+        "scan_purposes_are_separate_from_cold_import_and_wire_kinds",
+        "unsupported_wire_kind_is_rejected",
+        "rejects_duplicate_keys_without_imposing_payload_action_semantics",
+        "rejects_expired_and_oversized_values",
+        "expiry_uses_the_same_exact_positive_i64_domain_in_every_wire_kind"
+      ]
+    },
+    {
+      "function": "native/qr/src/session",
+      "path": "native/qr/src/session.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-sdk-qr",
+      "cases": [
+        "wrong_response_expiry_and_signature_leave_the_original_session_retryable",
+        "response_preflight_is_repeatable_and_cannot_override_cancel_expiry_or_consumption",
+        "response_is_verified_bound_and_consumed_once",
+        "invalid_signature_does_not_consume_session",
+        "active_session_count_is_bounded",
+        "creation_keeps_expiry_in_the_cross_platform_signed_integer_domain"
+      ]
+    },
+    {
+      "function": "native/signer/src/lib",
+      "path": "native/signer/src/lib.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-signer",
+      "cases": [
+        "hard_derive_is_deterministic",
+        "sign_then_verify_roundtrip",
+        "null_arguments_are_rejected"
+      ]
+    },
+    {
+      "function": "native/signer/tests/chain_signer_contract",
+      "path": "native/signer/tests/chain_signer_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-signer",
+      "cases": [
+        "software_signer_uses_substrate_context_and_never_accepts_an_injected_context",
+        "hard_derivation_returns_a_secret_buffer_and_is_deterministic",
+        "malformed_secret_length_is_a_typed_invalid_argument"
+      ]
+    },
+    {
+      "function": "native/signer/tests/ffi_contract",
+      "path": "native/signer/tests/ffi_contract.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-signer",
+      "cases": [
+        "signing_roundtrip_and_tampering_follow_the_contract",
+        "empty_message_is_valid_but_null_required_arguments_are_rejected"
+      ]
+    },
+    {
+      "function": "native/signer/tests/legacy_parity",
+      "path": "native/signer/tests/legacy_parity.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-signer",
+      "cases": [
+        "trait_and_legacy_ffi_share_derivation_and_public_key_bytes",
+        "trait_and_legacy_ffi_verify_each_others_randomized_signatures",
+        "legacy_ffi_preserves_distinct_key_and_signature_format_errors"
+      ]
+    },
+    {
+      "function": "native/signer/tests/substrate_vectors",
+      "path": "native/signer/tests/substrate_vectors.rs",
+      "runner": "cargo",
+      "target": "Cargo.toml",
+      "package": "citizen-signer",
+      "cases": [
+        "frozen_child_keys_produce_expected_account_ids"
+      ]
+    },
+    {
+      "function": "scripts/build.test",
+      "path": "scripts/build.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/aggregate/test",
+      "path": "scripts/ci/aggregate/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/android/test",
+      "path": "scripts/ci/android/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/apple/test",
+      "path": "scripts/ci/apple/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/consume-android/test",
+      "path": "scripts/ci/consume-android/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/consume-apple/test",
+      "path": "scripts/ci/consume-apple/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/consume-linuxamd/test",
+      "path": "scripts/ci/consume-linuxamd/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/consume-linuxarm/test",
+      "path": "scripts/ci/consume-linuxarm/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/consume-windows/test",
+      "path": "scripts/ci/consume-windows/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/linuxamd/test",
+      "path": "scripts/ci/linuxamd/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/linuxarm/test",
+      "path": "scripts/ci/linuxarm/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/windows/test",
+      "path": "scripts/ci/windows/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/flow.test",
+      "path": "scripts/flow.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release.test",
+      "path": "scripts/release.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/aggregate/test",
+      "path": "scripts/release/aggregate/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/android/test",
+      "path": "scripts/release/android/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/apple/test",
+      "path": "scripts/release/apple/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/consume-android/test",
+      "path": "scripts/release/consume-android/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/consume-apple/test",
+      "path": "scripts/release/consume-apple/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/consume-linuxamd/test",
+      "path": "scripts/release/consume-linuxamd/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/consume-linuxarm/test",
+      "path": "scripts/release/consume-linuxarm/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/consume-windows/test",
+      "path": "scripts/release/consume-windows/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/finalize/test",
+      "path": "scripts/release/finalize/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/linuxamd/test",
+      "path": "scripts/release/linuxamd/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/linuxarm/test",
+      "path": "scripts/release/linuxarm/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/windows/test",
+      "path": "scripts/release/windows/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/resources.test",
+      "path": "scripts/resources.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "test/api/citizen_sdk_test",
+      "path": "test/api/citizen_sdk_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/api/citizen_transaction_test",
+      "path": "test/api/citizen_transaction_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/api/citizen_wallet_flow_test",
+      "path": "test/api/citizen_wallet_flow_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/api/public_api_contract_test",
+      "path": "test/api/public_api_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/citizen_sdk_facade_test",
+      "path": "test/citizen_sdk_facade_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/consumers/multi_consumer_contract_test",
+      "path": "test/consumers/multi_consumer_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/models/public_models_test",
+      "path": "test/models/public_models_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/models/u128_codec_test",
+      "path": "test/models/u128_codec_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/node/chain_assets_test",
+      "path": "test/node/chain_assets_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/platform/flutter_codec_test",
+      "path": "test/platform/flutter_codec_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/platform/flutter_secret_boundary_test",
+      "path": "test/platform/flutter_secret_boundary_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/platform/flutter_sessions_test",
+      "path": "test/platform/flutter_sessions_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/sdk_1_10_1_contract_test",
+      "path": "test/sdk_1_10_1_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/chain_info_test",
+      "path": "test/smoldot/chain_info_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/client_basic_test",
+      "path": "test/smoldot/client_basic_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/ffi_basic_test",
+      "path": "test/smoldot/ffi_basic_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/json_rpc_test",
+      "path": "test/smoldot/json_rpc_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/smoldot_test",
+      "path": "test/smoldot/smoldot_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/smoldot/subscription_test",
+      "path": "test/smoldot/subscription_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
     }
-  }
+  ]
 }

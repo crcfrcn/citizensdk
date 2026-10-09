@@ -203,3 +203,52 @@ for(const route of routes.filter(row=>row.flow==='release'&&row.recordsFormalRel
  releaseRun.conclusion='success';candidate.source_sha='b'.repeat(40);environment.PRODUCT_RELEASE_RETRY_CONTEXT=Buffer.from(JSON.stringify(candidate)).toString('base64');
  await assert.rejects(recoverRemote('release',route.platform,runID+1,'success',{environment,fetchImpl}),/成功CI/u);
 });
+
+// 公开Workflow和Job的真实文件只由所属产品本仓检查，不依赖其它仓检出。
+test('本仓声明、实际Workflow与准确主Job写权限闭合', async () => {
+ const { readdirSync, lstatSync } = await import('node:fs');
+ const expected=['tatagate.yml',...routes.map(route=>route.canonicalID.replaceAll('.','-')+'.yml')].sort();
+ assert.deepEqual(readdirSync(join(root,'.github/workflows')).sort(),expected);
+ assert.equal(declaration.product_id,"citizensdk");
+ assert.equal(declaration.entry,'scripts/build.mjs');
+ for(const route of routes){
+  const entry=declaration.platforms[route.platform]?.[route.flow]?.entry;
+  assert.equal(entry,'.github/workflows/'+route.canonicalID.replaceAll('.','-')+'.yml');
+  const file=join(root,entry),info=lstatSync(file);assert.ok(info.isFile()&&!info.isSymbolicLink());
+  const source=readFileSync(file,'utf8');
+  assert.ok(Buffer.byteLength(source)<500000,route.canonicalID);
+  assert.ok(source.includes('name: '+route.canonicalID));
+  assert.ok(source.includes('allowed=new Set(["'+route.canonicalID+'"])'));
+  assert.match(source,/^  flow:$/mu);
+  if(route.flow==='release'){
+   const main=source.match(/^  flow:\n([\s\S]*?)(?=^  [A-Za-z_][\w-]*:|$(?![\s\S]))/mu);
+   assert.ok(main,route.canonicalID);assert.match(main[1],/^      contents: write$/mu,route.canonicalID);
+  }
+ }
+});
+test('本仓远端Job只有自己的实际职责入口及对应测试', async () => {
+ const { readdirSync } = await import('node:fs');
+ let count=0;
+ const visit=directory=>{
+  for(const entry of readdirSync(directory,{withFileTypes:true})){
+   if(!entry.isDirectory())continue;
+   const child=join(directory,entry.name),names=readdirSync(child).sort();
+   if(names.includes('execute.mjs')||names.includes('test.mjs')){
+    const relative=child.slice(root.length+1);
+    const expected=declaration.product_id==='tatachatsdk'&&relative==='scripts/ci/check'
+     ?['execute.mjs','native.mjs','test.mjs']
+     :declaration.product_id==='citizenweb'&&relative==='scripts/release/check'
+     ?['execute.mjs','release_manifest.test.mjs','test.mjs']
+     :['execute.mjs','test.mjs'];
+    assert.deepEqual(names,expected,relative);count++;
+   }else visit(child);
+  }
+ };
+ visit(join(root,'scripts'));assert.ok(count>0,'本仓必须实际保留远端职责测试');
+});
+
+test('本SDK独立入口声明自己的Rust工具和Cargo锁',()=>{
+ assert.equal(declaration.entry,'scripts/build.mjs');
+ assert.ok(declaration.platforms.sdk.tools.some(tool=>tool.id==='rust'));
+ assert.ok(declaration.platforms.sdk.locks.some(lock=>lock.ecosystem==='cargo'));
+});

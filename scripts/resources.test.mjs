@@ -130,7 +130,8 @@ async function sourceFixture(t, behavior = {}) {
       : { path: join(root, 'verified', tool.id, 'bin', tool.command), version: tool.version },
     apple: async () => ({ developerDirectory, version: '27.0',
       tools: Object.fromEntries(['clang', 'clang++', 'ar', 'make', 'ld', 'as', 'nm', 'ranlib', 'strip', 'xcrun', 'otool', 'install_name_tool', 'codesign'].map(name => [name, join(developerDirectory, 'usr/bin', name)])) }),
-    prepare: async () => { await mkdir(join(pending, 'originals')); return new Map(); } };
+    // 产品依赖准备只返回归档映射，不创建旧工具库的originals目录。
+    prepare: async () => new Map() };
   return { input, calls, bytes };
 }
 test('源码工具使用准确Apple编译入口并只在候选中收集输出、原件和编译输入', async t => {
@@ -428,4 +429,40 @@ test('源码工具只分离两处有效镜像运输字段，真实编译输入�
   target.upstream_patches={};
   await assert.rejects(check(value,requested),/源码补丁输入证明无效/u);
  }
+});
+
+// Linux来源与对象回执使用产品自己的真实验真函数，整项完成后统一执行。
+test('本产品门禁资源来源同版闭合且不维护第二份Git坐标',async()=>{
+ const {gateResourcePlan,resourceDeclarations,verifyGateResourceDelivery,verifyGateObjectSource}=await import('./resources.mjs');
+ const declared=resourceDeclarations(),plan=gateResourcePlan();
+ for(const id of ['git','bash','grep','sed']){
+  const source=declared.tools.find(tool=>tool.id===id);
+  assert.equal(plan.sources[id].version,source.version);assert.equal(plan.sources[id].sha256,source.archive.sha256);
+  assert.equal(verifyGateObjectSource(id,plan.sources[id]),true);
+  for(const invalid of [{...plan.sources[id],url:'https://fake.invalid/archive'},{...plan.sources[id],sha256:'a'.repeat(64)},{...plan.sources[id],version:'0.0.0'}])assert.throws(()=>verifyGateObjectSource(id,invalid));
+ }
+ await assert.rejects(verifyGateResourceDelivery({schema:1,product_id:'foreign',work:'/memory/target/test',objects:[],executables:{}}));
+});
+
+test('门禁环境拒绝其它工作根、在线开关及伪造缓存值',async()=>{
+ const {validateGateEnvironment}=await import('./resources.mjs');
+ const work='/synthetic/target/test/owned',executables={bash:work+'/tools/bash',node:work+'/tools/node'};
+ const environment={HOME:work+'/home',TMPDIR:work+'/tmp',PRODUCT_WORK_DIR:work,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_TERMINAL_PROMPT:'0',CARGO_NET_OFFLINE:'true',npm_config_offline:'true',npm_config_script_shell:executables.bash,PRODUCT_SHELL_BIN:executables.bash,PRODUCT_POSIX_BIN:work+'/foundation/bin',NODE:executables.node,CARGO_TARGET_DIR:work+'/cargo-target',GIT_SSL_CAINFO:work+'/foundation/ca.pem',SSL_CERT_FILE:work+'/foundation/ca.pem'};
+ const receipt={work,executables,dependencies:{},environment};assert.equal(validateGateEnvironment(receipt),true);
+ for(const change of [{HOME:'/foreign/home'},{PRODUCT_WORK_DIR:'/foreign/work'},{CARGO_NET_OFFLINE:'false'},{npm_config_offline:'false'},{npm_config_cache:'/foreign/cache'},{CARGO_TARGET_DIR:'/foreign/target'},{SSL_CERT_FILE:'/foreign/ca.pem'}])assert.throws(()=>validateGateEnvironment({...receipt,environment:{...environment,...change}}));
+});
+
+// 资源需求由本仓功能入口推导，协议测试不下载、安装或替代真实原生库。
+test('门禁宿主按实际语言与原锁闭合，拒绝重复来源及越界',async()=>{
+ const {gateFunctionalHostPlan}=await import('./resources.mjs');
+ const list=[{path:'test/account_test.dart',runner:'flutter',target:'flutter'},{path:'host/tests/auth.rs',runner:'cargo',target:'host/Cargo.toml'},{path:'web/test/page.test.ts',runner:'vitest',target:'web'},{path:'logo/test_assets.py',runner:'python',target:'unittest'}];
+ const plan=gateFunctionalHostPlan(list,{platform:'linux',architecture:'x64'});assert.equal(plan.pub,true);assert.equal(plan.cargo,true);assert.equal(plan.python,true);assert.deepEqual(plan.locks,[{ecosystem:'cargo',path:'host/Cargo.lock'},{ecosystem:'npm',path:'web/package-lock.json'}]);
+ for(const invalid of [[],[...list,list[0]],[{...list[0],path:'../outside'}],[{...list[1],target:'/outside/Cargo.toml'}],[{...list[2],target:'../foreign'}]])assert.throws(()=>gateFunctionalHostPlan(invalid,{platform:'linux',architecture:'x64'}));
+ for(const host of [{platform:'linux',architecture:'arm64'},{platform:'win32',architecture:'x64'},{platform:'darwin',architecture:'x64'}])assert.throws(()=>gateFunctionalHostPlan(list,host));
+ assert.equal(gateFunctionalHostPlan([{path:'test/local.test.mjs',runner:'node',target:'node'}],{platform:'darwin',architecture:'arm64'}).python,false);
+});
+test('门禁取消及外仓工程在任何原生编译前失败',async()=>{
+ const {prepareGateFunctionalHost}=await import('./resources.mjs');const controller=new AbortController();controller.abort(Error('synthetic cancel'));
+ await assert.rejects(prepareGateFunctionalHost({},null,{signal:controller.signal}),/synthetic cancel/u);
+ await assert.rejects(prepareGateFunctionalHost({product_id:'foreign',work:'/foreign/source'}, {view:'/foreign/source/language-source'}));
 });

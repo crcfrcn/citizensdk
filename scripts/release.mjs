@@ -666,7 +666,7 @@ const SDK_PINNED_SCRIPT_FILES = Object.freeze({
   'scripts/build-native.sh': '3c5ddcdbc9017d01295287a60f4797970dd496dba28c06c21227015f59112f9f',
   'scripts/dependencies.lock.json': '0a8512053a401ac12604098de0c19e810b529424eea3e81f952a5eea14e9d5da',
   'scripts/dependencies.mjs': 'd3411d94527d99a93857eb8b9302027e42af6484ddb4fb95c71fdf9c2f13739b',
-  'scripts/test.sh': '09f2060908baa8cc6fba27e9929c50273fabd8ac8dcaa5954b8a81d848fb23f6',
+  'scripts/test.sh': 'a90d5133fad42a91df927139202a324d8c79a315cf458d1b233db2a784a6c2ea',
 });
 const SDK_TEST_CONTRACT_FILES = Object.freeze({
   'scripts/build.test.mjs': 'd2fb99922ae817aa4a40f541604f959f8b4fa7b2fc434e9906099d9c735c9b78',

@@ -118,8 +118,10 @@ test('产品独立execute完成全部自有阶段后才返回唯一结果',async
   }};
   assert.deepEqual(await execute(platform,work,{run_id:'123456789'},{stages}),result);
   assert.deepEqual(calls,['requirements','resources','prepare','requirements','resources','build']);
-  assert.deepEqual(JSON.parse(readFileSync(join(work,'build-result.json'),'utf8')),result);
-  await assert.rejects(execute(platform,work,{}, {stages}),/已有结果/);
+  assert.deepEqual(readdirSync(work),[], '独立执行结束必须彻底清空现场');
+  result.files=[]; calls.length=0;
+  assert.deepEqual(await execute(platform,work,{run_id:'123456789'},{stages}),result);
+  assert.deepEqual(readdirSync(work),[], '下一轮结束仍须清空现场');
  }finally{rmSync(work,{recursive:true});}
 });
 test('失败、取消、并发和伪造终态不能复用工作根或留下成功回执',async()=>{
@@ -151,7 +153,7 @@ test('产品取消等待工具进程组退出，不提前交付结果',async()=>
 // 覆盖独立入口、单/多平台物理边界和源码输入排除，统一测试阶段才执行。
 test('本仓target由当前平台声明决定，外部或链接工作根不能越界',()=>{
  for(const platform of Object.keys(contract.platforms)){
-  const expected=join(root,'target',...(Object.keys(contract.platforms).length===1?[]:[platform]));
+  const expected=join(root,'target');
   assert.equal(productTarget(platform),expected);
  }
  assert.throws(()=>productTarget('undeclared-platform'));
@@ -167,7 +169,7 @@ test('CLI异步资源可反向导入唯一校验，正常参数和离线失败�
  try{
   const source=join(area,'source'),scripts=join(source,'scripts'),file=join(scripts,'build.mjs');
   const platform=Object.keys(contract.platforms)[0];
-  const work=join(source,'target',...(Object.keys(contract.platforms).length>1?[platform]:[]),'build');
+  const work=join(source,'target','build');
   mkdirSync(scripts,{recursive:true});mkdirSync(work,{recursive:true});
   writeFileSync(file,readFileSync(join(root,'scripts/build.mjs')));
   writeFileSync(join(scripts,'flows.json'),JSON.stringify(contract));
@@ -242,4 +244,26 @@ test('Android插件输出、JNI暂存和独立AAR绑定同一生产路径校验'
  const prepare=builder.slice(builder.indexOf('prepare_android_gradle_project()'),builder.indexOf('build_android()'));
  assert.match(prepare,/apply from: new File\(System[.]getenv\('CITIZENSDK_SOURCE_DIR'\), 'android\/build[.]gradle'\)/);
  assert.match(prepare,/apply from: new File\(System[.]getenv\('CITIZENSDK_SOURCE_DIR'\), 'android\/native\/build[.]gradle'\)/);
+});
+
+// 完整宿主通道由调用方核验结果并收尾；独立执行仍必须立即清空。
+test('宿主完整Build在调用方消费前保留成功或失败现场，独立入口仍清空',async()=>{
+ const {execute,outputDigest,clearWork}=await import('./build.mjs'),platform=Object.keys(contract.platforms)[0],declared=contract.platforms[platform];
+ for(const [host,failure] of [['3',false],['3',true],['4',false],[undefined,false]]){
+  const work=sandbox();try{
+   let result;
+   const stages={requirements:()=>{},resources:async()=>({}),prepare:async()=>{writeFileSync(join(work,'partial'),'本轮现场');if(failure)throw Error('宿主失败夹具');},build:async()=>{
+    result={schema:1,product_id:contract.product_id,platform,work,completion:declared.completion,run_id:'123456789',files:declared.files.map(name=>{const path=join(work,name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,'当前产物');return {path,sha256:outputDigest(path)};})};return result;
+   }};
+   const pending=execute(platform,work,{run_id:'123456789'},{stages,environment:host?{PRODUCT_HOST_FD:host}:{}});
+   if(failure)await assert.rejects(pending,/宿主失败夹具/);else assert.deepEqual(await pending,result);
+   assert.equal(existsSync(join(work,'.product-build.lock')),false);
+   if(host==='3'){
+    assert.equal(existsSync(join(work,'partial')),true);
+    if(!failure){assert.equal(existsSync(join(work,'build-result.json')),true);for(const file of result.files)assert.equal(outputDigest(file.path),file.sha256);}
+    clearWork(work);
+   }
+   assert.deepEqual(readdirSync(work),[]);
+  }finally{rmSync(work,{recursive:true,force:true});}
+ }
 });

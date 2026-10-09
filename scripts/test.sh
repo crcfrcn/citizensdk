@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CitizenSDK唯一本地测试入口；源码只读，所有测试生成物写入产品外部工作目录。
+# CitizenSDK唯一本地测试入口；源码只读，所有测试生成物写入本产品target测试工作目录。
 set -euo pipefail
 
 script_path="${BASH_SOURCE[0]}"
@@ -19,7 +19,7 @@ node_bin="${NODE:-$(command -v node || true)}"
 [[ -n "$node_bin" && -x "$node_bin" ]] \
   || { echo 'CitizenSDK 测试缺少 Node' >&2; exit 1; }
 
-# 首次写入前按真实祖先解析路径；拒绝源码、源码祖先及内部输出符号链接。
+# 首次写入前按真实祖先解析路径；拒绝target外目录、源码祖先及内部输出符号链接。
 # 只校验调用方给定目录，不识别目录来源，也不清理其它任务或依赖原件。
 test_root="$("$node_bin" - "$sdk_dir" "$test_root" <<'CHECK_OUTPUTS'
 const fs = require('node:fs');
@@ -101,9 +101,17 @@ prepare_flutter_project() {
   if [[ -n "$test_smoldot_library" ]]; then
     [[ "$test_smoldot_library" == /* && -f "$test_smoldot_library" && ! -L "$test_smoldot_library" ]] \
       || { echo 'CitizenSDK Flutter 测试 smoldot 宿主库必须是绝对普通文件' >&2; return 1; }
-    case "$test_smoldot_library" in
-      "$sdk_dir"/*) echo 'CitizenSDK Flutter 测试 smoldot 宿主库禁止位于源码树' >&2; return 1 ;;
-    esac
+    # 宿主库只允许本轮真实target现场；祖先或文件链接、源码及其它轮次均拒绝。
+    "$node_bin" - "$test_root" "$test_smoldot_library" <<'CHECK_SMOLDOT_INPUT' || return 1
+const fs = require('node:fs');
+const path = require('node:path');
+const [work, library] = process.argv.slice(2);
+if (!path.isAbsolute(work) || path.resolve(work) !== work || fs.realpathSync(work) !== work ||
+    !path.isAbsolute(library) || path.resolve(library) !== library || !library.startsWith(work + path.sep) ||
+    fs.realpathSync(library) !== library) throw new Error('CitizenSDK宿主库必须归本轮真实测试现场');
+const info = fs.lstatSync(library);
+if (!info.isFile() || info.isSymbolicLink() || !info.size) throw new Error('CitizenSDK宿主库不是非空普通文件');
+CHECK_SMOLDOT_INPUT
     case "$(uname -s)" in
       Darwin) ln -s "$test_smoldot_library" "$project_root/libsmoldot.dylib" || return 1 ;;
       Linux) ln -s "$test_smoldot_library" "$project_root/libsmoldot.so" || return 1 ;;

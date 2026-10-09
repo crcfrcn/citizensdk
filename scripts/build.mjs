@@ -2,7 +2,7 @@
 // 本产品独立拥有资源需求、工程准备与编译；公开回执仅提供验真资源，不提供执行命令。
 import {spawn} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
-import {chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,symlinkSync,writeFileSync} from 'node:fs';
+import {rmSync,chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,symlinkSync,writeFileSync} from 'node:fs';
 import {dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
@@ -14,21 +14,19 @@ const inside=(base,path)=>{const r=relative(base,path);return r===''||!isAbsolut
 const fail=message=>{throw Error(product+' Build：'+message);};
 export function checkWork(work) {
  if(typeof work!=='string'||!isAbsolute(work)||resolve(work)!==work||work===parse(work).root||!inside(join(root,'target'),work)||work===join(root,'target'))fail('工作根必须是本产品target内的规范目录');
- const parts=relative(join(root,'target'),work).split(sep);
- if(Object.keys(contract.platforms).length>1&&!Object.hasOwn(contract.platforms,parts[0]))fail('工作根平台未由本产品声明');
- const flow=parts[Object.keys(contract.platforms).length>1?1:0];
- if(!['build','ci','release','publish','test','tmp'].includes(flow))fail('工作根流程职责无效');
+ const scope=relative(join(root,'target'),work).split(sep)[0];
+ if(!['build','test'].includes(scope))fail('工作根只允许本产品target/build或target/test');
  let at=parse(work).root;for(const part of relative(at,work).split(sep)){at=join(at,part);const s=lstatSync(at);if(!s.isDirectory()||s.isSymbolicLink())fail('工作根经过链接或非目录');}return work;
 }
 // 产品自己拥有target工作边界；测试与独立入口也不借用调用方的全局缓存。
 export function productTarget(platform) {
  platformContract(platform);
- return join(root,'target',...(Object.keys(contract.platforms).length===1?[]:[platform]));
+ return join(root,'target');
 }
 export function temporaryRoot(platform=Object.keys(contract.platforms)[0],scope='test',suppliedInput=process.env.TMPDIR) {
  if(!['test','tmp','build','ci','release','publish'].includes(scope))fail('临时目录职责无效');
- const endpoint=productTarget(platform),supplied=suppliedInput?resolve(suppliedInput):undefined;
- const directory=supplied&&supplied!==endpoint&&inside(endpoint,supplied)?supplied:join(endpoint,scope);
+ const endpoint=productTarget(platform),scopeDirectory=join(endpoint,scope==='test'?'test':'build'),supplied=suppliedInput?resolve(suppliedInput):undefined;
+ const directory=supplied&&inside(scopeDirectory,supplied)?supplied:scopeDirectory;
  let at=parse(directory).root;
  for(const part of relative(at,directory).split(sep)){
   at=join(at,part);if(!existsSync(at))mkdirSync(at,{mode:0o700});
@@ -54,6 +52,14 @@ export function remoteEnvironment(environment=process.env) {
 
 // 展开来源根由本产品指定，调用者不识别任何产品来源名称。
 export function resourceSourceRoot(name,work){checkWork(work);if(!/^[a-z][a-z0-9_]*$/u.test(name))fail('来源名称无效');return join(work,'git-sources',name);}
+// 清理只针对当前执行拥有的工作根；工具全部退出后删除并回读，固定根本身保留。
+export function clearWork(work) {
+ checkWork(work);const before=lstatSync(work);
+ function writable(path){const state=lstatSync(path);if(state.isDirectory()&&!state.isSymbolicLink()){if(realpathSync(path)!==path)fail('清理目录经过链接');chmodSync(path,state.mode|0o700);for(const name of readdirSync(path))writable(join(path,name));}}
+ for(const name of readdirSync(work)){const path=join(work,name);writable(path);rmSync(path,{recursive:true,force:true});}
+ const after=lstatSync(work);if(before.dev!==after.dev||before.ino!==after.ino||readdirSync(work).length)fail('本轮工作根未完全清空或被替换');
+}
+
 export function platformContract(platform) {
  if(!Object.hasOwn(contract.platforms,platform))fail('平台未声明');
  return contract.platforms[platform];
@@ -261,6 +267,7 @@ function sourceDigest() {
  }}visit(root);return hash.digest('hex');
 }
 
+// 宿主完整Build先由调用方消费回执、安装并收尾；独立执行由本产品清空现场。
 export async function execute(platform,work,request={},options={}) {
  checkWork(work);platformContract(platform);
  if(!inside(productTarget(platform),work)||work===productTarget(platform))fail('执行工作根与当前产品平台不一致');
@@ -286,7 +293,7 @@ export async function execute(platform,work,request={},options={}) {
   const result=await stages.build(platform,work,receipt,resourcesOptions.environment);unchanged();
   checkBuildResult(result,platform,work,request.run_id);
   writeFileSync(resultFile,JSON.stringify(result)+'\n',{flag:'wx',mode:0o600});return result;
- });}finally{state.finished=true;state.socket?.destroy();options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed)unlinkSync(lock);}
+ });}catch(error){if(String(error?.message).includes('退出未确认'))state.unconfirmed=true;throw error;}finally{state.finished=true;state.socket?.destroy();options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed){unlinkSync(lock);if(request.resource_mode!=='provided'&&(options.environment||process.env).PRODUCT_HOST_FD!=='3')clearWork(work);}}
 }
 export function checkBuildResult(value,platform,work,runId) {
  const declared=platformContract(platform);
