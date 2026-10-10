@@ -1,0 +1,958 @@
+---
+name: citizensdk.sdk
+run-name: "${{ github.workflow }} · ${{ github.run_number }}"
+'on':
+  workflow_dispatch: {}
+concurrency:
+  group: "${{ github.repository }}-sdk"
+  cancel-in-progress: false
+  queue: max
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: "${{ steps.version.outputs.version }}"
+      tag: "${{ steps.version.outputs.tag }}"
+      source_sha: "${{ steps.version.outputs.source_sha }}"
+      run_id: "${{ steps.version.outputs.run_id }}"
+      run_attempt: "${{ steps.version.outputs.run_attempt }}"
+      run_number: "${{ steps.version.outputs.run_number }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - id: version
+      env:
+        GH_TOKEN: "${{ github.token }}"
+      run: node .github/workflows/release-sdk.mjs prepare
+  stage_1:
+    name: CitizenSDK 全量构建 Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: Android
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 1
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: android
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 2
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 3
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 4
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 5
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 6
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 7
+    - if: "${{ success() }}"
+      env:
+        CITIZENSDK_JOB: android
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 8
+    - if: "${{ success() }}"
+      name: 保存当前 run 的阶段0原生件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ steps.citizensdk_build_identity.outputs.artifact }}"
+        path: "${{ steps.citizensdk_build_identity.outputs.root }}/native.tgz"
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+    needs:
+    - prepare
+  stage_2:
+    name: CitizenSDK 全量构建 iOS / macOS
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: macOS
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 9
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: apple
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 10
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 11
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 12
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 13
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 14
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 15
+    - if: "${{ success() }}"
+      env:
+        CITIZENSDK_JOB: apple
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 16
+    - if: "${{ success() }}"
+      name: 保存当前 run 的阶段0原生件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ steps.citizensdk_build_identity.outputs.artifact }}"
+        path: "${{ steps.citizensdk_build_identity.outputs.root }}/native.tgz"
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+    needs:
+    - prepare
+  stage_3:
+    name: CitizenSDK 全量构建 LinuxARM
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: LinuxARM
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 17
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: linuxarm
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 18
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 19
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 20
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 21
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 22
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 23
+    - if: "${{ success() }}"
+      env:
+        CITIZENSDK_JOB: linuxarm
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 24
+    - if: "${{ success() }}"
+      name: 保存当前 run 的阶段0原生件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ steps.citizensdk_build_identity.outputs.artifact }}"
+        path: "${{ steps.citizensdk_build_identity.outputs.root }}/native.tgz"
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+    - if: "${{ always() && steps.citizensdk_build_identity.outcome == 'success' }}"
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 25
+    needs:
+    - prepare
+  stage_4:
+    name: CitizenSDK 全量构建 LinuxAMD
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: LinuxAMD
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 26
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: linuxamd
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 27
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 28
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 29
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 30
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 31
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 32
+    - if: "${{ success() }}"
+      env:
+        CITIZENSDK_JOB: linuxamd
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 33
+    - if: "${{ success() }}"
+      name: 保存当前 run 的阶段0原生件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ steps.citizensdk_build_identity.outputs.artifact }}"
+        path: "${{ steps.citizensdk_build_identity.outputs.root }}/native.tgz"
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+    - if: "${{ always() && steps.citizensdk_build_identity.outcome == 'success' }}"
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 34
+    needs:
+    - prepare
+  stage_5:
+    name: CitizenSDK 全量构建 Windows
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: Windows
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 35
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: windows
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 36
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 37
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 38
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 39
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 40
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 41
+    - if: "${{ success() }}"
+      env:
+        CITIZENSDK_JOB: windows
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 42
+    - if: "${{ success() }}"
+      name: 保存当前 run 的阶段0原生件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ steps.citizensdk_build_identity.outputs.artifact }}"
+        path: "${{ steps.citizensdk_build_identity.outputs.root }}/native.tgz"
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+    needs:
+    - prepare
+  stage_6:
+    name: CitizenSDK 同源汇总
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_1
+    - stage_2
+    - stage_3
+    - stage_4
+    - stage_5
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: macOS
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 43
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: aggregate
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 44
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 45
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 46
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 47
+    - name: 下载同次 android 原生分片
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-android-${{ env.CITIZENSDK_SOURCE_SHA }}-${{
+          env.CITIZENSDK_VERSION }}
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/input/android"
+    - name: 下载同次 apple 原生分片
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-apple-${{ env.CITIZENSDK_SOURCE_SHA }}-${{
+          env.CITIZENSDK_VERSION }}
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/input/apple"
+    - name: 下载同次 linuxarm 原生分片
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-linuxarm-${{ env.CITIZENSDK_SOURCE_SHA }}-${{
+          env.CITIZENSDK_VERSION }}
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/input/linuxarm"
+    - name: 下载同次 linuxamd 原生分片
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-linuxamd-${{ env.CITIZENSDK_SOURCE_SHA }}-${{
+          env.CITIZENSDK_VERSION }}
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/input/linuxamd"
+    - name: 下载同次 windows 原生分片
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: citizensdk-${{ github.run_id }}-${{ github.run_attempt }}-windows-${{ env.CITIZENSDK_SOURCE_SHA }}-${{
+          env.CITIZENSDK_VERSION }}
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/input/windows"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 48
+    - name: 保存唯一完整候选四文件
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: |
+          ${{ env.CITIZENSDK_WORK_DIR }}/transfer/citizensdk.tgz
+          ${{ env.CITIZENSDK_WORK_DIR }}/transfer/citizensdk-release.json
+          ${{ env.CITIZENSDK_WORK_DIR }}/transfer/SHA256SUMS
+          ${{ env.CITIZENSDK_WORK_DIR }}/transfer/citizen_sdk-${{ env.CITIZENSDK_VERSION }}.tar.gz
+        if-no-files-found: error
+        overwrite: false
+        retention-days: 7
+  stage_7:
+    name: CitizenSDK 最终同包验证 Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_6
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: Android
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 49
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: consume_android
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 50
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 51
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 52
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 53
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 54
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 55
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 56
+  stage_8:
+    name: CitizenSDK 最终同包验证 iOS / macOS
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_6
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: macOS
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 57
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: consume_apple
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 58
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 59
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 60
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 61
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 62
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 63
+  stage_9:
+    name: CitizenSDK 最终同包验证 LinuxARM
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_6
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: LinuxARM
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 64
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: consume_linuxarm
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 65
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 66
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 67
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 68
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 69
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 70
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 71
+    - if: "${{ always() && steps.citizensdk_build_identity.outcome == 'success' }}"
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 72
+  stage_10:
+    name: CitizenSDK 最终同包验证 LinuxAMD
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_6
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: LinuxAMD
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 73
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: consume_linuxamd
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 74
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 75
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 76
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 77
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 78
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 79
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 80
+    - if: "${{ always() && steps.citizensdk_build_identity.outcome == 'success' }}"
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 81
+  stage_11:
+    name: CitizenSDK 最终同包验证 Windows
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_6
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: X64
+      PRODUCT_PLATFORM: Windows
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 82
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: consume_windows
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 83
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 84
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 85
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 86
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 87
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 88
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 89
+  flow:
+    name: CitizenSDK 正式 Release
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    needs:
+    - prepare
+    - stage_7
+    - stage_8
+    - stage_9
+    - stage_10
+    - stage_11
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: false
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      CARGO_INCREMENTAL: '0'
+      GH_TOKEN: "${{ github.token }}"
+      CITIZENSDK_SOURCE_SHA: "${{ github.sha }}"
+      CITIZENSDK_VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      CITIZENSDK_SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      PRODUCT_EXPECTED_RUNNER_ARCH: ARM64
+      PRODUCT_PLATFORM: macOS
+      SOURCE_SHA: "${{ github.sha }}"
+      VERSION_TAG: "${{ needs.prepare.outputs.tag }}"
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 准备本目标独占现场
+      run: node .github/workflows/release-sdk.mjs job
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 90
+    - id: citizensdk_build_identity
+      env:
+        CITIZENSDK_JOB: finalize
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 91
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 92
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 93
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 94
+    - name: 下载同次同源唯一完整候选
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: "${{ env.CITIZENSDK_CANDIDATE_ARTIFACT }}"
+        path: "${{ env.CITIZENSDK_WORK_DIR }}/transfer"
+    - shell: bash
+      run: node "$GITHUB_WORKSPACE/.github/workflows/release-sdk.mjs" step 95
+    - id: complete
+      name: 逐件收集完整正式产物
+      run: node .github/workflows/release-sdk.mjs collect-produced
+    - name: 交付本次完整产物
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-output
+        path: "${{ steps.complete.outputs.assets }}"
+        if-no-files-found: error
+        retention-days: 7
+  publish:
+    needs:
+    - prepare
+    - stage_1
+    - stage_2
+    - stage_3
+    - stage_4
+    - stage_5
+    - stage_6
+    - stage_7
+    - stage_8
+    - stage_9
+    - stage_10
+    - stage_11
+    - flow
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      GH_TOKEN: "${{ github.token }}"
+      CI: 'true'
+      CARGO_INCREMENTAL: '0'
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: release-output
+        path: "${{ runner.temp }}/release-output"
+    - id: complete
+      name: 正式Release上传并逐件回读
+      run: node .github/workflows/release-sdk.mjs publish "$RUNNER_TEMP/release-output"
+  cleanup:
+    if: "${{ always() }}"
+    needs:
+    - prepare
+    - stage_1
+    - stage_2
+    - stage_3
+    - stage_4
+    - stage_5
+    - stage_6
+    - stage_7
+    - stage_8
+    - stage_9
+    - stage_10
+    - stage_11
+    - flow
+    - publish
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      RELEASE_NEEDS: "${{ toJSON(needs) }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      PRODUCER_RUN_ID: "${{ github.run_id }}"
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      with:
+        node-version: 25.2.1
+    - name: 按全部前置结果清理本目标同类历史
+      run: node .github/workflows/release-sdk.mjs finish

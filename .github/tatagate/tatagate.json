@@ -2,33 +2,12 @@
   "schema": 1,
   "repository": "citizensdk",
   "workflows": [
-    "citizensdk.sdk.ci",
-    "citizensdk.sdk.release"
-  ],
-  "node_tests": [
-    "scripts/build.mjs",
-    "scripts/flow.mjs",
-    "scripts/resources.mjs",
-    "scripts/release.mjs",
-    "scripts/ci/index.mjs",
-    "scripts/ci/sdk.mjs",
-    "scripts/release/index.mjs",
-    "scripts/release/sdk.mjs",
-    "scripts/target.mjs"
+    "release-sdk.yml"
   ],
   "checks": [
     "repository-contracts",
     "dependency-contracts"
   ],
-  "tools": {
-    "node": "25.2.1",
-    "actionlint": "1.7.12",
-    "rust": null,
-    "git": "2.54.0",
-    "bash": "5.3.20",
-    "grep": "3.12",
-    "sed": "4.10"
-  },
   "platform_forbidden_values": [
     "macOS ARM64",
     "macos-arm64",
@@ -1289,60 +1268,6 @@
       ]
     },
     {
-      "function": "scripts-build",
-      "path": "scripts/build.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-ci-index",
-      "path": "scripts/ci/index.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-ci-sdk",
-      "path": "scripts/ci/sdk.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-flow",
-      "path": "scripts/flow.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-release",
-      "path": "scripts/release.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-release-index",
-      "path": "scripts/release/index.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-release-sdk",
-      "path": "scripts/release/sdk.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-resources",
-      "path": "scripts/resources.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts-target",
-      "path": "scripts/target.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
       "function": "test/api/citizen_sdk_test",
       "path": "test/api/citizen_sdk_test.dart",
       "runner": "flutter",
@@ -1456,5 +1381,10 @@
       "runner": "flutter",
       "target": "flutter"
     }
+  ],
+  "sources": [
+    "scripts/build.mjs",
+    "scripts/publish.mjs",
+    ".github/workflows/release-sdk.mjs"
   ]
 }

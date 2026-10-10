@@ -79,7 +79,7 @@ class SmoldotPlatform {
             'Library path: $libraryPath\n'
             'Package error: ${packageError ?? 'library not found'}\n'
             'System error: $systemError\n'
-            'Run ./scripts/build-native.sh host with central work/output paths '
+            'Run node ./scripts/build.mjs native host with central work/output paths '
             'before flutter test.',
       );
     }

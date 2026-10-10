@@ -11,17 +11,17 @@ licenses. No single license replaces the component-specific terms below.
    complete text is in LICENSE-MIT.
 
 2. The incorporated smoldot Dart and FFI components identified in
-   native/smoldot/SOURCE_SHA256.json are licensed under the Apache License 2.0. The
+   native/smoldot/UPSTREAM.md are licensed under the Apache License 2.0. The
    complete text is reproduced below. The full source distribution also keeps
    its byte-identical source copy in native/smoldot/LICENSE-APACHE-2.0.
 
 3. The incorporated smoldot PoW light-client components identified in
-   native/smoldot/SOURCE_SHA256.json are licensed under
+   native/smoldot/UPSTREAM.md are licensed under
    GPL-3.0-or-later WITH Classpath-exception-2.0. The complete terms, including
    the Classpath exception notice, are in LICENSE-GPL-3.0.
 
 Third-party dependencies remain subject to their own licenses. Component
-provenance is recorded in native/smoldot/SOURCE_SHA256.json; upstream copyright
+provenance is recorded in native/smoldot/UPSTREAM.md; upstream copyright
 notices remain in the source files. Upstream-derived modifications and combined
 distributions must satisfy the applicable original license and exception terms.
 
@@ -426,7 +426,7 @@ OpenSSL 3.5.8 — official LICENSE.txt (verbatim)
 
 TPM2-TSS 4.2.0 — official LICENSE (verbatim)
 ==========================================
-Copyright notices: see native/smoldot/SOURCE_SHA256.json.
+Copyright notices: see native/smoldot/UPSTREAM.md.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:

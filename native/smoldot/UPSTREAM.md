@@ -9,7 +9,7 @@
 `native/provider` 是 CitizenSDK 自有适配层，不属于上游 smoldot 快照。它只能依赖
 上述收编源码并实现 `VerifiedChainClient`，不能把上游 JSON-RPC 任意透传成产品公共 API。
 `native/legacy` 是 SDK 自有兼容 FFI，公共兼容头唯一存放在 `include/smoldot.h`。
-原 pow 内八个 SDK 自有边界测试已经迁入 `native/provider/tests`，来源清单记录原单元及
+原 pow 内八个 SDK 自有边界测试已经迁入 `native/provider/tests`，唯一编译映射记录实际
 编译位置；编译视图恢复原 Cargo 测试目标，不改上游源码、manifest 或锁文件。
 自有 crate 的源码存放在 source/，编译视图恢复 src/；Dart 适配和回归也属于 SDK 自有代码。
 
@@ -22,7 +22,6 @@
 最终块更替时准确释放旧引用，订阅重建时不复用旧上下文，异步启动前已释放的块重新选择。
 交易池 `lib/transactions/light_pool.rs` 保持官方原件；验证、广播、无效清理和最终化
 保留官方顺序，不添加提前广播或已入块优先的分支，也不插入诊断。
-`SOURCE_SHA256.json` 的 adapted 类别记录交易服务当前源码及内联回归摘要。
 空闲链验收必须证明无需新区块即可执行验证，源码摘要或离线通过不能代替真实验证。
 
 `light-base/src/lib.rs`的SDK typed nonce入口统一使用同次订阅的
@@ -65,14 +64,13 @@ light-base/src/sync_service/standalone.rs
 2. 仅比较和更新 `lib`、`light-base`；CitizenSDK 不收编 `full-node` 或 `wasm-node`。
 3. 先生成上游差异与文件闭集，确认上述 PoW 改动、轻客户端排除项和许可证。
 4. 在独立 fork/分支上 rebase PoW 补丁并完成冲突审查，再逐字节回灌临时候选。
-5. 同步测试夹具、内联测试、Cargo manifests、`Cargo.lock`、来源 manifest 和本文件。
+5. 同步测试夹具、内联测试、Cargo manifests、`Cargo.lock`和本文件。
 6. 在源码树外完成三个 Rust workspace、Dart/Flutter、移动原生构建与候选验证后才接受更新。
 
 同步上游后还必须执行 provider 的 exact-block、finalized、runtime context、提交/观察和
 state import/export 合同测试，并证明 legacy `libsmoldot` 的库名、回调及全部既有导出未变。
 
-临时 patch、上游 checkout 和构建目录使用后全部删除，不得进入 Release。完整产品来源分类
-见本目录 SOURCE_SHA256.json。
+临时patch、上游checkout和构建目录使用后全部删除，不得进入Release；上游来源与适配说明以本文件为准。
 
 ## 示例裁剪（2026-10-09）
 
