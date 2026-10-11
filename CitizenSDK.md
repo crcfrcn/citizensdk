@@ -4195,3 +4195,15 @@ GitHub 自动化仅由 `.github/workflows/release-sdk.yml` 启动，同名 MJS �
 本仓 GitHub 门禁接受 actions/checkout 的准确 HTTPS origin（同一仓库地址有或没有 `.git` 后缀），仓库、事件、提交和工作流身份仍逐项校验。
 
 门禁清理接口只对 URL 的路径部分拒绝越界，允许 created 查询中的时间范围分隔符；同文件回归直接执行正式 HTTP 参数校验，覆盖时间范围和越界拒绝。
+
+## 配置需求公开接口
+
+本仓 `scripts/config.mjs` 明确返回当前空配置需求。旧控制台的 `SERVICE_ACCOUNT_KEY` 没有本仓现行公开流程消费者，不能仅凭控制台旧登记认定为本产品要求；真实发布接口需要该能力时由本仓先声明。
+
+Apple私有构建声明生成使用同一Node片段导入的writeFileSync，首次文件独占创建0600；同轮复用仅接受字节完全相同的普通独占文件，漂移拒绝。原生流程在编译前由当前Node执行本仓具名回归，实际覆盖首次写入、inode不变的复用和不同内容失败；不复制实现、不改变锁、ABI或签名。
+
+原生ABI头文件全量符号提取使用本仓已登记Perl 5.42.3，直接工具需求明确包含该版本；消费者公民两平台同时交付同一登记版本的入口。保留原完整头文件解析及符号集合闭合，不借用系统Perl。
+
+SDK独立原生Gradle包装输入由SDK的androidGradleProjectFiles公开接口唯一定义；本机资源阶段与正式原生编译使用同一三文件声明，重复输入只允许字节一致的普通独占文件。公民资源阶段在本轮citizensdk-work/gradle-project中预解析SDK真实buildscript依赖到同一任务Gradle缓存，正式编译保持离线；宿主Flutter解析不替代SDK独立依赖图，不另存Kotlin版本或强制版本覆盖。
+
+SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，保留原版本与模块闭包。Android官方证书组件通过SDK的androidGradleLocalRepository从本仓Gradle真实版本声明与锁定Cargo元数据唯一匹配；Maven视图绑定当前任务原件，原生与资源共用同一来源。SDK公开模块按当前源码修订重读，摘要仅用于ESM缓存索引，不作为资源版本或完整性门禁。
