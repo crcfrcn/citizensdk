@@ -4186,3 +4186,8 @@ GitHub 自动化仅由 `.github/workflows/release-sdk.yml` 启动，同名 MJS �
 塔塔门禁从 `.github/tatagate/tatagate.json` 读取本仓静态登记，仅使用只读 Git 查询与文件读取核对正式 `main`、HTTPS origin、提交范围、脚本闭集和旧入口残留。它不创建现场、不取得工具、不启动产品步骤或测试进程。真实编译、测试与发布须按各自操作授权单独执行。
 
 本轮开发只做静态语法复核；未运行测试、门禁、构建、安装、发布、保存或推送。完整实际验收须在对应授权后按每一流程自身状态执行。
+
+
+## GitHub塔塔门禁与同类记录清理
+
+本仓保留自己的.github/tatagate门禁实现和合同。main的push只触发本仓.github/workflows/tatagate.yml，gate与cleanup在这一个文件内执行；检出准确GITHUB_SHA并验证本仓GitHub事件、main引用和HTTPS origin，门禁继续执行本仓现有检查。gate成功时删除本仓该门禁旧成功Run；gate失败时删除旧失败Run；另一类最近记录和活动Run保留。清理前重新验真Run、Attempt和结论，删除后回查；清理错误如实记录并由后续运行补清，不影响gate检查结论。塔塔控制台通过塔塔鹿鹿的一次生物识别保存、推送本仓，并按准确SHA与Run ID追踪独立门禁任务；门禁结果不影响已确认的推送。
