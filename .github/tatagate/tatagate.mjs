@@ -172,8 +172,8 @@ export function tataGateCleanupPlan(rows,current,result) {
     && run.id!==current.id && run.run_number<current.run_number
     && (run.conclusion==='success'?'success':'failed')===result).sort((a,b)=>a.run_number-b.run_number);
 }
-async function tataGateAPI(path,{method='GET',fetchImpl=fetch,token=process.env.GH_TOKEN}={}) {
-  if (typeof token!=='string' || !token || typeof path!=='string' || path.includes('..') || path.startsWith('/') || /[\r\n]/u.test(path)) throw Error('本仓塔塔门禁API参数无效');
+export async function tataGateAPI(path,{method='GET',fetchImpl=fetch,token=process.env.GH_TOKEN}={}) {
+  if (typeof token!=='string' || !token || typeof path!=='string' || path.split('?')[0].includes('..') || path.split('?')[0].includes('%') || path.startsWith('/') || /[\r\n]/u.test(path)) throw Error('本仓塔塔门禁API参数无效');
   let response;
   try {response=await fetchImpl('https://api.github.com/repos/'+tataGateOwner+'/'+path,{method,redirect:'error',
     headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2026-03-10','User-Agent':'TataGate'},
@@ -239,7 +239,7 @@ export async function tataGateCommand(mode) {
 }
 if(process.argv[1] && ['github','cleanup'].includes(process.argv[2]) && process.argv.length===3
   && new URL('file:'+process.argv[1]).href===import.meta.url){
-  try{await tataGateCommand(process.argv[2]);}catch(error){console.error(error.message?.startsWith('本仓')?error.message:'本仓塔塔门禁执行失败');process.exitCode=1;}
+  try{await tataGateCommand(process.argv[2]);}catch(error){console.error(('本仓塔塔门禁执行失败：'+String(error.message??error)).replace(/gh[sopru]_[^\s]+|github_pat_[^\s]+/gu,'[已隐藏]').slice(0,2000));process.exitCode=1;}
 }
 
 async function tataGateRunOwn(repositoryRoot,event) {
@@ -267,6 +267,11 @@ if(process.env.NODE_TEST_CONTEXT && process.argv.length===2 && process.argv[1]==
     assert.deepEqual(tataGateCleanupPlan(rows,current,'failed').map(x=>x.id),[2]);
   });
   test('塔塔门禁删除逐项回查，清理失败和重跑变化均不能伪报完成',async()=>{
+    const range='actions/workflows/tatagate.yml/runs?created=2008-01-01T00%3A00%3A00Z..2026-10-11T00%3A00%3A00Z';
+    const empty={total_count:0,workflow_runs:[]};
+    assert.deepEqual(await tataGateAPI(range,{token:'fixture',fetchImpl:async(url,options)=>{assert.ok(url.includes('created='));assert.equal(options.method,'GET');return new Response(JSON.stringify(empty));}}),empty);
+    for(const path of ['../actions/runs/1','actions/%2e%2e/runs','actions/runs/1\n'])await assert.rejects(tataGateAPI(path,{token:'fixture',fetchImpl:()=>{throw Error('越界不应请求网络');}}),/参数无效/u);
+
     const current={id:9,run_number:9,run_attempt:1,path:'.github/workflows/tatagate.yml',event:'push',head_branch:'main',head_sha:'a'.repeat(40),repository:{full_name:tataGateOwner},created_at:'2026-01-02T00:00:00Z',status:'in_progress',conclusion:null};
     const old={...current,id:1,run_number:1,status:'completed',conclusion:'success',created_at:'2026-01-01T00:00:00Z'};
     for(const mode of ['success','readback','rerun']){
