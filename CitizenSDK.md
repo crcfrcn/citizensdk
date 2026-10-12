@@ -1,5 +1,7 @@
 # CitizenSDK 技术文档
 
+> 当前塔塔鹿鹿：每仓 `.github/tatalulu.yml` 只登记仓库身份；控制台 `.github/tatalulu.mjs` 保存并推送后，以 GitHub `main` 回查结果收口。本文早期推送触发检查记录仅供历史追溯。
+
 ## 平台编译现场
 
 本产品编译任务使用本仓 `target/build/<平台>` 独立临时目录，平台键为 `sdk`。不同平台同时领取并执行；同平台已有活跃任务时立即拒绝再次领取。资源准备、工程副本、缓存和编译输出只写本平台现场；确认进程及后代退出、结果被调用方消费后，删除整个平台目录。`target/build` 仅是父目录，`target/test` 仍用于独立测试。独立执行和控制台调度调用同一本仓编译入口与清理接口。
@@ -16,20 +18,17 @@ citizensdk/
 │   └── publish.mjs
 └── .github/
     ├── workflows/
-    │   ├── release-sdk.yml
-    │   └── release-sdk.mjs
-    └── tatagate/
-        ├── tatagate.json
-        └── tatagate.mjs
+    │   └── sdk.yml
+    └── tatalulu.yml
 ```
 
 `scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备和工作现场生命周期。编译回执仅表示 SDK 源码与原生编译完成，不表示生成或发布正式归档。其 `plan`、`prepare-environment`、`prepare-native` 和 `native` 子命令服务同一编译入口；`native` 只接受单个已声明的编译或输出核对目标，不接收最终包 Hosted 消费参数。
 
 `scripts/publish.mjs` 独立拥有显式输入的候选组包、来源与原生输入核验、完整包及 Hosted 包核验；不触发编译或 GitHub 自动化。发布入口的输入和产物均由调用方明确提供。
 
-`.github/workflows/release-sdk.yml` 和同名 MJS 独立拥有 GitHub 版本、五宿主构建与测试、组件汇总、正式归档、Tag、Release 和历史清理。自动化脚本调用自己的命令，不调用 `build.mjs` 或 `publish.mjs`。
+`.github/workflows/sdk.yml` 独立拥有 GitHub 版本、五宿主原生构建、完整候选组包、逐平台复验、Tag 与正式 Release。自动化在各 Runner 调用本仓 `scripts/build.mjs` 的原生能力和 `scripts/publish.mjs` 的严格组包验真接口，不创建第二套产品构建器。
 
-`.github/tatagate/tatagate.json` 与 `.mjs` 只读核对所属仓库提交、目录闭集、Workflow 任务、源码中的登记用例与平台禁用值、原始锁结构及各流程依赖坐标一致性；门禁不准备资源、不写文件、不运行编译、自动化、发布或测试。门禁检查要求干净的已保存提交。
+`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译、自动化与发布仍通过各自原有入口独立运行。
 
 CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台当前保留编译与自动化按钮，待明确本机发布产物输入后再接入发布按钮。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
 
@@ -4179,7 +4178,7 @@ SDK在本仓独立拥有实现和测试，不依赖独立公民钱包的代码�
 
 编译入口将锁定工具与原生依赖坐标内聚到 `scripts/build.mjs`。独立执行时由本产品准备；调度执行只消费明确交付的资源。生成物只写入本仓准确任务现场或调用方明确的源码外路径，失败不切换来源或流程。
 
-GitHub 自动化仅由 `.github/workflows/release-sdk.yml` 启动，同名 MJS 拥有阶段命令及产物汇总。它独立实现所需原生准备与包组装，步骤之间通过当前 Run 的路径和逐件证明交付。正式版本、Tag 与 Release 只在获准的 GitHub 流程中产生；本机编译不冒充正式发布。
+GitHub 自动化仅由 `.github/workflows/sdk.yml` 启动，五宿主原生件通过当前 Run 的独立 Artifact 汇总；完整候选经本仓发布器验真并在五宿主复验后，才创建和回读正式 Tag、Release。控制台发布只消费已完成的正式版。
 
 本机发布只接受调用方指定的来源、原生输入、候选目录、归档路径和版本等参数；`scripts/publish.mjs` 自己核验这些输入与产物，不调用编译、自动化或门禁。控制台按用户要求保留发布动作登记；当前产品发布器仍要求调用方提供准确来源、候选、归档和工具路径，控制台现有无参发布入口不能据此宣称已经完成产品发布。
 
@@ -4207,3 +4206,5 @@ Apple私有构建声明生成使用同一Node片段导入的writeFileSync，首�
 SDK独立原生Gradle包装输入由SDK的androidGradleProjectFiles公开接口唯一定义；本机资源阶段与正式原生编译使用同一三文件声明，重复输入只允许字节一致的普通独占文件。公民资源阶段在本轮citizensdk-work/gradle-project中预解析SDK真实buildscript依赖到同一任务Gradle缓存，正式编译保持离线；宿主Flutter解析不替代SDK独立依赖图，不另存Kotlin版本或强制版本覆盖。
 
 SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，保留原版本与模块闭包。Android官方证书组件通过SDK的androidGradleLocalRepository从本仓Gradle真实版本声明与锁定Cargo元数据唯一匹配；Maven视图绑定当前任务原件，原生与资源共用同一来源。SDK公开模块按当前源码修订重读，摘要仅用于ESM缓存索引，不作为资源版本或完整性门禁。
+
+编译入口在同一次任务中先执行本仓 `scripts/build.mjs` 声明的适用代码回归，全部通过后才执行所选平台构建；测试失败、取消或测试文件在阶段间变化均禁止生成正式编译产物。测试清单与所需工具只由本仓 Build 接口声明，控制台不再提供独立测试按钮或从发布接口读取测试清单。

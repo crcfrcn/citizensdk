@@ -1,0 +1,440 @@
+name: citizensdk.sdk
+run-name: "${{ github.workflow }} · ${{ github.run_number }}"
+'on':
+  workflow_dispatch:
+concurrency:
+  group: "${{ github.repository }}-sdk"
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: "${{ steps.identity.outputs.version }}"
+      tag: "${{ steps.identity.outputs.tag }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+      - id: identity
+        name: 确定正式版本与本次 Tag
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = crcfrcn/citizensdk
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          from pathlib import Path
+          source = Path('pubspec.yaml').read_text()
+          seed = re.findall(r'(?m)^version: (\d+)\.(\d+)\.(\d+)$', source)
+          if len(seed) != 1:
+              raise SystemExit('SDK 版本真源不唯一')
+          def value(parts):
+              major, minor, patch = map(int, parts)
+              if minor > 99 or patch > 99:
+                  raise SystemExit('SDK 版本越界')
+              return major * 10000 + minor * 100 + patch
+          highest = value(seed[0])
+          for page in range(1, 1000):
+              url = f'https://api.github.com/repos/crcfrcn/citizensdk/releases?per_page=100&page={page}'
+              request = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + os.environ['GH_TOKEN']})
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  releases = json.load(response)
+              if not isinstance(releases, list):
+                  raise SystemExit('SDK Release 列表无效')
+              for release in releases:
+                  if release.get('draft') or release.get('prerelease'):
+                      continue
+                  match = re.fullmatch(r'citizensdk-sdk-v(\d+)\.(\d+)\.(\d+)-r[1-9][0-9]*-a[1-9][0-9]*', release.get('tag_name', ''))
+                  if match:
+                      highest = max(highest, value(match.groups()) + 1)
+              if len(releases) < 100:
+                  break
+          else:
+              raise SystemExit('SDK Release 分页超限')
+          version = f'{highest // 10000}.{highest // 100 % 100}.{highest % 100}'
+          tag = f"citizensdk-sdk-v{version}-r{os.environ['GITHUB_RUN_ID']}-a{os.environ['GITHUB_RUN_ATTEMPT']}"
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\ntag={tag}\n')
+          PY
+  native:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: Android, target: android, runner: ubuntu-24.04, rust-targets: aarch64-linux-android}
+          - {platform: macOS, target: apple, runner: xcode-27, rust-targets: 'aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin'}
+          - {platform: LinuxARM, target: LinuxARM, runner: ubuntu-24.04-arm, rust-targets: aarch64-unknown-linux-gnu}
+          - {platform: LinuxAMD, target: LinuxAMD, runner: ubuntu-24.04, rust-targets: x86_64-unknown-linux-gnu}
+          - {platform: Windows, target: Windows, runner: windows-2025, rust-targets: x86_64-pc-windows-msvc}
+    runs-on: "${{ matrix.runner }}"
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      CARGO_INCREMENTAL: '0'
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      SDK_PLATFORM: "${{ matrix.platform }}"
+      SDK_TARGET: "${{ matrix.target }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
+        with:
+          toolchain: 1.97.1
+          targets: "${{ matrix.rust-targets }}"
+          components: rust-src
+      - name: Linux 编译依赖
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libclang-dev libssl-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip xvfb dbus-x11
+      - name: 安装 Android 固定 NDK 与 CMake
+        if: matrix.platform == 'Android'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "ndk;28.2.13676358" "cmake;3.31.6"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: 准备版本化独立源码
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const work=path.join(process.env.RUNNER_TEMP,'citizensdk-release');
+          const source=path.join(work,'source');
+          fs.mkdirSync(work,{recursive:true});
+          fs.cpSync(process.env.GITHUB_WORKSPACE,source,{recursive:true,filter:value=>!['.git','target'].includes(path.basename(value))});
+          const version=process.env.SOFTWARE_VERSION;
+          if(!/^(0|[1-9]\d*)\.(0|[1-9]\d?)\.(0|[1-9]\d?)$/.test(version))throw Error('SDK 版本无效');
+          const edits=[
+            ['pubspec.yaml',/^version: \d+\.\d{1,2}\.\d{1,2}$/gm,'version: '+version],
+            ['android/build.gradle',/^version = '\d+\.\d{1,2}\.\d{1,2}'$/gm,"version = '"+version+"'"],
+            ['darwin/citizen_sdk.podspec',/^  spec\.version\s+= '\d+\.\d{1,2}\.\d{1,2}'$/gm,"  spec.version          = '"+version+"'"],
+            ['linux/CMakeLists.txt',/^project\(CitizenSDKHost VERSION \d+\.\d{1,2}\.\d{1,2} LANGUAGES C CXX\)$/gm,'project(CitizenSDKHost VERSION '+version+' LANGUAGES C CXX)'],
+            ['windows/CMakeLists.txt',/^project\(CitizenSDKHost VERSION \d+\.\d{1,2}\.\d{1,2} LANGUAGES C CXX\)$/gm,'project(CitizenSDKHost VERSION '+version+' LANGUAGES C CXX)'],
+          ];
+          for(const [name,pattern,replacement] of edits){
+            const file=path.join(source,name),body=fs.readFileSync(file,'utf8');
+            if([...body.matchAll(pattern)].length!==1)throw Error('版本位置不唯一：'+name);
+            fs.writeFileSync(file,body.replace(pattern,replacement));
+          }
+          const variables={
+            CITIZENSDK_SOURCE_ROOT:source,CITIZENSDK_SOURCE:source,
+            CITIZENSDK_WORK_DIR:path.join(work,'work'),
+            CITIZENSDK_NATIVE_OUTPUT_DIR:path.join(work,'native'),
+            CITIZENSDK_BUILD_ROOT:path.join(work,'state'),
+            CITIZENSDK_ACTION:'release',CITIZENSDK_JOB_STAGE:'native',
+            CITIZENSDK_PLATFORM:process.env.SDK_PLATFORM,
+            CITIZENSDK_SOFTWARE_VERSION:version,CITIZENSDK_VERSION:version,
+            CITIZENSDK_SOURCE_SHA:process.env.GITHUB_SHA,
+            CARGO_HOME:path.join(work,'cargo-home'),CARGO_TARGET_DIR:path.join(work,'cargo-target'),
+            PUB_CACHE:path.join(work,'pub-cache'),GRADLE_USER_HOME:path.join(work,'gradle'),
+            TMPDIR:path.join(work,'tmp'),
+          };
+          for(const value of Object.values(variables))if(/[\r\n]/.test(value))throw Error('现场路径无效');
+          for(const name of ['work','native','state','cargo-home','cargo-target','pub-cache','gradle','tmp'])fs.mkdirSync(path.join(work,name),{recursive:true});
+          fs.appendFileSync(process.env.GITHUB_ENV,Object.entries(variables).map(([key,value])=>key+'='+value+'\n').join(''));
+          NODE
+      - name: 安装本仓固定 Flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/flutter/flutter.git "$RUNNER_TEMP/citizensdk-flutter"
+          git -C "$RUNNER_TEMP/citizensdk-flutter" checkout --detach d3b14c876900e553bc736ca19295fc09e3853e8e
+          echo "FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
+          echo "CITIZENSDK_FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/citizensdk-flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/citizensdk-flutter/bin/flutter" --version
+      - name: 准备本仓锁定原件
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_WORK_DIR/tools"
+          if [[ "$SDK_PLATFORM" == Android ]]; then
+            test -x "$CITIZENSDK_WORK_DIR/tools/gradle-9.1.0/bin/gradle"
+            echo "CITIZENSDK_GRADLE=$CITIZENSDK_WORK_DIR/tools/gradle-9.1.0/bin/gradle" >> "$GITHUB_ENV"
+          fi
+      - name: 启用 Windows MSVC 工具
+        if: matrix.platform == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw 'Windows 缺少 MSVC C++ 工具' }
+          Import-Module "$installation\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          foreach ($name in @('PATH','INCLUDE','LIB','LIBPATH','VCINSTALLDIR','VSINSTALLDIR','VCToolsInstallDir','WindowsSdkDir','WindowsSDKVersion')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if (-not $value -or $value.Contains("$([char]10)")) { throw "MSVC 环境无效：$name" }
+            "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          foreach ($name in @('cl.exe','lib.exe','dumpbin.exe')) { Get-Command $name -ErrorAction Stop | Out-Null }
+      - name: 准备 Linux 与 Windows 静态原生依赖
+        if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD' || matrix.platform == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$CITIZENSDK_WORK_DIR/dependency-result.json"
+          if [[ "$SDK_PLATFORM" == Windows ]]; then result="$(cygpath -u "$result")"; fi
+          node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-native \
+            --scope citizensdk --platform "$SDK_PLATFORM" --mode release \
+            --sdk "$CITIZENSDK_SOURCE_ROOT" --work "$CITIZENSDK_WORK_DIR/dependencies" \
+            --sources "$CITIZENSDK_WORK_DIR/tools" \
+            --source-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION" > "$result"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const result=JSON.parse(fs.readFileSync(path.join(process.env.CITIZENSDK_WORK_DIR,'dependency-result.json')));
+          const {citizenSdkDependencyEnvironment}=await import('./scripts/publish.mjs');
+          const variables={...citizenSdkDependencyEnvironment(result.receipt,process.env.SDK_PLATFORM),CITIZENSDK_DEPENDENCY_RECEIPT:result.receipt};
+          fs.appendFileSync(process.env.GITHUB_ENV,Object.entries(variables).map(([key,value])=>key+'='+value+'\n').join(''));
+          NODE
+      - name: 编译本平台原生件
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$SDK_PLATFORM" == Windows ]]; then
+            export CITIZENSDK_SOURCE_ROOT="$(cygpath -u "$CITIZENSDK_SOURCE_ROOT")"
+            export CITIZENSDK_SOURCE="$CITIZENSDK_SOURCE_ROOT"
+            export CITIZENSDK_WORK_DIR="$(cygpath -u "$CITIZENSDK_WORK_DIR")"
+            export CITIZENSDK_NATIVE_OUTPUT_DIR="$(cygpath -u "$CITIZENSDK_NATIVE_OUTPUT_DIR")"
+            export CITIZENSDK_DEPENDENCY_RECEIPT="$(cygpath -u "$CITIZENSDK_DEPENDENCY_RECEIPT")"
+            export CITIZENSDK_FLUTTER_ROOT="$(cygpath -u "$CITIZENSDK_FLUTTER_ROOT")"
+            export PUB_CACHE="$(cygpath -u "$PUB_CACHE")"
+          fi
+          if [[ "$SDK_PLATFORM" == LinuxARM || "$SDK_PLATFORM" == LinuxAMD ]]; then
+            xvfb-run -a dbus-run-session -- node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
+          else
+            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
+          fi
+          if [[ "$SDK_PLATFORM" == macOS ]]; then
+            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native apple-tests
+            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native abi-host
+            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native host
+            cp "$CITIZENSDK_NATIVE_OUTPUT_DIR/host/libsmoldot.dylib" "$CITIZENSDK_SOURCE_ROOT/libsmoldot.dylib"
+            (cd "$CITIZENSDK_SOURCE_ROOT" && flutter test --timeout=2m)
+          fi
+          if [[ "$SDK_PLATFORM" == Android ]]; then
+            export CITIZENSDK_ANDROID_CORE_DIR="$CITIZENSDK_NATIVE_OUTPUT_DIR/android/arm64-v8a"
+            export CITIZENSDK_ANDROID_BUILD_DIR="$CITIZENSDK_WORK_DIR/gradle-native"
+            "$CITIZENSDK_GRADLE" --no-daemon -p "$CITIZENSDK_SOURCE_ROOT/android" :native:testReleaseUnitTest
+            host="$CITIZENSDK_WORK_DIR/android-consumer"
+            flutter create --platforms=android --org org.citizensdk.verify --project-name citizensdk_verify "$host"
+            flutter pub add --directory "$host" citizen_sdk --path "$CITIZENSDK_SOURCE_ROOT"
+            export CITIZENSDK_ANDROID_BUILD_DIR="$CITIZENSDK_WORK_DIR/gradle-flutter"
+            (cd "$host" && flutter build apk --release --target-platform android-arm64 --no-pub)
+          fi
+      - name: 绑定原生依赖与运行库证据
+        if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD' || matrix.platform == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {writeCitizenSdkDependencyEvidence} from './scripts/publish.mjs';
+          writeCitizenSdkDependencyEvidence({
+            receiptPath:process.env.CITIZENSDK_DEPENDENCY_RECEIPT,
+            platform:process.env.SDK_PLATFORM,
+            nativePath:process.env.CITIZENSDK_NATIVE_OUTPUT_DIR,
+            sourcePath:process.env.CITIZENSDK_SOURCE_ROOT,
+            sourceSha:process.env.GITHUB_SHA,
+          });
+          NODE
+      - name: 保存当前 Run 原生件
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$CITIZENSDK_NATIVE_OUTPUT_DIR"
+          if [[ "$SDK_PLATFORM" == Windows ]]; then output="$(cygpath -u "$output")"; fi
+          case "$SDK_PLATFORM" in
+            Android) paths=(android) ;;
+            macOS) paths=(apple) ;;
+            LinuxARM|LinuxAMD) paths=("linux/$SDK_PLATFORM" "dependencies/$SDK_PLATFORM.json") ;;
+            Windows) paths=(Windows dependencies/Windows.json) ;;
+            *) exit 1 ;;
+          esac
+          for path in "${paths[@]}"; do test -e "$output/$path"; done
+          tar -czf "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz" -C "$output" "${paths[@]}"
+          test -s "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: "native-${{ matrix.platform }}"
+          path: "${{ runner.temp }}/citizensdk-${{ matrix.platform }}.tgz"
+          if-no-files-found: error
+          retention-days: 7
+  assemble:
+    needs: [prepare, native]
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          path: "${{ runner.temp }}/native-artifacts"
+          merge-multiple: false
+      - name: 汇总同一源码的五平台原生件并构造正式包
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/citizensdk-native"
+          for platform in Android macOS LinuxARM LinuxAMD Windows; do
+            archive="$RUNNER_TEMP/native-artifacts/native-$platform/citizensdk-$platform.tgz"
+            test -s "$archive"
+            tar -xzf "$archive" -C "$RUNNER_TEMP/citizensdk-native"
+          done
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const source=path.join(process.env.RUNNER_TEMP,'citizensdk-source');
+          fs.cpSync(process.env.GITHUB_WORKSPACE,source,{recursive:true,filter:value=>!['.git','target'].includes(path.basename(value))});
+          const version=process.env.SOFTWARE_VERSION;
+          const edits=[
+            ['pubspec.yaml',/^version: \d+\.\d{1,2}\.\d{1,2}$/gm,'version: '+version],
+            ['android/build.gradle',/^version = '\d+\.\d{1,2}\.\d{1,2}'$/gm,"version = '"+version+"'"],
+            ['darwin/citizen_sdk.podspec',/^  spec\.version\s+= '\d+\.\d{1,2}\.\d{1,2}'$/gm,"  spec.version          = '"+version+"'"],
+            ['linux/CMakeLists.txt',/^project\(CitizenSDKHost VERSION \d+\.\d{1,2}\.\d{1,2} LANGUAGES C CXX\)$/gm,'project(CitizenSDKHost VERSION '+version+' LANGUAGES C CXX)'],
+            ['windows/CMakeLists.txt',/^project\(CitizenSDKHost VERSION \d+\.\d{1,2}\.\d{1,2} LANGUAGES C CXX\)$/gm,'project(CitizenSDKHost VERSION '+version+' LANGUAGES C CXX)'],
+          ];
+          for(const [name,pattern,replacement] of edits){
+            const file=path.join(source,name),body=fs.readFileSync(file,'utf8');
+            if([...body.matchAll(pattern)].length!==1)throw Error('版本位置不唯一：'+name);
+            fs.writeFileSync(file,body.replace(pattern,replacement));
+          }
+          NODE
+          node scripts/publish.mjs \
+            --source "$RUNNER_TEMP/citizensdk-source" \
+            --native "$RUNNER_TEMP/citizensdk-native" \
+            --output "$RUNNER_TEMP/citizensdk-candidate" \
+            --archive "$RUNNER_TEMP/citizensdk.tgz" \
+            --git-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION"
+          node scripts/publish.mjs --verify "$RUNNER_TEMP/citizensdk-candidate" \
+            --archive "$RUNNER_TEMP/citizensdk.tgz" --expected-git-sha "$GITHUB_SHA"
+          test -s "$RUNNER_TEMP/citizensdk.tgz"
+          tar -czf "$RUNNER_TEMP/citizensdk-candidate.tgz" -C "$RUNNER_TEMP/citizensdk-candidate" .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-output
+          path: "${{ runner.temp }}/citizensdk.tgz"
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: candidate-output
+          path: "${{ runner.temp }}/citizensdk-candidate.tgz"
+          if-no-files-found: error
+          retention-days: 7
+  consume:
+    needs: [prepare, assemble]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: Android, runner: ubuntu-24.04}
+          - {platform: macOS, runner: xcode-27}
+          - {platform: LinuxARM, runner: ubuntu-24.04-arm}
+          - {platform: LinuxAMD, runner: ubuntu-24.04}
+          - {platform: Windows, runner: windows-2025}
+    runs-on: "${{ matrix.runner }}"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-output
+          path: "${{ runner.temp }}/citizensdk-release"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-output
+          path: "${{ runner.temp }}/citizensdk-candidate-artifact"
+      - name: 本平台复验同一正式候选
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/citizensdk-candidate"
+          tar -xzf "$RUNNER_TEMP/citizensdk-candidate-artifact/citizensdk-candidate.tgz" -C "$RUNNER_TEMP/citizensdk-candidate"
+          node scripts/publish.mjs --verify "$RUNNER_TEMP/citizensdk-candidate" \
+            --archive "$RUNNER_TEMP/citizensdk-release/citizensdk.tgz" \
+            --expected-git-sha "$GITHUB_SHA"
+  publish:
+    needs: [prepare, native, assemble, consume]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
+      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-output
+          path: "${{ runner.temp }}/citizensdk-release"
+      - name: 创建并逐件回读正式 SDK Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RELEASE_TAG" = "citizensdk-sdk-v${RELEASE_VERSION}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+          archive="$RUNNER_TEMP/citizensdk-release/citizensdk.tgz"
+          test -s "$archive"
+          gh release create "$RELEASE_TAG" "$archive" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "citizensdk · sdk · $RELEASE_VERSION" \
+            --notes "GitHub 自动化正式 SDK；源码 $GITHUB_SHA；Run $GITHUB_RUN_ID。" \
+            --latest=false
+          python3 - <<'PY'
+          import hashlib, json, os, urllib.request
+          from pathlib import Path
+          archive = Path(os.environ['RUNNER_TEMP']) / 'citizensdk-release/citizensdk.tgz'
+          tag = os.environ['RELEASE_TAG']
+          url = 'https://api.github.com/repos/crcfrcn/citizensdk/releases/tags/' + tag
+          request = urllib.request.Request(url, headers={'Accept':'application/vnd.github+json','Authorization':'Bearer '+os.environ['GH_TOKEN']})
+          with urllib.request.urlopen(request, timeout=15) as response:
+              release = json.load(response)
+          assets = release.get('assets', [])
+          expected = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
+          if (release.get('draft') or release.get('prerelease') or release.get('target_commitish') != os.environ['GITHUB_SHA']
+                  or len(assets) != 1 or assets[0].get('name') != 'citizensdk.tgz'
+                  or assets[0].get('state') != 'uploaded' or assets[0].get('size') != archive.stat().st_size
+                  or assets[0].get('digest') != expected):
+              raise SystemExit('SDK 正式 Release 回读失败')
+          PY
