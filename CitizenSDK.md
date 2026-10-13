@@ -15,6 +15,7 @@
 citizensdk/
 ├── scripts/
 │   ├── build.mjs
+│   ├── config.mjs
 │   └── publish.mjs
 └── .github/
     ├── workflows/
@@ -22,17 +23,17 @@ citizensdk/
     └── tatalulu.yml
 ```
 
-`scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备和工作现场生命周期。编译回执仅表示 SDK 源码与原生编译完成，不表示生成或发布正式归档。其 `plan`、`prepare-environment`、`prepare-native` 和 `native` 子命令服务同一编译入口；`native` 只接受单个已声明的编译或输出核对目标，不接收最终包 Hosted 消费参数。
+`scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备、工作现场生命周期，以及 GitHub 同一 Run 的唯一正式 SDK 包组装和验真。本机 Build 回执仍只表示编译完成，不生成正式归档。`plan`、`prepare-environment`、`prepare-native`、`native`、`release-build` 与 `release-verify` 都归同一入口。
 
-`scripts/publish.mjs` 独立拥有显式输入的候选组包、来源与原生输入核验、完整包及 Hosted 包核验；不触发编译或 GitHub 自动化。发布入口的输入和产物均由调用方明确提供。
+`scripts/publish.mjs` 只读核验已经成功的 GitHub Run、Tag、唯一正式 Release 包及字节。pub.dev 渠道上传仍未接入，控制台发布按钮保持禁用；此文件不编译、不组包、不创建 GitHub Release。
 
-`.github/workflows/sdk.yml` 独立拥有 GitHub 版本、五宿主原生构建、完整候选组包、逐平台复验、Tag 与正式 Release。自动化在各 Runner 调用本仓 `scripts/build.mjs` 的原生能力和 `scripts/publish.mjs` 的严格组包验真接口，不创建第二套产品构建器。
+`.github/workflows/sdk.yml` 保持原名，只安排测试、五宿主原生 Job、汇总、消费回验与唯一 Release；版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
 
 `.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译、自动化与发布仍通过各自原有入口独立运行。
 
 CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台当前保留编译与自动化按钮，待明确本机发布产物输入后再接入发布按钮。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
 
-本文后续按日期记录的旧实施证据仅用于追溯；当前可执行入口与职责以本节和仓库真实代码为准。本次目录收口尚未运行编译、测试、门禁或正式发布。
+本文后续按日期记录的旧实施证据仅用于追溯；当前可执行入口与职责以本节和仓库真实代码为准。本次流程整理只做静态与不触发编译的回归，未运行真实 SDK 编译、自动化或正式发布。
 
 ## 当前工作目录归属（第8步，2026-10-06）
 
@@ -4207,4 +4208,8 @@ SDK独立原生Gradle包装输入由SDK的androidGradleProjectFiles公开接口�
 
 SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，保留原版本与模块闭包。Android官方证书组件通过SDK的androidGradleLocalRepository从本仓Gradle真实版本声明与锁定Cargo元数据唯一匹配；Maven视图绑定当前任务原件，原生与资源共用同一来源。SDK公开模块按当前源码修订重读，摘要仅用于ESM缓存索引，不作为资源版本或完整性门禁。
 
-编译入口在同一次任务中先执行本仓 `scripts/build.mjs` 声明的适用代码回归，全部通过后才执行所选平台构建；测试失败、取消或测试文件在阶段间变化均禁止生成正式编译产物。测试清单与所需工具只由本仓 Build 接口声明，控制台不再提供独立测试按钮或从发布接口读取测试清单。
+编译入口在同一次任务中由本仓完整 Build 先取得资源回执、运行适用代码回归，全部通过后才执行所选平台正式编译；测试失败或取消均禁止生成正式编译产物。测试清单与所需工具只归本仓 Build，控制台仅调用完整入口并按本仓声明供给资源。
+
+## 产品自有编译前测试
+
+完整 Build 由本产品在首次资源回执后运行自己登记的 Node 回归，成功后才进入工程准备和正式编译。测试所需 Node 及其它资源按本仓平台声明验真：独立执行由本产品准备，控制台调度仅按本仓声明供给并调用完整 Build，不选择测试文件或限定测试工具。测试夹具的固定根映射到本仓 `target/test/sessions/<本轮随机会话>/`，子进程继承会话身份；退出时由本产品核对守卫和工具进程后仅清理该会话。正式 `target/build/<平台>` 的领取与收尾规则保持。合成阶段注入只在本仓测试上下文有效，正式完整 Build 必须先运行本仓测试。
