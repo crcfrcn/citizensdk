@@ -26,7 +26,7 @@ jobs:
           node-version: 25.2.1
       - name: 先执行本仓代码回归
         shell: bash
-        run: node --test scripts/build.mjs scripts/publish.mjs
+        run: node --test scripts/build.mjs
       - id: identity
         name: 确定正式版本与本次 Tag
         env:

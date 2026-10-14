@@ -513,7 +513,7 @@ export function outputDigest(path) {
 
 // 宿主完整Build先由调用方消费回执、安装并收尾；独立执行由本产品清空现场。
 // 本仓完整Build在资源回执后运行自己的测试，控制台不选择测试清单。
-function testFiles(){return ['scripts/build.mjs','scripts/publish.mjs'];}
+function testFiles(){return ['scripts/build.mjs'];}
 // 产品在资源回执后运行自身Node回归；控制台只调用完整Build。
 async function runProductTests(platform,work,receipt,base){
  const env=resourceEnvironment(platform,work,receipt,base),node=receipt.tools.node;
@@ -1240,7 +1240,7 @@ const SDK_EMBEDDED_TEST_ROOTS = Object.freeze([
 ]);
 // scripts目录仅保留当前两个正式入口；源码闭集以实际文件验真。
 // 两个正式脚本按准确文件集合验真。
-const SDK_SCRIPT_ENTRIES = Object.freeze({'build.mjs':'file','config.mjs':'file','publish.mjs':'file'});
+const SDK_SCRIPT_ENTRIES = Object.freeze({'build.mjs':'file','config.mjs':'file'});
 const SDK_TEST_CONTRACT_FILES = Object.freeze({
   "test/sdk_1_10_1_contract_test.dart": "file",
   "native/engine/tests/baseline_resource_contract.rs": "file",

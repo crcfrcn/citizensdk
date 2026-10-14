@@ -9,14 +9,13 @@
 
 公民SDK本机Build仅确认sdk目标的源码及多平台原生编译，结果不携带分发包、App或设备安装资产。SDK归档属于本仓正式自动化；本机结果不能冒充发布完成。
 
-## 当前四流程目录与职责（2026-10-10）
+## 当前SDK流程目录与职责（2026-10-10）
 
 ```text
 citizensdk/
 ├── scripts/
 │   ├── build.mjs
-│   ├── config.mjs
-│   └── publish.mjs
+│   └── config.mjs
 └── .github/
     ├── workflows/
     │   └── sdk.yml
@@ -25,13 +24,13 @@ citizensdk/
 
 `scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备、工作现场生命周期，以及 GitHub 同一 Run 的唯一正式 SDK 包组装和验真。本机 Build 回执仍只表示编译完成，不生成正式归档。`plan`、`prepare-environment`、`prepare-native`、`native`、`release-build` 与 `release-verify` 都归同一入口。
 
-`scripts/publish.mjs` 只读核验已经成功的 GitHub Run、Tag、唯一正式 Release 包及字节。pub.dev 渠道上传仍未接入，控制台发布按钮保持禁用；此文件不编译、不组包、不创建 GitHub Release。
+本仓没有独立渠道发布脚本。GitHub 自动化对单一 SDK 包的来源、候选、Tag、Release 和正式字节验真均由 `scripts/build.mjs` 及现有 `sdk.yml` 完成；pub.dev 渠道上传未接入，控制台只登记 SDK 自动化按钮。
 
 `.github/workflows/sdk.yml` 保持原名，只安排测试、五宿主原生 Job、汇总、消费回验与唯一 Release；版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
 
-`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译、自动化与发布仍通过各自原有入口独立运行。
+`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
 
-CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台当前保留编译与自动化按钮，待明确本机发布产物输入后再接入发布按钮。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
+CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台公民链Tab当前仅登记一个“公民SDK／SDK”直接按钮，派发本仓现有 sdk.yml 并由该工作流创建正式Tag/Release；本机Build公开接口和独立执行能力仍归本仓。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
 
 本文后续按日期记录的旧实施证据仅用于追溯；当前可执行入口与职责以本节和仓库真实代码为准。本次流程整理只做静态与不触发编译的回归，未运行真实 SDK 编译、自动化或正式发布。
 
@@ -3895,7 +3894,7 @@ CI 编译件，消费全部通过后才进入一个正式 Release 作业，共�
 software_version、platforms 和文件摘要。普通文件独占写入；合法 Apple 五链接使用
 SDK 发布器的唯一官方元数据规则重建，拒绝硬链接、路径穿越、未登记件和跨作业覆盖。
 阶段传输不是新增分发产品：产品流程可以使用内部清单和同源Hosted包完成汇总，但最终GitHub
-Release只公开唯一`citizensdk.tgz`，pub.dev仍由控制台发布按钮执行。
+Release只公开唯一`citizensdk.tgz`，pub.dev渠道仍未接入，本次控制台不提供对应按钮。
 
 阶段证明、监控读取结果与历史事件的既有字段由实际产品接口定义，平台值取本仓声明；文档不维护第二套字段登记。
 
@@ -4179,9 +4178,9 @@ SDK在本仓独立拥有实现和测试，不依赖独立公民钱包的代码�
 
 编译入口将锁定工具与原生依赖坐标内聚到 `scripts/build.mjs`。独立执行时由本产品准备；调度执行只消费明确交付的资源。生成物只写入本仓准确任务现场或调用方明确的源码外路径，失败不切换来源或流程。
 
-GitHub 自动化仅由 `.github/workflows/sdk.yml` 启动，五宿主原生件通过当前 Run 的独立 Artifact 汇总；完整候选经本仓发布器验真并在五宿主复验后，才创建和回读正式 Tag、Release。控制台发布只消费已完成的正式版。
+GitHub 自动化仅由 `.github/workflows/sdk.yml` 启动，五宿主原生件通过当前 Run 的独立 Artifact 汇总；完整候选经本仓发布器验真并在五宿主复验后，才创建和回读正式 Tag、Release。控制台直接按钮只派发本仓SDK自动化，正式Tag/Release由该工作流回读确认。
 
-本机发布只接受调用方指定的来源、原生输入、候选目录、归档路径和版本等参数；`scripts/publish.mjs` 自己核验这些输入与产物，不调用编译、自动化或门禁。控制台按用户要求保留发布动作登记；当前产品发布器仍要求调用方提供准确来源、候选、归档和工具路径，控制台现有无参发布入口不能据此宣称已经完成产品发布。
+本机 Build 只负责本仓编译，GitHub 自动化在五宿主原生件全部验真后生成唯一正式包及 Tag/Release；本仓不再提供独立发布检查入口，控制台不登记本产品渠道发布动作。本文后续历史段落提及的旧 `publish.mjs` 属于当时实施记录，不代表当前仓库还存在该文件。
 
 塔塔门禁从 `.github/tatagate/tatagate.json` 读取本仓静态登记，仅使用只读 Git 查询与文件读取核对正式 `main`、HTTPS origin、提交范围、脚本闭集和旧入口残留。它不创建现场、不取得工具、不启动产品步骤或测试进程。真实编译、测试与发布须按各自操作授权单独执行。
 
