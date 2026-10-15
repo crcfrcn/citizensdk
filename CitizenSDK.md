@@ -28,7 +28,7 @@ citizensdk/
 
 `.github/workflows/sdk.yml` 保持原名，只安排准备阶段回归、五宿主正式原生件构建、汇总、消费回验与唯一 Release；Apple/Android附加测试宿主、Flutter测试及临时Android消费App编译不参与正式SDK产物流程。版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。`pubspec.yaml` 的 `1.0.0` 是正式版本种子；首个完整成功并创建正式 Release 的自动化使用 `1.0.0`，之后每完成一次完整五平台构建、消费复验并创建正式 Release，patch 增加 `0.0.1`。版本从已创建的正式 Release 计算；Release 创建前失败的阶段不占用版本，若 Release 已实际创建，即使后续回读使工作流报错，该正式版本仍已存在并会成为下一次递增依据。五个矩阵宿主不是五次版本递增。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
 
-原生 Job 设置 `CARGO_INCREMENTAL=1`，并通过固定版本的 GitHub Actions 缓存恢复与保存按操作系统、架构、平台及依赖锁隔离的 Cargo target、Pub 和 Gradle 编译/依赖缓存。首次运行使用新的 `citizensdk-sdk-build-v1` 缓存命名空间，因而从冷缓存开始；后续成功 Job 可复用同平台缓存。缓存只提供编译加速，Release 仍由当前 Run 从固定提交重新构建，并执行原有候选及五平台消费复验。缓存未命中、过期或被 GitHub 淘汰只影响速度，不改变锁定来源、构建输入、版本计算或验收结果。每个原生 Job 的资源准备按本仓锁展开 ZXing 源码并将准确目录交给构建入口；Linux/Windows原生依赖回执须与唯一锁合同匹配。Windows解包在调用Git Bash归档工具前转换驱动器路径，归档来源和成员校验保持由产品入口完成。
+原生 Job 设置 `CARGO_INCREMENTAL=1`，并通过固定版本的 GitHub Actions 缓存恢复与保存按操作系统、架构、平台及依赖锁隔离的 Cargo target、Cargo registry/git、Pub 和 Gradle 编译/依赖缓存。首次运行使用新的 `citizensdk-sdk-build-v1` 缓存命名空间，因而从冷缓存开始；后续成功 Job 可复用同平台缓存。Cargo构建保留 `--locked`，按 `Cargo.lock` 从锁定来源取得缺失crate；缓存只提供加速，不改变锁定来源、构建输入、版本计算或验收结果。Release仍由当前Run从固定提交构建，并执行原有候选及五平台消费复验。Flutter引擎使用同一固定提交：Android执行 `flutter precache --android`，macOS执行 `flutter precache --ios --macos`，engine缓存只复用同平台资源。每个原生 Job 的其它资源准备按本仓锁展开 ZXing 源码并将准确目录交给构建入口；Linux/Windows原生依赖回执须与唯一锁合同匹配。Windows解包在调用Git Bash归档工具前转换驱动器路径，归档来源和成员校验保持由产品入口完成。Windows原生构建通过Runner PATH中的Git Bash启动；本仓显式交付的 `PRODUCT_BASH_BIN` 优先，启动错误诊断只报告系统错误码。
 
 `.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
 
@@ -3844,13 +3844,13 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。控制台�
 
 ## CI 增量缓存
 
-CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存，保存 Cargo target、Pub hosted/git原件、Gradle modules/build cache/wrapper以及固定Flutter提交的Apple engine artifacts。缓存恢复键只允许同一平台、架构、工具提交和锁输入复用；新Run以唯一键写入，不跨平台复用。
+CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存，保存 Cargo target、Cargo registry/git、Pub hosted/git原件、Gradle modules/build cache/wrapper以及固定Flutter提交的平台engine artifacts。缓存恢复键只允许同一平台、架构、工具提交和锁输入复用；新Run以唯一键写入，不跨平台复用。
 
-Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。macOS在固定Flutter提交检出后执行 `flutter precache --ios --macos`，命中同一提交的engine缓存。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。
+Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。Android与macOS分别在固定Flutter提交检出及缓存恢复后执行 `flutter precache --android` 与 `flutter precache --ios --macos`，再开始平台编译。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。
 
 ## Release 全量构建（第 7.4 步）
 
-正式 Release 固定从干净源码执行全量构建，显式关闭 Rust 增量编译及工具链内置缓存，不读取CI作业缓存且不复用本机编译中间物。版本、签名、校验、产物和发布流程保持原有产品合同。
+正式 Release 从本次Run固定提交独立构建，不复用本机编译中间物；同平台、同架构、同锁输入的增量缓存按“CI增量缓存”节使用。版本、签名、校验、产物和发布流程保持原有产品合同。
 
 ## 双仓统一流程最终收口（第 7.5 步）
 
