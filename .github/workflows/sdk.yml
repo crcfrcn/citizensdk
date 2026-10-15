@@ -78,8 +78,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager "ndk;28.2.13676358" "cmake;3.31.6"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          : "${ANDROID_SDK_ROOT:?Runner缺少Android SDK根}"
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          "$sdkmanager" "ndk;28.2.13676358" "cmake;3.31.6"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - name: 准备版本化独立源码
         shell: bash
         run: node scripts/build.mjs release-source native
@@ -155,6 +159,7 @@ jobs:
             export CITIZENSDK_NATIVE_OUTPUT_DIR="$(cygpath -u "$CITIZENSDK_NATIVE_OUTPUT_DIR")"
             export CITIZENSDK_DEPENDENCY_RECEIPT="$(cygpath -u "$CITIZENSDK_DEPENDENCY_RECEIPT")"
             export CITIZENSDK_FLUTTER_ROOT="$(cygpath -u "$CITIZENSDK_FLUTTER_ROOT")"
+            export CITIZENSDK_ZXING_SOURCE_DIR="$(cygpath -u "$CITIZENSDK_ZXING_SOURCE_DIR")"
             export PUB_CACHE="$(cygpath -u "$PUB_CACHE")"
           fi
           if [[ "$SDK_PLATFORM" == LinuxARM || "$SDK_PLATFORM" == LinuxAMD ]]; then

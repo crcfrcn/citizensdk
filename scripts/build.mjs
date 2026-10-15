@@ -12,6 +12,17 @@ import {randomUUID as testRandomUUID} from 'node:crypto';
 if(process.env.NODE_TEST_CONTEXT&&!process.env.PRODUCT_TEST_SESSION)process.env.PRODUCT_TEST_SESSION=testRandomUUID();
 const testSession=process.env.NODE_TEST_CONTEXT&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(process.env.PRODUCT_TEST_SESSION||'')?process.env.PRODUCT_TEST_SESSION:null;
 
+function stableNativeContractValue(value){
+ if(Array.isArray(value))return'['+value.map(stableNativeContractValue).join(',')+']';
+ if(value&&typeof value==='object')return'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stableNativeContractValue(value[key])).join(',')+'}';
+ return JSON.stringify(value);
+}
+function assertCitizenSdkNativeContract(value){
+ if(!value||typeof value!=='object'||Array.isArray(value)
+  ||stableNativeContractValue(value)!==stableNativeContractValue(buildDependencyLock.native))
+  throw Error('CitizenSDK静态依赖：原生依赖回执与本仓锁合同不符');
+}
+
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const buildTarget=await(async()=>{
 const fs=await import('node:fs');
@@ -6268,6 +6279,13 @@ export function ciReleaseVersion(environment=process.env,{call=spawnSync}={}){
  return {version,tag};
 }
 
+function ciReleaseZxingSource(workDirectory){
+ if(typeof workDirectory!=='string'||!isAbsolute(workDirectory)||resolve(workDirectory)!==workDirectory)fail('Release原生工作目录无效');
+ const archiveRoot=buildDependencyLock.environment['zxing-cpp']?.archive_root;
+ if(typeof archiveRoot!=='string'||!archiveRoot||archiveRoot.includes('/')||archiveRoot.includes('\\'))fail('ZXing锁定归档根无效');
+ return join(workDirectory,'tools',archiveRoot);
+}
+
 export function ciReleaseSource(stage,environment=process.env,{call=spawnSync}={}){
  const repo='crcfrcn/citizensdk',version=environment.SOFTWARE_VERSION;
  if(!['native','assemble'].includes(stage)||environment.GITHUB_ACTIONS!=='true'
@@ -6297,7 +6315,8 @@ export function ciReleaseSource(stage,environment=process.env,{call=spawnSync}={
    CITIZENSDK_PLATFORM:environment.SDK_PLATFORM,CITIZENSDK_SOFTWARE_VERSION:version,CITIZENSDK_VERSION:version,
    CITIZENSDK_SOURCE_SHA:environment.GITHUB_SHA,CARGO_HOME:join(work,'cargo-home'),
    CARGO_TARGET_DIR:join(work,'cargo-target'),PUB_CACHE:join(work,'pub-cache'),
-   GRADLE_USER_HOME:join(work,'gradle'),TMPDIR:join(work,'tmp')};
+   GRADLE_USER_HOME:join(work,'gradle'),TMPDIR:join(work,'tmp'),
+   CITIZENSDK_ZXING_SOURCE_DIR:ciReleaseZxingSource(join(work,'work'))};
   for(const value of Object.values(variables))if(typeof value!=='string'||/[\r\n]/u.test(value))fail('现场路径无效');
   for(const name of ['work','native','state','cargo-home','cargo-target','pub-cache','gradle','tmp'])mkdirSync(join(work,name),{recursive:true});
   if(typeof environment.GITHUB_ENV!=='string'||!isAbsolute(environment.GITHUB_ENV))fail('GitHub 环境回执缺失');
@@ -6356,6 +6375,21 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.throws(()=>ciReleaseVersion({}),/身份无效/u);
   assert.throws(()=>ciReleaseSource('foreign',{}),/身份无效/u);
   assert.throws(()=>ciReleaseGitHub({}),/身份无效/u);
+ });
+ test('原生依赖回执严格匹配本仓锁合同',()=>{
+  const locked=buildDependencyLock.native;
+  assert.doesNotThrow(()=>assertCitizenSdkNativeContract(JSON.parse(JSON.stringify(locked))));
+  const reordered=Object.fromEntries(Object.entries(locked).reverse());
+  assert.doesNotThrow(()=>assertCitizenSdkNativeContract(reordered));
+  const missing=JSON.parse(JSON.stringify(locked));delete missing.sources.sqlite;
+  assert.throws(()=>assertCitizenSdkNativeContract(missing),/合同不符/u);
+  const extra={...locked,unlocked_source:{version:'1.0.0'}};
+  assert.throws(()=>assertCitizenSdkNativeContract(extra),/合同不符/u);
+  assert.throws(()=>assertCitizenSdkNativeContract(null),/合同不符/u);
+ });
+ test('Release ZXing路径来自同一锁且位于工具工作目录',()=>{
+  const work=join(root,'target/test/citizensdk-release');
+  assert.equal(ciReleaseZxingSource(work),join(work,'tools',buildDependencyLock.environment['zxing-cpp'].archive_root));
  });
 }
 
@@ -7919,6 +7953,17 @@ function run(command, args, options = {}) {
   return (result.stdout || '').trim();
 }
 
+function archiveToolPath(path, { platform = hostPlatform(), convert } = {}) {
+  if (platform !== 'win32') return path;
+  if (typeof path !== 'string' || !/^[A-Za-z]:[\\/]/u.test(path)) fail('Windows归档路径必须是驱动器绝对路径');
+  const value = (convert || (input => run('cygpath', ['-u', input], { capture: true })))(path);
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')
+      || value.includes('\\') || value.includes(':') || value.split('/').includes('..')) {
+    fail('Windows归档路径转换为MSYS路径失败');
+  }
+  return value;
+}
+
 function archiveName(source) {
   const suffix = new URL(source.url).pathname.endsWith('.zip') ? '.zip' : '.tar.gz';
   return `${source.sha256}${suffix}`;
@@ -8021,9 +8066,11 @@ async function prepareSource(source, work) {
   mkdirSync(staging, { mode: 0o700 });
   try {
     const zip = archive.endsWith('.zip');
-    const listing = run(zip ? 'unzip' : 'tar', zip ? ['-Z1', archive] : ['-tzf', archive], { capture: true });
+    // Git Bash归档工具把D:解释成远端主机；Windows外部工具只接收cygpath核验后的MSYS绝对路径。
+    const toolArchive = archiveToolPath(archive), toolStaging = archiveToolPath(staging);
+    const listing = run(zip ? 'unzip' : 'tar', zip ? ['-Z1', toolArchive] : ['-tzf', toolArchive], { capture: true });
     validateArchiveEntries(listing.split(/\r?\n/u).filter(Boolean), source);
-    run(zip ? 'unzip' : 'tar', zip ? ['-q', archive, '-d', staging] : ['-xzf', archive, '-C', staging]);
+    run(zip ? 'unzip' : 'tar', zip ? ['-q', toolArchive, '-d', toolStaging] : ['-xzf', toolArchive, '-C', toolStaging]);
     const extracted = join(staging, source.archive_root);
     verifyExtractedTree(extracted, source);
     renameSync(extracted, destination);
@@ -8217,7 +8264,7 @@ async function prepareNative(args) {
 }
 
 
-return {prepareEnvironment,prepareNative,run:async(values)=>{
+return {prepareEnvironment,prepareNative,archiveToolPath,run:async(values)=>{
 const [command, ...rest] = values;
 const args = parseArguments(rest);
 try {
@@ -8306,6 +8353,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.equal(originals,2);assert.equal(requests,1);
   await assert.rejects(resourceSupplies.run(supply,()=>preparePods(lockfile,join(work,'failed'),{library,environment:{HOME:work},fetcher:async()=>new Response(null,{status:503})})),/官方来源响应失败/);
   assert.equal(await stat(join(work,'failed/cocoapods/cache/Pods/Release/Example')),null);
+ });
+ test('Windows依赖归档路径转换为MSYS绝对路径并拒绝漂移',()=>{
+  const archiveToolPath=nativeDependencies.archiveToolPath;
+  assert.equal(archiveToolPath('D:\\a\\work\\source.tar.gz',{platform:'win32',convert:()=>'/d/a/work/source.tar.gz'}),'/d/a/work/source.tar.gz');
+  assert.equal(archiveToolPath('/tmp/source.tar.gz',{platform:'linux',convert:()=>{throw Error('不应转换');}}),'/tmp/source.tar.gz');
+  assert.throws(()=>archiveToolPath('D:\\a\\source.tar.gz',{platform:'win32',convert:()=> 'D:\\a\\source.tar.gz'}),/转换为MSYS路径失败/u);
+  assert.throws(()=>archiveToolPath('D:\\a\\source.tar.gz',{platform:'win32',convert:()=> '/d/a/../source.tar.gz'}),/转换为MSYS路径失败/u);
  });
 }
 
