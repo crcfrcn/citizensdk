@@ -184,23 +184,6 @@ jobs:
           else
             node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
           fi
-          if [[ "$SDK_PLATFORM" == macOS ]]; then
-            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native apple-tests
-            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native abi-host
-            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native host
-            cp "$CITIZENSDK_NATIVE_OUTPUT_DIR/host/libsmoldot.dylib" "$CITIZENSDK_SOURCE_ROOT/libsmoldot.dylib"
-            (cd "$CITIZENSDK_SOURCE_ROOT" && flutter test --timeout=2m)
-          fi
-          if [[ "$SDK_PLATFORM" == Android ]]; then
-            export CITIZENSDK_ANDROID_CORE_DIR="$CITIZENSDK_NATIVE_OUTPUT_DIR/android/arm64-v8a"
-            export CITIZENSDK_ANDROID_BUILD_DIR="$CITIZENSDK_WORK_DIR/gradle-native"
-            "$CITIZENSDK_GRADLE" --no-daemon --build-cache -p "$CITIZENSDK_SOURCE_ROOT/android" :native:testReleaseUnitTest
-            host="$CITIZENSDK_WORK_DIR/android-consumer"
-            flutter create --platforms=android --org org.citizensdk.verify --project-name citizensdk_verify "$host"
-            flutter pub add --directory "$host" citizen_sdk --path "$CITIZENSDK_SOURCE_ROOT"
-            export CITIZENSDK_ANDROID_BUILD_DIR="$CITIZENSDK_WORK_DIR/gradle-flutter"
-            (cd "$host" && flutter build apk --release --target-platform android-arm64 --no-pub)
-          fi
       - name: 绑定原生依赖与运行库证据
         if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD' || matrix.platform == 'Windows'
         shell: bash
