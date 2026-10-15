@@ -11147,7 +11147,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.equal(result.CITIZENSDK_WORK_DIR,'/c/runner/work');
   assert.equal(result.PRODUCT_NODE_BIN,'/c/runner/node.exe');
   assert.equal(nativeShellEnvironment(base,'/tmp/source','linux').CITIZENSDK_WORK_DIR,'C:\\runner\\work');
-  assert.throws(()=>nativeShellEnvironment(base,'C:\\runner\\source','win32',{convert:()=>{throw Error('no');}}),/Git Bash路径转换失败/u);
+  const missingCygpath=()=>({error:Object.assign(Error('no'),{code:'ENOENT'}),status:null,stdout:''});
+  assert.throws(()=>nativeShellEnvironment(base,'C:\\runner\\source','win32',
+   {convert:value=>cygwinPath(value,missingCygpath)}),/Git Bash路径转换失败.*ENOENT/u);
  });
  test('Android Runner只创建并清理带本轮身份回执的target工作目录',()=>{
   const workspace=join(root,'target/test/citizensdk-android-work-'+testRandomUUID()),environment={
