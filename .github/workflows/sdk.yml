@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 180
     env:
       GH_TOKEN: "${{ github.token }}"
-      CARGO_INCREMENTAL: '0'
+      CARGO_INCREMENTAL: '1'
       SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
       SDK_PLATFORM: "${{ matrix.platform }}"
       SDK_TARGET: "${{ matrix.target }}"
@@ -83,6 +83,19 @@ jobs:
       - name: 准备版本化独立源码
         shell: bash
         run: node scripts/build.mjs release-source native
+      - name: 恢复本平台编译与依赖缓存
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            ${{ runner.temp }}/citizensdk-release/cargo-target
+            ${{ runner.temp }}/citizensdk-release/pub-cache/hosted
+            ${{ runner.temp }}/citizensdk-release/pub-cache/git
+            ${{ runner.temp }}/citizensdk-release/gradle/caches/modules-2
+            ${{ runner.temp }}/citizensdk-release/gradle/caches/build-cache-1
+            ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
+          key: citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
       - name: 安装本仓固定 Flutter
         shell: bash
         run: |
@@ -159,7 +172,7 @@ jobs:
           if [[ "$SDK_PLATFORM" == Android ]]; then
             export CITIZENSDK_ANDROID_CORE_DIR="$CITIZENSDK_NATIVE_OUTPUT_DIR/android/arm64-v8a"
             export CITIZENSDK_ANDROID_BUILD_DIR="$CITIZENSDK_WORK_DIR/gradle-native"
-            "$CITIZENSDK_GRADLE" --no-daemon -p "$CITIZENSDK_SOURCE_ROOT/android" :native:testReleaseUnitTest
+            "$CITIZENSDK_GRADLE" --no-daemon --build-cache -p "$CITIZENSDK_SOURCE_ROOT/android" :native:testReleaseUnitTest
             host="$CITIZENSDK_WORK_DIR/android-consumer"
             flutter create --platforms=android --org org.citizensdk.verify --project-name citizensdk_verify "$host"
             flutter pub add --directory "$host" citizen_sdk --path "$CITIZENSDK_SOURCE_ROOT"

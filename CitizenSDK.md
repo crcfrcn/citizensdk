@@ -26,7 +26,9 @@ citizensdk/
 
 本仓没有独立渠道发布脚本。GitHub 自动化对单一 SDK 包的来源、候选、Tag、Release 和正式字节验真均由 `scripts/build.mjs` 及现有 `sdk.yml` 完成；pub.dev 渠道上传未接入，控制台只登记 SDK 自动化按钮。
 
-`.github/workflows/sdk.yml` 保持原名，只安排测试、五宿主原生 Job、汇总、消费回验与唯一 Release；版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
+`.github/workflows/sdk.yml` 保持原名，只安排测试、五宿主原生 Job、汇总、消费回验与唯一 Release；版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。`pubspec.yaml` 的 `1.0.0` 是正式版本种子；首个完整成功并创建正式 Release 的自动化使用 `1.0.0`，之后每完成一次完整五平台构建、消费复验并创建正式 Release，patch 增加 `0.0.1`。版本从已创建的正式 Release 计算；Release 创建前失败的阶段不占用版本，若 Release 已实际创建，即使后续回读使工作流报错，该正式版本仍已存在并会成为下一次递增依据。五个矩阵宿主不是五次版本递增。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
+
+原生 Job 设置 `CARGO_INCREMENTAL=1`，并通过固定版本的 GitHub Actions 缓存恢复与保存按操作系统、架构、平台及依赖锁隔离的 Cargo target、Pub 和 Gradle 编译/依赖缓存。首次运行使用新的 `citizensdk-sdk-build-v1` 缓存命名空间，因而从冷缓存开始；后续成功 Job 可复用同平台缓存。缓存只提供编译加速，Release 仍由当前 Run 从固定提交重新构建，并执行原有候选及五平台消费复验。缓存未命中、过期或被 GitHub 淘汰只影响速度，不改变锁定来源、构建输入、版本计算或验收结果。
 
 `.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
 

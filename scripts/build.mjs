@@ -1239,7 +1239,6 @@ const SDK_EMBEDDED_TEST_ROOTS = Object.freeze([
   'native/provider/source',
 ]);
 // scripts目录仅保留当前两个正式入口；源码闭集以实际文件验真。
-// 两个正式脚本按准确文件集合验真。
 const SDK_SCRIPT_ENTRIES = Object.freeze({'build.mjs':'file','config.mjs':'file'});
 const SDK_TEST_CONTRACT_FILES = Object.freeze({
   "test/sdk_1_10_1_contract_test.dart": "file",
