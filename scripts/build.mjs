@@ -6252,7 +6252,7 @@ function parseHostedArchive(bytes) {
 
 
 return {buildCitizenSdkRelease,verifyCitizenSdkRelease,buildCitizenSdkHosted,verifyCitizenSdkHosted,
- citizenSdkDependencyEnvironment,writeCitizenSdkDependencyEvidence};
+ citizenSdkDependencyEnvironment,writeCitizenSdkDependencyEvidence,assertCitizenSdkStaticArchive};
 })();
 export const {buildCitizenSdkRelease,verifyCitizenSdkRelease,buildCitizenSdkHosted,verifyCitizenSdkHosted}=releaseAssets;
 
@@ -8326,7 +8326,7 @@ async function prepareNative(args) {
 }
 
 
-return {prepareEnvironment,prepareAndroidToolchain,prepareNative,archiveToolPath,assertCitizenSdkStaticArchive,assertDependencyReceipt,run:async(values)=>{
+return {prepareEnvironment,prepareAndroidToolchain,prepareNative,archiveToolPath,run:async(values)=>{
 const [command, ...rest] = values;
 const args = parseArguments(rest);
 try {
@@ -8454,7 +8454,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
 
 }
 
-return {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply,prepareEnvironment:nativeDependencies.prepareEnvironment,prepareAndroidToolchain:nativeDependencies.prepareAndroidToolchain,assertCitizenSdkStaticArchive:nativeDependencies.assertCitizenSdkStaticArchive,copyFlutterArtifact:flutterRecipe.copyFlutterArtifact};
+return {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply,prepareEnvironment:nativeDependencies.prepareEnvironment,prepareAndroidToolchain:nativeDependencies.prepareAndroidToolchain,copyFlutterArtifact:flutterRecipe.copyFlutterArtifact};
 })();
 const {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply}=buildResources;
 export {prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply};
@@ -10947,7 +10947,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    return Buffer.concat([Buffer.from('!<arch>\n'),member('//',names),member(memberName,object)]);
   };
   const longName='sqlite3_compilation_unit.obj';
-  const validators=[buildResources.assertCitizenSdkStaticArchive,compileProjection.assertCitizenSdkStaticArchive];
+  const validators=[releaseAssets.assertCitizenSdkStaticArchive,compileProjection.assertCitizenSdkStaticArchive];
   assert.equal(validators.every(validate=>typeof validate==='function'),true);
   for(const validate of validators){
    assert.doesNotThrow(()=>validate(makeArchive(Buffer.from(longName+'\0')),'Windows'));
