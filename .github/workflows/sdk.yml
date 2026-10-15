@@ -126,17 +126,16 @@ jobs:
           if [[ "$SDK_PLATFORM" == Android ]]; then
             printf '%s' "$receipt" | node -e '
               let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
-                const r=JSON.parse(input),root=process.env.CITIZENSDK_WORK_DIR+"/tools/";
+                const fs=require("node:fs"),r=JSON.parse(input),root=process.env.CITIZENSDK_WORK_DIR+"/tools/";
                 const gradle=r.tools?.gradle,java=r.tools?.java;
                 if(r.platform!=="Android"||!gradle||!java||typeof gradle.version!=="string"||typeof java.version!=="string"
                   ||gradle.path!==root+"gradle-"+gradle.version+"/bin/gradle"||java.home!==root+"java-"+java.version
                   ||!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(gradle.version)||!/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(java.version)
                   ||/[\r\n=]/.test(gradle.path+java.home))throw Error("Android锁定Gradle/Java准备回执无效");
-                require("node:fs").appendFileSync(process.env.GITHUB_ENV,"CITIZENSDK_GRADLE="+gradle.path+"\nJAVA_HOME="+java.home+"\n");
+                fs.accessSync(gradle.path,fs.constants.X_OK);fs.accessSync(java.home+"/bin/java",fs.constants.X_OK);
+                fs.appendFileSync(process.env.GITHUB_ENV,"CITIZENSDK_GRADLE="+gradle.path+"\nJAVA_HOME="+java.home+"\n");
               });
             '
-            test -x "$CITIZENSDK_GRADLE"
-            test -x "$JAVA_HOME/bin/java"
           fi
       - name: 启用 Windows MSVC 工具
         if: matrix.platform == 'Windows'

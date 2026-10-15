@@ -4273,7 +4273,10 @@ function assertCitizenSdkStaticArchive(bytes, platform, nested = false) {
       const end = isMsvc ? gnuNames.indexOf(0, nameOffset) : gnuNames.indexOf(Buffer.from('/\n'), nameOffset);
       dependencyCheck(end > nameOffset, isMsvc ? 'MSVC COFF 长名称未终止' : 'GNU ar 长名称未终止');
       actualName = gnuNames.subarray(nameOffset, end).toString();
-      dependencyCheck(/^[A-Za-z0-9_.+@-]+$/.test(actualName), 'GNU ar 长名称字符无效');
+      if (isMsvc) {
+        actualName = actualName.replace(/\/$/u, '');
+        dependencyCheck(/^[\x20-\x7e]{1,1024}$/u.test(actualName), 'MSVC COFF 长名称格式无效');
+      } else dependencyCheck(/^[A-Za-z0-9_.+@-]+$/.test(actualName), 'GNU ar 长名称字符无效');
     }
     if (!['/', '//', '/SYM64/', '__.SYMDEF', '__.SYMDEF SORTED'].includes(actualName)) {
       // 归档成员名只用于失败诊断；限制为短 ASCII，避免第三方归档把控制字符写入 CI 日志。
@@ -6408,8 +6411,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(prepare.text,/appendFileSync\(process\.env\.GITHUB_ENV,/u);
   assert.ok(prepare.text.includes('CITIZENSDK_GRADLE="+gradle.path+"\\nJAVA_HOME="+java.home+"\\n'),
    'Android工具准备回执没有同时写入Gradle入口和JAVA_HOME');
-  assert.match(prepare.text,/test -x "\$CITIZENSDK_GRADLE"/u);
-  assert.match(prepare.text,/test -x "\$JAVA_HOME\/bin\/java"/u);
+  assert.match(prepare.text,/fs\.accessSync\(gradle\.path,fs\.constants\.X_OK\)/u);
+  assert.match(prepare.text,/fs\.accessSync\(java\.home\+"\/bin\/java",fs\.constants\.X_OK\)/u);
+  assert.doesNotMatch(prepare.text,/test -x "\$CITIZENSDK_GRADLE"/u);
   assert.match(compile.text,/"\$CITIZENSDK_GRADLE" --no-daemon --build-cache/u);
  });
  test('原生依赖回执严格匹配本仓锁合同',()=>{
@@ -7976,13 +7980,16 @@ function safeExternalDirectory(path, label, source = sdkDirectory) {
   return path;
 }
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+function run(command, args, options = {}, spawn = spawnSync) {
+  const capture = Boolean(options.capture);
+  const result = spawn(command, args, {
     cwd: options.cwd,
     env: options.env || process.env,
     encoding: 'utf8',
-    stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    maxBuffer: options.maxBuffer ?? 64 * 1024 * 1024,
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'pipe', 'inherit'],
   });
+  if (!capture && result.stdout) process.stderr.write(result.stdout);
   if (result.error || result.status !== 0) {
     fail(`${command}执行失败${result.status === null ? '' : `(${result.status})`}${result.stderr ? `：${result.stderr.trim()}` : ''}`);
   }
@@ -8330,7 +8337,7 @@ async function prepareNative(args) {
 }
 
 
-return {prepareEnvironment,prepareAndroidToolchain,prepareNative,archiveToolPath,run:async(values)=>{
+return {prepareEnvironment,prepareAndroidToolchain,prepareNative,archiveToolPath,runProcess:run,run:async(values)=>{
 const [command, ...rest] = values;
 const args = parseArguments(rest);
 try {
@@ -8449,6 +8456,21 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    await assert.rejects(nativeDependencies.prepareAndroidToolchain(toolWork,{acquire:async()=>assert.fail('existing target must fail')}),/目标已存在/u);
   });
  });
+ test('原生依赖准备把子命令输出写到stderr并保留JSON stdout',()=>{
+  const originalWrite=process.stderr.write,logs=[];
+  process.stderr.write=chunk=>{logs.push(Buffer.isBuffer(chunk)?chunk.toString():String(chunk));return true;};
+  try {
+   const calls=[],result=nativeDependencies.runProcess('fixture',[],{},(_command,_args,options)=>{
+    calls.push(options);return {error:undefined,status:0,stdout:'Configuring locked dependency\n',stderr:null};
+   });
+   assert.equal(result,'Configuring locked dependency');
+   assert.deepEqual(calls[0].stdio,['ignore','pipe','inherit']);
+   assert.equal(logs.join(''),'Configuring locked dependency\n');
+   assert.throws(()=>nativeDependencies.runProcess('fixture',[],{},()=>({error:undefined,status:7,stdout:'failed build\n',stderr:null})),/执行失败\(7\)/u);
+   assert.equal(logs.join(''),'Configuring locked dependency\nfailed build\n');
+  } finally { process.stderr.write=originalWrite; }
+ });
+
  test('静态依赖文件闭集按规范路径排序且拒绝缺项、多项和重复项',()=>{
   const expected=['include/cmp.h','include/cmp_util.h','include/conf.h','include/conf_api.h'];
   assert.equal(sameDependencyPathClosure(['include/conf_api.h','include/cmp_util.h','include/conf.h','include/cmp.h'],expected),true);
@@ -10552,7 +10574,10 @@ function assertCitizenSdkStaticArchive(bytes, platform, nested = false) {
       const end = isMsvc ? gnuNames.indexOf(0, nameOffset) : gnuNames.indexOf(Buffer.from('/\n'), nameOffset);
       dependencyCheck(end > nameOffset, isMsvc ? 'MSVC COFF 长名称未终止' : 'GNU ar 长名称未终止');
       actualName = gnuNames.subarray(nameOffset, end).toString();
-      dependencyCheck(/^[A-Za-z0-9_.+@-]+$/.test(actualName), 'GNU ar 长名称字符无效');
+      if (isMsvc) {
+        actualName = actualName.replace(/\/$/u, '');
+        dependencyCheck(/^[\x20-\x7e]{1,1024}$/u.test(actualName), 'MSVC COFF 长名称格式无效');
+      } else dependencyCheck(/^[A-Za-z0-9_.+@-]+$/.test(actualName), 'GNU ar 长名称字符无效');
     }
     if (!['/', '//', '/SYM64/', '__.SYMDEF', '__.SYMDEF SORTED'].includes(actualName)) {
       // 归档成员名只用于失败诊断；限制为短 ASCII，避免第三方归档把控制字符写入 CI 日志。
@@ -10951,13 +10976,14 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    const member=(name,data)=>{const header=Buffer.alloc(60,0x20);header.write(name,0,'ascii');header.write('0',16,'ascii');header.write('0',28,'ascii');header.write('0',34,'ascii');header.write('100644',40,'ascii');header.write(String(data.length).padStart(10,' '),48,'ascii');header.write('`\n',58,'ascii');return Buffer.concat([header,data,data.length%2?Buffer.from('\n'):Buffer.alloc(0)]);};
    return Buffer.concat([Buffer.from('!<arch>\n'),member('//',names),member(memberName,object)]);
   };
-  const longName='sqlite3_compilation_unit.obj';
+  const longName='D:\\a\\citizensdk\\target\\build\\dependencies\\sqlite3.obj/';
   const validators=[releaseAssets.assertCitizenSdkStaticArchive,compileProjection.assertCitizenSdkStaticArchive];
   assert.equal(validators.every(validate=>typeof validate==='function'),true);
   for(const validate of validators){
    assert.doesNotThrow(()=>validate(makeArchive(Buffer.from(longName+'\0')),'Windows'));
    assert.throws(()=>validate(makeArchive(Buffer.from(longName)),'Windows'),/MSVC COFF 长名称未终止/u);
    assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\0'),'/1'),'Windows'),/长名称偏移无效/u);
+   assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\x01\0')),'Windows'),/MSVC COFF 长名称格式无效/u);
    assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\/\n')),'Windows'),/MSVC COFF 长名称未终止/u);
   }
  });
