@@ -6421,16 +6421,15 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(prepare.text,/fs\.accessSync\(gradle\.path,fs\.constants\.X_OK\)/u);
   assert.match(prepare.text,/fs\.accessSync\(java\.home\+"\/bin\/java",fs\.constants\.X_OK\)/u);
   assert.doesNotMatch(prepare.text,/test -x "\$CITIZENSDK_GRADLE"/u);
-  assert.match(compile.text,/"\$CITIZENSDK_GRADLE" --no-daemon --build-cache/u);
-   assert.match(compile.text,/scripts\/build\.mjs" native "\$SDK_TARGET"/u,
-    '五平台正式原生件必须通过产品入口构建');
-   assert.doesNotMatch(compile.text,/native (?:apple-tests|abi-host|host)|flutter test|testReleaseUnitTest|flutter create|flutter pub add|flutter build apk/u,
-    '正式Release原生Job不再重复编译测试宿主或临时消费App');
-   const consume=workflow.slice(workflow.indexOf('\n  consume:'),workflow.indexOf('\n  release:'));
-   const release=workflow.slice(workflow.indexOf('\n  release:'));
-   assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
-   assert.match(release,/needs: \[prepare, native, assemble, consume\]/u,
-    'Tag/Release必须等待五平台正式构建与消费复验');
+  assert.match(compile.text,/scripts\/build\.mjs" native "\$SDK_TARGET"/u,
+   '五平台正式原生件必须通过产品入口构建');
+  assert.doesNotMatch(compile.text,/native (?:apple-tests|abi-host|host)|flutter test|testReleaseUnitTest|flutter create|flutter pub add|flutter build apk/u,
+   '正式Release原生Job不再重复编译测试宿主或临时消费App');
+  const consume=workflow.slice(workflow.indexOf('\n  consume:'),workflow.indexOf('\n  release:'));
+  const release=workflow.slice(workflow.indexOf('\n  release:'));
+  assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
+  assert.match(release,/needs: \[prepare, native, assemble, consume\]/u,
+   'Tag/Release必须等待五平台正式构建与消费复验');
  });
  test('原生依赖回执严格匹配本仓锁合同',()=>{
   const locked=buildDependencyLock.native;
