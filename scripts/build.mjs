@@ -6325,8 +6325,10 @@ export function ciReleaseSource(stage,environment=process.env,{call=spawnSync}={
   if([...body.matchAll(pattern)].length!==1)fail('版本位置不唯一：'+name);
   writeFileSync(file,body.replace(pattern,replacement));}
  if(stage==='native'){
+  const androidWork=environment.SDK_PLATFORM==='Android'?createCiAndroidWorkDirectory(environment):null;
   const variables={CITIZENSDK_SOURCE_ROOT:source,CITIZENSDK_SOURCE:source,
-   CITIZENSDK_WORK_DIR:join(work,'work'),CITIZENSDK_NATIVE_OUTPUT_DIR:join(work,'native'),
+   CITIZENSDK_WORK_DIR:androidWork||join(work,'work'),CITIZENSDK_RESOURCE_WORK_DIR:join(work,'work'),
+   CITIZENSDK_NATIVE_OUTPUT_DIR:join(work,'native'),
    CITIZENSDK_BUILD_ROOT:join(work,'state'),CITIZENSDK_ACTION:'release',CITIZENSDK_JOB_STAGE:'native',
    CITIZENSDK_PLATFORM:environment.SDK_PLATFORM,CITIZENSDK_SOFTWARE_VERSION:version,CITIZENSDK_VERSION:version,
    CITIZENSDK_SOURCE_SHA:environment.GITHUB_SHA,CARGO_HOME:join(work,'cargo-home'),
@@ -6339,6 +6341,49 @@ export function ciReleaseSource(stage,environment=process.env,{call=spawnSync}={
   writeFileSync(environment.GITHUB_ENV,Object.entries(variables).map(([key,value])=>key+'='+value+'\n').join(''),{flag:'a'});
  }
  return {source,version};
+}
+
+function ciAndroidWorkDirectory(environment){
+ const workspace=environment.GITHUB_WORKSPACE,run=environment.GITHUB_RUN_ID,attempt=environment.GITHUB_RUN_ATTEMPT;
+ if(typeof workspace!=='string'||!isAbsolute(workspace)||resolve(workspace)!==workspace
+  ||!/^[1-9][0-9]*$/u.test(run||'')||!/^[1-9][0-9]*$/u.test(attempt||'')
+  ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||''))fail('Android Runner工作目录身份无效');
+ const path=join(workspace,'target','build','citizensdk-sdk-'+run+'-'+attempt);
+ if(!inside(join(workspace,'target','build'),path)||dirname(path)!==join(workspace,'target','build'))fail('Android Runner工作目录越界');
+ return path;
+}
+function createCiAndroidWorkDirectory(environment){
+ const workspace=environment.GITHUB_WORKSPACE,path=ciAndroidWorkDirectory(environment);
+ if(realpathSync(workspace)!==workspace)fail('Android checkout根不能经过链接');
+ let current=workspace;
+ for(const name of ['target','build']){
+  current=join(current,name);
+  const info=lstatSync(current,{throwIfNoEntry:false});
+  if(info&&(!info.isDirectory()||info.isSymbolicLink()||realpathSync(current)!==current))fail('Android Runner工作目录祖先无效');
+ }
+ mkdirSync(dirname(path),{recursive:true,mode:0o700});
+ if(realpathSync(dirname(path))!==dirname(path))fail('Android Runner工作目录父目录真实路径无效');
+ if(lstatSync(path,{throwIfNoEntry:false}))fail('Android本轮唯一工作目录已存在');
+ mkdirSync(path,{mode:0o700});
+ try{writeFileSync(join(path,'.citizensdk-run'),JSON.stringify({run:environment.GITHUB_RUN_ID,attempt:environment.GITHUB_RUN_ATTEMPT,sha:environment.GITHUB_SHA})+'\n',{flag:'wx',mode:0o600});}
+ catch(error){rmSync(path,{recursive:true,force:true});throw error;}
+ return path;
+}
+export function ciReleaseCleanupAndroidWork(environment=process.env){
+ if(environment.GITHUB_ACTIONS!=='true'||environment.GITHUB_REPOSITORY!=='crcfrcn/citizensdk'
+  ||environment.GITHUB_REF!=='refs/heads/main'||environment.SDK_PLATFORM!=='Android')fail('Android工作目录清理平台身份无效');
+ const path=ciAndroidWorkDirectory(environment),workspace=environment.GITHUB_WORKSPACE;
+ if(!existsSync(path))return {removed:false};
+ const info=lstatSync(path);
+ if(!info.isDirectory()||info.isSymbolicLink()||realpathSync(path)!==path)fail('Android本轮工作目录身份无效');
+ if(realpathSync(workspace)!==workspace||realpathSync(dirname(dirname(path)))!==dirname(dirname(path)))fail('Android工作目录真实路径越界');
+ const markerPath=join(path,'.citizensdk-run'),markerInfo=lstatSync(markerPath,{throwIfNoEntry:false});
+ if(!markerInfo?.isFile()||markerInfo.isSymbolicLink()||markerInfo.nlink!==1)fail('Android本轮工作目录缺少所有权回执');
+ let marker;try{marker=JSON.parse(readFileSync(markerPath,'utf8'));}catch{fail('Android本轮工作目录所有权回执无效');}
+ if(marker.run!==environment.GITHUB_RUN_ID||marker.attempt!==environment.GITHUB_RUN_ATTEMPT||marker.sha!==environment.GITHUB_SHA)fail('Android本轮工作目录所有权不匹配');
+ rmSync(path,{recursive:true});
+ if(existsSync(path))fail('Android本轮工作目录清理未完成');
+ return {removed:true};
 }
 
 // 五宿主和消费验收全部成功后，本仓只创建一份正式 SDK Release。
@@ -6422,6 +6467,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    assert.match(cache.text,/citizensdk-release\/cargo-home\/registry/u);
    assert.match(cache.text,/citizensdk-release\/cargo-home\/git/u);
   assert.match(prepare.text,/prepare-environment --scope citizensdk --platform "\$SDK_PLATFORM"/u);
+  assert.match(prepare.text,/CITIZENSDK_RESOURCE_WORK_DIR\/tools/u,'Android构建目录与锁定资源目录保持分离');
   assert.match(prepare.text,/gradle\.path!==root\+"gradle-"\+gradle\.version\+"\/bin\/gradle"/u);
   assert.match(prepare.text,/java\.home!==root\+"java-"\+java\.version/u);
   assert.match(prepare.text,/appendFileSync\(process\.env\.GITHUB_ENV,/u);
@@ -6436,6 +6482,14 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    '正式Release原生Job不再重复编译测试宿主或临时消费App');
   const consume=workflow.slice(workflow.indexOf('\n  consume:'),workflow.indexOf('\n  release:'));
   const release=workflow.slice(workflow.indexOf('\n  release:'));
+  const upload=workflow.indexOf('      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
+  const androidCleanup=step('清理Android本轮构建目录'),linuxDependencies=step('Linux 编译依赖');
+  assert.match(linuxDependencies.text,/apt-get install -y[^\n]*libglib2\.0-dev/u,
+   'Linux原生构建需安装提供glib-2.0与gio-2.0 pkg-config文件的官方包');
+  assert.ok(upload>=0&&upload<androidCleanup.start,'Android本轮工作目录必须在产物上传后清理');
+  assert.match(androidCleanup.text,/if: always\(\) && matrix\.platform == 'Android'/u);
+  assert.match(androidCleanup.text,/release-cleanup-android-work/u);
+  assert.doesNotMatch(compile.text,/cygpath -u/u,'Windows路径转换由产品入口统一完成');
   assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
   assert.match(release,/needs: \[prepare, native, assemble, consume\]/u,
    'Tag/Release必须等待五平台正式构建与消费复验');
@@ -6474,7 +6528,7 @@ async function runCommand(){
    ||!['LinuxARM','LinuxAMD','Windows'].includes(process.env.SDK_PLATFORM)
    ||!/^[a-f0-9]{40}$/u.test(process.env.GITHUB_SHA||''))fail('原生依赖回执身份无效');
   if(process.argv[2]==='release-dependency-env'){
-   const result=JSON.parse(readFileSync(join(process.env.CITIZENSDK_WORK_DIR,'dependency-result.json'),'utf8'));
+   const result=JSON.parse(readFileSync(join(process.env.CITIZENSDK_RESOURCE_WORK_DIR,'dependency-result.json'),'utf8'));
    const variables={...citizenSdkDependencyEnvironment(result.receipt,process.env.SDK_PLATFORM),
     CITIZENSDK_DEPENDENCY_RECEIPT:result.receipt};
    if(!isAbsolute(process.env.GITHUB_ENV||''))fail('GitHub 环境回执缺失');
@@ -6491,6 +6545,10 @@ async function runCommand(){
  if(process.argv[2]==='release-source'){
   if(process.argv.length!==4)fail('版本化源码入口参数无效');
   process.stdout.write(JSON.stringify(ciReleaseSource(process.argv[3]))+'\n');return;
+ }
+ if(process.argv[2]==='release-cleanup-android-work'){
+  if(process.argv.length!==3)fail('Android本轮工作目录清理参数无效');
+  process.stdout.write(JSON.stringify(ciReleaseCleanupAndroidWork())+'\n');return;
  }
  if(process.argv[2]==='release-github'){
   if(process.argv.length!==3)fail('GitHub 单包 Release 参数无效');
@@ -6587,13 +6645,37 @@ function nativeShellInvocation(target) {
  return {args:['--noprofile','--norc','-s','--',target],input:BUILD_SHELL_SOURCES.native};
 }
 
+const windowsShellPathVariables=Object.freeze([
+ 'CITIZENSDK_SOURCE_ROOT','CITIZENSDK_SOURCE','CITIZENSDK_WORK_DIR','CITIZENSDK_RESOURCE_WORK_DIR','CITIZENSDK_BUILD_ROOT','CITIZENSDK_NATIVE_OUTPUT_DIR',
+ 'CITIZENSDK_DEPENDENCY_RECEIPT','CITIZENSDK_FLUTTER_ROOT','CITIZENSDK_ZXING_SOURCE_DIR',
+ 'PUB_CACHE','CARGO_HOME','CARGO_TARGET_DIR','TMPDIR','GRADLE_USER_HOME','ANDROID_HOME',
+ 'ANDROID_SDK_ROOT','ANDROID_NDK_HOME','JAVA_HOME','CITIZENSDK_GRADLE','NODE','RUSTC','CARGO',
+ 'PRODUCT_NODE_BIN','CMAKE_COMMAND'
+]);
+function cygwinPath(value,call=spawnSync){
+ const result=call('cygpath',['-u',value],{encoding:'utf8',windowsHide:true});
+ if(result.error||result.status!==0)fail('Windows Git Bash路径转换失败'+(result.error?.code?': '+result.error.code:''));
+ const converted=typeof result.stdout==='string'?result.stdout.replace(/[\r\n]+$/u,''):'';
+ if(!converted.startsWith('/')||converted.startsWith('//')||/[\r\n\0]/u.test(converted))fail('Windows Git Bash路径转换结果无效');
+ return converted;
+}
+export function nativeShellEnvironment(environment,source,platform=process.platform,{convert=cygwinPath}={}){
+ const result={...environment,CITIZENSDK_SOURCE_ROOT:source,CITIZENSDK_SOURCE:source,PRODUCT_NODE_BIN:environment.NODE||process.execPath};
+ if(platform!=='win32')return result;
+ for(const name of windowsShellPathVariables){
+  const value=name==='CITIZENSDK_SOURCE_ROOT'?source:result[name];
+  if(typeof value==='string'&&value)result[name]=convert(value);
+ }
+ return result;
+}
+
 export async function runOwnedShell(name,args,{environment=process.env,source=root}={}) {
  const targets=new Set(['android','apple','LinuxARM','LinuxAMD','Windows','host','abi-host','apple-tests','all','verify']);
  if(name!=='native'||!Array.isArray(args)||args.length!==1||!targets.has(args[0]))fail('原生编译目标或参数无效');
  const invocation=nativeShellInvocation(args[0]);
  const result=await runBuildProcess(nativeShellExecutable(environment),
   invocation.args,
-  {...environment,CITIZENSDK_SOURCE_ROOT:source,PRODUCT_NODE_BIN:environment.NODE||process.execPath},source,
+  nativeShellEnvironment(environment,source),source,
   {capture:true,streamError:true,input:invocation.input});
  process.stdout.write(result.stdout);return result.code;
 }
@@ -11054,6 +11136,39 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.equal(nativeShellExecutable({},'linux'),'/bin/bash');
   assert.equal(nativeShellExecutable({PRODUCT_BASH_BIN:'C:\\Program Files\\Git\\bin\\bash.exe'},'win32'),
    'C:\\Program Files\\Git\\bin\\bash.exe');
+ });
+ test('Windows原生Shell入口统一转换Git Bash路径并拒绝转换异常',()=>{
+  const received=[],base={CITIZENSDK_WORK_DIR:'C:\\runner\\work',CITIZENSDK_NATIVE_OUTPUT_DIR:'C:\\runner\\out',
+   CITIZENSDK_DEPENDENCY_RECEIPT:'C:\\runner\\dependency.json',PUB_CACHE:'C:\\runner\\pub'};
+  const result=nativeShellEnvironment(base,'C:\\runner\\source','win32',{convert:value=>{received.push(value);return value.replace(/^([A-Z]):\\/u,(_,drive)=>'/'+drive.toLowerCase()+'/').replaceAll('\\','/');}});
+  assert.deepEqual(received,['C:\\runner\\source','C:\\runner\\source','C:\\runner\\work','C:\\runner\\out',
+   'C:\\runner\\dependency.json','C:\\runner\\pub']);
+  assert.equal(result.CITIZENSDK_SOURCE_ROOT,'/c/runner/source');
+  assert.equal(result.CITIZENSDK_WORK_DIR,'/c/runner/work');
+  assert.equal(nativeShellEnvironment(base,'/tmp/source','linux').CITIZENSDK_WORK_DIR,'C:\\runner\\work');
+  assert.throws(()=>nativeShellEnvironment(base,'C:\\runner\\source','win32',{convert:()=>{throw Error('no');}}),/Git Bash路径转换失败/u);
+ });
+ test('Android Runner只创建并清理带本轮身份回执的target工作目录',()=>{
+  const workspace=join(root,'target/test/citizensdk-android-work-'+testRandomUUID()),environment={
+   GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'crcfrcn/citizensdk',GITHUB_REF:'refs/heads/main',
+   SDK_PLATFORM:'Android',GITHUB_WORKSPACE:workspace,GITHUB_RUN_ID:'38811945399',GITHUB_RUN_ATTEMPT:'1',
+   GITHUB_SHA:'256f9ada29dcc1d999ae0714fdae9c5f0e4f12a2'
+  };
+  mkdirSync(workspace,{recursive:true});
+  try{
+   const path=createCiAndroidWorkDirectory(environment);
+   assert.equal(path,join(workspace,'target/build/citizensdk-sdk-38811945399-1'));
+   assert.throws(()=>createCiAndroidWorkDirectory(environment),/已存在/u);
+   const marker=join(path,'.citizensdk-run');
+   writeFileSync(marker,JSON.stringify({run:environment.GITHUB_RUN_ID,attempt:'2',sha:environment.GITHUB_SHA})+'\n');
+   assert.throws(()=>ciReleaseCleanupAndroidWork(environment),/所有权不匹配/u);
+   assert.equal(existsSync(path),true);
+   writeFileSync(marker,JSON.stringify({run:environment.GITHUB_RUN_ID,attempt:environment.GITHUB_RUN_ATTEMPT,sha:environment.GITHUB_SHA})+'\n');
+   assert.deepEqual(ciReleaseCleanupAndroidWork(environment),{removed:true});
+   assert.equal(existsSync(path),false);
+   assert.deepEqual(ciReleaseCleanupAndroidWork(environment),{removed:false});
+   assert.throws(()=>ciReleaseCleanupAndroidWork({...environment,SDK_PLATFORM:'LinuxAMD'}),/平台身份无效/u);
+  }finally{rmSync(workspace,{recursive:true,force:true});}
  });
  test('子进程启动失败只报告系统错误码，不泄露执行路径',async()=>{
   const missing=join(root,'.citizensdk-missing-shell-'+testRandomUUID()+'.exe');

@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang llvm libclang-dev libssl-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip xvfb dbus-x11
+          sudo apt-get install -y clang llvm libclang-dev libssl-dev libglib2.0-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip xvfb dbus-x11
       - name: 安装 Android 固定 NDK 与 CMake
         if: matrix.platform == 'Android'
         shell: bash
@@ -129,11 +129,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          receipt="$(node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_WORK_DIR/tools")"
+          receipt="$(node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_RESOURCE_WORK_DIR/tools")"
           if [[ "$SDK_PLATFORM" == Android ]]; then
             printf '%s' "$receipt" | node -e '
               let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
-                const fs=require("node:fs"),r=JSON.parse(input),root=process.env.CITIZENSDK_WORK_DIR+"/tools/";
+                const fs=require("node:fs"),r=JSON.parse(input),root=process.env.CITIZENSDK_RESOURCE_WORK_DIR+"/tools/";
                 const gradle=r.tools?.gradle,java=r.tools?.java;
                 if(r.platform!=="Android"||!gradle||!java||typeof gradle.version!=="string"||typeof java.version!=="string"
                   ||gradle.path!==root+"gradle-"+gradle.version+"/bin/gradle"||java.home!==root+"java-"+java.version
@@ -165,28 +165,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          result="$CITIZENSDK_WORK_DIR/dependency-result.json"
+          result="$CITIZENSDK_RESOURCE_WORK_DIR/dependency-result.json"
           if [[ "$SDK_PLATFORM" == Windows ]]; then result="$(cygpath -u "$result")"; fi
           node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-native \
             --scope citizensdk --platform "$SDK_PLATFORM" --mode release \
-            --sdk "$CITIZENSDK_SOURCE_ROOT" --work "$CITIZENSDK_WORK_DIR/dependencies" \
-            --sources "$CITIZENSDK_WORK_DIR/tools" \
+            --sdk "$CITIZENSDK_SOURCE_ROOT" --work "$CITIZENSDK_RESOURCE_WORK_DIR/dependencies" \
+            --sources "$CITIZENSDK_RESOURCE_WORK_DIR/tools" \
             --source-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION" > "$result"
           node scripts/build.mjs release-dependency-env
       - name: 编译本平台原生件
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$SDK_PLATFORM" == Windows ]]; then
-            export CITIZENSDK_SOURCE_ROOT="$(cygpath -u "$CITIZENSDK_SOURCE_ROOT")"
-            export CITIZENSDK_SOURCE="$CITIZENSDK_SOURCE_ROOT"
-            export CITIZENSDK_WORK_DIR="$(cygpath -u "$CITIZENSDK_WORK_DIR")"
-            export CITIZENSDK_NATIVE_OUTPUT_DIR="$(cygpath -u "$CITIZENSDK_NATIVE_OUTPUT_DIR")"
-            export CITIZENSDK_DEPENDENCY_RECEIPT="$(cygpath -u "$CITIZENSDK_DEPENDENCY_RECEIPT")"
-            export CITIZENSDK_FLUTTER_ROOT="$(cygpath -u "$CITIZENSDK_FLUTTER_ROOT")"
-            export CITIZENSDK_ZXING_SOURCE_DIR="$(cygpath -u "$CITIZENSDK_ZXING_SOURCE_DIR")"
-            export PUB_CACHE="$(cygpath -u "$PUB_CACHE")"
-          fi
           if [[ "$SDK_PLATFORM" == LinuxARM || "$SDK_PLATFORM" == LinuxAMD ]]; then
             xvfb-run -a dbus-run-session -- node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
           else
@@ -220,6 +210,10 @@ jobs:
           path: "${{ runner.temp }}/citizensdk-${{ matrix.platform }}.tgz"
           if-no-files-found: error
           retention-days: 7
+      - name: 清理Android本轮构建目录
+        if: always() && matrix.platform == 'Android'
+        shell: bash
+        run: node scripts/build.mjs release-cleanup-android-work
   assemble:
     needs: [prepare, native]
     runs-on: xcode-27

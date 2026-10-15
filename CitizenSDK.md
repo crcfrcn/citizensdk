@@ -30,6 +30,8 @@ citizensdk/
 
 原生 Job 设置 `CARGO_INCREMENTAL=1`，并通过固定版本的 GitHub Actions 缓存恢复与保存按操作系统、架构、平台及依赖锁隔离的 Cargo target、Cargo registry/git、Pub 和 Gradle 编译/依赖缓存。首次运行使用新的 `citizensdk-sdk-build-v1` 缓存命名空间，因而从冷缓存开始；后续成功 Job 可复用同平台缓存。Cargo构建保留 `--locked`，按 `Cargo.lock` 从锁定来源取得缺失crate；缓存只提供加速，不改变锁定来源、构建输入、版本计算或验收结果。Release仍由当前Run从固定提交构建，并执行原有候选及五平台消费复验。Flutter引擎使用同一固定提交：Android执行 `flutter precache --android`，macOS执行 `flutter precache --ios --macos`，engine缓存只复用同平台资源。每个原生 Job 的其它资源准备按本仓锁展开 ZXing 源码并将准确目录交给构建入口；Linux/Windows原生依赖回执须与唯一锁合同匹配。Windows解包在调用Git Bash归档工具前转换驱动器路径，归档来源和成员校验保持由产品入口完成。Windows原生构建通过Runner PATH中的Git Bash启动；本仓显式交付的 `PRODUCT_BASH_BIN` 优先，启动错误诊断只报告系统错误码。
 
+Windows原生入口在传给Git Bash前统一将源码、工作区、输出和已声明的工具/缓存路径转换为Git Bash绝对路径；workflow不再重复转换编译环境。Android每个GitHub Run/Attempt仅使用 checkout 的 `target/build/citizensdk-sdk-<run-id>-<attempt>` 作为原生工作目录，目录内所有权回执与Run、Attempt及提交SHA绑定；原生归档上传步骤结束后由 `always()` 清理器只删除回执匹配的本轮目录。Android正式原生输出、Cargo、Pub、Gradle和引擎缓存仍使用各自Runner临时目录。Linux Job安装Ubuntu官方 `libglib2.0-dev`，为 pkg-config 提供 `glib-2.0` 与 `gio-2.0` 开发合同。
+
 `.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
 
 CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台公民链Tab当前仅登记一个“公民SDK／SDK”直接按钮，派发本仓现有 sdk.yml 并由该工作流创建正式Tag/Release；本机Build公开接口和独立执行能力仍归本仓。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
