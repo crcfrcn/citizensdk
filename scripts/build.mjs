@@ -8144,7 +8144,9 @@ function dependencyPlan(args) {
 }
 
 // Android直接消费本仓锁定的Gradle和Temurin原件，解包结果只写当前工作区。
-async function prepareAndroidToolchain(work, { acquire = acquireArchive, extract = extractArchive } = {}) {
+async function prepareAndroidToolchain(work, {
+  acquire = acquireArchive, extract = extractArchive, withScratch = buildTarget.withFixedWork,
+} = {}) {
   const java = toolDefinitions.find((tool) => tool.id === 'java');
   const gradle = toolDefinitions.find((tool) => tool.id === 'gradle');
   const javaArchive = java?.archives?.['linux-amd'];
@@ -8154,18 +8156,20 @@ async function prepareAndroidToolchain(work, { acquire = acquireArchive, extract
     fail('Android Gradle/Java锁定工具合同无效');
   }
   const archiveStore = join(work, 'archives');
-  const tools = {};
-  for (const [tool, archive] of [[java, javaArchive], [gradle, gradleArchive]]) {
-    const destination = join(work, `${tool.id}-${tool.version}`);
-    if (await stat(destination)) fail(`Android锁定工具目标已存在：${tool.id}`);
-    const original = await acquire(archive, { store: archiveStore, work });
-    await extract(original, destination, { prefix: archive.root });
-    const executable = join(destination, archive.executable);
-    await regular(executable);
-    if (!((await lstat(executable)).mode & 0o111)) fail(`Android锁定工具入口不可执行：${tool.id}`);
-    tools[tool.id] = { path: executable, version: tool.version, home: destination };
-  }
-  return tools;
+  return withScratch('build/sdk', async (scratch) => {
+    const tools = {};
+    for (const [tool, archive] of [[java, javaArchive], [gradle, gradleArchive]]) {
+      const destination = join(work, `${tool.id}-${tool.version}`);
+      if (await stat(destination)) fail(`Android锁定工具目标已存在：${tool.id}`);
+      const original = await acquire(archive, { store: archiveStore, work: scratch });
+      await extract(original, destination, { prefix: archive.root });
+      const executable = join(destination, archive.executable);
+      await regular(executable);
+      if (!((await lstat(executable)).mode & 0o111)) fail(`Android锁定工具入口不可执行：${tool.id}`);
+      tools[tool.id] = { path: executable, version: tool.version, home: destination };
+    }
+    return tools;
+  });
 }
 
 async function prepareEnvironment(args) {
@@ -8425,9 +8429,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
  });
  test('Android按产品锁物化Gradle与Java并验证工具路径',async()=>{
   await withFixedWork('test',async work=>{
-   const seen=[],toolWork=join(work,'android-tools');
+   const seen=[],toolWork=join(work,'android-tools'),scratch=join(work,'scratch');
    const installed=await nativeDependencies.prepareAndroidToolchain(toolWork,{
-    acquire:async(entry,options)=>{seen.push({entry,options});return 'locked-'+seen.length;},
+    withScratch:async(scope,action)=>{assert.equal(scope,'build/sdk');return action(scratch);},
+    acquire:async(entry,options)=>{assert.equal(options.work,scratch);seen.push({entry,options});return 'locked-'+seen.length;},
     extract:async(archive,destination,{prefix})=>{
      const entry=seen.find(x=>'locked-'+(seen.indexOf(x)+1)===archive).entry;
      assert.equal(prefix,entry.root);mkdirSync(dirname(join(destination,entry.executable)),{recursive:true});
