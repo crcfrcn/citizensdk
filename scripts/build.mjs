@@ -6399,8 +6399,15 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const flutter=step('安装本仓固定 Flutter'),cache=step('恢复本平台编译与依赖缓存');
   const apple=step('准备Apple固定引擎原件'),prepare=step('准备本仓锁定原件');
   const compile=step('编译本平台原生件');
+  const rustStart=workflow.indexOf('      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5\n');
+  assert.notEqual(rustStart,-1,'工作流缺少固定 Rust 工具链');
+  const rustEnd=workflow.indexOf('\n      - ',rustStart+1);
+  const rust=workflow.slice(rustStart,rustEnd<0?workflow.length:rustEnd);
   assert.ok(flutter.start<cache.start&&cache.start<apple.start&&apple.start<prepare.start&&prepare.start<compile.start,
    'Flutter checkout、缓存、Apple precache、锁原件准备与原生构建顺序漂移');
+  assert.match(rust,/targets: "\$\{\{ matrix\.rust-targets \}\}"/u);
+  assert.match(rust,/components: rust-src/u);
+  assert.doesNotMatch(rust,/^\s+toolchain:/mu,'固定 Action 已在其 SHA 中锁定 Rust 版本，不能传入不支持的 toolchain 参数');
   assert.match(apple.text,/if: matrix\.platform == 'macOS'/u);
   assert.match(apple.text,/"\$FLUTTER_ROOT\/bin\/flutter" precache --ios --macos/u);
   assert.match(cache.text,/citizensdk-flutter\/bin\/cache\/artifacts\/engine/u);

@@ -63,7 +63,6 @@ jobs:
           node-version: 25.2.1
       - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
         with:
-          toolchain: 1.97.1
           targets: "${{ matrix.rust-targets }}"
           components: rust-src
       - name: Linux 编译依赖
