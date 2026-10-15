@@ -11139,12 +11139,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
  });
  test('Windows原生Shell入口统一转换Git Bash路径并拒绝转换异常',()=>{
   const received=[],base={CITIZENSDK_WORK_DIR:'C:\\runner\\work',CITIZENSDK_NATIVE_OUTPUT_DIR:'C:\\runner\\out',
-   CITIZENSDK_DEPENDENCY_RECEIPT:'C:\\runner\\dependency.json',PUB_CACHE:'C:\\runner\\pub'};
+   CITIZENSDK_DEPENDENCY_RECEIPT:'C:\\runner\\dependency.json',PUB_CACHE:'C:\\runner\\pub',NODE:'C:\\runner\\node.exe'};
   const result=nativeShellEnvironment(base,'C:\\runner\\source','win32',{convert:value=>{received.push(value);return value.replace(/^([A-Z]):\\/u,(_,drive)=>'/'+drive.toLowerCase()+'/').replaceAll('\\','/');}});
   assert.deepEqual(received,['C:\\runner\\source','C:\\runner\\source','C:\\runner\\work','C:\\runner\\out',
-   'C:\\runner\\dependency.json','C:\\runner\\pub']);
+   'C:\\runner\\dependency.json','C:\\runner\\pub','C:\\runner\\node.exe','C:\\runner\\node.exe']);
   assert.equal(result.CITIZENSDK_SOURCE_ROOT,'/c/runner/source');
   assert.equal(result.CITIZENSDK_WORK_DIR,'/c/runner/work');
+  assert.equal(result.PRODUCT_NODE_BIN,'/c/runner/node.exe');
   assert.equal(nativeShellEnvironment(base,'/tmp/source','linux').CITIZENSDK_WORK_DIR,'C:\\runner\\work');
   assert.throws(()=>nativeShellEnvironment(base,'C:\\runner\\source','win32',{convert:()=>{throw Error('no');}}),/Git Bash路径转换失败/u);
  });
