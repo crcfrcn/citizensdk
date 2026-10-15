@@ -3844,9 +3844,9 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。控制台�
 
 ## CI 增量缓存
 
-CitizenSDK CI 全阶段使用统一缓存算法，只保存 cargo-home、work/cargo、dart-pub。
-平台与 runner 架构进入身份；合同、工具准备器、锁文件和构建器进入指纹。保存前移除最终库，
-不保存安装树、测试金库、消费者、证据或候选。固定工具原件由本产品独立取得和验真，并展开到本次Runner工作目录；依赖原件才允许进入塔塔缓存库。
+CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存，保存 Cargo target、Pub hosted/git原件、Gradle modules/build cache/wrapper以及固定Flutter提交的Apple engine artifacts。缓存恢复键只允许同一平台、架构、工具提交和锁输入复用；新Run以唯一键写入，不跨平台复用。
+
+Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。macOS在固定Flutter提交检出后执行 `flutter precache --ios --macos`，命中同一提交的engine缓存。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。
 
 ## Release 全量构建（第 7.4 步）
 

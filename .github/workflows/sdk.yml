@@ -87,19 +87,6 @@ jobs:
       - name: 准备版本化独立源码
         shell: bash
         run: node scripts/build.mjs release-source native
-      - name: 恢复本平台编译与依赖缓存
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
-        with:
-          path: |
-            ${{ runner.temp }}/citizensdk-release/cargo-target
-            ${{ runner.temp }}/citizensdk-release/pub-cache/hosted
-            ${{ runner.temp }}/citizensdk-release/pub-cache/git
-            ${{ runner.temp }}/citizensdk-release/gradle/caches/modules-2
-            ${{ runner.temp }}/citizensdk-release/gradle/caches/build-cache-1
-            ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
-          key: citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
       - name: 安装本仓固定 Flutter
         shell: bash
         run: |
@@ -110,14 +97,46 @@ jobs:
           echo "CITIZENSDK_FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/citizensdk-flutter/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/citizensdk-flutter/bin/flutter" --version
+      - name: 恢复本平台编译与依赖缓存
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            ${{ runner.temp }}/citizensdk-release/cargo-target
+            ${{ runner.temp }}/citizensdk-release/pub-cache/hosted
+            ${{ runner.temp }}/citizensdk-release/pub-cache/git
+            ${{ runner.temp }}/citizensdk-release/gradle/caches/modules-2
+            ${{ runner.temp }}/citizensdk-release/gradle/caches/build-cache-1
+            ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
+            ${{ runner.temp }}/citizensdk-release/work/tools/archives
+            ${{ runner.temp }}/citizensdk-flutter/bin/cache/artifacts/engine
+          key: citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
+      - name: 准备Apple固定引擎原件
+        if: matrix.platform == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$FLUTTER_ROOT/bin/flutter" precache --ios --macos
       - name: 准备本仓锁定原件
         shell: bash
         run: |
           set -euo pipefail
-          node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_WORK_DIR/tools"
+          receipt="$(node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_WORK_DIR/tools")"
           if [[ "$SDK_PLATFORM" == Android ]]; then
-            test -x "$CITIZENSDK_WORK_DIR/tools/gradle-9.1.0/bin/gradle"
-            echo "CITIZENSDK_GRADLE=$CITIZENSDK_WORK_DIR/tools/gradle-9.1.0/bin/gradle" >> "$GITHUB_ENV"
+            printf '%s' "$receipt" | node -e '
+              let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
+                const r=JSON.parse(input),root=process.env.CITIZENSDK_WORK_DIR+"/tools/";
+                const gradle=r.tools?.gradle,java=r.tools?.java;
+                if(r.platform!=="Android"||!gradle||!java||typeof gradle.version!=="string"||typeof java.version!=="string"
+                  ||gradle.path!==root+"gradle-"+gradle.version+"/bin/gradle"||java.home!==root+"java-"+java.version
+                  ||!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(gradle.version)||!/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(java.version)
+                  ||/[\r\n=]/.test(gradle.path+java.home))throw Error("Android锁定Gradle/Java准备回执无效");
+                require("node:fs").appendFileSync(process.env.GITHUB_ENV,"CITIZENSDK_GRADLE="+gradle.path+"\nJAVA_HOME="+java.home+"\n");
+              });
+            '
+            test -x "$CITIZENSDK_GRADLE"
+            test -x "$JAVA_HOME/bin/java"
           fi
       - name: 启用 Windows MSVC 工具
         if: matrix.platform == 'Windows'
