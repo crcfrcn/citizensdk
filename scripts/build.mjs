@@ -23,7 +23,8 @@ function assertCitizenSdkNativeContract(value){
   throw Error('CitizenSDK静态依赖：原生依赖回执与本仓锁合同不符');
 }
 // 头文件与归档路径只按代码单元排序，避免平台区域设置改变闭集比较。
-function canonicalDependencyPaths(paths){return [...paths].sort((left,right)=>left<right?-1:left>right?1:0);}
+function compareDependencyPath(left,right){return left<right?-1:left>right?1:0;}
+function canonicalDependencyPaths(paths){return [...paths].sort(compareDependencyPath);}
 function sameDependencyPathClosure(actual,expected){
  if(!Array.isArray(actual)||!Array.isArray(expected)||new Set(actual).size!==actual.length)return false;
  return stableNativeContractValue(canonicalDependencyPaths(actual))===stableNativeContractValue(canonicalDependencyPaths(expected));
@@ -4236,8 +4237,6 @@ const NATIVE_DEPENDENCY_PLATFORMS = ['LinuxARM', 'LinuxAMD', 'Windows'];
 const TSS2_HEADERS = ['common', 'esys', 'mu', 'rc', 'sys', 'tcti', 'tcti_device', 'tpm2_types']
   .map((name) => 'include/tss2/tss2_' + name + '.h');
 function dependencyCheck(ok, message) { if (!ok) fail('CitizenSDK 静态依赖：' + message); }
-function compareDependencyPath(left, right) { return left < right ? -1 : left > right ? 1 : 0; }
-
 /** 逐成员读真实 ar；拒绝薄归档、动态库、COFF import object、bitcode 及另一平台对象。 */
 function assertCitizenSdkStaticArchive(bytes, platform, nested = false) {
   dependencyCheck(NATIVE_DEPENDENCY_PLATFORMS.includes(platform), '未知平台');
@@ -4360,9 +4359,9 @@ function assertDependencyReceipt(receipt, platform) {
     return entry.path;
   });
   const archives = dependencyArchives(platform);
-  const expected = ['include/sqlite3.h', ...archives,
+  const expected = canonicalDependencyPaths(['include/sqlite3.h', ...archives,
     ...(platform === 'Windows' ? [] : [...TSS2_HEADERS,
-      ...OPENSSL_DEPENDENCY_HEADERS.map((name) => 'include/openssl/' + name)])].sort(compareDependencyPath);
+      ...OPENSSL_DEPENDENCY_HEADERS.map((name) => 'include/openssl/' + name)])]);
   dependencyCheck(sameDependencyPathClosure(paths, expected), '输入头文件/静态库闭集不符');
   return receipt;
 }
@@ -6388,13 +6387,30 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
  });
  test('正式工作流固定Apple引擎并按锁准备Android工具',()=>{
   const workflow=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8');
-  assert.match(workflow,/flutter precache --ios --macos/u);
-  assert.match(workflow,/citizensdk-flutter\/bin\/cache\/artifacts\/engine/u);
-  assert.match(workflow,/prepare-environment --scope citizensdk --platform/u);
-  assert.match(workflow,/r\.tools\?\.gradle/u);
-  assert.match(workflow,/JAVA_HOME=/u);
-  assert.match(workflow,/gradle\.path/u);
-  assert.match(workflow,/java\.home/u);
+  const step=(name)=>{
+   const start=workflow.indexOf('      - name: '+name+'\n');
+   assert.notEqual(start,-1,'工作流缺少步骤：'+name);
+   const next=workflow.indexOf('\n      - ',start+1);
+   return {start,text:workflow.slice(start,next<0?workflow.length:next)};
+  };
+  const flutter=step('安装本仓固定 Flutter'),cache=step('恢复本平台编译与依赖缓存');
+  const apple=step('准备Apple固定引擎原件'),prepare=step('准备本仓锁定原件');
+  const compile=step('编译本平台原生件');
+  assert.ok(flutter.start<cache.start&&cache.start<apple.start&&apple.start<prepare.start&&prepare.start<compile.start,
+   'Flutter checkout、缓存、Apple precache、锁原件准备与原生构建顺序漂移');
+  assert.match(apple.text,/if: matrix\.platform == 'macOS'/u);
+  assert.match(apple.text,/"\$FLUTTER_ROOT\/bin\/flutter" precache --ios --macos/u);
+  assert.match(cache.text,/citizensdk-flutter\/bin\/cache\/artifacts\/engine/u);
+  assert.match(cache.text,/citizensdk-release\/work\/tools\/archives/u);
+  assert.match(prepare.text,/prepare-environment --scope citizensdk --platform "\$SDK_PLATFORM"/u);
+  assert.match(prepare.text,/gradle\.path!==root\+"gradle-"\+gradle\.version\+"\/bin\/gradle"/u);
+  assert.match(prepare.text,/java\.home!==root\+"java-"\+java\.version/u);
+  assert.match(prepare.text,/appendFileSync\(process\.env\.GITHUB_ENV,/u);
+  assert.ok(prepare.text.includes('CITIZENSDK_GRADLE="+gradle.path+"\\nJAVA_HOME="+java.home+"\\n'),
+   'Android工具准备回执没有同时写入Gradle入口和JAVA_HOME');
+  assert.match(prepare.text,/test -x "\$CITIZENSDK_GRADLE"/u);
+  assert.match(prepare.text,/test -x "\$JAVA_HOME\/bin\/java"/u);
+  assert.match(compile.text,/"\$CITIZENSDK_GRADLE" --no-daemon --build-cache/u);
  });
  test('原生依赖回执严格匹配本仓锁合同',()=>{
   const locked=buildDependencyLock.native;
@@ -8435,21 +8451,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.equal(sameDependencyPathClosure([...expected,'include/extra.h'],expected),false);
   assert.equal(sameDependencyPathClosure([...expected,'include/cmp.h'],expected),false);
  });
- test('MSVC COFF归档接受NUL长名称并拒绝损坏边界',()=>{
-  const makeArchive=(names,memberName='/0')=>{
-   const object=Buffer.alloc(60);object.writeUInt16LE(0x8664,0);object.writeUInt16LE(1,2);
-   const member=(name,data)=>{const header=Buffer.alloc(60,0x20);header.write(name,0,'ascii');header.write('0',16,'ascii');header.write('0',28,'ascii');header.write('0',34,'ascii');header.write('100644',40,'ascii');header.write(String(data.length).padStart(10,' '),48,'ascii');header.write('`\n',58,'ascii');return Buffer.concat([header,data,data.length%2?Buffer.from('\n'):Buffer.alloc(0)]);};
-   return Buffer.concat([Buffer.from('!<arch>\n'),member('//',names),member(memberName,object)]);
-  };
-  const validate=nativeDependencies.assertCitizenSdkStaticArchive,longName='sqlite3_compilation_unit.obj';
-  assert.doesNotThrow(()=>validate(makeArchive(Buffer.from(longName+'\0')),'Windows'));
-  assert.throws(()=>validate(makeArchive(Buffer.from(longName)),'Windows'),/MSVC COFF 长名称未终止/u);
-  assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\0'),'/1'),'Windows'),/长名称偏移无效/u);
-  assert.throws(()=>validate(makeArchive(Buffer.from(longName+'/\n')),'Windows'),/MSVC COFF 长名称未终止/u);
- });
+
 }
 
-return {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply,prepareEnvironment:nativeDependencies.prepareEnvironment,prepareAndroidToolchain:nativeDependencies.prepareAndroidToolchain,copyFlutterArtifact:flutterRecipe.copyFlutterArtifact};
+return {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply,prepareEnvironment:nativeDependencies.prepareEnvironment,prepareAndroidToolchain:nativeDependencies.prepareAndroidToolchain,assertCitizenSdkStaticArchive:nativeDependencies.assertCitizenSdkStaticArchive,copyFlutterArtifact:flutterRecipe.copyFlutterArtifact};
 })();
 const {bootstrapNode,resources,runDependencyCLI,prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply}=buildResources;
 export {prepareResourceSupply,supplyRequirements,assertWorkQuiescent,prepareToolSupply};
@@ -10506,8 +10511,6 @@ const NATIVE_DEPENDENCY_PLATFORMS = ['LinuxARM', 'LinuxAMD', 'Windows'];
 const TSS2_HEADERS = ['common', 'esys', 'mu', 'rc', 'sys', 'tcti', 'tcti_device', 'tpm2_types']
   .map((name) => 'include/tss2/tss2_' + name + '.h');
 function dependencyCheck(ok, message) { if (!ok) fail('CitizenSDK 静态依赖：' + message); }
-function compareDependencyPath(left, right) { return left < right ? -1 : left > right ? 1 : 0; }
-
 /** 逐成员读真实 ar；拒绝薄归档、动态库、COFF import object、bitcode 及另一平台对象。 */
 function assertCitizenSdkStaticArchive(bytes, platform, nested = false) {
   dependencyCheck(NATIVE_DEPENDENCY_PLATFORMS.includes(platform), '未知平台');
@@ -10630,9 +10633,9 @@ function assertDependencyReceipt(receipt, platform) {
     return entry.path;
   });
   const archives = dependencyArchives(platform);
-  const expected = ['include/sqlite3.h', ...archives,
+  const expected = canonicalDependencyPaths(['include/sqlite3.h', ...archives,
     ...(platform === 'Windows' ? [] : [...TSS2_HEADERS,
-      ...OPENSSL_DEPENDENCY_HEADERS.map((name) => 'include/openssl/' + name)])].sort(compareDependencyPath);
+      ...OPENSSL_DEPENDENCY_HEADERS.map((name) => 'include/openssl/' + name)])]);
   dependencyCheck(sameDependencyPathClosure(paths, expected), '输入头文件/静态库闭集不符');
   return receipt;
 }
@@ -10906,7 +10909,7 @@ function expectedCitizenSdkLinkedSymbols(root) {
 
 
 
-return {CITIZENSDK_INTERNAL_SYMBOLS,citizenSdkInternalHeader,createNativeSourceView,createFlutterSourceView,assertFlutterSourceView,projectFlutterSourceEntry,assertCitizenSdkDependencyInputs,citizenSdkDependencyEnvironment,writeCitizenSdkDependencyEvidence,copyWindowsNativeArtifact,assertWindowsReleaseProjection,assertWindowsFlutterBundle,assertHostedRuntimeWindowsProjection};
+return {CITIZENSDK_INTERNAL_SYMBOLS,citizenSdkInternalHeader,createNativeSourceView,createFlutterSourceView,assertFlutterSourceView,projectFlutterSourceEntry,assertCitizenSdkDependencyInputs,citizenSdkDependencyEnvironment,writeCitizenSdkDependencyEvidence,copyWindowsNativeArtifact,assertWindowsReleaseProjection,assertWindowsFlutterBundle,assertHostedRuntimeWindowsProjection,assertCitizenSdkStaticArchive};
 })();
 
 export const {CITIZENSDK_INTERNAL_SYMBOLS,citizenSdkInternalHeader,createNativeSourceView,createFlutterSourceView,assertFlutterSourceView,projectFlutterSourceEntry,assertCitizenSdkDependencyInputs,citizenSdkDependencyEnvironment,writeCitizenSdkDependencyEvidence,copyWindowsNativeArtifact,assertWindowsReleaseProjection,assertWindowsFlutterBundle,assertHostedRuntimeWindowsProjection}=compileProjection;
@@ -10936,6 +10939,22 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const work=fixedWork('build/sdk');assert.throws(()=>checkWork(fixedWork('build')),/固定目录/);
   await withFixedWork('build/sdk',async owned=>{assert.equal(owned,work);writeFileSync(join(owned,'fixture'),'sdk');});
   assert.equal(existsSync(work),false);
+ });
+ test('MSVC COFF长名称在Release与消费投影校验器中一致解析',()=>{
+  const makeArchive=(names,memberName='/0')=>{
+   const object=Buffer.alloc(60);object.writeUInt16LE(0x8664,0);object.writeUInt16LE(1,2);
+   const member=(name,data)=>{const header=Buffer.alloc(60,0x20);header.write(name,0,'ascii');header.write('0',16,'ascii');header.write('0',28,'ascii');header.write('0',34,'ascii');header.write('100644',40,'ascii');header.write(String(data.length).padStart(10,' '),48,'ascii');header.write('`\n',58,'ascii');return Buffer.concat([header,data,data.length%2?Buffer.from('\n'):Buffer.alloc(0)]);};
+   return Buffer.concat([Buffer.from('!<arch>\n'),member('//',names),member(memberName,object)]);
+  };
+  const longName='sqlite3_compilation_unit.obj';
+  const validators=[buildResources.assertCitizenSdkStaticArchive,compileProjection.assertCitizenSdkStaticArchive];
+  assert.equal(validators.every(validate=>typeof validate==='function'),true);
+  for(const validate of validators){
+   assert.doesNotThrow(()=>validate(makeArchive(Buffer.from(longName+'\0')),'Windows'));
+   assert.throws(()=>validate(makeArchive(Buffer.from(longName)),'Windows'),/MSVC COFF 长名称未终止/u);
+   assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\0'),'/1'),'Windows'),/长名称偏移无效/u);
+   assert.throws(()=>validate(makeArchive(Buffer.from(longName+'\/\n')),'Windows'),/MSVC COFF 长名称未终止/u);
+  }
  });
 }
 
