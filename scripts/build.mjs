@@ -490,7 +490,7 @@ function productToolStartupFailure(error){
 }
 // 每次调用拥有自己的取消和进程集合，导入API并发也不能共享执行状态。
 const executions=new AsyncLocalStorage();
-export async function runBuildProcess(file,args,env,cwd=root,{capture=false,input,accepted=[0],timeout=7200000,signal=executions.getStore()?.signal,passHost=false,streamError=false}={}) {
+export async function runBuildProcess(file,args,env,cwd=root,{capture=false,input,accepted=[0],timeout=7200000,signal=executions.getStore()?.signal,passHost=false,streamError=false,streamStdoutOnFailure=false}={}) {
  signal?.throwIfAborted();
  return new Promise((ok,reject)=>{
   const child=spawn(file,args,{cwd,env:workEnvironment(env),detached:true,stdio:['pipe','pipe','pipe',...(passHost?[3]:[])]});
@@ -515,7 +515,10 @@ export async function runBuildProcess(file,args,env,cwd=root,{capture=false,inpu
    signal?.removeEventListener('abort',abort);clearTimeout(killer);
    if(signal?.aborted)reason='产品任务已取消';
    if(settled)return;settled=true;
-   if(reason||termination||!accepted.includes(code))reject(Error(reason||'产品工具执行失败'));
+   if(reason||termination||!accepted.includes(code)){
+    if(capture&&streamStdoutOnFailure&&stdout.length)process.stderr.write(Buffer.concat(stdout));
+    reject(Error(reason||'产品工具执行失败'));
+   }
    else ok({stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8'),code});
   });
   child.stdin.end(input);
@@ -6912,7 +6915,7 @@ export async function runOwnedShell(name,args,{environment=process.env,source=ro
  const result=await runBuildProcess(nativeShellExecutable(environment),
   invocation.args,
   nativeShellEnvironment(environment,source),source,
-  {capture:true,streamError:true,input:invocation.input});
+  {capture:true,streamError:true,streamStdoutOnFailure:true,input:invocation.input});
  process.stdout.write(result.stdout);return result.code;
 }
 export function writeAnalysisOptions(destination) {
@@ -11469,6 +11472,18 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    error=>error.message==='产品工具无法启动：ENOENT');
   assert.equal(productToolStartupFailure({code:'ENOENT',path:missing}),'产品工具无法启动：ENOENT');
   assert.equal(productToolStartupFailure({path:missing}),'产品工具无法启动');
+ });
+ test('原生子进程失败时把捕获的stdout补入GitHub日志',async()=>{
+  const output=[],write=process.stderr.write;
+  process.stderr.write=(chunk)=>{output.push(Buffer.from(chunk));return true;};
+  try{
+   await assert.rejects(runBuildProcess(process.execPath,['-e',
+    'process.stdout.write("citizensdk-native-stdout-marker\\n");process.stderr.write("citizensdk-native-stderr-marker\\n");process.exitCode=7'],
+    process.env,root,{capture:true,streamError:true,streamStdoutOnFailure:true}),/产品工具执行失败/u);
+  }finally{process.stderr.write=write;}
+  const text=Buffer.concat(output).toString('utf8');
+  assert.match(text,/citizensdk-native-stdout-marker/u);
+  assert.match(text,/citizensdk-native-stderr-marker/u);
  });
 }
 

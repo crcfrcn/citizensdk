@@ -58,8 +58,17 @@ HostError sqlite_error(sqlite3 *database, const char *fallback) {
 #if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
   // 仅Linux合同测试输出SQLite错误码，正式Host对外错误消息保持原样。
   if (database != nullptr) {
-    std::fprintf(stderr, "CitizenSDK SQLite test diagnostic: primary=%d extended=%d\n",
+    std::fprintf(stderr,
+                 "CitizenSDK SQLite test diagnostic: operation=%s primary=%d extended=%d\n",
+                 fallback == nullptr ? "unknown" : fallback,
                  sqlite3_errcode(database), sqlite3_extended_errcode(database));
+    char *vfs_name = nullptr;
+    if (sqlite3_file_control(database, "main", SQLITE_FCNTL_VFSNAME,
+                             &vfs_name) == SQLITE_OK && vfs_name != nullptr) {
+      std::fprintf(stderr, "CitizenSDK SQLite test diagnostic: vfs=%s\n",
+                   vfs_name);
+      sqlite3_free(vfs_name);
+    }
   }
 #endif
   return HostError(CITIZENSDK_ERROR_STORAGE,
@@ -763,9 +772,9 @@ class OpenAtSQLiteVfs final {
     return set_lock(state.shared_memory_descriptor, F_RDLCK, UNIX_SHM_DMS, 1);
   }
 
-  static int shared_memory_map(sqlite3_file *value, int page,
-                               int page_size, int extend,
-                               void volatile **out_mapping) noexcept {
+  static int shared_memory_map_impl(sqlite3_file *value, int page,
+                                    int page_size, int extend,
+                                    void volatile **out_mapping) noexcept {
     if (out_mapping == nullptr || page < 0 || page_size <= 0 ||
         page_size > 1024 * 1024 || page >= 64 ||
         (extend != 0 && extend != 1)) {
@@ -839,6 +848,21 @@ class OpenAtSQLiteVfs final {
     } catch (...) {
       return SQLITE_IOERR_SHMMAP;
     }
+  }
+
+  static int shared_memory_map(sqlite3_file *value, int page, int page_size,
+                               int extend,
+                               void volatile **out_mapping) noexcept {
+    const int result = shared_memory_map_impl(value, page, page_size, extend,
+                                               out_mapping);
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+    if (result != SQLITE_OK) {
+      std::fprintf(stderr,
+                   "CitizenSDK SQLite SHM test diagnostic: stage=xShmMap-return page=%d page_size=%d extend=%d result=%d\n",
+                   page, page_size, extend, result);
+    }
+#endif
+    return result;
   }
 
   static int shared_memory_lock(sqlite3_file *value, int offset, int count,
