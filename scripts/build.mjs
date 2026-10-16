@@ -11165,9 +11165,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.ok(projection.includes('native_source_root="$(cygpath -u "$native_source_root")"'),
    '原生Node返回路径须回到Git Bash格式再派生Cargo清单');
   assert.doesNotMatch(projection,/cygpath -m/u,'Windows原生Node不得收到正斜线别名路径');
-  const internalStart=native.indexOf('prepare_internal_header() {'),internalEnd=native.indexOf('\n}\n\nbuild_windows() {',internalStart);
-  assert.ok(internalStart>=0&&internalEnd>internalStart,'Windows私有头回归准备步骤缺失');
-  assert.ok(native.slice(internalStart,internalEnd).includes('node --test --test-name-pattern=\'SDK私有声明首次写入、同轮复用及漂移拒绝\' "$script_dir/build.mjs" 1>&2'),
+  const internalStart=native.indexOf('prepare_internal_header() {'),windowsStart=native.indexOf('build_windows() {',internalStart);
+  assert.ok(internalStart>=0&&windowsStart>internalStart,'Windows私有头回归准备步骤缺失');
+  assert.ok(native.slice(internalStart,windowsStart).includes('node --test --test-name-pattern=\'SDK私有声明首次写入、同轮复用及漂移拒绝\' "$script_dir/build.mjs" 1>&2'),
    'Windows私有头回归失败输出必须留在GitHub原生日志');
  });
  test('Android Runner只创建并清理带本轮身份回执的target工作目录',()=>{
