@@ -775,16 +775,10 @@ class OpenAtSQLiteVfs final {
       }
       if (state->shared_memory_descriptor < 0) {
         state->shared_memory_name = state->name + "-shm";
-        if (extend == 0) {
-          struct stat existing {};
-          if (::fstatat(state->owner->directory_fd_,
-                        state->shared_memory_name.c_str(), &existing,
-                        AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT) {
-            return SQLITE_OK;
-          }
-        }
-        const int open_flags = SQLITE_OPEN_READWRITE |
-            (extend != 0 ? SQLITE_OPEN_CREATE : 0);
+        // xShmLock may follow a non-extending xShmMap that returned a null
+        // region. Keep a validated descriptor for WAL locks even when no page
+        // exists yet; `extend` controls mapping size below, not SHM opening.
+        const int open_flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
         state->shared_memory_descriptor = state->owner->open_named(
             state->shared_memory_name.c_str(), open_flags);
         if (state->shared_memory_descriptor < 0) return SQLITE_IOERR_SHMOPEN;
