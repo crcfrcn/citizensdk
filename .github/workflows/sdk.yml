@@ -80,7 +80,23 @@ jobs:
           : "${ANDROID_SDK_ROOT:?Runner缺少Android SDK根}"
           sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager"
-          "$sdkmanager" "ndk;28.2.13676358" "cmake;3.31.6"
+          installed=0
+          for attempt in 1 2 3; do
+            if "$sdkmanager" "ndk;28.2.13676358" "cmake;3.31.6" \
+              && test -f "$ANDROID_SDK_ROOT/ndk/28.2.13676358/source.properties" \
+              && test -x "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" \
+              && test -x "$ANDROID_SDK_ROOT/cmake/3.31.6/bin/cmake"; then
+              installed=1
+              break
+            fi
+            if (( attempt == 3 )); then
+              echo "Android NDK/CMake固定包在3次尝试后仍未完整安装" >&2
+              exit 1
+            fi
+            rm -rf -- "$ANDROID_SDK_ROOT/ndk/28.2.13676358" "$ANDROID_SDK_ROOT/.temp"
+            sleep "$((attempt * 2))"
+          done
+          test "$installed" -eq 1
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - name: 准备版本化独立源码

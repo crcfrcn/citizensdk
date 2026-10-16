@@ -66,6 +66,18 @@ HostError sqlite_error(sqlite3 *database, const char *fallback) {
                    database == nullptr ? fallback : sqlite3_errmsg(database));
 }
 
+void sqlite_test_shm_diagnostic(const char *stage, int system_error) noexcept {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+  std::fprintf(stderr,
+               "CitizenSDK SQLite SHM test diagnostic: stage=%s errno=%d detail=%s\n",
+               stage == nullptr ? "unknown" : stage, system_error,
+               system_error == 0 ? "none" : std::strerror(system_error));
+#else
+  (void)stage;
+  (void)system_error;
+#endif
+}
+
 }  // namespace
 
 /* A private SQLite VFS is used instead of a /proc/self/fd pathname. Every
@@ -182,18 +194,32 @@ class OpenAtSQLiteVfs final {
   static bool shared_memory_matches_path(const FileState &state) noexcept {
     if (state.shared_memory_descriptor < 0 ||
         state.shared_memory_name.empty()) {
+      sqlite_test_shm_diagnostic("identity-missing-descriptor-or-name", 0);
       return false;
     }
     struct stat opened {}, path {};
-    return ::fstat(state.shared_memory_descriptor, &opened) == 0 &&
-           S_ISREG(opened.st_mode) && opened.st_nlink == 1 &&
-           opened.st_uid == ::geteuid() &&
-           ::fstatat(state.owner->directory_fd_,
-                     state.shared_memory_name.c_str(), &path,
-                     AT_SYMLINK_NOFOLLOW) == 0 &&
-           S_ISREG(path.st_mode) && path.st_nlink == 1 &&
-           path.st_uid == ::geteuid() && opened.st_dev == path.st_dev &&
-           opened.st_ino == path.st_ino;
+    if (::fstat(state.shared_memory_descriptor, &opened) != 0) {
+      const int error = errno;
+      sqlite_test_shm_diagnostic("identity-fstat-open", error);
+      return false;
+    }
+    if (!S_ISREG(opened.st_mode) || opened.st_nlink != 1 ||
+        opened.st_uid != ::geteuid()) {
+      sqlite_test_shm_diagnostic("identity-open-metadata", 0);
+      return false;
+    }
+    if (::fstatat(state.owner->directory_fd_,
+                  state.shared_memory_name.c_str(), &path,
+                  AT_SYMLINK_NOFOLLOW) != 0) {
+      const int error = errno;
+      sqlite_test_shm_diagnostic("identity-fstatat-path", error);
+      return false;
+    }
+    const bool matches = S_ISREG(path.st_mode) && path.st_nlink == 1 &&
+        path.st_uid == ::geteuid() && opened.st_dev == path.st_dev &&
+        opened.st_ino == path.st_ino;
+    if (!matches) sqlite_test_shm_diagnostic("identity-path-mismatch", 0);
+    return matches;
   }
 
   bool allowed_name(const char *value) const noexcept {
@@ -711,7 +737,11 @@ class OpenAtSQLiteVfs final {
     int result;
     do { result = ::fcntl(state.shared_memory_descriptor, F_OFD_GETLK, &lock); }
     while (result != 0 && errno == EINTR);
-    if (result != 0) return SQLITE_IOERR_SHMLOCK;
+    if (result != 0) {
+      const int error = errno;
+      sqlite_test_shm_diagnostic("initialize-F_OFD_GETLK", error);
+      return SQLITE_IOERR_SHMLOCK;
+    }
     if (lock.l_type == F_WRLCK) return SQLITE_BUSY;
     if (lock.l_type == F_UNLCK) {
       const int code = set_lock(state.shared_memory_descriptor, F_WRLCK,
@@ -807,9 +837,14 @@ class OpenAtSQLiteVfs final {
   static int shared_memory_lock(sqlite3_file *value, int offset, int count,
                                 int flags) noexcept {
     FileState *state = file(value)->state;
-    if (state == nullptr || !shared_memory_matches_path(*state) || offset < 0 ||
-        count <= 0 || offset > SQLITE_SHM_NLOCK - count ||
+    if (state == nullptr) {
+      sqlite_test_shm_diagnostic("shared-memory-missing-state", 0);
+      return SQLITE_IOERR_SHMLOCK;
+    }
+    if (!shared_memory_matches_path(*state)) return SQLITE_IOERR_SHMLOCK;
+    if (offset < 0 || count <= 0 || offset > SQLITE_SHM_NLOCK - count ||
         offset > std::numeric_limits<off_t>::max() - count) {
+      sqlite_test_shm_diagnostic("shared-memory-invalid-lock-range", 0);
       return SQLITE_IOERR_SHMLOCK;
     }
     const int operation = flags & (SQLITE_SHM_LOCK | SQLITE_SHM_UNLOCK);
@@ -818,6 +853,7 @@ class OpenAtSQLiteVfs final {
         (sharing != SQLITE_SHM_SHARED && sharing != SQLITE_SHM_EXCLUSIVE) ||
         (flags & ~(SQLITE_SHM_LOCK | SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED |
                    SQLITE_SHM_EXCLUSIVE)) != 0) {
+      sqlite_test_shm_diagnostic("shared-memory-invalid-lock-flags", 0);
       return SQLITE_IOERR_SHMLOCK;
     }
     short type = F_UNLCK;
@@ -828,7 +864,11 @@ class OpenAtSQLiteVfs final {
                               UNIX_SHM_BASE + static_cast<off_t>(offset),
                               static_cast<off_t>(count));
     if (code == SQLITE_BUSY) return SQLITE_BUSY;
-    return code == SQLITE_OK ? SQLITE_OK : SQLITE_IOERR_SHMLOCK;
+    if (code != SQLITE_OK) {
+      sqlite_test_shm_diagnostic("shared-memory-OFD_SETLK", errno);
+      return SQLITE_IOERR_SHMLOCK;
+    }
+    return SQLITE_OK;
   }
 
   static void shared_memory_barrier(sqlite3_file *) noexcept {
