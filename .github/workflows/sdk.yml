@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang llvm libclang-dev libssl-dev libglib2.0-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip xvfb dbus-x11
+          sudo apt-get install -y clang llvm libclang-dev libssl-dev libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip xvfb dbus-x11
       - name: 安装 Android 固定 NDK 与 CMake
         if: matrix.platform == 'Android'
         shell: bash
