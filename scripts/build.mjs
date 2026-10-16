@@ -6691,6 +6691,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const sqliteSource=readFileSync(join(root,'linux/source/citizen_sdk_sqlite.cc'),'utf8');
   assert.match(sqliteSource,/CitizenSDK SQLite SHM test diagnostic/u,
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
+  assert.doesNotMatch(sqliteSource,/extend\s*!=\s*0\s*&&\s*extend\s*!=\s*1/u,
+   'SQLite xShmMap 的扩展参数按零/非零标记解释，不限于1');
+  assert.match(sqliteSource,/if\s*\(extend\s*==\s*0\)\s*return SQLITE_OK/u,
+   'SQLite xShmMap 只有零标记才表示不扩展WAL索引');
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("map-ftruncate"/u,
    'Linux WAL共享内存尺寸失败必须报告底层ftruncate阶段');
   const sharedMemoryMapStart=sqliteSource.indexOf('static int shared_memory_map_impl(');
@@ -6704,6 +6708,17 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    '未分配WAL索引的探测不能在打开共享内存描述符前返回');
   assert.match(linuxTests,/"\$\{PROJECT_BINARY_DIR\}\/public"/u,
    'Linux原生测试支持必须复用正式Host的生成公共头文件投影');
+  const windowsTests=readFileSync(join(root,'windows/tests/CMakeLists.txt'),'utf8');
+  assert.match(windowsTests,/"\$\{PROJECT_BINARY_DIR\}\/public"/u,
+   'Windows原生测试支持必须复用正式Host的生成公共头文件投影');
+  const windowsDirectory=readFileSync(join(root,'windows/source/citizen_sdk_directory.cc'),'utf8');
+  assert.match(windowsDirectory,/missing_allowed[\s\S]*?return UniqueHandle\{\};/u,
+   'Windows相对文件缺失必须显式构造空UniqueHandle');
+  const windowsCamera=readFileSync(join(root,'windows/source/citizen_sdk_qr_camera.cc'),'utf8');
+  assert.equal((windowsCamera.match(/static_cast<DWORD>\(MF_SOURCE_READER_(?:FIRST_VIDEO_STREAM|ALL_STREAMS)\)/gu)||[]).length,4,
+   'Windows Source Reader stream枚举必须显式转换为DWORD');
+  assert.equal((windowsCamera.match(/static_cast<DWORD>\(MF_CAPTURE_ENGINE_MEDIASOURCE\)/gu)||[]).length,2,
+   'Windows Capture Engine枚举必须显式转换为DWORD');
   assert.ok(upload>=0&&upload<androidCleanup.start,'Android本轮工作目录必须在产物上传后清理');
   assert.match(androidCleanup.text,/if: always\(\) && matrix\.platform == 'Android'/u);
   assert.match(androidCleanup.text,/release-cleanup-android-work/u);

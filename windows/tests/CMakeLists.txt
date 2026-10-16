@@ -67,7 +67,7 @@ target_compile_definitions(citizensdk_windows_test_support PUBLIC
 target_compile_definitions(citizensdk_windows_test_support PRIVATE CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}")
 target_include_directories(citizensdk_windows_test_support PUBLIC
   "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../source"
-  "${CITIZENSDK_CORE_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}"
+  "${PROJECT_BINARY_DIR}/public" "${CITIZENSDK_CORE_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}"
   PRIVATE "${CITIZENSDK_INTERNAL_INCLUDE_DIR}")
 target_compile_options(citizensdk_windows_test_support PRIVATE /W4 /permissive- /utf-8 /EHsc
   $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)

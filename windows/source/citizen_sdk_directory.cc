@@ -127,7 +127,7 @@ UniqueHandle create_relative(HANDLE parent, const std::wstring &name, DWORD acce
   const NTSTATUS result = ::NtCreateFile(&raw, access | SYNCHRONIZE | READ_CONTROL |
       FILE_READ_ATTRIBUTES, &attributes, &status_block, nullptr, FILE_ATTRIBUTE_NORMAL,
       share, disposition, options | kSynchronous | kOpenReparsePoint, nullptr, 0);
-  if (missing_allowed && (result == kNameMissing || result == kPathMissing)) return {};
+  if (missing_allowed && (result == kNameMissing || result == kPathMissing)) return UniqueHandle{};
   require(result != static_cast<NTSTATUS>(0xc0000043u), CITIZENSDK_ERROR_BUSY,
           "CitizenSDK file has a conflicting open handle");
   require(result >= 0, CITIZENSDK_ERROR_PERMISSION_DENIED,

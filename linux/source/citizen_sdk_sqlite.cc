@@ -776,8 +776,7 @@ class OpenAtSQLiteVfs final {
                                     int page_size, int extend,
                                     void volatile **out_mapping) noexcept {
     if (out_mapping == nullptr || page < 0 || page_size <= 0 ||
-        page_size > 1024 * 1024 || page >= 64 ||
-        (extend != 0 && extend != 1)) {
+        page_size > 1024 * 1024 || page >= 64) {
       return SQLITE_IOERR_SHMMAP;
     }
     *out_mapping = nullptr;

@@ -146,10 +146,10 @@ struct QrCamera::Impl final {
       check(MFCreateMediaType(&requested), "像素类型创建失败");
       check(requested->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "视频格式无效");
       check(requested->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "RGB32 格式不可用");
-      check(reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, requested.Get()),
+      check(reader->SetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, requested.Get()),
             "摄像头不支持安全有界像素转换");
       ComPtr<IMFMediaType> actual;
-      check(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &actual), "无法读取实际像素格式");
+      check(reader->GetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), &actual), "无法读取实际像素格式");
       UINT32 width = 0, height = 0;
       check(MFGetAttributeSize(actual.Get(), MF_MT_FRAME_SIZE, &width, &height), "摄像头尺寸无效");
       require(width > 0 && height > 0 && width <= 4096 && height <= 4096,
@@ -171,7 +171,7 @@ struct QrCamera::Impl final {
           if (FAILED(samples->error) || samples->ended)
             throw HostError(CITIZENSDK_ERROR_UNAVAILABLE, "摄像头断开或读取失败");
         }
-        check(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr),
+        check(reader->ReadSample(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, nullptr, nullptr, nullptr, nullptr),
               "摄像头采集请求失败");
         ComPtr<IMFSample> sample;
         {
@@ -205,7 +205,7 @@ struct QrCamera::Impl final {
     }
     // 停止底层设备在前，释放回调引用在后；上层 stop() 只在此线程退出后完成。
     { std::lock_guard<std::mutex> guard(control_lock); control_source.Reset(); }
-    if (reader) reader->Flush(MF_SOURCE_READER_ALL_STREAMS);
+    if (reader) reader->Flush(static_cast<DWORD>(MF_SOURCE_READER_ALL_STREAMS));
     if (source) source->Shutdown();
     reader.Reset(); source.Reset(); callback.Reset();
     { std::lock_guard<std::mutex> guard(samples->lock); samples->sample.Reset(); }
@@ -245,7 +245,7 @@ citizensdk_error_code_t QrCamera::set_torch(bool enabled) noexcept {
     if (FAILED(status)) return status == E_ACCESSDENIED
         ? CITIZENSDK_ERROR_PERMISSION_DENIED : CITIZENSDK_ERROR_UNSUPPORTED;
     ComPtr<IMFExtendedCameraControl> control;
-    status = controller->GetExtendedCameraControl(MF_CAPTURE_ENGINE_MEDIASOURCE,
+    status = controller->GetExtendedCameraControl(static_cast<DWORD>(MF_CAPTURE_ENGINE_MEDIASOURCE),
         KSPROPERTY_CAMERACONTROL_EXTENDED_TORCHMODE, &control);
     if (FAILED(status)) return CITIZENSDK_ERROR_UNSUPPORTED;
     const auto flags = enabled ? KSCAMERA_EXTENDEDPROP_VIDEOTORCH_ON : KSCAMERA_EXTENDEDPROP_VIDEOTORCH_OFF;
@@ -255,7 +255,7 @@ citizensdk_error_code_t QrCamera::set_torch(bool enabled) noexcept {
     if (FAILED(status)) return status == E_ACCESSDENIED
         ? CITIZENSDK_ERROR_PERMISSION_DENIED : CITIZENSDK_ERROR_UNAVAILABLE;
     ComPtr<IMFExtendedCameraControl> current;
-    status = controller->GetExtendedCameraControl(MF_CAPTURE_ENGINE_MEDIASOURCE,
+    status = controller->GetExtendedCameraControl(static_cast<DWORD>(MF_CAPTURE_ENGINE_MEDIASOURCE),
         KSPROPERTY_CAMERACONTROL_EXTENDED_TORCHMODE, &current);
     if (FAILED(status)) return CITIZENSDK_ERROR_UNAVAILABLE;
     return current->GetFlags() == flags ? CITIZENSDK_OK : CITIZENSDK_ERROR_INTEGRITY;
