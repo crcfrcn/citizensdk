@@ -1,6 +1,7 @@
 // 冻结 Linux Host 自有薄 ABI；根产品 ABI 仍是唯一 Core 合同。
 #include <cassert>
 #include <algorithm>
+#include <cstdio>
 #include <vector>
 #include "citizen_sdk_qr_camera.hpp"
 #include <functional>
@@ -552,7 +553,24 @@ int main() {
   // 未知/缺依赖模块在平台资源创建前被 Rust 拒绝。
   assert(!std::filesystem::exists(
       temporary.path() / "state" / application_id / "citizensdk"));
-  assert(citizensdk_host_create(&invalid, &host) == CITIZENSDK_OK);
+  const auto create_code = citizensdk_host_create(&invalid, &host);
+  if (create_code != CITIZENSDK_OK) {
+    uint64_t diagnostic_bytes = 0;
+    std::vector<uint8_t> diagnostic(1024);
+    if (citizensdk_host_last_error_copy(nullptr, 0, &diagnostic_bytes) == CITIZENSDK_OK &&
+        diagnostic_bytes <= diagnostic.size() &&
+        citizensdk_host_last_error_copy(diagnostic.data(), diagnostic.size(),
+                                        &diagnostic_bytes) == CITIZENSDK_OK) {
+      std::fprintf(stderr, "citizensdk_host_create failed (%u): %.*s\n",
+                   static_cast<unsigned>(create_code),
+                   static_cast<int>(diagnostic_bytes),
+                   reinterpret_cast<const char *>(diagnostic.data()));
+    } else {
+      std::fprintf(stderr, "citizensdk_host_create failed (%u); diagnostic unavailable\n",
+                   static_cast<unsigned>(create_code));
+    }
+  }
+  assert(create_code == CITIZENSDK_OK);
   assert(host != 0);
   assert(std::filesystem::is_directory(
       temporary.path() / "state" / application_id / "citizensdk" / "v1" /

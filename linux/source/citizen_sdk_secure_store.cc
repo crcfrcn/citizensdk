@@ -36,11 +36,11 @@ SecureStore::SecureStore(const std::filesystem::path &directory)
                    "wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), "
                    "revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), "
                    "record BLOB NOT NULL "
-                   "CHECK(typeof(record) = 'blob' AND length(record) <= 1048576)))",
+                   "CHECK(typeof(record) = 'blob' AND length(record) <= 1048576))",
                    "CREATE TABLE IF NOT EXISTS encrypted_secret ("
                    "record_key TEXT PRIMARY KEY, revision INTEGER NOT NULL "
                    "CHECK(typeof(revision) = 'integer' AND revision > 0), "
-                   "record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 65536)))",
+                   "record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 65536))",
                    "CREATE TABLE IF NOT EXISTS vault_generation ("
                    "record_key TEXT PRIMARY KEY, wallet_index INTEGER NOT NULL "
                    "CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), "

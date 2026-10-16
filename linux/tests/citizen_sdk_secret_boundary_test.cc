@@ -11,6 +11,9 @@
 #ifndef CITIZENSDK_LINUX_TEST_SOURCE_DIR
 #error "CITIZENSDK_LINUX_TEST_SOURCE_DIR must point at the Linux source root"
 #endif
+#ifndef CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR
+#error "CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR must point at generated public headers"
+#endif
 #ifdef NDEBUG
 #error "CitizenSDK Linux contract assertions must remain enabled"
 #endif
@@ -20,8 +23,7 @@ int main() {
   using citizen_sdk::linux::copy_view;
 
   const std::filesystem::path public_headers =
-      std::filesystem::path(CITIZENSDK_LINUX_TEST_SOURCE_DIR) / "include" /
-      "citizen_sdk";
+      CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR;
   std::set<std::string> headers;
   for (const auto &entry : std::filesystem::directory_iterator(public_headers)) {
     if (!std::filesystem::is_regular_file(entry.symlink_status())) continue;

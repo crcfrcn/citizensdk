@@ -174,15 +174,18 @@ int main() {
   const std::string auth_source(
       (std::istreambuf_iterator<char>(auth_stream)),
       std::istreambuf_iterator<char>());
-  for (const char *required : {"std::chrono::seconds(5)",
-                               "std::chrono::minutes(5)",
-                               "CITIZENSDK_ERROR_TIMEOUT",
-                               "state->abandoned = true",
-                               "attach_idle(state, retire_prompt)",
-                               "clear_controls(state)",
-                               "void dialog_destroyed(",
-                               "complete_prompt(state, CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED)",
-                               "state->ready.notify_all()"}) {
+  for (const char *required : {"g_dbus_address_get_for_bus_sync",
+                               "G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION",
+                               "GetDefaultDevice",
+                               "VerifyStatus",
+                               "VerifyStart",
+                               "std::chrono::seconds(60)",
+                               "VerifyStop",
+                               "Release",
+                               "CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED",
+                               "pending->ready.wait(guard, [&] { return pending->done; })",
+                               "pending->result.password.clear()",
+                               "pending->ready.notify_all()"}) {
     assert(auth_source.find(required) != std::string::npos);
   }
   return 0;

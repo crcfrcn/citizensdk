@@ -4423,7 +4423,7 @@ function writeCitizenSdkDependencyEvidence({ receiptPath, platform, nativePath, 
   dependencyCheck(receipt.source_sha === sourceSha, '构建提交与准备提交不同');
   const source = resolve(sourcePath), native = assertSafeTargetPath(nativePath, '原生产物目录');
   assertLicenseSources(source);
-  dependencyCheck(readFileSync(join(source, 'pubspec.yaml'), 'utf8').includes('\nversion: ' + receipt.software_version + '\n'),
+  dependencyCheck(readFileSync(join(source, 'pubspec.yaml'), 'utf8').replace(/\r\n/g, '\n').includes('\nversion: ' + receipt.software_version + '\n'),
     '构建版本与准备版本不同');
   const paths = dependencyLinkedPaths(platform, 'native');
   const linked_artifacts = paths.map((path, index) => ({

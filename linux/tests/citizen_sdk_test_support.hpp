@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cerrno>
 #include <cstdlib>
+#include <cstdio>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -48,7 +49,12 @@ class ProcessPipe final {
       struct pollfd pending {descriptors_[0], POLLIN, 0};
       int ready;
       do { ready = ::poll(&pending, 1, 10000); } while (ready < 0 && errno == EINTR);
-      assert(ready == 1 && (pending.revents & POLLIN) != 0);
+      if (ready != 1 || (pending.revents & POLLIN) == 0) {
+        std::fprintf(stderr,
+                     "ProcessPipe receive failed: poll=%d revents=%d errno=%d remaining=%zu\n",
+                     ready, pending.revents, errno, length);
+        assert(ready == 1 && (pending.revents & POLLIN) != 0);
+      }
       const ssize_t count = ::read(descriptors_[0], bytes, length);
       if (count < 0 && errno == EINTR) continue;
       assert(count > 0);
@@ -118,16 +124,27 @@ void verify_wal_processes(const std::filesystem::path &directory,
   assert(crashed >= 0);
   if (crashed == 0) {
     ::alarm(15);
-    Store store(directory);
-    assert((store.*compare_and_swap)(0, {1}).revision == 1);
-    const auto snapshot = read_shm(shm);
-    assert((store.*compare_and_swap)(1, {2}).revision == 2);
-    const uint64_t length = snapshot.size();
-    snapshot_pipe.send(&length, sizeof(length));
-    snapshot_pipe.send(snapshot.data(), snapshot.size());
-    // 实际 SIGKILL，不调用 SQLite close/checkpoint；WAL 必须保留已提交数据。
-    ::kill(::getpid(), SIGKILL);
-    ::_exit(99);
+    const char *stage = "store construction";
+    try {
+      Store store(directory);
+      stage = "first compare-and-swap";
+      assert((store.*compare_and_swap)(0, {1}).revision == 1);
+      stage = "shared-memory snapshot";
+      const auto snapshot = read_shm(shm);
+      stage = "second compare-and-swap";
+      assert((store.*compare_and_swap)(1, {2}).revision == 2);
+      stage = "snapshot pipe write";
+      const uint64_t length = snapshot.size();
+      snapshot_pipe.send(&length, sizeof(length));
+      snapshot_pipe.send(snapshot.data(), snapshot.size());
+      // 实际 SIGKILL，不调用 SQLite close/checkpoint；WAL 必须保留已提交数据。
+      ::kill(::getpid(), SIGKILL);
+      ::_exit(99);
+    } catch (const std::exception &error) {
+      std::fprintf(stderr, "WAL recovery child failed during %s: %s\n",
+                   stage, error.what());
+      ::_exit(2);
+    }
   }
   uint64_t length = 0;
   snapshot_pipe.receive(&length, sizeof(length));

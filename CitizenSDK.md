@@ -3887,6 +3887,12 @@ userns 和 seccomp 准确 unshare(CLONE_NEWUSER|CLONE_NEWNET)，原拒绝项保�
 实际加载只属于已获准的一次性 GitHub 环境，不允许修改本机全局安全策略。
 本机合同测试不能证明五平台、硬件金库或同包安装已验收。实际测试及本轮范围见任务卡 §41。
 
+Linux GitHub CTest 的源码合同测试必须与当前实现和生成布局一致：公开头秘密边界扫描读取构建目录
+`public/citizen_sdk`，TPM2 测试锁定当前 `UserAuth` 的 fprintd D-Bus 生命周期和凭据提供器取消语义。
+SecureStore 的 SQLite schema 由 Linux 集成测试实际打开验证；失败时 Host 创建回归输出 Host 的最后错误，
+跨进程 WAL 夹具输出失败阶段，CTest 诊断保留在 GitHub 作业日志。Windows 依赖版本比较先规范化
+CRLF，再按准确版本字段校验；这些回归仍以 GitHub 自动化结果为准。
+
 
 同一路由、同一冻结源码、同一 SDK 版本：CI 为五宿主原生构建 → 一个 macOS 汇总 →
 五宿主最终同包消费，共十一项作业；Release 使用相同三个阶段，但全量构建、不恢复任何

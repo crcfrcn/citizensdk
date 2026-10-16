@@ -148,6 +148,7 @@ foreach(test_name IN LISTS CITIZENSDK_LINUX_CONTRACT_TESTS)
   )
   target_compile_definitions(${test_name} PRIVATE
     CITIZENSDK_LINUX_TEST_SOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/.."
+    CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR="${PROJECT_BINARY_DIR}/public/citizen_sdk"
     CITIZENSDK_ENABLE_QR_CAPTURE=$<BOOL:${CITIZENSDK_ENABLE_QR_CAPTURE}>
   )
   target_compile_options(${test_name} PRIVATE
