@@ -60,7 +60,7 @@ TestBytes history_record_payload(const TestBytes &batch) {
   assert(batch.size() >= 87 && std::equal(batch.begin(), batch.begin() + 4, "THB1"));
   const std::size_t length_offset = 83;
   uint32_t count = 0;
-  for (int shift = 0; shift < 32; shift += 8) count |= uint32_t(batch[length_offset + shift / 8]) << shift;
+  for (std::size_t shift = 0; shift < 32; shift += 8) count |= uint32_t(batch[length_offset + shift / 8]) << shift;
   assert(batch.size() == 87U + count);
   return TestBytes(batch.begin() + 87, batch.end());
 }

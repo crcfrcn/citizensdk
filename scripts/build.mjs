@@ -11072,7 +11072,8 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const at=section.indexOf(marker),end=section.indexOf('\nNODE',at);assert.ok(at>=0&&end>at);
   const program=section.slice(at+marker.length,end);
   const metadata={packages:[{name:'rustls-platform-verifier-android',version:'0.1.1',manifest_path:'/fixture/Cargo.toml'}]};
-  assert.equal(androidGradleLocalRepository(metadata).aar,'/fixture/maven/rustls/rustls-platform-verifier/0.1.1/rustls-platform-verifier-0.1.1.aar');
+  assert.equal(androidGradleLocalRepository(metadata).aar,
+   join('/fixture','maven','rustls','rustls-platform-verifier','0.1.1','rustls-platform-verifier-0.1.1.aar'));
   for(const bad of [null,{packages:[]},{packages:[...metadata.packages,...metadata.packages]},{packages:[{...metadata.packages[0],version:'foreign'}]}])assert.throws(()=>androidGradleLocalRepository(bad),/组件/u);
   assert.deepEqual(Object.keys(androidGradleProjectFiles()),['settings.gradle','build.gradle','native/build.gradle']);
   await withFixedWork('test',async work=>{
