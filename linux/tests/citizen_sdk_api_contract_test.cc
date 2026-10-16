@@ -153,7 +153,8 @@ void capture_resource_contract() {
     assert(p.closed == 0 && p.released == 0 && !capture->closed());
     { std::lock_guard<std::mutex> guard(p.mutex); p.unblock_stop = true; p.changed.notify_all(); }
     p.wait([&] { return p.released == 1; });
-    assert(p.opened == 1 && p.open_code == CITIZENSDK_ERROR_CANCELLED && p.frames == 0);
+    assert(p.opened == 1 && p.open_code == CITIZENSDK_ERROR_CANCELLED && p.frames == 0 &&
+           p.width == 0 && p.height == 0);
   }
   {
     CaptureProbe p; p.block_torch = true;

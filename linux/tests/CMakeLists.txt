@@ -96,6 +96,7 @@ target_include_directories(citizensdk_linux_test_support
   PUBLIC
     "${CMAKE_CURRENT_LIST_DIR}/.."
     "${CMAKE_CURRENT_LIST_DIR}/../source"
+    "${PROJECT_BINARY_DIR}/public"
     "${CITIZENSDK_CORE_INCLUDE_DIR}"
   PRIVATE
     "${CITIZENSDK_INTERNAL_INCLUDE_DIR}"

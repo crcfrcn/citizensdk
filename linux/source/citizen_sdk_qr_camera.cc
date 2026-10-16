@@ -441,7 +441,9 @@ void QrCapture::run() noexcept {
     state.device.start();
     std::unique_lock<std::mutex> guard(state.mutex);
     state.changed.wait(guard, [&] { return state.first_frame.has_value() || state.closing || (!opening && state.paused); });
-    auto frame = std::move(state.first_frame); state.first_frame.reset();
+    std::optional<QrFrame> frame;
+    if (state.first_frame.has_value()) frame.emplace(std::move(*state.first_frame));
+    state.first_frame.reset();
     if (opening) state.paused = true;
     state.starting = false;
     return frame;
