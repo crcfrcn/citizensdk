@@ -6688,7 +6688,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const sqliteSource=readFileSync(join(root,'linux/source/citizen_sdk_sqlite.cc'),'utf8');
   assert.match(sqliteSource,/CitizenSDK SQLite SHM test diagnostic/u,
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
-  assert.match(sqliteSource,/stage=map-ftruncate/u,
+  assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("map-ftruncate"/u,
    'Linux WAL共享内存尺寸失败必须报告底层ftruncate阶段');
   const sharedMemoryMapStart=sqliteSource.indexOf('static int shared_memory_map(');
   const sharedMemoryLockStart=sqliteSource.indexOf('static int shared_memory_lock(',sharedMemoryMapStart);
