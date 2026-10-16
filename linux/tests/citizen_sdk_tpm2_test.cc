@@ -184,8 +184,8 @@ int main() {
                                "Release",
                                "CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED",
                                "pending->ready.wait(guard, [&] { return pending->done; })",
-                               "pending->result.password.clear()",
-                               "pending->ready.notify_all()"}) {
+                               "found->second->result.password.clear()",
+                               "found->second->ready.notify_all()"}) {
     assert(auth_source.find(required) != std::string::npos);
   }
   return 0;

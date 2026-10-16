@@ -3846,9 +3846,11 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。控制台�
 
 ## CI 增量缓存
 
-CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存，保存 Cargo target、Cargo registry/git、Pub hosted/git原件、Gradle modules/build cache/wrapper以及固定Flutter提交的平台engine artifacts。缓存恢复键只允许同一平台、架构、工具提交和锁输入复用；新Run以唯一键写入，不跨平台复用。
+CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存。Cargo target 使用独立键空间，每个支持平台只保留最新一份；Cargo registry/git、Pub hosted/git原件、Gradle modules/build cache/wrapper及固定Flutter engine仍走依赖缓存，不与Cargo target或Run记录共用清理规则。Cargo缓存清理只读取本仓 `main` 的本SDK target键，删除后回查保留数量；清理失败明确返回失败，不覆盖原生构建或Release Job的结论。
 
-Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。Android与macOS分别在固定Flutter提交检出及缓存恢复后执行 `flutter precache --android` 与 `flutter precache --ios --macos`，再开始平台编译。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。
+同一 `sdk.yml` 依次完成本仓回归、五平台原生构建、正式包组装/复验、五平台消费复验和Release，最后执行Run记录清理。Run清理仅处理本仓 `main`、准确 `sdk.yml` 的已完成Run，不按事件过滤，因此旧 `push` Run也可进入候选；只保留最新成功和最新失败各一条，当前活动Run作为本轮候选并受保护。Run清理必须成功，且Tag/Release回执与源码SHA一致，整次GitHub Run才算正式成功。清理失败会让最终Run失败，但不会撤销已成功的构建或Release。Release资产、Tag和Cargo缓存不由Run记录清理删除。
+
+Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。Android与macOS分别在固定Flutter提交检出及缓存恢复后执行 `flutter precache --android` 与 `flutter precache --ios --macos`，再开始平台编译。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。Run和Actions缓存分别清理，不通过删除Run记录清理Tag、Release资产或Cargo缓存。
 
 ## Release 全量构建（第 7.4 步）
 
@@ -3889,8 +3891,9 @@ userns 和 seccomp 准确 unshare(CLONE_NEWUSER|CLONE_NEWNET)，原拒绝项保�
 
 Linux GitHub CTest 的源码合同测试必须与当前实现和生成布局一致：公开头秘密边界扫描读取构建目录
 `public/citizen_sdk`，TPM2 测试锁定当前 `UserAuth` 的 fprintd D-Bus 生命周期和凭据提供器取消语义。
-SecureStore 的 SQLite schema 由 Linux 集成测试实际打开验证；失败时 Host 创建回归输出 Host 的最后错误，
-跨进程 WAL 夹具输出失败阶段，CTest 诊断保留在 GitHub 作业日志。Windows 依赖版本比较先规范化
+SecureStore 的完整 SQLite schema 由 Linux 集成测试实际打开验证；SQLite主错误码和扩展错误码诊断仅编入
+Linux测试支持库，不改变正式Host错误消息。失败时Host创建回归输出Host最后错误，跨进程WAL夹具输出失败阶段，
+CTest诊断保留在GitHub作业日志。Windows依赖版本比较先规范化
 CRLF，再按准确版本字段校验；这些回归仍以 GitHub 自动化结果为准。
 
 

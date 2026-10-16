@@ -86,9 +86,11 @@ add_library(citizensdk_linux_test_support STATIC
   ${CITIZENSDK_LINUX_HOST_TEST_SOURCES}
 )
 target_compile_features(citizensdk_linux_test_support PUBLIC cxx_std_17)
+# SQLite扩展错误码只在此测试支持库中输出，正式Host目标不启用。
 target_compile_definitions(citizensdk_linux_test_support PRIVATE
   _GNU_SOURCE=1
   CITIZENSDK_HOST_BUILDING=1
+  CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1
   CITIZENSDK_ENABLE_QR_CAPTURE=$<BOOL:${CITIZENSDK_ENABLE_QR_CAPTURE}>
   CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}"
 )

@@ -100,7 +100,6 @@ jobs:
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: |
-            ${{ runner.temp }}/citizensdk-release/cargo-target
             ${{ runner.temp }}/citizensdk-release/cargo-home/registry
             ${{ runner.temp }}/citizensdk-release/cargo-home/git
             ${{ runner.temp }}/citizensdk-release/pub-cache/hosted
@@ -110,9 +109,16 @@ jobs:
             ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
             ${{ runner.temp }}/citizensdk-release/work/tools/archives
             ${{ runner.temp }}/citizensdk-flutter/bin/cache/artifacts/engine
-          key: citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+          key: citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            citizensdk-sdk-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
+            citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
+      - name: 恢复本平台Cargo编译缓存
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ${{ runner.temp }}/citizensdk-release/cargo-target
+          key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-
       - name: 准备Android固定引擎原件
         if: matrix.platform == 'Android'
         shell: bash
@@ -183,6 +189,7 @@ jobs:
             node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
           fi
       - name: 绑定原生依赖与运行库证据
+        id: dependency_evidence
         if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD' || matrix.platform == 'Windows'
         shell: bash
         run: |
@@ -204,6 +211,13 @@ jobs:
           for path in "${paths[@]}"; do test -e "$output/$path"; done
           tar -czf "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz" -C "$output" "${paths[@]}"
           test -s "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz"
+      - name: 保存本平台Cargo编译缓存
+        if: success()
+        continue-on-error: true
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ${{ runner.temp }}/citizensdk-release/cargo-target
+          key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: "native-${{ matrix.platform }}"
@@ -333,3 +347,55 @@ jobs:
       - name: 创建并逐件回读唯一正式 SDK Release
         shell: bash
         run: node scripts/build.mjs release-github
+  cargo-retention:
+    needs: [native]
+    if: always() && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: Android, cache-os: Linux, cache-arch: X64}
+          - {platform: macOS, cache-os: macOS, cache-arch: ARM64}
+          - {platform: LinuxARM, cache-os: Linux, cache-arch: ARM64}
+          - {platform: LinuxAMD, cache-os: Linux, cache-arch: X64}
+          - {platform: Windows, cache-os: Windows, cache-arch: X64}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      SDK_PLATFORM: "${{ matrix.platform }}"
+      CARGO_CACHE_KEY: citizensdk-cargo-v1-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - name: 每个平台只保留最新Cargo缓存
+        shell: bash
+        run: node scripts/build.mjs release-cache-prune
+  run-retention:
+    needs: [prepare, native, assemble, consume, release, cargo-retention]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      SDK_FINAL_OUTCOME: "${{ needs.prepare.result == 'success' && needs.native.result == 'success' && needs.assemble.result == 'success' && needs.consume.result == 'success' && needs.release.result == 'success' && needs.cargo-retention.result == 'success' && 'success' || 'failure' }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - name: 仅保留本工作流最新成功与失败Run
+        shell: bash
+        run: node scripts/build.mjs release-run-prune "$SDK_FINAL_OUTCOME"

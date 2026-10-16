@@ -4,6 +4,7 @@
 #include <atomic>
 #include <array>
 #include <cerrno>
+#include <cstdio>
 #include <cctype>
 #include <cstring>
 #include <exception>
@@ -54,6 +55,13 @@ class UniqueFd final {
 };
 
 HostError sqlite_error(sqlite3 *database, const char *fallback) {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+  // 仅Linux合同测试输出SQLite错误码，正式Host对外错误消息保持原样。
+  if (database != nullptr) {
+    std::fprintf(stderr, "CitizenSDK SQLite test diagnostic: primary=%d extended=%d\n",
+                 sqlite3_errcode(database), sqlite3_extended_errcode(database));
+  }
+#endif
   return HostError(CITIZENSDK_ERROR_STORAGE,
                    database == nullptr ? fallback : sqlite3_errmsg(database));
 }

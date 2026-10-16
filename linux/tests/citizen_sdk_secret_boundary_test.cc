@@ -74,7 +74,7 @@ int main() {
 
   // 补全/输入与显式秘密资源走无UI绑定，不能复活窗口Presenter或无租约导出。
   std::ifstream source_stream(std::filesystem::path(CITIZENSDK_LINUX_TEST_SOURCE_DIR)
-      / "src" / "citizen_sdk_flutter_sessions.cc", std::ios::binary);
+      / "source" / "citizen_sdk_flutter_sessions.cc", std::ios::binary);
   assert(source_stream.good());
   const std::string source((std::istreambuf_iterator<char>(source_stream)), std::istreambuf_iterator<char>());
   assert(source.find("citizensdk_validate_wallet_input") != std::string::npos);
