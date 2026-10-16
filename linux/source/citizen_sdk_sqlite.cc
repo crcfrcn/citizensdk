@@ -753,7 +753,11 @@ class OpenAtSQLiteVfs final {
       if (!shared_memory_matches_path(state)) return SQLITE_IOERR_SHMOPEN;
       do { result = ::ftruncate(state.shared_memory_descriptor, 3); }
       while (result != 0 && errno == EINTR);
-      if (result != 0) return SQLITE_IOERR_SHMSIZE;
+      if (result != 0) {
+        const int error = errno;
+        sqlite_test_shm_diagnostic("initialize-ftruncate", error);
+        return SQLITE_IOERR_SHMSIZE;
+      }
     }
     // 获取/降级为共享 DMS 后一直持有至 unmap/close，禁止先解锁再 mmap。
     return set_lock(state.shared_memory_descriptor, F_RDLCK, UNIX_SHM_DMS, 1);
@@ -792,6 +796,11 @@ class OpenAtSQLiteVfs final {
       }
       if (!shared_memory_matches_path(*state)) return SQLITE_IOERR_SHMOPEN;
       if (state->shared_memory_page_size != page_size) {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+        std::fprintf(stderr,
+                     "CitizenSDK SQLite SHM test diagnostic: stage=map-page-size-mismatch actual=%d requested=%d\n",
+                     state->shared_memory_page_size, page_size);
+#endif
         return SQLITE_IOERR_SHMSIZE;
       }
       if (state->mappings.size() <= static_cast<std::size_t>(page)) {
@@ -803,13 +812,17 @@ class OpenAtSQLiteVfs final {
             static_cast<sqlite3_int64>(page + 1) * page_size;
         struct stat status {};
         if (::fstat(state->shared_memory_descriptor, &status) != 0) {
+          const int error = errno;
+          sqlite_test_shm_diagnostic("map-fstat", error);
           return SQLITE_IOERR_SHMSIZE;
         }
         if (status.st_size < required) {
-          if (extend == 0 ||
-              ::ftruncate(state->shared_memory_descriptor,
+          if (extend == 0) return SQLITE_OK;
+          if (::ftruncate(state->shared_memory_descriptor,
                           static_cast<off_t>(required)) != 0) {
-            return extend == 0 ? SQLITE_OK : SQLITE_IOERR_SHMSIZE;
+            const int error = errno;
+            sqlite_test_shm_diagnostic("map-ftruncate", error);
+            return SQLITE_IOERR_SHMSIZE;
           }
         }
         void *address = ::mmap(nullptr, static_cast<std::size_t>(page_size),
