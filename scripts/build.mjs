@@ -6693,7 +6693,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("map-ftruncate"/u,
    'Linux WAL共享内存尺寸失败必须报告底层ftruncate阶段');
-  const sharedMemoryMapStart=sqliteSource.indexOf('static int shared_memory_map(');
+  const sharedMemoryMapStart=sqliteSource.indexOf('static int shared_memory_map_impl(');
   const sharedMemoryLockStart=sqliteSource.indexOf('static int shared_memory_lock(',sharedMemoryMapStart);
   assert.ok(sharedMemoryMapStart>=0&&sharedMemoryLockStart>sharedMemoryMapStart,
    'Linux SQLite共享内存映射与锁步骤缺失');
