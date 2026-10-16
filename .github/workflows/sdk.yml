@@ -366,7 +366,6 @@ jobs:
     env:
       GH_TOKEN: "${{ github.token }}"
       SDK_PLATFORM: "${{ matrix.platform }}"
-      CARGO_CACHE_KEY: citizensdk-cargo-v1-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -376,6 +375,8 @@ jobs:
         with:
           node-version: 25.2.1
       - name: 每个平台只保留最新Cargo缓存
+        env:
+          CARGO_CACHE_KEY: citizensdk-cargo-v1-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: node scripts/build.mjs release-cache-prune
   run-retention:

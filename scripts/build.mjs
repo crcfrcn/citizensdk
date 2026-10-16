@@ -6694,6 +6694,12 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'Tag/Release必须等待五平台正式构建与消费复验');
   const cargoRetention=workflow.slice(workflow.indexOf('\n  cargo-retention:'),workflow.indexOf('\n  run-retention:'));
   const runRetention=workflow.slice(workflow.indexOf('\n  run-retention:'));
+  const cargoRetentionJobEnv=cargoRetention.slice(0,cargoRetention.indexOf('    steps:'));
+  const cargoCachePruneStep=cargoRetention.slice(cargoRetention.indexOf('      - name: 每个平台只保留最新Cargo缓存'));
+  assert.doesNotMatch(cargoRetentionJobEnv,/hashFiles\(/u,'hashFiles不能出现在cargo-retention的Job级环境变量中');
+  assert.match(cargoCachePruneStep,/^      - name: 每个平台只保留最新Cargo缓存\n        env:\n          CARGO_CACHE_KEY: citizensdk-cargo-v1-/u,
+   'Cargo缓存清理必须在checkout之后的步骤级环境中计算锁文件哈希');
+  assert.match(cargoCachePruneStep,/hashFiles\('\*\*\/Cargo\.lock'\)/u);
   assert.match(cargoRetention,/permissions:[\s\S]*actions: write/u,'Cargo缓存清理必须使用独立的Actions写权限Job');
   assert.match(cargoRetention,/release-cache-prune/u,'Cargo缓存清理必须走本仓脚本');
   assert.match(runRetention,/needs: \[prepare, native, assemble, consume, release, cargo-retention\]/u);
