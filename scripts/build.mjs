@@ -6263,15 +6263,18 @@ return {buildCitizenSdkRelease,verifyCitizenSdkRelease,buildCitizenSdkHosted,ver
 export const {buildCitizenSdkRelease,verifyCitizenSdkRelease,buildCitizenSdkHosted,verifyCitizenSdkHosted}=releaseAssets;
 
 // 单一 SDK 的版本计算和版本化源码视图只归产品入口；Workflow 只传本轮身份。
-function ciReleaseHead(environment,call){
+function ciReleaseHead(environment,{inspect=lstatSync,read=readFileSync}={}){
  const workspace=environment.GITHUB_WORKSPACE;
  if(typeof workspace!=='string'||!isAbsolute(workspace)||resolve(workspace)!==root)
   fail('GitHub checkout 工作目录身份无效');
- // 容器内 HOME 与 checkout 临时 Git 配置不同；只对本次只读命令信任准确工作根。
- const result=call('git',['-c','safe.directory='+root,'rev-parse','--verify','HEAD'],
-  {cwd:root,encoding:'utf8'});
- if(result.status!==0)fail('GitHub checkout HEAD 读取失败');
- if(result.stdout?.trim()!==environment.GITHUB_SHA)fail('GitHub checkout SHA 与 Run 不符');
+ // checkout 按 github.sha 脱离分支检出；直接读取自己的 Git 元数据，不借容器 Git 配置。
+ const git=join(root,'.git'),head=join(git,'HEAD');
+ let gitEntry,headEntry,content;
+ try{gitEntry=inspect(git);headEntry=inspect(head);}catch{fail('GitHub checkout HEAD 元数据读取失败');}
+ if(!gitEntry.isDirectory()||!headEntry.isFile())fail('GitHub checkout HEAD 文件类型无效');
+ try{content=read(head,'utf8');}catch{fail('GitHub checkout HEAD 读取失败');}
+ if(typeof content!=='string'||!/^[a-f0-9]{40}\n?$/u.test(content))fail('GitHub checkout 非 detached HEAD');
+ if(content.trim()!==environment.GITHUB_SHA)fail('GitHub checkout SHA 与 Run 不符');
 }
 export function ciReleaseVersion(environment=process.env,{call=spawnSync}={}){
  const repo='crcfrcn/citizensdk';
@@ -6281,7 +6284,7 @@ export function ciReleaseVersion(environment=process.env,{call=spawnSync}={}){
   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')||!environment.GH_TOKEN
   ||![environment.GITHUB_RUN_ID,environment.GITHUB_RUN_ATTEMPT].every(value=>/^[1-9][0-9]*$/u.test(value||'')&&Number.isSafeInteger(Number(value))))
   fail('GitHub SDK 版本身份无效');
- ciReleaseHead(environment,call);
+ ciReleaseHead(environment);
  const seed=[...readFileSync(join(root,'pubspec.yaml'),'utf8').matchAll(/^version: ([0-9]+)\.([0-9]+)\.([0-9]+)$/gmu)];
  if(seed.length!==1)fail('SDK 版本真源不唯一');
  const ordinal=parts=>{const values=parts.map(Number),number=values[0]*10000+values[1]*100+values[2];
@@ -6321,7 +6324,7 @@ export function ciReleaseSource(stage,environment=process.env,{call=spawnSync}={
   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
   ||!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$/u.test(version||''))
   fail('GitHub 版本化源码身份无效');
- ciReleaseHead(environment,call);
+ ciReleaseHead(environment);
  const work=join(environment.RUNNER_TEMP,'citizensdk-release'),source=stage==='native'?join(work,'source'):join(environment.RUNNER_TEMP,'citizensdk-source');
  if(existsSync(source))fail('本轮版本化源码视图已存在');mkdirSync(dirname(source),{recursive:true});
  cpSync(root,source,{recursive:true,filter:value=>!['.git','target'].includes(basename(value))});
@@ -6436,7 +6439,7 @@ export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
   ||![run,attempt].every(value=>/^[1-9][0-9]*$/u.test(value||'')&&Number.isSafeInteger(Number(value)))
   ||tag!=='公民SDK-v'+version||!environment.GH_TOKEN)
   fail('GitHub 单包 Release 身份无效');
- ciReleaseHead(environment,call);
+ ciReleaseHead(environment);
  const candidate=join(environment.RUNNER_TEMP,'citizensdk-candidate'),archive=join(environment.RUNNER_TEMP,'citizensdk-release/citizensdk.tgz'),
   candidateArchive=join(environment.RUNNER_TEMP,'citizensdk-candidate-artifact/citizensdk-candidate.tgz');
  if(existsSync(candidate))fail('本轮候选展开现场已存在');mkdirSync(candidate,{recursive:true});
@@ -6602,20 +6605,26 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.throws(()=>ciReleaseSource('foreign',{}),/身份无效/u);
   assert.throws(()=>ciReleaseGitHub({}),/身份无效/u);
  });
- test('正式 SDK checkout 只从准确工作根读取 HEAD 并区分 Git 与 SHA 失败',()=>{
+ test('正式 SDK checkout 只接受准确工作根的普通 detached HEAD 与本轮 SHA',()=>{
   const sha='a'.repeat(40),environment={GITHUB_WORKSPACE:root,GITHUB_SHA:sha};
-  let calls=0;
-  const call=(command,args,options)=>{
-   ++calls;assert.equal(command,'git');
-   assert.deepEqual(args,['-c','safe.directory='+root,'rev-parse','--verify','HEAD']);
-   assert.equal(options.cwd,root);
-   return {status:0,stdout:sha+'\n'};
+  const git=join(root,'.git'),head=join(git,'HEAD'),paths=[];
+  const inspect=path=>{
+   paths.push(path);return {isDirectory:()=>path===git,isFile:()=>path===head};
   };
-  assert.doesNotThrow(()=>ciReleaseHead(environment,call));assert.equal(calls,1);
-  assert.throws(()=>ciReleaseHead({...environment,GITHUB_WORKSPACE:dirname(root)},call),/工作目录身份无效/u);
-  assert.equal(calls,1);
-  assert.throws(()=>ciReleaseHead(environment,()=>({status:128,stdout:''})),/HEAD 读取失败/u);
-  assert.throws(()=>ciReleaseHead(environment,()=>({status:0,stdout:'b'.repeat(40)})),/SHA 与 Run 不符/u);
+  const read=(path,encoding)=>{assert.equal(path,head);assert.equal(encoding,'utf8');return sha+'\n';};
+  assert.doesNotThrow(()=>ciReleaseHead(environment,{inspect,read}));
+  assert.deepEqual(paths,[git,head]);
+  assert.throws(()=>ciReleaseHead({...environment,GITHUB_WORKSPACE:dirname(root)},{inspect,read}),/工作目录身份无效/u);
+  assert.deepEqual(paths,[git,head]);
+  assert.throws(()=>ciReleaseHead(environment,{inspect:()=>{throw Error('missing');},read}),/元数据读取失败/u);
+  for(const symbolic of [git,head]){
+   const inspectSymbolic=path=>path===symbolic
+    ? {isDirectory:()=>false,isFile:()=>false} : inspect(path);
+   assert.throws(()=>ciReleaseHead(environment,{inspect:inspectSymbolic,read}),/文件类型无效/u);
+  }
+  assert.throws(()=>ciReleaseHead(environment,{inspect,read:()=>{throw Error('unreadable');}}),/HEAD 读取失败/u);
+  assert.throws(()=>ciReleaseHead(environment,{inspect,read:()=>"ref: refs/heads/main\n"}),/非 detached HEAD/u);
+  assert.throws(()=>ciReleaseHead(environment,{inspect,read:()=>"b".repeat(40)+'\n'}),/SHA 与 Run 不符/u);
  });
  test('正式SDK Release发布后只保留本仓最新官方版本Tag与Release',()=>{
   const oldTag='公民SDK-v1.0.0',keepTag='公民SDK-v1.0.1',orphanTag='公民SDK-v0.9.9';

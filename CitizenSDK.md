@@ -4277,4 +4277,6 @@ Run 39061587665 的 `prepare` 通过，但 2026-10-01 快照虽有签名索引�
 
 Run 39064623680 的 prepare 通过，2026-09-01 签名快照在 LinuxARM/LinuxAMD 均完成 CA 与全部开发依赖安装，修复了上一轮实际包地址 404。两架构随后在 `release-source native` 的合并身份断言处报“GitHub 版本化源码身份无效”，未开始原生编译。该 Run 的 checkout 日志确认 HEAD 是本轮 `5aa76516feb2cc0b2a628f4073379991d658e080`；Android、Windows、macOS 的同一步通过。Linux 容器中 checkout 使用临时 HOME 写入 `safe.directory`，正式 Node 步骤使用 `/github/home`；这提示 Git HEAD 读取可能被安全目录检查拒绝，但原合并断言没有单独记录 Git 子进程回执，不能把推断冒充已证实的唯一原因。用户要求一有失败即终止，Run 已通过控制台取消，最终状态为 cancelled；其余平台的原生构建被取消，未形成正式版。
 
-修复将正式版本计算、源码视图和 Release 三处 HEAD 检查收归同一读取函数。该函数先要求 `GITHUB_WORKSPACE` 精确等于当前产品工作根，再仅对该次只读 Git 命令指定准确 `safe.directory`，逐项检查退出状态与本轮 SHA，分别报告目录、Git 读取和 SHA 不符；不设置全局 Git 信任，不改变 SHA、workflow、分支及仓库身份门禁。同文件回归覆盖成功、目录越界、Git 失败、SHA 不符。生产公开接口、产品声明、资源锁和 README 均未变化。此修复需下一次完整 GitHub Run 验证；目前不宣称 Release 成功。
+Run 39065108840 在提交 `f78d8cfc846da233e7ede8d96abc82bdcebfcd6f` 上通过 prepare；LinuxARM 在版本化源码步骤报“GitHub checkout HEAD 读取失败”，说明工作根门禁已通过，但容器内 Git 子进程返回非零状态。原入口未记录 Git stderr，具体退出原因不可再从该 Run 追溯；`safe.directory` 单次参数未解决该问题。用户要求首个原生作业失败立即终止，本轮已通过控制台取消，GitHub 最终为 cancelled，其他平台原生构建没有终态，组包、消费复验与 Release 未执行。
+
+后续候选删除上述 Git 子进程读取实现：三处入口仍共用单一 HEAD 门禁，先要求准确 `GITHUB_WORKSPACE`，再用 Node 的 `lstat` 拒绝符号链接和非普通 `.git/HEAD`，只接受 checkout 按本轮 SHA 产生的 40 位小写 detached HEAD 文件，并与 `GITHUB_SHA` 精确比较。工作根、元数据、文件类型、内容格式和 SHA 各有独立失败回执。既有同文件测试补齐正常、越界、缺失、非普通文件、不可读、引用式 HEAD 与 SHA 不符；不改变其它 GitHub 身份条件、公开接口、产品声明、资源锁或 README。候选仍需完整 GitHub 自动化验收。
