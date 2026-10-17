@@ -11669,10 +11669,28 @@ async function automationAccess(route,host,actionId,task){
 async function automationRequest(path,token,{method='GET',body}={}){
  if(!/^actions\/(?:workflows\/(?:sdk\.yml)\/dispatches|runs\/[1-9]\d*(?:\/(?:jobs(?:\?per_page=100&page=[1-9]\d*)?|cancel|force-cancel))?)$/u.test(path))
   throw Error('公民SDK GitHub 请求目标无效');
- const response=await (automationTransport.getStore()?.fetchImpl??fetch)(`https://api.github.com/repos/${automationRepository}/${path}`,{
+ let response;
+ try{response=await (automationTransport.getStore()?.fetchImpl??fetch)(`https://api.github.com/repos/${automationRepository}/${path}`,{
   method,redirect:'error',credentials:'omit',headers:{Authorization:`Bearer ${token}`,
    Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2026-03-10'},
   ...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(30000)});
+ }catch(error){
+  // 仅记录受限系统错误码；原始异常可能含网络地址或凭据，派发回执不明时不能自动重发。
+  const allowed=new Set(['EAI_AGAIN','ENOTFOUND','ECONNRESET','ECONNREFUSED','ETIMEDOUT','ENETUNREACH',
+   'EHOSTUNREACH','EPIPE','UND_ERR_SOCKET','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT',
+   'UND_ERR_BODY_TIMEOUT','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+   'DEPTH_ZERO_SELF_SIGNED_CERT','ERR_TLS_CERT_ALTNAME_INVALID']);
+  const queue=[error],seen=new Set(),codes=[];
+  for(let index=0;index<queue.length&&index<8;index++){
+   const item=queue[index];if(!item||typeof item!=='object'||seen.has(item))continue;seen.add(item);
+   if(allowed.has(item.code))codes.push(item.code);
+   if(item.cause&&typeof item.cause==='object')queue.push(item.cause);
+   if(Array.isArray(item.errors))queue.push(...item.errors.slice(0,4));
+  }
+  const reason=[...new Set(codes)].slice(0,4).join(',')||(error?.name==='TimeoutError'?'TIMEOUT':'UNKNOWN');
+  const phase=path.endsWith('/dispatches')?'派发':path.endsWith('/cancel')||path.endsWith('/force-cancel')?'取消':'回读';
+  throw Error(`公民SDK GitHub ${phase}请求未确认（${reason}），禁止自动重试`);
+ }
  if(!response.ok)throw Error(`公民SDK GitHub 请求失败：HTTP ${response.status}`);
  if(response.status===202||response.status===204)return {};
  if(!response.body)throw Error('公民SDK GitHub 回执缺失');
@@ -11915,6 +11933,20 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===fil
    ()=>startAutomation(route,action,ambiguous.host));
   assert.equal((await ambiguous.finished).code,1);assert.equal(dispatches,1);
   assert.equal(ambiguous.tasks[0].githubRunId,undefined);
+ });
+ test('citizensdk 派发网络错误仅报告系统码且不重发',async()=>{
+  const fixture=makeHost();let attempts=0;
+  const fetchImpl=async()=>{attempts++;throw new TypeError('private-detail',{
+   cause:Object.assign(new Error('private-address'),{code:'ECONNRESET'})});};
+  await automationTransport.run({fetchImpl},()=>startAutomation(route,action,fixture.host));
+  const result=await fixture.finished;
+  assert.equal(attempts,1);assert.equal(fixture.tasks[0].githubRunId,undefined);
+  assert.match(result.message,/派发请求未确认（ECONNRESET），禁止自动重试/u);
+  assert.doesNotMatch(result.message,/private|ghs_/u);
+  const unknown=makeHost();
+  await automationTransport.run({fetchImpl:async()=>{throw {code:'private-path/token'};}},
+   ()=>startAutomation(route,action,unknown.host));
+  assert.match((await unknown.finished).message,/派发请求未确认（UNKNOWN）/u);
  });
  test('citizensdk 自动化拒绝错误仓库、平台和提交身份',()=>{
   assert.throws(()=>automationRoute({...route,repository:'other'}),/目标/u);
