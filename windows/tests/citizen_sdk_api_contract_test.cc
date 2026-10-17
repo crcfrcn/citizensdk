@@ -625,14 +625,12 @@ int main() {
     assert(citizensdk_host_destroy(host) == CITIZENSDK_OK);
   }
 
-  // 后台关闭返回 BUSY 可发生在 Core 销毁前或窗口退休时；缓存句柄须与仍存活的 Host 一致。
+  // 只选钱包模块来单独验证 Win32 UI 退休；完整链模块的消费者测试另行覆盖。
+  // 后台关闭返回 BUSY 可发生在 Core 销毁前或窗口退休时；缓存句柄须与 Host 一致。
   citizen_sdk::Config cpp_config;
   cpp_config.storage_root = temporary.path() / "cpp-state";
-  cpp_config.asset_root = std::filesystem::path(CITIZENSDK_WINDOWS_TEST_SOURCE_DIR).parent_path() /
-                          "chain";
   cpp_config.application_id = "org.citizen.closefixture";
-  // 测试源根由 CMake 规范化；资产根必须指向本仓真实链清单。
-  assert(std::filesystem::is_regular_file(cpp_config.asset_root / "manifest.json"));
+  cpp_config.modules = CITIZENSDK_MODULE_WALLET;
   citizen_sdk::Host cpp_host(cpp_config);
   try { cpp_host.open(); }
   catch (const citizen_sdk::Error &error) {

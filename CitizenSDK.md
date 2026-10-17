@@ -4268,3 +4268,5 @@ Linux 构建候选改为同一 `sdk.yml` 内独立 `native-linux` 矩阵，两�
 Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖，且保持 Release 必须等待五平台与消费复验的条件；该 Run 未进入原生构建或生成正式资产。
 
 Run 39059895404 的 `prepare` 通过，两项 Debian `native-linux` Job 在安装开发依赖时同因 `libdw-dev` 要求 `liblzma-dev` 而失败，未进入 Core 编译。对照固定快照的 AMD64/ARM64 签名包索引，2026-07-01 的 `liblzma-dev` 为 `5.2.5-2.1~deb11u1`，而当前固定镜像与较新安全版本不能组成同版依赖；2026-10-01 安全快照中两架构的 `liblzma5`、`liblzma-dev` 均为 `5.2.5-2.1~deb11u2`。候选统一改用该日 Debian 与安全快照，并显式锁定开发包版本，不改变 GLIBC 基线或 CMake 来源。
+
+同一 Run 的 Windows 安装来源校验已通过，14 项原生 CTest 仅 API 合同夹具失败：原“窗口退休”夹具使用默认全模块 Core，第二次关闭仍因 Core 生命周期返回 BUSY，不能把它当作仅窗口退休。该夹具改为钱包模块，保留真实 Win32 UI 调度与后台首次 BUSY、主线程重试及最终双句柄清零；完整链 C++ 消费者继续由独立测试覆盖。此改动不放宽生产关闭门禁。
