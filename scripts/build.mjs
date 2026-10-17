@@ -6390,6 +6390,34 @@ export function ciReleaseCleanupAndroidWork(environment=process.env){
 }
 
 // 五宿主和消费验收全部成功后，本仓只创建一份正式 SDK Release。
+const ciReleaseOfficialTagPattern=/^citizensdk-sdk-v[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*-a[1-9][0-9]*$/u;
+export function ciReleaseRetainSingleOfficialVersion(repository,keepTag,environment=process.env,call=spawnSync){
+ if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)||!ciReleaseOfficialTagPattern.test(keepTag))
+  fail('SDK正式版本保留坐标无效');
+ const gh=args=>{const result=call('gh',args,{cwd:root,env:environment,encoding:'utf8',maxBuffer:8*1024**2});
+  if(result.status!==0)fail('SDK正式版本保留操作失败：'+(result.stderr||'').slice(0,800));return result.stdout.trim();};
+ const rows=args=>{const output=gh(args);return output?output.split('\n').filter(Boolean).map(line=>JSON.parse(line)):[];};
+ const releaseRoute='repos/'+repository+'/releases?per_page=100',tagRoute='repos/'+repository+'/git/matching-refs/tags/citizensdk-sdk-v';
+ const officialReleases=()=>rows(['api','--paginate','--jq','.[] | @json',releaseRoute])
+  .filter(release=>ciReleaseOfficialTagPattern.test(release?.tag_name||''));
+ const officialTags=()=>rows(['api','--paginate','--jq','.[] | @json',tagRoute])
+  .filter(ref=>typeof ref?.ref==='string'&&ref.ref.startsWith('refs/tags/')
+   &&ciReleaseOfficialTagPattern.test(ref.ref.slice('refs/tags/'.length)));
+ let deletedReleases=0,deletedTags=0;
+ for(const release of officialReleases())if(release.tag_name!==keepTag){
+  gh(['release','delete',release.tag_name,'--repo',repository,'--yes','--cleanup-tag']);deletedReleases++;
+ }
+ for(const ref of officialTags()){
+  const name=ref.ref.slice('refs/tags/'.length);
+  if(name!==keepTag){gh(['api','--method','DELETE','repos/'+repository+'/git/refs/tags/'+encodeURIComponent(name)]);deletedTags++;}
+ }
+ const releases=officialReleases(),tags=officialTags();
+ if(releases.length!==1||releases[0].tag_name!==keepTag||releases[0].draft||releases[0].prerelease
+  ||tags.length!==1||tags[0].ref!=='refs/tags/'+keepTag)
+  fail('CitizenSDK必须只保留本次正式Release与Tag');
+ return {retained:keepTag,deleted_releases:deletedReleases,deleted_tags:deletedTags};
+}
+
 export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
  const repo='crcfrcn/citizensdk',sha=environment.GITHUB_SHA,tag=environment.RELEASE_TAG,
   version=environment.RELEASE_VERSION,run=environment.GITHUB_RUN_ID,attempt=environment.GITHUB_RUN_ATTEMPT;
@@ -6415,9 +6443,9 @@ export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
  if(!archiveInfo.isFile()||archiveInfo.isSymbolicLink()||archiveInfo.size<1)fail('正式单包资产无效');
  const gh=args=>{const result=call('gh',args,{cwd:root,env:environment,encoding:'utf8',maxBuffer:8*1024**2});
   if(result.status!==0)fail('GitHub Release 操作失败：'+(result.stderr||'').slice(0,800));return result.stdout.trim();};
- const api=path=>JSON.parse(gh(['api','repos/'+repo+'/'+path]));let created=false;
+ const api=path=>JSON.parse(gh(['api','repos/'+repo+'/'+path]));let created=false,final;
  try{
-  gh(['release','create',tag,archive,'--repo',repo,'--target',sha,'--title','citizensdk · sdk · '+version,
+  gh(['release','create',tag,archive,'--repo',repo,'--target',sha,'--title','公民SDK-v'+version,
    '--notes','GitHub 自动化正式 SDK；源码 '+sha+'；Run '+run+'。','--draft','--latest=false']);created=true;
   const release=api('releases/tags/'+encodeURIComponent(tag)),ref=api('git/ref/tags/'+encodeURIComponent(tag));
   if(release.tag_name!==tag||!release.draft||release.prerelease||release.target_commitish!==sha
@@ -6426,11 +6454,12 @@ export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
    ||release.assets[0].digest!=='sha256:'+digest||ref.ref!=='refs/tags/'+tag
    ||ref.object?.type!=='commit'||ref.object.sha!==sha)fail('单包草稿 Release 回读失败');
   gh(['release','edit',tag,'--repo',repo,'--draft=false']);
-  const final=api('releases/tags/'+encodeURIComponent(tag));
+  final=api('releases/tags/'+encodeURIComponent(tag));
   if(final.tag_name!==tag||final.draft||final.prerelease||!final.published_at)fail('正式 SDK Release 未确认');
-  return {tag,release_id:final.id,asset:'citizensdk.tgz'};
  }catch(error){if(created)try{gh(['release','delete',tag,'--repo',repo,'--yes','--cleanup-tag']);}
   catch(cleanup){throw Error(error.message+'；本轮 Release 撤销未确认：'+cleanup.message);}throw error;}
+ const retention=ciReleaseRetainSingleOfficialVersion(repo,tag,environment,call);
+ return {tag,release_id:final.id,asset:'citizensdk.tgz',...retention};
 }
 
 const ciReleaseRepo='crcfrcn/citizensdk';
@@ -6554,6 +6583,38 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.throws(()=>ciReleaseVersion({}),/身份无效/u);
   assert.throws(()=>ciReleaseSource('foreign',{}),/身份无效/u);
   assert.throws(()=>ciReleaseGitHub({}),/身份无效/u);
+ });
+ test('正式SDK Release发布后只保留本仓最新官方版本Tag与Release',()=>{
+  const oldTag='citizensdk-sdk-v1.0.0-r10-a1',keepTag='citizensdk-sdk-v1.0.1-r50-a1',orphanTag='citizensdk-sdk-v0.9.9-r8-a1';
+  const releaseRoute='repos/crcfrcn/citizensdk/releases?per_page=100',tagRoute='repos/crcfrcn/citizensdk/git/matching-refs/tags/citizensdk-sdk-v';
+  let releases=[{tag_name:oldTag,draft:false,prerelease:false},{tag_name:keepTag,draft:false,prerelease:false},
+   {tag_name:'other-product-v4.0.0',draft:false,prerelease:false}];
+  let refs=[oldTag,keepTag,orphanTag,'other-product-v4.0.0'].map(name=>({ref:'refs/tags/'+name,
+   object:{type:'commit',sha:'a'.repeat(40)}}));const deleted=[];
+  const call=(command,args)=>{
+   assert.equal(command,'gh');const path=args.at(-1);
+   if(args[0]==='release'&&args[1]==='delete'){
+    const name=args[2];deleted.push('release:'+name);releases=releases.filter(item=>item.tag_name!==name);
+    if(args.includes('--cleanup-tag'))refs=refs.filter(item=>item.ref!=='refs/tags/'+name);
+    return {status:0,stdout:''};
+   }
+   if(args[0]==='api'&&args.includes('--paginate')){
+    if(path===releaseRoute)return {status:0,stdout:releases.map(JSON.stringify).join('\n')};
+    if(path===tagRoute)return {status:0,stdout:refs.map(JSON.stringify).join('\n')};
+   }
+   if(args[0]==='api'&&args[1]==='--method'&&args[2]==='DELETE'
+      &&path.startsWith('repos/crcfrcn/citizensdk/git/refs/tags/')){
+    const name=decodeURIComponent(path.slice('repos/crcfrcn/citizensdk/git/refs/tags/'.length));
+    deleted.push('tag:'+name);refs=refs.filter(item=>item.ref!=='refs/tags/'+name);
+    return {status:0,stdout:''};
+   }
+   assert.fail('unrequested GitHub operation: '+args.join(' '));
+  };
+  assert.deepEqual(ciReleaseRetainSingleOfficialVersion('crcfrcn/citizensdk',keepTag,{GH_TOKEN:'fixture'},call),
+   {retained:keepTag,deleted_releases:1,deleted_tags:1});
+  assert.deepEqual(deleted,['release:'+oldTag,'tag:'+orphanTag]);
+  assert.deepEqual(releases.map(item=>item.tag_name),[keepTag,'other-product-v4.0.0']);
+  assert.deepEqual(refs.map(item=>item.ref),['refs/tags/'+keepTag,'refs/tags/other-product-v4.0.0']);
  });
  test('SDK Run清理只删本仓main工作流的已完成旧Run并保护当前Run',()=>{
   const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:ciReleaseRepo,GITHUB_REF:'refs/heads/main',
