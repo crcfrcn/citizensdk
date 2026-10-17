@@ -653,18 +653,37 @@ int main() {
     assert(observed_code == CITIZENSDK_OK && observed_core != 0);
     assert(cpp_host.native_handle() == observed_core);
   }
-  MSG queued{};
-  while (PeekMessageW(&queued, nullptr, 0, 0, PM_REMOVE)) {
-    TranslateMessage(&queued);
-    DispatchMessageW(&queued);
+  // 已投递的 UI 退休消息与在途回调可跨一次消息泵；仅对真实 BUSY 有界重试。
+  const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  for (;;) {
+    MSG queued{};
+    while (PeekMessageW(&queued, nullptr, 0, 0, PM_REMOVE)) {
+      TranslateMessage(&queued);
+      DispatchMessageW(&queued);
+    }
+    try { cpp_host.close(); break; }
+    catch (const citizen_sdk::Error &error) {
+      if (error.code() != CITIZENSDK_ERROR_BUSY ||
+          std::chrono::steady_clock::now() >= close_deadline) {
+        citizensdk_handle_t remaining_core = 0;
+        const auto core_code = citizensdk_host_sdk(cpp_host.host_handle(), &remaining_core);
+        citizensdk_lifecycle_t lifecycle = 0;
+        const auto lifecycle_code = core_code == CITIZENSDK_OK
+            ? citizensdk_get_lifecycle(remaining_core, &lifecycle) : core_code;
+        std::fprintf(stderr,
+                     "CitizenSDK Windows C++ Host close failed code=%u host=%llu core_query=%u core=%llu lifecycle_query=%u lifecycle=%u\n",
+                     static_cast<unsigned>(error.code()),
+                     static_cast<unsigned long long>(cpp_host.host_handle()),
+                     static_cast<unsigned>(core_code),
+                     static_cast<unsigned long long>(remaining_core),
+                     static_cast<unsigned>(lifecycle_code),
+                     static_cast<unsigned>(lifecycle));
+        throw;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  try { cpp_host.close(); }
-  catch (const citizen_sdk::Error &error) {
-    std::fprintf(stderr, "CitizenSDK Windows C++ Host close failed code=%u\n",
-                 static_cast<unsigned>(error.code()));
-    throw;
-  }
-  assert(cpp_host.host_handle() == 0);
+  assert(cpp_host.host_handle() == 0 && cpp_host.native_handle() == 0);
 
   // 实际QR-only Core请求经过Host薄接纳桥；不读取真实钱包、链资产或设备金库。
   {

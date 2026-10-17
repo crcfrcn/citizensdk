@@ -60,8 +60,8 @@ jobs:
           test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
           # 基础镜像没有CA包；首次APT仍由Debian签名InRelease与包摘要验真。
           printf '%s\n' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20261001T000000Z bullseye main' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20261001T000000Z bullseye-security main' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260901T000000Z bullseye main' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260901T000000Z bullseye-security main' \
             > /etc/apt/sources.list
           rm -f /etc/apt/sources.list.d/debian.sources
           apt-get -o Acquire::Check-Valid-Until=false update
