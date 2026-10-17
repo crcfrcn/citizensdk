@@ -6863,7 +6863,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(androidCleanup.text,/release-cleanup-android-work/u);
   assert.doesNotMatch(compile.text,/cygpath -u/u,'Windows路径转换由产品入口统一完成');
   assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
-  assert.match(release,/needs: \[prepare, native, assemble, consume\]/u,
+  assert.match(release,/needs: \[prepare, native, native-linux, assemble, consume\]/u,
    'Tag/Release必须等待五平台正式构建与消费复验');
   assert.match(release,/actions: write/u,'正式发布Job必须把下一个补丁版本写回GitHub变量');
   const cargoRetention=workflow.slice(workflow.indexOf('\n  cargo-retention:'),workflow.indexOf('\n  run-retention:'));
@@ -6875,8 +6875,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'Cargo缓存清理必须在checkout之后的步骤级环境中计算锁文件哈希');
   assert.match(cargoCachePruneStep,/hashFiles\('\*\*\/Cargo\.lock'\)/u);
   assert.match(cargoRetention,/permissions:[\s\S]*actions: write/u,'Cargo缓存清理必须使用独立的Actions写权限Job');
+  assert.match(cargoRetention,/needs: \[native, native-linux\]/u,'五平台缓存清理须等待两组原生矩阵');
   assert.match(cargoRetention,/release-cache-prune/u,'Cargo缓存清理必须走本仓脚本');
-  assert.match(runRetention,/needs: \[prepare, native, assemble, consume, release, cargo-retention\]/u);
+  assert.match(runRetention,/needs: \[prepare, native, native-linux, assemble, consume, release, cargo-retention\]/u);
   assert.match(runRetention,/release-run-prune/u,'Run记录清理必须是最终Job并走本仓脚本');
   assert.doesNotMatch(runRetention,/continue-on-error/u,'Run清理失败必须失败关闭');
  });

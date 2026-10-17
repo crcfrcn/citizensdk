@@ -4264,3 +4264,5 @@ Run 39044524886 的 `prepare`、Android、macOS 已成功。LinuxARM 与 LinuxAM
 Run 39056915501 已证实上一轮 Linux QR 导出和 Windows 来源硬链接门禁通过；新的 LinuxARM/LinuxAMD 失败是 Ubuntu 24.04 构建的 Core 要求 `GLIBC_2.32`，高于既定 2.31 基线，Windows 14 项 CTest 中 C++ Host 关闭回归把任意 BUSY 当成 Core 已销毁。Android、macOS、prepare、五平台 Cargo 缓存清理和 Run 记录清理成功；原生矩阵未全过，组包、消费复验、Release 均跳过。
 
 Linux 构建候选改为同一 `sdk.yml` 内独立 `native-linux` 矩阵，两架构均使用已固定多架构摘要的官方 Debian 11 镜像。镜像先核对 GLIBC 2.31，以 2026-07-01 Debian 签名快照安装现有开发依赖，再使用本仓既有 CMake 3.31.6 平台归档、摘要及版本验收；Android、Apple、Windows 仍由原 `native` 矩阵构建。两组原生作业都必须成功，才允许组包、消费复验和 Release；缓存保留与末尾 Run 清理仍覆盖五平台。固定 GLIBC 2.31 及 ELF 动态依赖门禁保持不变。Windows 关闭回归改为依据 Host 当前真实 Core 状态核对 C++ 缓存句柄：BUSY 可发生在 Core 销毁前，最终成功关闭仍必须清零双句柄。以上候选须经下一次 GitHub 完整自动化验证，当前不宣称正式版已生成。
+
+Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖，且保持 Release 必须等待五平台与消费复验的条件；该 Run 未进入原生构建或生成正式资产。
