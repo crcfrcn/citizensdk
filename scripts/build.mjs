@@ -11,6 +11,8 @@ import {randomUUID as testRandomUUID} from 'node:crypto';
 // 本仓测试进程使用独立会话，子进程继承身份；正式Build仍使用固定平台现场。
 if(process.env.NODE_TEST_CONTEXT&&!process.env.PRODUCT_TEST_SESSION)process.env.PRODUCT_TEST_SESSION=testRandomUUID();
 const testSession=process.env.NODE_TEST_CONTEXT&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(process.env.PRODUCT_TEST_SESSION||'')?process.env.PRODUCT_TEST_SESSION:null;
+// 测试入口身份由模块顶层唯一判定；普通产品导入不得注册测试。
+const inlineTestEntry=Boolean(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename);
 
 function stableNativeContractValue(value){
  if(Array.isArray(value))return'['+value.map(stableNativeContractValue).join(',')+']';
@@ -8255,9 +8257,6 @@ async function commitCandidate(pending,target,{signal,verify}={}){
 
 
 
-// 正式产品导入不得启动合成测试；仅Node测试进程的准确入口允许登记用例。
-const inlineTestEntry=Boolean(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename);
-
 async function installTool(library,tool,options,visiting=new Set()){
 
 
@@ -11893,6 +11892,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
 
 if(inlineTestEntry){
  const {test}=await import('node:test');const assert=(await import('node:assert/strict')).default;
+ test('控制台普通导入本产品模块不触发测试或作用域错误',()=>{
+  const script='await import('+JSON.stringify(pathToFileURL(import.meta.filename).href)+')';
+  const child=spawnSync(process.execPath,['--input-type=module','-e',script],{
+   cwd:root,env:{PATH:process.env.PATH||'',HOME:process.env.HOME||''},encoding:'utf8',timeout:30000});
+  assert.equal(child.status,0,child.stderr?.slice(0,1000));
+  assert.equal(child.stdout,'');
+ });
  test('SDK完整回归入口拒绝非GitHub执行且不领取工作根',async()=>{
   await assert.rejects(ciTest({}),/仅允许本仓GitHub/);
  });
