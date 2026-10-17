@@ -6793,6 +6793,8 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const windowsTests=readFileSync(join(root,'windows/tests/CMakeLists.txt'),'utf8');
   assert.match(windowsTests,/"\$\{PROJECT_BINARY_DIR\}\/public"/u,
    'Windows原生测试支持必须复用正式Host的生成公共头文件投影');
+  assert.match(windowsTests,/CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1/u,
+   'Windows合同测试必须在失败时报告SQLite原生错误码');
   const windowsCmake=readFileSync(join(root,'windows/CMakeLists.txt'),'utf8');
   for(const [name,cmake] of [['正式Host',windowsCmake],['Windows测试支持',windowsTests]]){
    assert.match(cmake,/\bwinbio\b/u,name+'必须链接Windows Biometrics API');

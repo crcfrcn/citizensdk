@@ -1,5 +1,7 @@
 // 验证 Windows 新增的 Host/C++ 公共表面没有另造助记词、口令、DEK 或私钥旁路。
 #include <cassert>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -16,6 +18,7 @@
 #endif
 
 int main() {
+  try {
   using citizen_sdk::windows::HostError;
   using citizen_sdk::windows::copy_view;
 
@@ -79,4 +82,9 @@ int main() {
   for (const char *forbidden : {"present_wallet_flow", "WalletWindow", "FlutterWalletFlows", "exportPrivateKey"})
     assert(source.find(forbidden) == std::string::npos);
   return 0;
+  } catch (const std::exception &error) {
+    std::fprintf(stderr, "CitizenSDK Windows secret-boundary test exception: %s\n",
+                 error.what());
+    return 1;
+  }
 }

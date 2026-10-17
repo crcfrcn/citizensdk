@@ -64,7 +64,8 @@ add_library(citizensdk_windows_test_support STATIC ${_host_sources})
 target_compile_features(citizensdk_windows_test_support PUBLIC cxx_std_17)
 target_compile_definitions(citizensdk_windows_test_support PUBLIC
   WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 CITIZENSDK_HOST_BUILDING=1)
-target_compile_definitions(citizensdk_windows_test_support PRIVATE CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(citizensdk_windows_test_support PRIVATE
+  CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}" CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1)
 target_include_directories(citizensdk_windows_test_support PUBLIC
   "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../source"
   "${PROJECT_BINARY_DIR}/public" "${CITIZENSDK_CORE_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}"

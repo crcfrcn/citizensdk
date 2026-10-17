@@ -650,7 +650,21 @@ int main() {
     invalid.asset_root_utf8 = {nullptr, 0};
     invalid.enable_wallet = 0;
     assert(citizensdk_host_create_with_modules(&invalid, CITIZENSDK_MODULE_QR, &host) == CITIZENSDK_OK);
-    assert(citizensdk_host_create_sdk(host, &sdk) == CITIZENSDK_OK);
+    const auto create_sdk_code = citizensdk_host_create_sdk(host, &sdk);
+    if (create_sdk_code != CITIZENSDK_OK) {
+      uint64_t diagnostic_bytes = 0;
+      std::vector<uint8_t> diagnostic(1024);
+      if (citizensdk_host_last_error_copy(nullptr, 0, &diagnostic_bytes) == CITIZENSDK_OK &&
+          diagnostic_bytes <= diagnostic.size() &&
+          citizensdk_host_last_error_copy(diagnostic.data(), diagnostic.size(),
+                                          &diagnostic_bytes) == CITIZENSDK_OK) {
+        std::fprintf(stderr, "citizensdk_host_create_sdk failed (%u): %.*s\n",
+                     static_cast<unsigned>(create_sdk_code),
+                     static_cast<int>(diagnostic_bytes),
+                     reinterpret_cast<const char *>(diagnostic.data()));
+      }
+    }
+    assert(create_sdk_code == CITIZENSDK_OK);
     citizensdk_host_request_v1_t callbacks{
       sizeof(callbacks), CITIZENSDK_HOST_ABI_VERSION, &probe,
       +[](void *, citizensdk_handle_t core, citizensdk_request_id_t *out) {

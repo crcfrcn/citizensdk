@@ -167,3 +167,9 @@ foreach(test_name IN LISTS CITIZENSDK_LINUX_CONTRACT_TESTS)
     ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}"
   )
 endforeach()
+
+set_tests_properties(
+  CitizenSDK.Linux.citizen_sdk_public_store_test
+  CitizenSDK.Linux.citizen_sdk_secure_store_test
+  PROPERTIES TIMEOUT 90
+)

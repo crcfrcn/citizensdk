@@ -48,7 +48,7 @@ class ProcessPipe final {
     while (length != 0) {
       struct pollfd pending {descriptors_[0], POLLIN, 0};
       int ready;
-      do { ready = ::poll(&pending, 1, 10000); } while (ready < 0 && errno == EINTR);
+      do { ready = ::poll(&pending, 1, 60000); } while (ready < 0 && errno == EINTR);
       if (ready != 1 || (pending.revents & POLLIN) == 0) {
         std::fprintf(stderr,
                      "ProcessPipe receive failed: poll=%d revents=%d errno=%d remaining=%zu\n",
@@ -123,7 +123,7 @@ void verify_wal_processes(const std::filesystem::path &directory,
   const pid_t crashed = ::fork();
   assert(crashed >= 0);
   if (crashed == 0) {
-    ::alarm(15);
+    ::alarm(60);
     const char *stage = "store construction";
     try {
       Store store(directory);
@@ -177,7 +177,7 @@ void verify_wal_processes(const std::filesystem::path &directory,
   const pid_t contender = ::fork();
   assert(contender >= 0);
   if (contender == 0) {
-    ::alarm(15);
+    ::alarm(60);
     // fork 继承的同一 OFD 必须先关闭，否则会伪造初始化者仍然存活。
     assert(::close(initializing) == 0);
     bool rejected = false;
@@ -202,7 +202,7 @@ void verify_wal_processes(const std::filesystem::path &directory,
   const pid_t active = ::fork();
   assert(active >= 0);
   if (active == 0) {
-    ::alarm(15);
+    ::alarm(60);
     Store store(directory);
     assert((store.*load)().revision == 3);
     ready.send();

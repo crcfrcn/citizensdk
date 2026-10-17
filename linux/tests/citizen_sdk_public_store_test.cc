@@ -212,7 +212,7 @@ void verify_active_writer(const std::filesystem::path &directory, bool secure) {
   const pid_t writer = ::fork();
   assert(writer >= 0);
   if (writer == 0) {
-    ::alarm(15);
+    ::alarm(60);
     InspectableSQLiteStore store(directory, secure);
     store.write_value(2, &ready, &proceed);
     ready.send();

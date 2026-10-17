@@ -2,6 +2,7 @@
 #include "citizen_sdk_sqlite.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <array>
 #include <atomic>
 #include <cctype>
@@ -20,6 +21,14 @@
 namespace citizen_sdk::windows {
 namespace {
 HostError sqlite_error(sqlite3 *database, const char *message) {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+  if (database != nullptr) {
+    std::fprintf(stderr,
+                 "CitizenSDK SQLite test diagnostic: operation=%s primary=%d extended=%d\n",
+                 message == nullptr ? "unknown" : message,
+                 sqlite3_errcode(database), sqlite3_extended_errcode(database));
+  }
+#endif
   return HostError(CITIZENSDK_ERROR_STORAGE,
                    database == nullptr ? message : sqlite3_errmsg(database));
 }
