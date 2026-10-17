@@ -8161,6 +8161,8 @@ async function acceptToolSupply(tool,value){
  if(!isAbsolute(payload)||value.path!==join(payload,archive.executable))fail('产品工具交付路径不符');
  await validateToolPayload(tool,payload);return value;
 }
+// 正式产品导入不得启动合成测试；仅Node测试进程的准确入口允许登记用例。
+const inlineTestEntry=Boolean(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename);
 if(inlineTestEntry){
  const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
  test('通用供给合同：本产品验收入口、版本及Rust组件，冷热领取使用同一检查',async t=>{
