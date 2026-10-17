@@ -1001,7 +1001,7 @@ target，Criterion 性能基准中的随机输入不作为确定性 CI 测试执
 不读取、下载或比较 CI 资产；再从同一 source SHA 独立执行检查、测试、原生构建和候选
 生成。流程强调准确来源、重新验证和重新构建，不宣称不同 Runner/run 的 tgz 天然逐字节一致。
 
-正式Tag前缀为`citizensdk-sdk-v`，GitHub正式Release只公开唯一`citizensdk.tgz`。外部调用方只核对
+正式Tag与Release标题使用`公民SDK-vX.Y.Z`，GitHub Run名称读取下一正式版本变量，Release列表与Tag列表只保留最新一条，只公开唯一`citizensdk.tgz`。发布成功后推进补丁版本变量。外部调用方只核对
 不验证SDK内部平台实现，也不维护外部manifest或校验和资产。Release终态只形成待发布目标，不自动
 上传pub.dev。
 

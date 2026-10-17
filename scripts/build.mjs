@@ -6287,12 +6287,14 @@ export function ciReleaseVersion(environment=process.env,{call=spawnSync}={}){
   if(response.status!==0)fail('SDK 历史 Release 读取失败');
   const rows=JSON.parse(response.stdout);if(!Array.isArray(rows)||rows.length>100)fail('SDK Release 分页无效');
   for(const row of rows){if(row?.draft||row?.prerelease)continue;
-   const match=/^citizensdk-sdk-v([0-9]+)\.([0-9]+)\.([0-9]+)-r[1-9][0-9]*-a[1-9][0-9]*$/u.exec(row?.tag_name||'');
+   const match=/^公民SDK-v([0-9]+)\.([0-9]+)\.([0-9]+)$/u.exec(row?.tag_name||'');
    if(match)highest=Math.max(highest,ordinal(match.slice(1))+1);}
   if(rows.length<100)break;if(page===999)fail('SDK Release 分页超限');
  }
  const version=Math.floor(highest/10000)+'.'+Math.floor(highest/100)%100+'.'+highest%100;
- const tag='citizensdk-sdk-v'+version+'-r'+environment.GITHUB_RUN_ID+'-a'+environment.GITHUB_RUN_ATTEMPT;
+ if(environment.EXPECTED_RELEASE_VERSION&&environment.EXPECTED_RELEASE_VERSION!==version)
+  fail('SDK GitHub Run显示版本与正式Release下一个版本不一致');
+ const tag='公民SDK-v'+version;
  if(typeof environment.GITHUB_OUTPUT!=='string'||!isAbsolute(environment.GITHUB_OUTPUT))fail('GitHub 版本输出缺失');
  writeFileSync(environment.GITHUB_OUTPUT,'version='+version+'\ntag='+tag+'\n',{flag:'a'});
  return {version,tag};
@@ -6390,14 +6392,14 @@ export function ciReleaseCleanupAndroidWork(environment=process.env){
 }
 
 // 五宿主和消费验收全部成功后，本仓只创建一份正式 SDK Release。
-const ciReleaseOfficialTagPattern=/^citizensdk-sdk-v[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*-a[1-9][0-9]*$/u;
+const ciReleaseOfficialTagPattern=/^公民SDK-v[0-9]+\.[0-9]+\.[0-9]+$/u;
 export function ciReleaseRetainSingleOfficialVersion(repository,keepTag,environment=process.env,call=spawnSync){
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)||!ciReleaseOfficialTagPattern.test(keepTag))
   fail('SDK正式版本保留坐标无效');
  const gh=args=>{const result=call('gh',args,{cwd:root,env:environment,encoding:'utf8',maxBuffer:8*1024**2});
   if(result.status!==0)fail('SDK正式版本保留操作失败：'+(result.stderr||'').slice(0,800));return result.stdout.trim();};
  const rows=args=>{const output=gh(args);return output?output.split('\n').filter(Boolean).map(line=>JSON.parse(line)):[];};
- const releaseRoute='repos/'+repository+'/releases?per_page=100',tagRoute='repos/'+repository+'/git/matching-refs/tags/citizensdk-sdk-v';
+ const releaseRoute='repos/'+repository+'/releases?per_page=100',tagRoute='repos/'+repository+'/git/matching-refs/tags/';
  const officialReleases=()=>rows(['api','--paginate','--jq','.[] | @json',releaseRoute])
   .filter(release=>ciReleaseOfficialTagPattern.test(release?.tag_name||''));
  const officialTags=()=>rows(['api','--paginate','--jq','.[] | @json',tagRoute])
@@ -6412,7 +6414,7 @@ export function ciReleaseRetainSingleOfficialVersion(repository,keepTag,environm
   if(name!==keepTag){gh(['api','--method','DELETE','repos/'+repository+'/git/refs/tags/'+encodeURIComponent(name)]);deletedTags++;}
  }
  const releases=officialReleases(),tags=officialTags();
- if(releases.length!==1||releases[0].tag_name!==keepTag||releases[0].draft||releases[0].prerelease
+ if(releases.length!==1||releases[0].tag_name!==keepTag||releases[0].name!==keepTag||releases[0].draft||releases[0].prerelease
   ||tags.length!==1||tags[0].ref!=='refs/tags/'+keepTag)
   fail('CitizenSDK必须只保留本次正式Release与Tag');
  return {retained:keepTag,deleted_releases:deletedReleases,deleted_tags:deletedTags};
@@ -6426,7 +6428,7 @@ export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
   ||environment.GITHUB_WORKFLOW_REF!==repo+'/.github/workflows/sdk.yml@refs/heads/main'
   ||!/^[a-f0-9]{40}$/u.test(sha||'')||!/^[0-9]+\.[0-9]+\.[0-9]+$/u.test(version||'')
   ||![run,attempt].every(value=>/^[1-9][0-9]*$/u.test(value||'')&&Number.isSafeInteger(Number(value)))
-  ||tag!=='citizensdk-sdk-v'+version+'-r'+run+'-a'+attempt||!environment.GH_TOKEN
+  ||tag!=='公民SDK-v'+version||!environment.GH_TOKEN
   ||call('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout?.trim()!==sha)
   fail('GitHub 单包 Release 身份无效');
  const candidate=join(environment.RUNNER_TEMP,'citizensdk-candidate'),archive=join(environment.RUNNER_TEMP,'citizensdk-release/citizensdk.tgz'),
@@ -6459,7 +6461,11 @@ export function ciReleaseGitHub(environment=process.env,{call=spawnSync}={}){
  }catch(error){if(created)try{gh(['release','delete',tag,'--repo',repo,'--yes','--cleanup-tag']);}
   catch(cleanup){throw Error(error.message+'；本轮 Release 撤销未确认：'+cleanup.message);}throw error;}
  const retention=ciReleaseRetainSingleOfficialVersion(repo,tag,environment,call);
- return {tag,release_id:final.id,asset:'citizensdk.tgz',...retention};
+ const [major,minor,patch]=version.split('.').map(Number);
+ if(!Number.isSafeInteger(patch)||patch>=Number.MAX_SAFE_INTEGER)fail('SDK下一个补丁版本越界');
+ const nextVersion=major+'.'+minor+'.'+(patch+1);
+ gh(['variable','set','CITIZENSDK_NEXT_VERSION','--repo',repo,'--body',nextVersion]);
+ return {tag,version,next_version:nextVersion,release_id:final.id,asset:'citizensdk.tgz',...retention};
 }
 
 const ciReleaseRepo='crcfrcn/citizensdk';
@@ -6585,9 +6591,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.throws(()=>ciReleaseGitHub({}),/身份无效/u);
  });
  test('正式SDK Release发布后只保留本仓最新官方版本Tag与Release',()=>{
-  const oldTag='citizensdk-sdk-v1.0.0-r10-a1',keepTag='citizensdk-sdk-v1.0.1-r50-a1',orphanTag='citizensdk-sdk-v0.9.9-r8-a1';
-  const releaseRoute='repos/crcfrcn/citizensdk/releases?per_page=100',tagRoute='repos/crcfrcn/citizensdk/git/matching-refs/tags/citizensdk-sdk-v';
-  let releases=[{tag_name:oldTag,draft:false,prerelease:false},{tag_name:keepTag,draft:false,prerelease:false},
+  const oldTag='公民SDK-v1.0.0',keepTag='公民SDK-v1.0.1',orphanTag='公民SDK-v0.9.9';
+  const releaseRoute='repos/crcfrcn/citizensdk/releases?per_page=100',tagRoute='repos/crcfrcn/citizensdk/git/matching-refs/tags/';
+  let releases=[{tag_name:oldTag,name:oldTag,draft:false,prerelease:false},{tag_name:keepTag,name:keepTag,draft:false,prerelease:false},
    {tag_name:'other-product-v4.0.0',draft:false,prerelease:false}];
   let refs=[oldTag,keepTag,orphanTag,'other-product-v4.0.0'].map(name=>({ref:'refs/tags/'+name,
    object:{type:'commit',sha:'a'.repeat(40)}}));const deleted=[];
@@ -6686,6 +6692,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
  });
   test('正式工作流固定Apple与Android引擎并按锁准备工具',()=>{
   const workflow=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8');
+  assert.match(workflow,/^run-name: "公民SDK-v\$\{\{ vars\.CITIZENSDK_NEXT_VERSION \|\| '1\.0\.0' \}\}"$/mu,
+   'GitHub SDK Run名称必须展示下一个正式版本');
+  assert.match(workflow,/EXPECTED_RELEASE_VERSION: "\$\{\{ vars\.CITIZENSDK_NEXT_VERSION \|\| '1\.0\.0' \}\}"/u,
+   'GitHub SDK回归必须核对Run显示版本与候选正式版本');
   const step=(name)=>{
    const start=workflow.indexOf('      - name: '+name+'\n');
    assert.notEqual(start,-1,'工作流缺少步骤：'+name);
@@ -6754,7 +6764,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
   assert.match(sqliteSource,/kDmsLockRetryLimit = 100/u,
    'Linux WAL DMS初始化锁竞争必须在有界窗口内重试');
-  assert.match(sqliteSource,/stage=initialize-dms-contention-timeout/u,
+  assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-dms-contention-timeout",\s*ETIMEDOUT\)/u,
    'Linux WAL DMS初始化锁竞争超时必须准确诊断');
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-set-exclusive-dms"/u,
    'Linux WAL DMS独占锁获取失败必须记录errno');
@@ -6809,6 +6819,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
   assert.match(release,/needs: \[prepare, native, assemble, consume\]/u,
    'Tag/Release必须等待五平台正式构建与消费复验');
+  assert.match(release,/actions: write/u,'正式发布Job必须把下一个补丁版本写回GitHub变量');
   const cargoRetention=workflow.slice(workflow.indexOf('\n  cargo-retention:'),workflow.indexOf('\n  run-retention:'));
   const runRetention=workflow.slice(workflow.indexOf('\n  run-retention:'));
   const cargoRetentionJobEnv=cargoRetention.slice(0,cargoRetention.indexOf('    steps:'));
