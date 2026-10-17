@@ -641,7 +641,7 @@ int main() {
       std::atomic<citizensdk_request_id_t> delivered{0};
       std::mutex mutex;
       std::condition_variable changed;
-    } probe;
+    } request_probe;
     // 视图不能借用临时字符串；命名空间在本组全部调用期间保持存活。
     const std::string request_namespace = "org.citizen.requestfixture";
     invalid.application_id_utf8 = view(request_namespace);
@@ -650,7 +650,7 @@ int main() {
     assert(citizensdk_host_create_with_modules(&invalid, CITIZENSDK_MODULE_QR, &host) == CITIZENSDK_OK);
     assert(citizensdk_host_create_sdk(host, &sdk) == CITIZENSDK_OK);
     citizensdk_host_request_v1_t callbacks{
-      sizeof(callbacks), CITIZENSDK_HOST_ABI_VERSION, &probe,
+      sizeof(callbacks), CITIZENSDK_HOST_ABI_VERSION, &request_probe,
       +[](void *, citizensdk_handle_t core, citizensdk_request_id_t *out) {
         return citizensdk_refresh_capabilities(core, out);
       },
@@ -674,20 +674,20 @@ int main() {
     citizensdk_request_id_t request = 99;
     auto malformed = callbacks; malformed.struct_size = 0;
     assert(citizensdk_host_submit_request(host, &malformed, &request) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
-    assert(request == 0 && probe.retains == 0);
+    assert(request == 0 && request_probe.retains == 0);
     assert(citizensdk_host_submit_request(0, &callbacks, &request) == CITIZENSDK_ERROR_INVALID_HANDLE);
-    assert(request == 0 && probe.retains == 0);
+    assert(request == 0 && request_probe.retains == 0);
     assert(citizensdk_host_submit_request(host, &callbacks, &request) == CITIZENSDK_OK && request != 0);
     {
-      std::unique_lock<std::mutex> guard(probe.mutex);
-      assert(probe.changed.wait_for(guard, std::chrono::seconds(5), [&] { return probe.releases == 1; }));
+      std::unique_lock<std::mutex> guard(request_probe.mutex);
+      assert(request_probe.changed.wait_for(guard, std::chrono::seconds(5), [&] { return request_probe.releases == 1; }));
     }
-    assert(probe.retains == 1 && probe.completions == 1 && probe.delivered == request);
+    assert(request_probe.retains == 1 && request_probe.completions == 1 && request_probe.delivered == request);
     callbacks.accept = +[](void *, citizensdk_handle_t, citizensdk_request_id_t *out) {
       *out = 0; return CITIZENSDK_ERROR_INVALID_ARGUMENT;
     };
     assert(citizensdk_host_submit_request(host, &callbacks, &request) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
-    assert(request == 0 && probe.retains == 2 && probe.releases == 2 && probe.completions == 1);
+    assert(request == 0 && request_probe.retains == 2 && request_probe.releases == 2 && request_probe.completions == 1);
     // 回调release完成不等于Core派发栈已退出；关闭只重试真实BUSY。
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     auto closed = citizensdk_host_destroy(host);

@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifndef SQLITE_OPEN_NOFOLLOW
@@ -738,53 +739,58 @@ class OpenAtSQLiteVfs final {
 
   static int initialize_shared_memory(FileState &state) noexcept {
     if (!shared_memory_matches_path(state)) return SQLITE_IOERR_SHMOPEN;
-    struct flock lock {};
-    lock.l_type = F_WRLCK;
-    lock.l_whence = SEEK_SET;
-    lock.l_start = UNIX_SHM_DMS;
-    lock.l_len = 1;
-    int result;
-    do { result = ::fcntl(state.shared_memory_descriptor, F_OFD_GETLK, &lock); }
-    while (result != 0 && errno == EINTR);
-    if (result != 0) {
-      const int error = errno;
-      sqlite_test_shm_diagnostic("initialize-F_OFD_GETLK", error);
-      return SQLITE_IOERR_SHMLOCK;
-    }
-    if (lock.l_type == F_WRLCK) {
-#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
-      std::fprintf(stderr,
-                   "CitizenSDK SQLite SHM test diagnostic: stage=initialize-existing-exclusive-dms lock_type=%d\n",
-                   static_cast<int>(lock.l_type));
-#endif
-      return SQLITE_BUSY;
-    }
-    if (lock.l_type == F_UNLCK) {
-      const int code = set_lock(state.shared_memory_descriptor, F_WRLCK,
-                                UNIX_SHM_DMS, 1);
-      if (code != SQLITE_OK) {
-        sqlite_test_shm_diagnostic("initialize-set-exclusive-dms", errno);
-        return code;
-      }
-      // 只有独占 DMS 证明不存在存活连接后才清除非持久 WAL 索引。
-      // 与官方 Unix VFS 一样截为 3 字节，让 SQLite 从 WAL 重建；
-      // 数据库和 WAL 始终保留，不能拿旧 SHM 的自洽校验代替恢复。
-      if (!shared_memory_matches_path(state)) return SQLITE_IOERR_SHMOPEN;
-      do { result = ::ftruncate(state.shared_memory_descriptor, 3); }
+    constexpr unsigned kDmsLockRetryLimit = 100;
+    const timespec retry_delay{0, 1000 * 1000};
+    for (unsigned attempt = 0; attempt < kDmsLockRetryLimit; ++attempt) {
+      struct flock lock {};
+      lock.l_type = F_WRLCK;
+      lock.l_whence = SEEK_SET;
+      lock.l_start = UNIX_SHM_DMS;
+      lock.l_len = 1;
+      int result;
+      do { result = ::fcntl(state.shared_memory_descriptor, F_OFD_GETLK, &lock); }
       while (result != 0 && errno == EINTR);
       if (result != 0) {
         const int error = errno;
-        sqlite_test_shm_diagnostic("initialize-ftruncate", error);
-        return SQLITE_IOERR_SHMSIZE;
+        sqlite_test_shm_diagnostic("initialize-F_OFD_GETLK", error);
+        return SQLITE_IOERR_SHMLOCK;
       }
+      if (lock.l_type == F_UNLCK) {
+        const int exclusive = set_lock(state.shared_memory_descriptor, F_WRLCK,
+                                       UNIX_SHM_DMS, 1);
+        if (exclusive == SQLITE_BUSY) {
+          (void)::nanosleep(&retry_delay, nullptr);
+          continue;
+        }
+        if (exclusive != SQLITE_OK) {
+          sqlite_test_shm_diagnostic("initialize-set-exclusive-dms", errno);
+          return exclusive;
+        }
+        // 只有独占 DMS 证明不存在存活连接后才清除非持久 WAL 索引。
+        // 与官方 Unix VFS 一样截为 3 字节，让 SQLite 从 WAL 重建；
+        // 数据库和 WAL 始终保留，不能拿旧 SHM 的自洽校验代替恢复。
+        if (!shared_memory_matches_path(state)) return SQLITE_IOERR_SHMOPEN;
+        do { result = ::ftruncate(state.shared_memory_descriptor, 3); }
+        while (result != 0 && errno == EINTR);
+        if (result != 0) {
+          const int error = errno;
+          sqlite_test_shm_diagnostic("initialize-ftruncate", error);
+          return SQLITE_IOERR_SHMSIZE;
+        }
+      }
+      // 初始化者短暂独占DMS时等待其完成并降为共享；忙锁只在有界窗口
+      // 内重试，避免首个xShmMap把并发连接初始化误报为磁盘I/O失败。
+      const int shared = set_lock(state.shared_memory_descriptor, F_RDLCK,
+                                  UNIX_SHM_DMS, 1);
+      if (shared == SQLITE_OK) return SQLITE_OK;
+      if (shared != SQLITE_BUSY) {
+        sqlite_test_shm_diagnostic("initialize-set-shared-dms", errno);
+        return shared;
+      }
+      (void)::nanosleep(&retry_delay, nullptr);
     }
-    // 获取/降级为共享 DMS 后一直持有至 unmap/close，禁止先解锁再 mmap。
-    const int code = set_lock(state.shared_memory_descriptor, F_RDLCK,
-                              UNIX_SHM_DMS, 1);
-    if (code != SQLITE_OK) {
-      sqlite_test_shm_diagnostic("initialize-set-shared-dms", errno);
-    }
-    return code;
+    sqlite_test_shm_diagnostic("initialize-dms-contention-timeout", ETIMEDOUT);
+    return SQLITE_BUSY;
   }
 
   static int shared_memory_map_impl(sqlite3_file *value, int page,

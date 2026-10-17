@@ -242,10 +242,14 @@ class InspectableSQLiteStore final : public citizen_sdk::windows::SQLiteStore {
 
   void rollback_fixture() {
     bool rejected = false;
+    std::atomic<bool> rollback_requested{true};
     try {
       (void)transaction([&](sqlite3 *database) -> bool {
-        execute(database, "INSERT INTO contract_record(identity,value) VALUES(1,X'01')");
-        throw citizen_sdk::windows::HostError(CITIZENSDK_ERROR_CANCELLED, "test precommit failure");
+        if (rollback_requested.exchange(false, std::memory_order_relaxed)) {
+          execute(database, "INSERT INTO contract_record(identity,value) VALUES(1,X'01')");
+          throw citizen_sdk::windows::HostError(CITIZENSDK_ERROR_CANCELLED, "test precommit failure");
+        }
+        return false;
       });
     } catch (const citizen_sdk::windows::HostError &error) {
       rejected = error.code() == CITIZENSDK_ERROR_CANCELLED;

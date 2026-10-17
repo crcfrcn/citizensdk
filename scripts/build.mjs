@@ -6691,8 +6691,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const sqliteSource=readFileSync(join(root,'linux/source/citizen_sdk_sqlite.cc'),'utf8');
   assert.match(sqliteSource,/CitizenSDK SQLite SHM test diagnostic/u,
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
-  assert.match(sqliteSource,/stage=initialize-existing-exclusive-dms/u,
-   'Linux WAL DMS写锁竞争必须记录导致SQLITE_BUSY的阶段');
+  assert.match(sqliteSource,/kDmsLockRetryLimit = 100/u,
+   'Linux WAL DMS初始化锁竞争必须在有界窗口内重试');
+  assert.match(sqliteSource,/stage=initialize-dms-contention-timeout/u,
+   'Linux WAL DMS初始化锁竞争超时必须准确诊断');
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-set-exclusive-dms"/u,
    'Linux WAL DMS独占锁获取失败必须记录errno');
   assert.doesNotMatch(sqliteSource,/extend\s*!=\s*0\s*&&\s*extend\s*!=\s*1/u,
@@ -6725,6 +6727,12 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'MSVC /WX 测试夹具必须使用安全环境变量读取入口');
   assert.doesNotMatch(windowsTestSupport,/std::getenv\(/u,
    'Windows测试夹具不得触发CRT不安全 getenv 警告');
+  const windowsApiTest=readFileSync(join(root,'windows/tests/citizen_sdk_api_contract_test.cc'),'utf8');
+  assert.match(windowsApiTest,/\} request_probe;/u,
+   'Windows QR-only请求回归不得遮蔽前面的摄像头probe');
+  const windowsPublicStoreTest=readFileSync(join(root,'windows/tests/citizen_sdk_public_store_test.cc'),'utf8');
+  assert.match(windowsPublicStoreTest,/std::atomic<bool> rollback_requested\{true\}/u,
+   'Windows回滚夹具必须保留编译器不可静态判定的失败分支');
   const windowsDirectory=readFileSync(join(root,'windows/source/citizen_sdk_directory.cc'),'utf8');
   assert.match(windowsDirectory,/missing_allowed[\s\S]*?return UniqueHandle\{\};/u,
    'Windows相对文件缺失必须显式构造空UniqueHandle');
