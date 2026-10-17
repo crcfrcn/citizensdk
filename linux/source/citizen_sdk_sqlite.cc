@@ -751,11 +751,21 @@ class OpenAtSQLiteVfs final {
       sqlite_test_shm_diagnostic("initialize-F_OFD_GETLK", error);
       return SQLITE_IOERR_SHMLOCK;
     }
-    if (lock.l_type == F_WRLCK) return SQLITE_BUSY;
+    if (lock.l_type == F_WRLCK) {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+      std::fprintf(stderr,
+                   "CitizenSDK SQLite SHM test diagnostic: stage=initialize-existing-exclusive-dms lock_type=%d\n",
+                   static_cast<int>(lock.l_type));
+#endif
+      return SQLITE_BUSY;
+    }
     if (lock.l_type == F_UNLCK) {
       const int code = set_lock(state.shared_memory_descriptor, F_WRLCK,
                                 UNIX_SHM_DMS, 1);
-      if (code != SQLITE_OK) return code;
+      if (code != SQLITE_OK) {
+        sqlite_test_shm_diagnostic("initialize-set-exclusive-dms", errno);
+        return code;
+      }
       // 只有独占 DMS 证明不存在存活连接后才清除非持久 WAL 索引。
       // 与官方 Unix VFS 一样截为 3 字节，让 SQLite 从 WAL 重建；
       // 数据库和 WAL 始终保留，不能拿旧 SHM 的自洽校验代替恢复。
@@ -769,7 +779,12 @@ class OpenAtSQLiteVfs final {
       }
     }
     // 获取/降级为共享 DMS 后一直持有至 unmap/close，禁止先解锁再 mmap。
-    return set_lock(state.shared_memory_descriptor, F_RDLCK, UNIX_SHM_DMS, 1);
+    const int code = set_lock(state.shared_memory_descriptor, F_RDLCK,
+                              UNIX_SHM_DMS, 1);
+    if (code != SQLITE_OK) {
+      sqlite_test_shm_diagnostic("initialize-set-shared-dms", errno);
+    }
+    return code;
   }
 
   static int shared_memory_map_impl(sqlite3_file *value, int page,

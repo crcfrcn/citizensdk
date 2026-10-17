@@ -6691,6 +6691,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const sqliteSource=readFileSync(join(root,'linux/source/citizen_sdk_sqlite.cc'),'utf8');
   assert.match(sqliteSource,/CitizenSDK SQLite SHM test diagnostic/u,
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
+  assert.match(sqliteSource,/stage=initialize-existing-exclusive-dms/u,
+   'Linux WAL DMS写锁竞争必须记录导致SQLITE_BUSY的阶段');
+  assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-set-exclusive-dms"/u,
+   'Linux WAL DMS独占锁获取失败必须记录errno');
   assert.doesNotMatch(sqliteSource,/extend\s*!=\s*0\s*&&\s*extend\s*!=\s*1/u,
    'SQLite xShmMap 的扩展参数按零/非零标记解释，不限于1');
   assert.match(sqliteSource,/if\s*\(extend\s*==\s*0\)\s*return SQLITE_OK/u,
@@ -6711,6 +6715,16 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const windowsTests=readFileSync(join(root,'windows/tests/CMakeLists.txt'),'utf8');
   assert.match(windowsTests,/"\$\{PROJECT_BINARY_DIR\}\/public"/u,
    'Windows原生测试支持必须复用正式Host的生成公共头文件投影');
+  const windowsCmake=readFileSync(join(root,'windows/CMakeLists.txt'),'utf8');
+  for(const [name,cmake] of [['正式Host',windowsCmake],['Windows测试支持',windowsTests]]){
+   assert.match(cmake,/\bwinbio\b/u,name+'必须链接Windows Biometrics API');
+   assert.match(cmake,/\bmf\b/u,name+'必须链接Media Foundation设备枚举API');
+  }
+  const windowsTestSupport=readFileSync(join(root,'windows/tests/citizen_sdk_test_support.hpp'),'utf8');
+  assert.match(windowsTestSupport,/_dupenv_s\(/u,
+   'MSVC /WX 测试夹具必须使用安全环境变量读取入口');
+  assert.doesNotMatch(windowsTestSupport,/std::getenv\(/u,
+   'Windows测试夹具不得触发CRT不安全 getenv 警告');
   const windowsDirectory=readFileSync(join(root,'windows/source/citizen_sdk_directory.cc'),'utf8');
   assert.match(windowsDirectory,/missing_allowed[\s\S]*?return UniqueHandle\{\};/u,
    'Windows相对文件缺失必须显式构造空UniqueHandle');

@@ -22,10 +22,17 @@ class TempDirectory final {
   explicit TempDirectory(const std::string &label) {
     if (label.empty() || label.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-") != std::string::npos)
       throw std::invalid_argument("CitizenSDK test label is invalid");
-    const char *configured = std::getenv("CITIZENSDK_TEST_WORK_DIR");
-    if (configured == nullptr || configured[0] == '\0')
+    char *configured_value = nullptr;
+    std::size_t configured_length = 0;
+    if (_dupenv_s(&configured_value, &configured_length,
+                  "CITIZENSDK_TEST_WORK_DIR") != 0) {
       throw std::runtime_error("CITIZENSDK_TEST_WORK_DIR is required and has no fallback");
-    const auto work = std::filesystem::u8path(configured);
+    }
+    const std::unique_ptr<char, decltype(&std::free)> configured(
+        configured_value, &std::free);
+    if (!configured || configured_length <= 1 || configured.get()[0] == '\0')
+      throw std::runtime_error("CITIZENSDK_TEST_WORK_DIR is required and has no fallback");
+    const auto work = std::filesystem::u8path(configured.get());
     parent_ = std::make_unique<Directory>(work);
     std::array<unsigned char, 16> random{};
     if (BCryptGenRandom(nullptr, random.data(), static_cast<ULONG>(random.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0)

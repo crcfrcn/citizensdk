@@ -121,7 +121,7 @@ target_include_directories(citizensdk_host PUBLIC
   PRIVATE source "${CITIZENSDK_INTERNAL_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}")
 target_link_libraries(citizensdk_host PUBLIC
   "$<BUILD_INTERFACE:citizensdk_core>" "$<INSTALL_INTERFACE:CitizenSDK::Core>"
-  PRIVATE CitizenSDK::QrImage "${CITIZENSDK_SQLITE_ARCHIVE}" winbio ncrypt bcrypt tbs advapi32 user32 gdi32 comctl32 ntdll wtsapi32 mfplat mfreadwrite mfuuid ole32 windowscodecs)
+  PRIVATE CitizenSDK::QrImage "${CITIZENSDK_SQLITE_ARCHIVE}" winbio ncrypt bcrypt tbs advapi32 user32 gdi32 comctl32 ntdll wtsapi32 mf mfplat mfreadwrite mfuuid ole32 windowscodecs)
 target_compile_options(citizensdk_host PRIVATE /W4 /permissive- /utf-8 /EHsc
   $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)
 target_link_options(citizensdk_host PRIVATE /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
