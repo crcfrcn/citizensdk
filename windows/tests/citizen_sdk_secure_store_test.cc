@@ -1,6 +1,7 @@
 // 来源：Linux secure store 合同测试；仅将权限/文件和 TPM 公开对象改为 Windows 适配。
 // 验证 profile/密文隔离、CAS 和 generation 永久退休，不冒充 TPM 硬件测试。
 #include <cassert>
+#include <cstdio>
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
@@ -51,9 +52,13 @@ void widen_test_file(const std::filesystem::path &path) {
   PACL dacl = nullptr;
   BOOL present = FALSE, defaulted = FALSE;
   assert(GetSecurityDescriptorDacl(descriptor, &present, &dacl, &defaulted) && present && dacl);
-  assert(SetSecurityInfo(file.get(), SE_FILE_OBJECT,
+  const DWORD result = SetSecurityInfo(file.get(), SE_FILE_OBJECT,
       DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-      nullptr, nullptr, dacl, nullptr) == ERROR_SUCCESS);
+      nullptr, nullptr, dacl, nullptr);
+  if (result != ERROR_SUCCESS)
+    std::fprintf(stderr, "CitizenSDK Windows secure-store ACL widen failed code=%lu\n",
+                 static_cast<unsigned long>(result));
+  assert(result == ERROR_SUCCESS);
   LocalFree(descriptor);
 }
 

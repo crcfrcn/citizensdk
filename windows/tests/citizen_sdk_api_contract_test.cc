@@ -631,8 +631,15 @@ int main() {
   cpp_config.asset_root = std::filesystem::path(CITIZENSDK_WINDOWS_TEST_SOURCE_DIR).parent_path() /
                           "chain";
   cpp_config.application_id = "org.citizen.closefixture";
+  // 测试源根由 CMake 规范化；资产根必须指向本仓真实链清单。
+  assert(std::filesystem::is_regular_file(cpp_config.asset_root / "manifest.json"));
   citizen_sdk::Host cpp_host(cpp_config);
-  cpp_host.open();
+  try { cpp_host.open(); }
+  catch (const citizen_sdk::Error &error) {
+    std::fprintf(stderr, "CitizenSDK Windows C++ Host open failed code=%u\n",
+                 static_cast<unsigned>(error.code()));
+    throw;
+  }
   bool worker_busy = false;
   std::thread closer([&] {
     try { cpp_host.close(); }
@@ -646,7 +653,12 @@ int main() {
     TranslateMessage(&queued);
     DispatchMessageW(&queued);
   }
-  cpp_host.close();
+  try { cpp_host.close(); }
+  catch (const citizen_sdk::Error &error) {
+    std::fprintf(stderr, "CitizenSDK Windows C++ Host close failed code=%u\n",
+                 static_cast<unsigned>(error.code()));
+    throw;
+  }
   assert(cpp_host.host_handle() == 0);
 
   // 实际QR-only Core请求经过Host薄接纳桥；不读取真实钱包、链资产或设备金库。

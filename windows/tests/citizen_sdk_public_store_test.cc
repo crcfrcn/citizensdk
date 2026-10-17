@@ -1,5 +1,6 @@
 // 来源：Linux public store 用例；Windows DACL/HANDLE/锁差异显式适配。验证 public store 忠实实现根 ABI 的 revision CAS 与 domain 隔离。
 #include <cassert>
+#include <cstdio>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -95,9 +96,13 @@ void widen_test_file(const std::filesystem::path &path) {
   PACL dacl = nullptr;
   BOOL present = FALSE, defaulted = FALSE;
   assert(GetSecurityDescriptorDacl(descriptor, &present, &dacl, &defaulted) && present && dacl);
-  assert(SetSecurityInfo(file.get(), SE_FILE_OBJECT,
+  const DWORD result = SetSecurityInfo(file.get(), SE_FILE_OBJECT,
       DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-      nullptr, nullptr, dacl, nullptr) == ERROR_SUCCESS);
+      nullptr, nullptr, dacl, nullptr);
+  if (result != ERROR_SUCCESS)
+    std::fprintf(stderr, "CitizenSDK Windows public-store ACL widen failed code=%lu\n",
+                 static_cast<unsigned long>(result));
+  assert(result == ERROR_SUCCESS);
   LocalFree(descriptor);
 }
 
@@ -116,9 +121,13 @@ class SavedTestDacl final {
   ~SavedTestDacl() { LocalFree(descriptor_); }
   void restore() {
     // 仅恢复本测试刚改动的中央临时对象；生产代码绝不修补用户 ACL。
-    assert(SetSecurityInfo(handle_.get(), SE_FILE_OBJECT,
+    const DWORD result = SetSecurityInfo(handle_.get(), SE_FILE_OBJECT,
         DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-        nullptr, nullptr, dacl_, nullptr) == ERROR_SUCCESS);
+        nullptr, nullptr, dacl_, nullptr);
+    if (result != ERROR_SUCCESS)
+      std::fprintf(stderr, "CitizenSDK Windows public-store ACL restore failed code=%lu\n",
+                   static_cast<unsigned long>(result));
+    assert(result == ERROR_SUCCESS);
   }
  private:
   citizen_sdk::windows::UniqueHandle handle_;

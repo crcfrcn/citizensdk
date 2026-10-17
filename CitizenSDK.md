@@ -4230,3 +4230,7 @@ SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，�
 ## 塔塔自动化远端任务归属
 
 本产品现有 `scripts/build.mjs` 提供 `startAutomation(route, action, host)`、`recoverAutomation(task, route, host)` 和独立模式的 `dispatchAutomation(platform, token, options)`。产品按本仓平台与 Workflow 白名单派发、回读、观察 Run 与 Job、限额读取终态日志、取消及恢复原 GitHub Run；控制台的 `tata/citizensdk.mjs` 仅调用这些公开入口，提供任务宿主及短期授权。派发回执中的 Run ID 先写入任务，回读中断后只恢复该 Run，禁止重复派发；控制台宿主通过 `recoverTask(task)` 重进所属产品的恢复授权上下文，显式独立模式才调用产品恢复入口。恢复时先挂接原任务的产品取消入口，再请求观察授权；观察授权失败仍保留取消能力，用户取消时单独领取关闭授权。取消和恢复均重新核验本仓、主分支、Workflow、提交及 Run ID。GitHub 请求的网络异常只报告请求阶段和允许的系统错误码，不输出原始异常或短期令牌；派发回执不明时不自动重发，须先按本仓、main、Workflow及提交核对远端 Run。其他记录、资产和发布能力不在本次迁移范围内。同文件的合成合同回归覆盖派发成功与不确定回执、网络错误脱敏且不重发、错误仓库/平台/SHA、观察两种终态、只取消原 Run、只恢复原 Run 和过期授权保留取消入口。
+
+## Linux 与 Windows 原生合同夹具
+
+Linux 共享内存 DMS 合同先用 `F_OFD_GETLK` 证明现存共享锁，再用独立打开的描述符验证独占锁被拒绝；查询返回的 `l_pid=-1` 是持锁方身份，提交 `F_OFD_SETLK` 前须重置为零，不改变生产 VFS 的有界等待与终态错误。Windows 合同测试的源码根由 CMake 规范化后交付，C++ Host 资产根据此取本仓 `chain`；七个公开头以现有 `public/citizen_sdk` 构建投影验真，不从不存在的源码 `include` 目录读取。测试夹具修改 DACL 失败时仅报告 Win32 数值返回码并失败关闭，不改变生产 ACL 规则，也不输出本机路径或保密内容。两平台的原生合同只在 GitHub SDK 自动化中执行。

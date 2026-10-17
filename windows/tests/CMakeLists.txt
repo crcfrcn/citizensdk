@@ -8,6 +8,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 # 只编译正式 Host 源码，不复制测试专用的存储、钱包或 CNG 实现。
+file(REAL_PATH "${CMAKE_CURRENT_LIST_DIR}/.." CITIZENSDK_WINDOWS_TEST_SOURCE_DIR)
 set(CITIZENSDK_TEST_WORK_DIR "" CACHE PATH "Task-exclusive central Windows test state root")
 if(CITIZENSDK_TEST_WORK_DIR STREQUAL "" OR
    NOT IS_ABSOLUTE "${CITIZENSDK_TEST_WORK_DIR}" OR
@@ -35,7 +36,7 @@ if(TARGET citizen_sdk_plugin)
     citizensdk_configure_flutter_target(${test_name})
     target_link_libraries(${test_name} PRIVATE citizensdk_windows_flutter_test_support)
     target_compile_definitions(${test_name} PRIVATE
-      CITIZENSDK_WINDOWS_TEST_SOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/..")
+      CITIZENSDK_WINDOWS_TEST_SOURCE_DIR="${CITIZENSDK_WINDOWS_TEST_SOURCE_DIR}")
     # 合同断言不能被 Release 的 NDEBUG 删除。
     target_compile_options(${test_name} PRIVATE /UNDEBUG)
     foreach(_library CitizenSDK::Core CitizenSDK::Host)
@@ -94,7 +95,8 @@ foreach(test_name IN LISTS CITIZENSDK_WINDOWS_CONTRACT_TESTS)
   add_executable(${test_name} "${test_name}.cc")
   target_link_libraries(${test_name} PRIVATE citizensdk_windows_test_support)
   target_compile_definitions(${test_name} PRIVATE
-    CITIZENSDK_WINDOWS_TEST_SOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/..")
+    CITIZENSDK_WINDOWS_TEST_SOURCE_DIR="${CITIZENSDK_WINDOWS_TEST_SOURCE_DIR}"
+    CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR="${_citizensdk_headers}")
   # Release 默认的 NDEBUG 必须撤销，否则 assert 会被静默删除。
   target_compile_options(${test_name} PRIVATE /UNDEBUG /W4 /permissive- /utf-8 /EHsc
     $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)

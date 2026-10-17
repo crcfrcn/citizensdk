@@ -107,8 +107,11 @@ inline void assert_shared_dms(const std::filesystem::path &path) {
   lock.l_whence = SEEK_SET;
   lock.l_start = (22 + 8) * 4 + 8;  // SQLite 官方 UNIX_SHM_DMS = 128。
   lock.l_len = 1;
-  assert(::fcntl(descriptor, F_OFD_GETLK, &lock) == 0 && lock.l_type == F_RDLCK);
+  assert(::fcntl(descriptor, F_OFD_GETLK, &lock) == 0 &&
+         lock.l_type == F_RDLCK && lock.l_pid == -1);
   lock.l_type = F_WRLCK;
+  // OFD_GETLK 将冲突方的 l_pid 写成 -1；再次提交 OFD_SETLK 前必须归零。
+  lock.l_pid = 0;
   assert(::fcntl(descriptor, F_OFD_SETLK, &lock) == -1 &&
          (errno == EAGAIN || errno == EACCES));
   assert(::close(descriptor) == 0);

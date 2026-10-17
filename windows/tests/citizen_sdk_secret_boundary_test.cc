@@ -13,6 +13,9 @@
 #ifndef CITIZENSDK_WINDOWS_TEST_SOURCE_DIR
 #error "CITIZENSDK_WINDOWS_TEST_SOURCE_DIR must point at the Windows source root"
 #endif
+#ifndef CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR
+#error "CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR must point at the public header projection"
+#endif
 #ifdef NDEBUG
 #error "CitizenSDK Windows contract assertions must remain enabled"
 #endif
@@ -22,9 +25,10 @@ int main() {
   using citizen_sdk::windows::HostError;
   using citizen_sdk::windows::copy_view;
 
+  // Host 与 Core 的七个公开头由正式构建视图汇总，源码 headers 只有平台头。
   const std::filesystem::path public_headers =
-      std::filesystem::path(CITIZENSDK_WINDOWS_TEST_SOURCE_DIR) / "include" /
-      "citizen_sdk";
+      CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR;
+  assert(std::filesystem::is_directory(public_headers));
   std::set<std::string> headers;
   for (const auto &entry : std::filesystem::directory_iterator(public_headers)) {
     if (!std::filesystem::is_regular_file(entry.symlink_status())) continue;
