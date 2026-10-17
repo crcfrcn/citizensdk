@@ -33,6 +33,17 @@ HostError sqlite_error(sqlite3 *database, const char *message) {
                    database == nullptr ? message : sqlite3_errmsg(database));
 }
 
+void sqlite_test_shm_diagnostic(const char *stage, int page, int size,
+                                int extend, DWORD system_error = 0) noexcept {
+#if defined(CITIZENSDK_SQLITE_TEST_DIAGNOSTICS)
+  std::fprintf(stderr,
+               "CitizenSDK SQLite SHM test diagnostic: stage=%s page=%d page_size=%d extend=%d system_error=%lu\n",
+               stage, page, size, extend, static_cast<unsigned long>(system_error));
+#else
+  (void)stage; (void)page; (void)size; (void)extend; (void)system_error;
+#endif
+}
+
 int lock_range(HANDLE handle, bool exclusive, DWORD start, DWORD count) noexcept {
   OVERLAPPED overlap{};
   overlap.Offset = start;
@@ -469,16 +480,23 @@ class HandleSQLiteVfs final {
     return SQLITE_OK;
   }
   static int shm_map(sqlite3_file *value, int page, int size, int extend, void volatile **out) noexcept {
-    if (out == nullptr) return SQLITE_IOERR_SHMMAP;
+    if (out == nullptr) {
+      sqlite_test_shm_diagnostic("null-output", page, size, extend);
+      return SQLITE_IOERR_SHMMAP;
+    }
     *out = nullptr;
     auto *file = state(value);
-    if (!valid(file) || page < 0 || size <= 0 ||
-        (extend != 0 && extend != 1)) return SQLITE_IOERR_SHMMAP;
+    if (!valid(file) || page < 0 || size <= 0) {
+      sqlite_test_shm_diagnostic("invalid-input", page, size, extend);
+      return SQLITE_IOERR_SHMMAP;
+    }
+    const char *stage = "open-shm";
     try {
       const int code = open_shm(*file);
       if (code != SQLITE_OK) return code;
       auto node = file->shm->node;
       std::lock_guard<std::mutex> guard(node->mutex);
+      stage = "validate-shm";
       valid_shm(*node);
       if (node->page_size != 0 && node->page_size != size) return SQLITE_IOERR_SHMSIZE;
       node->page_size = size;
@@ -498,23 +516,39 @@ class HandleSQLiteVfs final {
       auto &region = node->regions[page];
       if (region.base == nullptr) {
         SYSTEM_INFO info{}; ::GetSystemInfo(&info);
-        if (info.dwAllocationGranularity == 0) return SQLITE_IOERR_SHMMAP;
+        if (info.dwAllocationGranularity == 0) {
+          sqlite_test_shm_diagnostic("allocation-granularity", page, size, extend);
+          return SQLITE_IOERR_SHMMAP;
+        }
         const uint64_t offset = static_cast<uint64_t>(page) * static_cast<uint64_t>(size);
         const uint64_t aligned = offset - offset % info.dwAllocationGranularity;
         const auto delta = static_cast<std::size_t>(offset - aligned);
         // 映射大小可扩展同一 SHM 文件；偏移按 Windows allocation granularity 对齐。
-        UniqueHandle mapping(::CreateFileMappingW(node->handle.get(), nullptr, PAGE_READWRITE,
-            static_cast<DWORD>(required >> 32), static_cast<DWORD>(required), nullptr));
-        if (!mapping) return SQLITE_IOERR_SHMMAP;
+        stage = "CreateFileMappingW";
+        HANDLE raw_mapping = ::CreateFileMappingW(node->handle.get(), nullptr, PAGE_READWRITE,
+            static_cast<DWORD>(required >> 32), static_cast<DWORD>(required), nullptr);
+        const DWORD mapping_error = raw_mapping == nullptr ? ::GetLastError() : ERROR_SUCCESS;
+        UniqueHandle mapping(raw_mapping);
+        if (!mapping) {
+          sqlite_test_shm_diagnostic("CreateFileMappingW", page, size, extend, mapping_error);
+          return SQLITE_IOERR_SHMMAP;
+        }
+        stage = "MapViewOfFile";
         void *base = ::MapViewOfFile(mapping.get(), FILE_MAP_READ | FILE_MAP_WRITE,
             static_cast<DWORD>(aligned >> 32), static_cast<DWORD>(aligned), delta + static_cast<std::size_t>(size));
-        if (base == nullptr) return SQLITE_IOERR_SHMMAP;
+        if (base == nullptr) {
+          sqlite_test_shm_diagnostic("MapViewOfFile", page, size, extend, ::GetLastError());
+          return SQLITE_IOERR_SHMMAP;
+        }
         region.mapping = std::move(mapping); region.base = base; region.delta = delta;
       }
       *out = static_cast<uint8_t *>(region.base) + region.delta;
       return SQLITE_OK;
     } catch (const std::bad_alloc &) { return SQLITE_NOMEM; }
-    catch (...) { return SQLITE_IOERR_SHMMAP; }
+    catch (...) {
+      sqlite_test_shm_diagnostic(stage, page, size, extend);
+      return SQLITE_IOERR_SHMMAP;
+    }
   }
   static int shm_lock(sqlite3_file *value, int offset, int count, int flags) noexcept {
     auto *file = state(value);

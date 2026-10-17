@@ -632,7 +632,18 @@ int main() {
         temporary.path() / "state" / isolated_id / "citizensdk" / "v1" / "public"));
     if (modules == CITIZENSDK_MODULE_SIGNING) {
     }
-    assert(citizensdk_host_destroy(host) == CITIZENSDK_OK);
+    // 能力订阅回调可在较慢宿主上晚于查询结束；只对合同允许的BUSY有界重试。
+    const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    auto close_code = citizensdk_host_destroy(host);
+    while (close_code == CITIZENSDK_ERROR_BUSY && std::chrono::steady_clock::now() < close_deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      close_code = citizensdk_host_destroy(host);
+    }
+    if (close_code != CITIZENSDK_OK) {
+      std::fprintf(stderr, "CitizenSDK wallet/signing Host destroy failed: %u\n",
+                   static_cast<unsigned>(close_code));
+    }
+    assert(close_code == CITIZENSDK_OK);
   }
 
 

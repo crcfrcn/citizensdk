@@ -329,6 +329,9 @@ void verify_vfs_release_and_growth(const std::filesystem::path &directory) {
   mapped = nullptr; shared = nullptr;
   assert(left->pMethods->xShmMap(left, 64, 32768, 1, &mapped) == SQLITE_OK && mapped);
   assert(right->pMethods->xShmMap(right, 64, 32768, 0, &shared) == SQLITE_OK && shared == mapped);
+  // SQLite的扩展标记按零/非零解释，不要求调用方只传数值1。
+  shared = nullptr;
+  assert(right->pMethods->xShmMap(right, 64, 32768, 2, &shared) == SQLITE_OK && shared == mapped);
   assert(left->pMethods->xShmMap(left, -1, 32768, 1, &mapped) == SQLITE_IOERR_SHMMAP && !mapped);
   assert(left->pMethods->xShmMap(left, 65, 0, 1, &mapped) == SQLITE_IOERR_SHMMAP && !mapped);
   assert(first.integer_pragma("SELECT count(*) FROM contract_record") == 0);

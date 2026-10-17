@@ -34,6 +34,8 @@ Windows原生入口在传给Git Bash前统一将源码、工作区、输出和�
 
 `.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
 
+Linux/Windows Host仅在实际拥有公开存储、保密存储或设备金库资源时向Core传入HostServices；QR-only无资源实例传入空指针，不伪造全空资源组。Linux WAL DMS在有界等待结束后报告不可继续重试的SHM锁错误，避免SQLite重复执行整段等待；合同测试仅对Host销毁的真实BUSY状态有界重试。Windows xShmMap将扩展参数作为零/非零标记，合同测试中的分支诊断只输出阶段、页参数及Windows错误码，正式Host不输出测试诊断。Run记录最终清理即使遇到GitHub已把本轮取消Run标为completed，也按准确Run/Attempt/SHA保护本轮ID，只处理其它已完成的本仓main工作流Run；清理失败仍在Job中如实失败。
+
 CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台公民链Tab当前仅登记一个“公民SDK／SDK”直接按钮，派发本仓现有 sdk.yml 并由该工作流创建正式Tag/Release；本机Build公开接口和独立执行能力仍归本仓。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
 
 本文后续按日期记录的旧实施证据仅用于追溯；当前可执行入口与职责以本节和仓库真实代码为准。本次流程整理只做静态与不触发编译的回归，未运行真实 SDK 编译、自动化或正式发布。
@@ -4225,3 +4227,6 @@ SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，�
 ## 产品自有编译前测试
 
 完整 Build 由本产品在首次资源回执后运行自己登记的 Node 回归，成功后才进入工程准备和正式编译。测试所需 Node 及其它资源按本仓平台声明验真：独立执行由本产品准备，控制台调度仅按本仓声明供给并调用完整 Build，不选择测试文件或限定测试工具。测试夹具的固定根映射到本仓 `target/test/sessions/<本轮随机会话>/`，子进程继承会话身份；退出时由本产品核对守卫和工具进程后仅清理该会话。正式 `target/build/<平台>` 的领取与收尾规则保持。合成阶段注入只在本仓测试上下文有效，正式完整 Build 必须先运行本仓测试。
+## 塔塔自动化远端任务归属
+
+本产品现有 `scripts/build.mjs` 提供 `startAutomation(route, action, host)`、`recoverAutomation(task, route, host)` 和独立模式的 `dispatchAutomation(platform, token, options)`。产品按本仓平台与 Workflow 白名单派发、回读、观察 Run 与 Job、限额读取终态日志、取消及恢复原 GitHub Run；控制台的 `tata/citizensdk.mjs` 仅调用这些公开入口，提供任务宿主及短期授权。派发回执中的 Run ID 先写入任务，回读中断后只恢复该 Run，禁止重复派发；控制台宿主通过 `recoverTask(task)` 重进所属产品的恢复授权上下文，显式独立模式才调用产品恢复入口。恢复时先挂接原任务的产品取消入口，再请求观察授权；观察授权失败仍保留取消能力，用户取消时单独领取关闭授权。取消和恢复均重新核验本仓、主分支、Workflow、提交及 Run ID。其他记录、资产和发布能力不在本次迁移范围内。 同文件的合成合同回归覆盖派发成功与不确定回执、错误仓库/平台/SHA、观察两种终态、只取消原 Run、只恢复原 Run 和过期授权保留取消入口。

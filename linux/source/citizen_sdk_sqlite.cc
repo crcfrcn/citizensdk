@@ -790,7 +790,8 @@ class OpenAtSQLiteVfs final {
       (void)::nanosleep(&retry_delay, nullptr);
     }
     sqlite_test_shm_diagnostic("initialize-dms-contention-timeout", ETIMEDOUT);
-    return SQLITE_BUSY;
+    // 有界等待结束后必须向SQLite报告终态；继续返回BUSY会重复执行整段等待。
+    return SQLITE_IOERR_SHMLOCK;
   }
 
   static int shared_memory_map_impl(sqlite3_file *value, int page,

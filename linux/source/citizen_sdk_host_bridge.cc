@@ -573,9 +573,13 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
     options.system_name = {reinterpret_cast<const uint8_t *>(name.data()), name.size()};
     options.system_version = {reinterpret_cast<const uint8_t *>(version.data()), version.size()};
     citizensdk_host_services_v1_t host_services = services();
+    // QR-only没有任何存储或金库资源；向Core交付空指针而非全空的资源结构。
+    const auto *selected_services = host_services.public_store != nullptr ||
+        host_services.secure_store != nullptr || host_services.secret_vault != nullptr
+        ? &host_services : nullptr;
     citizensdk_handle_t created = 0;
     citizensdk_error_code_t code =
-        citizensdk_create_with_modules(&options, &host_services, modules_, &created);
+        citizensdk_create_with_modules(&options, selected_services, modules_, &created);
     if (code != CITIZENSDK_OK) {
       // A nonzero error handle is a destroy-only Core instance. Preserve it so
       // close()/abandon can reclaim all Rust and provider ownership safely.
