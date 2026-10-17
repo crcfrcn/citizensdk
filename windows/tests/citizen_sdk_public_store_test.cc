@@ -87,7 +87,8 @@ void verify_private(const std::filesystem::path &directory, const char *name) {
 }
 
 void widen_test_file(const std::filesystem::path &path) {
-  citizen_sdk::windows::UniqueHandle file(CreateFileW(path.c_str(), WRITE_DAC,
+  // 夹具须同时持有读取与设置 DACL 权限；生产存储仍拒绝放宽后的文件。
+  citizen_sdk::windows::UniqueHandle file(CreateFileW(path.c_str(), READ_CONTROL | WRITE_DAC,
       FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
   assert(file);
   PSECURITY_DESCRIPTOR descriptor = nullptr;

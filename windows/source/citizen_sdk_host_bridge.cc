@@ -2,6 +2,7 @@
 #include "citizen_sdk_qr_camera.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <iterator>
@@ -12,6 +13,17 @@
 
 namespace citizen_sdk::windows {
 namespace {
+
+void test_create_diagnostic(const char *stage, citizensdk_error_code_t code) noexcept {
+#if defined(CITIZENSDK_HOST_TEST_DIAGNOSTICS)
+  // 测试只报告固定阶段与公开错误码，不打印资产、路径或Core返回正文。
+  std::fprintf(stderr, "CitizenSDK Windows Host create stage=%s code=%u\n",
+               stage, static_cast<unsigned>(code));
+#else
+  (void)stage;
+  (void)code;
+#endif
+}
 
 std::array<uint8_t, 16> id16(citizensdk_host_id128_t value) {
   std::array<uint8_t, 16> result{};
@@ -438,6 +450,7 @@ citizensdk_host_services_v1_t HostBridge::services() noexcept {
 citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
   if (out_sdk == nullptr) return CITIZENSDK_ERROR_INVALID_ARGUMENT;
   *out_sdk = 0;
+  const char *stage = "assets";
   {
     std::lock_guard<std::recursive_mutex> guard(call_lock_);
     if (sdk_ != 0 || teardown_started_ || create_in_progress_ ||
@@ -464,9 +477,11 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
         host_services.secure_store != nullptr || host_services.secret_vault != nullptr
         ? &host_services : nullptr;
     citizensdk_handle_t created = 0;
+    stage = "core-create";
     citizensdk_error_code_t code =
         citizensdk_create_with_modules(&options, selected_services, modules_, &created);
     if (code != CITIZENSDK_OK) {
+      test_create_diagnostic(stage, code);
       // A nonzero error handle is a destroy-only Core instance. Preserve it so
       // close()/abandon can reclaim all Rust and provider ownership safely.
       if (created != 0) {
@@ -479,6 +494,7 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
       return code;
     }
     if (created == 0) {
+      test_create_diagnostic(stage, CITIZENSDK_ERROR_INTEGRITY);
       std::lock_guard<std::recursive_mutex> guard(call_lock_);
       create_in_progress_ = false;
       return CITIZENSDK_ERROR_INTEGRITY;
@@ -487,6 +503,7 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
       std::lock_guard<std::recursive_mutex> guard(call_lock_);
       sdk_ = created;
     }
+    stage = "provider-setup";
     if (secure_store_) {
       const citizensdk_host_secret_presence_v1_t presence{
           sizeof(citizensdk_host_secret_presence_v1_t), CITIZENSDK_ABI_VERSION, this,
@@ -506,6 +523,7 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
       }
     }
     if (code != CITIZENSDK_OK) {
+      test_create_diagnostic(stage, code);
       bool callback_installed = false;
       {
         std::lock_guard<std::recursive_mutex> guard(call_lock_);
@@ -536,7 +554,9 @@ citizensdk_error_code_t HostBridge::create_sdk(citizensdk_handle_t *out_sdk) {
   } catch (...) {
     std::lock_guard<std::recursive_mutex> guard(call_lock_);
     create_in_progress_ = false;
-    return map_exception();
+    const auto code = map_exception();
+    test_create_diagnostic(stage, code);
+    return code;
   }
 }
 
