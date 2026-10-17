@@ -739,7 +739,7 @@ class OpenAtSQLiteVfs final {
 
   static int initialize_shared_memory(FileState &state) noexcept {
     if (!shared_memory_matches_path(state)) return SQLITE_IOERR_SHMOPEN;
-    constexpr unsigned kDmsLockRetryLimit = 100;
+    constexpr unsigned kDmsLockRetryLimit = 5000;
     const timespec retry_delay{0, 1000 * 1000};
     for (unsigned attempt = 0; attempt < kDmsLockRetryLimit; ++attempt) {
       struct flock lock {};
@@ -1278,14 +1278,15 @@ void configure_and_verify_database(
   require(initialize || version == schema_version, CITIZENSDK_ERROR_INTEGRITY,
           "CitizenSDK SQLite schema version is unknown");
   if (initialize) {
+    // auto_vacuum 只能在数据库事务外变更；若进程在此后退出，空库可安全重试。
+    if (incremental_vacuum) {
+      execute_checked("PRAGMA auto_vacuum=INCREMENTAL");
+    }
     // Schema objects and their version marker are one rollback-journal
     // transaction. Power loss can therefore leave either the original empty
     // database or the complete v1 schema, never a version-zero partial schema.
     execute_checked("BEGIN IMMEDIATE");
     try {
-      if (incremental_vacuum) {
-        execute_checked("PRAGMA auto_vacuum=INCREMENTAL");
-      }
       for (const std::string &statement : schema) {
         execute_checked(statement.c_str());
       }

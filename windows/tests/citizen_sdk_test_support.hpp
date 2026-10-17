@@ -7,6 +7,8 @@
 #include <sddl.h>
 #include <array>
 #include <cstdlib>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -20,6 +22,23 @@ namespace citizen_sdk::windows::test {
 class TempDirectory final {
  public:
   explicit TempDirectory(const std::string &label) {
+    static const bool exception_diagnostics_installed = [] {
+      std::set_terminate([]() noexcept {
+        if (const auto failure = std::current_exception()) {
+          try {
+            std::rethrow_exception(failure);
+          } catch (const std::exception &error) {
+            std::fprintf(stderr, "CitizenSDK Windows test exception: %s\n",
+                         error.what());
+          } catch (...) {
+            std::fputs("CitizenSDK Windows test exception: unknown\n", stderr);
+          }
+        }
+        std::abort();
+      });
+      return true;
+    }();
+    (void)exception_diagnostics_installed;
     if (label.empty() || label.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-") != std::string::npos)
       throw std::invalid_argument("CitizenSDK test label is invalid");
     char *configured_value = nullptr;

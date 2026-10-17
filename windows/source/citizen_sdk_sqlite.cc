@@ -909,11 +909,12 @@ void configure_and_verify_database(
   require(initialize || version == schema_version, CITIZENSDK_ERROR_INTEGRITY,
           "CitizenSDK SQLite schema version is unknown");
   if (initialize) {
+    // auto_vacuum 只能在数据库事务外变更；若进程在此后退出，空库可安全重试。
+    if (incremental_vacuum) execute_checked("PRAGMA auto_vacuum=INCREMENTAL");
     // Schema 和版本标记沿用同一 rollback-journal 事务；正式记录之后才用 WAL+FULL。
     // Windows 没有目录 fsync 合同，此处不把进程崩溃恢复夸大为所有硬件掉电保证。
     execute_checked("BEGIN IMMEDIATE");
     try {
-      if (incremental_vacuum) execute_checked("PRAGMA auto_vacuum=INCREMENTAL");
       for (const std::string &statement : schema) {
         execute_checked(statement.c_str());
       }

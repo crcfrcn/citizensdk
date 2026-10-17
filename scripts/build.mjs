@@ -6762,8 +6762,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const sqliteSource=readFileSync(join(root,'linux/source/citizen_sdk_sqlite.cc'),'utf8');
   assert.match(sqliteSource,/CitizenSDK SQLite SHM test diagnostic/u,
    'Linux WAL共享内存锁必须在合同测试中报告失败阶段和errno');
-  assert.match(sqliteSource,/kDmsLockRetryLimit = 100/u,
+  assert.match(sqliteSource,/kDmsLockRetryLimit = 5000/u,
    'Linux WAL DMS初始化锁竞争必须在有界窗口内重试');
+  for(const [path,source] of [['Linux',sqliteSource],['Windows',readFileSync(join(root,'windows/source/citizen_sdk_sqlite.cc'),'utf8')]]){
+   const configure=source.slice(source.indexOf('void configure_and_verify_database('));
+   const vacuum=configure.indexOf('PRAGMA auto_vacuum=INCREMENTAL'),transaction=configure.indexOf('execute_checked("BEGIN IMMEDIATE")');
+   assert.ok(vacuum>=0&&transaction>vacuum,path+' SQLite自动清理模式必须在初始化事务前设置');
+  }
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-dms-contention-timeout",\s*ETIMEDOUT\)/u,
    'Linux WAL DMS初始化锁竞争超时必须准确诊断');
   assert.match(sqliteSource,/sqlite_test_shm_diagnostic\("initialize-set-exclusive-dms"/u,
@@ -6801,6 +6806,11 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const windowsApiTest=readFileSync(join(root,'windows/tests/citizen_sdk_api_contract_test.cc'),'utf8');
   assert.match(windowsApiTest,/\} request_probe;/u,
    'Windows QR-only请求回归不得遮蔽前面的摄像头probe');
+  assert.match(windowsApiTest,/test_support\.find\("_dupenv_s\("\)/u,
+   'Windows安全环境读取回归必须与_dupenv_s实现一致');
+  const windowsSecretBoundary=readFileSync(join(root,'windows/tests/citizen_sdk_secret_boundary_test.cc'),'utf8');
+  assert.match(windowsSecretBoundary,/\/ "source" \/ "citizen_sdk_flutter_sessions\.cc"/u,
+   'Windows秘密边界回归必须读取实际source目录');
   const windowsPublicStoreTest=readFileSync(join(root,'windows/tests/citizen_sdk_public_store_test.cc'),'utf8');
   assert.match(windowsPublicStoreTest,/std::atomic<bool> rollback_requested\{true\}/u,
    'Windows回滚夹具必须保留编译器不可静态判定的失败分支');

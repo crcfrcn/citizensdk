@@ -448,7 +448,7 @@ int main() {
          std::string::npos);
   const std::string test_support =
       read_source("/tests/citizen_sdk_test_support.hpp");
-  assert(test_support.find("std::getenv(\"CITIZENSDK_TEST_WORK_DIR\")") !=
+  assert(test_support.find("_dupenv_s(") !=
          std::string::npos);
   assert(test_support.find("BCryptGenRandom") != std::string::npos);
   assert(test_support.find("temp_directory_path") == std::string::npos);
