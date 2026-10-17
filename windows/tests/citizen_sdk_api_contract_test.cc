@@ -625,7 +625,7 @@ int main() {
     assert(citizensdk_host_destroy(host) == CITIZENSDK_OK);
   }
 
-  // 真实 Core 已销毁而 UI 退休仍 BUSY 时，C++ 层必须可重试且不保留旧 handle。
+  // 后台关闭返回 BUSY 可发生在 Core 销毁前或窗口退休时；缓存句柄须与仍存活的 Host 一致。
   citizen_sdk::Config cpp_config;
   cpp_config.storage_root = temporary.path() / "cpp-state";
   cpp_config.asset_root = std::filesystem::path(CITIZENSDK_WINDOWS_TEST_SOURCE_DIR).parent_path() /
@@ -647,7 +647,14 @@ int main() {
   });
   closer.join();
   assert(worker_busy);
-  assert(cpp_host.native_handle() == 0);
+  citizensdk_handle_t observed_core = 0;
+  const auto observed_code = citizensdk_host_sdk(cpp_host.host_handle(), &observed_core);
+  if (observed_code == CITIZENSDK_ERROR_NOT_READY) {
+    assert(observed_core == 0 && cpp_host.native_handle() == 0);
+  } else {
+    assert(observed_code == CITIZENSDK_OK && observed_core != 0);
+    assert(cpp_host.native_handle() == observed_core);
+  }
   MSG queued{};
   while (PeekMessageW(&queued, nullptr, 0, 0, PM_REMOVE)) {
     TranslateMessage(&queued);

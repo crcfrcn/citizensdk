@@ -4260,3 +4260,7 @@ GitHub接口使用普通参数和已授权令牌，返回本仓既有版本计�
 Run 39044524886 的 `prepare`、Android、macOS 已成功。LinuxARM 与 LinuxAMD 的 Host 安装验真均报告缺少公开符号 `citizensdk_qr_image_decode_luminance`：二维码包装位于静态归档，Host 的精确版本脚本已列该符号，但 `--exclude-libs,ALL` 把归档符号隐藏。Linux Host 移除全归档隐藏，继续使用 `citizensdk_host.map` 的显式公开清单与 `local: *`，原有 ELF 导出闭集、动态依赖及 GLIBC 基线验真不放宽。
 
 同一 Run 的 Windows 14 项 CTest 通过，安装验真在比较 Cargo 来源 `citizensdk.dll` 时拒绝来源硬链接。Cargo 来源 DLL 与导入库允许普通、非空、规范路径的硬链接，仍逐字节比对安装件；安装后的交付闭集继续禁止符号链接、硬链接、空文件和额外文件。失败诊断区分目录、普通文件、空文件和硬链接，指出具体路径。新版控制台的产品接入仅负责按钮、任务与 GitHub Run 观察；本仓 `sdk.yml` 继续完成五平台构建、正式候选复验及 Release。
+
+Run 39056915501 已证实上一轮 Linux QR 导出和 Windows 来源硬链接门禁通过；新的 LinuxARM/LinuxAMD 失败是 Ubuntu 24.04 构建的 Core 要求 `GLIBC_2.32`，高于既定 2.31 基线，Windows 14 项 CTest 中 C++ Host 关闭回归把任意 BUSY 当成 Core 已销毁。Android、macOS、prepare、五平台 Cargo 缓存清理和 Run 记录清理成功；原生矩阵未全过，组包、消费复验、Release 均跳过。
+
+Linux 构建候选改为同一 `sdk.yml` 内独立 `native-linux` 矩阵，两架构均使用已固定多架构摘要的官方 Debian 11 镜像。镜像先核对 GLIBC 2.31，以 2026-07-01 Debian 签名快照安装现有开发依赖，再使用本仓既有 CMake 3.31.6 平台归档、摘要及版本验收；Android、Apple、Windows 仍由原 `native` 矩阵构建。两组原生作业都必须成功，才允许组包、消费复验和 Release；缓存保留与末尾 Run 清理仍覆盖五平台。固定 GLIBC 2.31 及 ELF 动态依赖门禁保持不变。Windows 关闭回归改为依据 Host 当前真实 Core 状态核对 C++ 缓存句柄：BUSY 可发生在 Core 销毁前，最终成功关闭仍必须清零双句柄。以上候选须经下一次 GitHub 完整自动化验证，当前不宣称正式版已生成。

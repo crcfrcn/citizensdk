@@ -42,8 +42,6 @@ jobs:
         include:
           - {platform: Android, target: android, runner: ubuntu-24.04, rust-targets: aarch64-linux-android}
           - {platform: macOS, target: apple, runner: xcode-27, rust-targets: 'aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin'}
-          - {platform: LinuxARM, target: LinuxARM, runner: ubuntu-24.04-arm, rust-targets: aarch64-unknown-linux-gnu}
-          - {platform: LinuxAMD, target: LinuxAMD, runner: ubuntu-24.04, rust-targets: x86_64-unknown-linux-gnu}
           - {platform: Windows, target: Windows, runner: windows-2025, rust-targets: x86_64-pc-windows-msvc}
     runs-on: "${{ matrix.runner }}"
     timeout-minutes: 180
@@ -53,7 +51,30 @@ jobs:
       SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
       SDK_PLATFORM: "${{ matrix.platform }}"
       SDK_TARGET: "${{ matrix.target }}"
-    steps:
+    steps: &native_steps
+      - name: 固定 Linux GLIBC 2.31 构建根
+        if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
+          # 基础镜像没有CA包；首次APT仍由Debian签名InRelease与包摘要验真。
+          printf '%s\n' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260701T000000Z bullseye main' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260701T000000Z bullseye-security main' \
+            > /etc/apt/sources.list
+          rm -f /etc/apt/sources.list.d/debian.sources
+          apt-get -o Acquire::Check-Valid-Until=false update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates
+          sed -i 's@http://snapshot.debian.org@https://snapshot.debian.org@g' /etc/apt/sources.list
+          apt-get -o Acquire::Check-Valid-Until=false update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            curl git gcc g++ libstdc++6 clang llvm libclang-dev libssl-dev \
+            libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev pkg-config ninja-build \
+            autoconf automake libtool make perl unzip zip xvfb xauth dbus-x11 \
+            python3 xz-utils file procps
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: "${{ github.sha }}"
@@ -67,7 +88,7 @@ jobs:
           targets: "${{ matrix.rust-targets }}"
           components: rust-src
       - name: Linux 编译依赖
-        if: runner.os == 'Linux'
+        if: matrix.platform == 'Android'
         shell: bash
         run: |
           set -euo pipefail
@@ -167,6 +188,19 @@ jobs:
               });
             '
           fi
+          if [[ "$SDK_PLATFORM" == LinuxARM || "$SDK_PLATFORM" == LinuxAMD ]]; then
+            printf '%s' "$receipt" | node -e '
+              let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
+                const fs=require("node:fs"),path=require("node:path"),r=JSON.parse(input),tool=r.tools?.cmake;
+                if(r.platform!==process.env.SDK_PLATFORM||tool?.version!=="3.31.6"
+                  ||typeof tool.path!=="string"||!path.isAbsolute(tool.path)
+                  ||!tool.path.startsWith(process.env.CITIZENSDK_RESOURCE_WORK_DIR+"/tools/cmake-3.31.6-"+r.platform+"/bin/"))
+                  throw Error("Linux固定CMake准备回执无效");
+                for(const name of ["cmake","ctest"])fs.accessSync(path.join(path.dirname(tool.path),name),fs.constants.X_OK);
+                fs.appendFileSync(process.env.GITHUB_PATH,path.dirname(tool.path)+"\n");
+              });
+            '
+          fi
       - name: 启用 Windows MSVC 工具
         if: matrix.platform == 'Windows'
         shell: pwsh
@@ -245,8 +279,27 @@ jobs:
         if: always() && matrix.platform == 'Android'
         shell: bash
         run: node scripts/build.mjs release-cleanup-android-work
+  native-linux:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: LinuxARM, target: LinuxARM, runner: ubuntu-24.04-arm, rust-targets: aarch64-unknown-linux-gnu}
+          - {platform: LinuxAMD, target: LinuxAMD, runner: ubuntu-24.04, rust-targets: x86_64-unknown-linux-gnu}
+    runs-on: "${{ matrix.runner }}"
+    container:
+      image: debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      CARGO_INCREMENTAL: '1'
+      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+      SDK_PLATFORM: "${{ matrix.platform }}"
+      SDK_TARGET: "${{ matrix.target }}"
+    steps: *native_steps
   assemble:
-    needs: [prepare, native]
+    needs: [prepare, native, native-linux]
     runs-on: xcode-27
     timeout-minutes: 120
     env:
@@ -337,7 +390,7 @@ jobs:
             --archive "$RUNNER_TEMP/citizensdk-release/citizensdk.tgz" \
             --expected-git-sha "$GITHUB_SHA"
   release:
-    needs: [prepare, native, assemble, consume]
+    needs: [prepare, native, native-linux, assemble, consume]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -366,7 +419,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs release-github
   cargo-retention:
-    needs: [native]
+    needs: [native, native-linux]
     if: always() && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -398,7 +451,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs release-cache-prune
   run-retention:
-    needs: [prepare, native, assemble, consume, release, cargo-retention]
+    needs: [prepare, native, native-linux, assemble, consume, release, cargo-retention]
     if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
@@ -406,7 +459,7 @@ jobs:
       actions: write
     env:
       GH_TOKEN: "${{ github.token }}"
-      SDK_FINAL_OUTCOME: "${{ needs.prepare.result == 'success' && needs.native.result == 'success' && needs.assemble.result == 'success' && needs.consume.result == 'success' && needs.release.result == 'success' && needs.cargo-retention.result == 'success' && 'success' || 'failure' }}"
+      SDK_FINAL_OUTCOME: "${{ needs.prepare.result == 'success' && needs.native.result == 'success' && needs.native-linux.result == 'success' && needs.assemble.result == 'success' && needs.consume.result == 'success' && needs.release.result == 'success' && needs.cargo-retention.result == 'success' && 'success' || 'failure' }}"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:

@@ -6715,6 +6715,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    const next=workflow.indexOf('\n      - ',start+1);
    return {start,text:workflow.slice(start,next<0?workflow.length:next)};
   };
+  const linuxRoot=step('固定 Linux GLIBC 2.31 构建根');
   const flutter=step('安装本仓固定 Flutter'),cache=step('恢复本平台编译与依赖缓存'),cargoCache=step('恢复本平台Cargo编译缓存');
    const android=step('准备Android固定引擎原件'),apple=step('准备Apple固定引擎原件');
    const prepare=step('准备本仓锁定原件');
@@ -6740,6 +6741,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(cargoCache.text,/citizensdk-release\/cargo-target/u);
   assert.match(cargoCache.text,/citizensdk-cargo-v1-.*matrix\.platform.*Cargo\.lock/u);
   assert.match(prepare.text,/prepare-environment --scope citizensdk --platform "\$SDK_PLATFORM"/u);
+  assert.match(prepare.text,/Linux固定CMake准备回执无效/u);
+  assert.match(prepare.text,/GITHUB_PATH,path\.dirname\(tool\.path\)/u);
+  assert.match(linuxRoot.text,/test "\$\(getconf GNU_LIBC_VERSION\)" = 'glibc 2\.31'/u);
+  assert.match(linuxRoot.text,/snapshot\.debian\.org\/archive\/debian\/20260701T000000Z/u);
+  assert.match(workflow,/native-linux:[\s\S]*debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9/u);
+  assert.match(workflow,/native-linux:[\s\S]*steps: \*native_steps/u);
+  assert.match(workflow,/needs: \[prepare, native, native-linux\]/u);
   assert.match(prepare.text,/CITIZENSDK_RESOURCE_WORK_DIR\/tools/u,'Android构建目录与锁定资源目录保持分离');
   assert.match(prepare.text,/gradle\.path!==root\+"gradle-"\+gradle\.version\+"\/bin\/gradle"/u);
   assert.match(prepare.text,/java\.home!==root\+"java-"\+java\.version/u);
@@ -6767,8 +6775,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(androidToolInstall.text,/for attempt in 1 2 3/u,'Android固定工具归档损坏时必须有界重试');
   assert.match(androidToolInstall.text,/source\.properties/u,'Android NDK重试成功必须验证完整安装');
   for(const pkg of ['libglib2.0-dev','libgtk-3-dev','libgstreamer1.0-dev','libgstreamer-plugins-base1.0-dev'])
-   assert.match(linuxDependencies.text,new RegExp('apt-get install -y[^\\n]*'+pkg,'u'),
+   assert.match(linuxRoot.text,new RegExp(pkg,'u'),
     'Linux原生构建缺少pkg-config所需的官方开发包：'+pkg);
+  assert.match(linuxDependencies.text,/if: matrix\.platform == 'Android'/u);
   const linuxTests=readFileSync(join(root,'linux/tests/CMakeLists.txt'),'utf8');
   assert.match(linuxTests,/CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1/u,
    'SQLite扩展错误码诊断只能接入Linux合同测试支持目标');
@@ -8662,12 +8671,50 @@ async function prepareAndroidToolchain(work, {
   });
 }
 
+// Linux 正式构建在 GLIBC 2.31 容器内使用同一本仓锁定的 CMake，而非旧版系统 CMake。
+async function prepareLinuxCmakeTool(work,platform,{acquire=acquireArchive,extract=extractArchive,withScratch=buildTarget.withFixedWork}={}){
+ const tool=toolDefinitions.find(value=>value.id==='cmake');
+ const key={LinuxARM:'linux-arm',LinuxAMD:'linux-amd'}[platform],archive=tool?.archives?.[key];
+ if(!archive||tool.version!=='3.31.6'||!archive.root||!/^[a-f0-9]{64}$/u.test(archive.sha256))fail('Linux CMake锁定配方无效');
+ const destination=join(work,'cmake-'+tool.version+'-'+platform);
+ if(await stat(destination))fail('Linux CMake任务目标已存在');
+ return withScratch('build/sdk',async scratch=>{
+  const original=await acquire(archive,{store:join(work,'archives'),work:scratch});
+  await extract(original,destination,{prefix:archive.root==='.'?'':archive.root});
+  const cmake=join(destination,'bin/cmake'),ctest=join(destination,'bin/ctest');
+  for(const file of [cmake,ctest]){const info=await regular(file);if(!(info.mode&0o111))fail('Linux CMake交付入口不可执行');}
+  const result=spawnSync(cmake,['--version'],{encoding:'utf8',timeout:30000});
+  if(result.status!==0||!result.stdout?.startsWith('cmake version '+tool.version+'\n'))fail('Linux CMake交付版本不符');
+  return {path:cmake,version:tool.version};
+ });
+}
+if(inlineTestEntry){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('Linux两架构只物化本仓固定CMake并拒绝重复或未知目标',async t=>{
+  const fs=await import('node:fs/promises'),parent=join(root,'target/test');await fs.mkdir(parent,{recursive:true});
+  const work=await fs.mkdtemp(join(parent,'linux-cmake-'));t.after(()=>fs.rm(work,{recursive:true,force:true}));
+  const seen=[],options={withScratch:async(_scope,action)=>action(work),
+   acquire:async archive=>{seen.push(archive.sha256);return join(work,'locked-archive');},
+   extract:async(_file,destination,{prefix})=>{seen.push(prefix);await fs.mkdir(join(destination,'bin'),{recursive:true});
+    for(const name of ['cmake','ctest'])await fs.writeFile(join(destination,'bin',name),'#!/bin/sh\necho cmake version 3.31.6\n',{mode:0o755});}};
+  for(const platform of ['LinuxARM','LinuxAMD']){
+   const result=await prepareLinuxCmakeTool(work,platform,options);
+   assert.equal(result.version,'3.31.6');assert.equal(result.path,join(work,'cmake-3.31.6-'+platform,'bin/cmake'));
+  }
+  assert.deepEqual(seen,[toolDefinitions.find(x=>x.id==='cmake').archives['linux-arm'].sha256,
+   'cmake-3.31.6-linux-aarch64',toolDefinitions.find(x=>x.id==='cmake').archives['linux-amd'].sha256,'']);
+  await assert.rejects(prepareLinuxCmakeTool(work,'LinuxAMD',options),/目标已存在/u);
+  await assert.rejects(prepareLinuxCmakeTool(work,'Windows',options),/配方无效/u);
+ });
+}
+
 async function prepareEnvironment(args) {
   if (args.scope && args.scope !== 'citizensdk') fail('scope只接受citizensdk');
   if (!platforms.has(args.platform)) fail(`平台无效：${args.platform || '<empty>'}`);
   const work = safeExternalDirectory(resolve(args.work || developerCache()), '依赖工作目录');
   for (const source of sourcesFor(args.platform)) await prepareSource(source, work);
-  const tools = args.platform === 'Android' ? await prepareAndroidToolchain(work) : {};
+  const tools = args.platform === 'Android' ? await prepareAndroidToolchain(work)
+    : ['LinuxARM','LinuxAMD'].includes(args.platform) ? {cmake:await prepareLinuxCmakeTool(work,args.platform)} : {};
   process.stdout.write(`${JSON.stringify({ schema: 1, platform: args.platform, work, tools })}\n`);
 }
 
