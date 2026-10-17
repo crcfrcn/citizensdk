@@ -4238,3 +4238,5 @@ Linux 共享内存 DMS 合同先用 `F_OFD_GETLK` 证明现存共享锁，再用
 Linux Core/Host 的 ELF `DT_NEEDED` 禁止项门禁继续拒绝动态泄漏；失败回执仅标明 Core 或 Host 及经固定字符集验真的违规 SONAME，其他名称仍以通用错误拒绝，不输出文件路径。Windows 原生测试支持目标单独启用 Host 创建阶段诊断，失败时只报告资产加载、Core 创建或创建后提供者设置阶段和公开错误码，正式 Host 不输出该诊断。Windows 测试夹具放宽自有临时文件 DACL 时同时请求 `READ_CONTROL` 与 `WRITE_DAC`，与既有目录夹具相同；生产存储继续拒绝放宽的文件。
 
 原生源码投影在每个平台 Runner 再次按本仓链资产合同验真三个资产文件的实际字节；若 Windows checkout 改写换行，必须在 Core 创建前以字段漂移失败，不能重算锚点来接纳变化。Linux Core 通过同一锁定 Cargo 工程和缓存取得最终链接命令，日志只输出 `libgcc_s` 及静态/动态链接固定标记是否存在；原始命令、环境、路径与令牌不进入日志。现有 ELF `DT_NEEDED` 禁止项门禁仍以最终二进制为准。
+
+本仓 `.gitattributes` 仅将三个 `chain/*.json` 正式资产逐项固定为 `text eol=lf`；Git checkout 在 Windows 也须保留索引中的 LF 字节，manifest、chainspec、light sync state 的已提交内容和摘要锚点不随平台变化。原生投影的字节验真继续独立执行，不能依赖 Git 属性代替校验。

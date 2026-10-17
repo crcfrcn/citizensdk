@@ -1,0 +1,3 @@
+chain/manifest.json text eol=lf
+chain/chainspec.json text eol=lf
+chain/light_sync_state.json text eol=lf
