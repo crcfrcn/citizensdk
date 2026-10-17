@@ -357,6 +357,7 @@ constexpr const char *kMethods[] = {
     "stop",
     "close",
     "getCapabilities",
+    "readDiagnostics",
     "getFinalizedHead",
     "getSyncStatus",
     "getBestHead",
@@ -979,7 +980,7 @@ DecodedRequest decode_request(const std::string &name,
         break;
       }
       case Method::start: case Method::stop: case Method::close:
-      case Method::get_capabilities: case Method::get_finalized_head:
+      case Method::read_diagnostics: case Method::get_capabilities: case Method::get_finalized_head:
       case Method::get_sync_status: case Method::get_best_head:
       case Method::export_state: case Method::get_genesis_hash:
       case Method::get_fee_snapshot:
@@ -2106,7 +2107,7 @@ Value copy_public_result(Method method, citizensdk_result_handle_t result) {
     case Method::cancel_prepared_transaction_execution:
     case Method::cancel_signing:
     case Method::verify_signature:
-    case Method::open: case Method::close: case Method::get_capabilities: case Method::get_genesis_hash:
+    case Method::open: case Method::close: case Method::read_diagnostics: case Method::get_capabilities: case Method::get_genesis_hash:
     case Method::qr_parse: case Method::qr_create_sign_request:
     case Method::sign_qr_request:
     case Method::qr_validate_sign_response: case Method::qr_consume_sign_response: case Method::qr_cancel_sign_request:
@@ -2554,7 +2555,7 @@ void validate_public_value(Method method, const Value &value) {
         validate_history(item); return;
       case Method::open_private_key:
       case Method::open: case Method::start: case Method::stop: case Method::close:
-      case Method::get_capabilities:
+      case Method::read_diagnostics: case Method::get_capabilities:
       case Method::import_state:
       case Method::qr_parse: case Method::qr_create_sign_request:
       case Method::sign_qr_request:

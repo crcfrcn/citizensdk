@@ -74,10 +74,15 @@ pub struct EventDispatcher {
     state: Arc<(Mutex<DispatchState>, Condvar)>,
     join: Mutex<Option<JoinHandle<()>>>,
     enqueue: Arc<Mutex<EnqueueState>>,
+    catalog_reserve: usize,
 }
 
 impl EventDispatcher {
-    pub fn new() -> FfiResult<Self> {
+    pub fn new() -> FfiResult<Self> { Self::with_catalog_reserve(0) }
+
+    /// 运行实例为本地只读保留真实槽位；普通事件和网络请求都不能占用。
+    pub(crate) fn with_catalog_reserve(catalog_reserve: usize) -> FfiResult<Self> {
+        if catalog_reserve >= EVENT_QUEUE_CAPACITY { return Err(FfiError::invalid("invalid catalog event reserve")); }
         let (sender, receiver) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
         let state = Arc::new((
             Mutex::new(DispatchState {
@@ -107,6 +112,7 @@ impl EventDispatcher {
             state,
             join: Mutex::new(Some(join)),
             enqueue,
+            catalog_reserve,
         })
     }
 
@@ -177,7 +183,7 @@ impl EventDispatcher {
             .map_err(|_| FfiError::internal("event enqueue state is poisoned"))?;
         let generation = self.current_generation()?;
         let (sequence, following) = reserve_unreserved_sequence(&enqueue)?;
-        ensure_capacity(&enqueue)?;
+        ensure_capacity(&enqueue, EVENT_QUEUE_CAPACITY - self.catalog_reserve)?;
         self.sender
             .try_send(DispatchMessage::Event {
                 event: CitizenSdkEvent {
@@ -209,6 +215,12 @@ impl EventDispatcher {
     /// Reserve the capacity required for one mandatory completion before the
     /// request is accepted. Other event producers cannot consume this unit.
     pub fn reserve_completion(&self) -> FfiResult<CompletionEventReservation> {
+        self.reserve_completion_with_policy(false)
+    }
+    pub(crate) fn reserve_catalog_completion(&self) -> FfiResult<CompletionEventReservation> {
+        self.reserve_completion_with_policy(true)
+    }
+    fn reserve_completion_with_policy(&self, catalog: bool) -> FfiResult<CompletionEventReservation> {
         let mut enqueue = self
             .enqueue
             .lock()
@@ -221,7 +233,7 @@ impl EventDispatcher {
             ));
         }
         // 预留的是有界队列真实容量，不仅是 sequence。普通事件不能占用它。
-        ensure_capacity(&enqueue)?;
+        ensure_capacity(&enqueue, if catalog { EVENT_QUEUE_CAPACITY } else { EVENT_QUEUE_CAPACITY - self.catalog_reserve })?;
         enqueue.reserved_completions = enqueue
             .reserved_completions
             .checked_add(1)
@@ -380,8 +392,8 @@ impl EventDispatcher {
     }
 }
 
-fn ensure_capacity(state: &EnqueueState) -> FfiResult<()> {
-    if state.queued + state.reserved_completions as usize >= EVENT_QUEUE_CAPACITY {
+fn ensure_capacity(state: &EnqueueState, capacity: usize) -> FfiResult<()> {
+    if state.queued + state.reserved_completions as usize >= capacity {
         return Err(FfiError::new(
             crate::abi::CitizenSdkErrorCode::QueueFull,
             "CitizenSDK event queue is full",
@@ -605,6 +617,19 @@ mod tests {
         dispatcher
             .shutdown()
             .unwrap_or_else(|error| panic!("dispatcher shutdown failed: {error:?}"));
+    }
+
+    #[test]
+    fn catalog_completion_slots_survive_ordinary_reservation_saturation() {
+        let dispatcher = EventDispatcher::with_catalog_reserve(8).unwrap();
+        let ordinary: Vec<_> = (0..EVENT_QUEUE_CAPACITY - 8).map(|_| dispatcher.reserve_completion().unwrap()).collect();
+        assert_eq!(dispatcher.reserve_completion().err().unwrap().code, CitizenSdkErrorCode::QueueFull);
+        let mut catalog: Vec<_> = (0..8).map(|_| dispatcher.reserve_catalog_completion().unwrap()).collect();
+        assert_eq!(dispatcher.reserve_catalog_completion().err().unwrap().code, CitizenSdkErrorCode::QueueFull);
+        drop(catalog.pop());
+        assert!(dispatcher.reserve_completion().is_err());
+        assert!(dispatcher.reserve_catalog_completion().is_ok());
+        drop(catalog);drop(ordinary);dispatcher.shutdown().unwrap();
     }
 
     #[test]

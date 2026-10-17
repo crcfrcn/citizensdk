@@ -850,3 +850,47 @@ fn missing_secure_resource_groups_fail_before_callbacks_or_provider_creation() {
         CitizenSdkErrorCode::InvalidArgument
     );
 }
+
+/// 完整装配未启动provider且金库不可用时，公开目录仍以真实仓储结果为准。
+#[cfg(all(feature = "chain", feature = "wallet", feature = "transactions", feature = "history"))]
+#[test]
+fn wallet_catalog_read_does_not_require_provider_or_vault_readiness() {
+    for storage_fails in [false, true] {
+        let composition = ProductComposition::try_new(
+            provider_config("CitizenSDK-local-catalog-test"),
+            ProductHostProviders::new(
+                Some(Arc::new(SessionChainDatabaseStore::new())), None,
+                Some(wallet_bundle(VaultAvailability::Unavailable, storage_fails)),
+                Some(Arc::new(FakeHistoryStore { fail_load: true })),
+            ),
+        ).unwrap();
+        let result = futures_executor::block_on(composition.engine().wallet_state());
+        if storage_fails {
+            match result.unwrap_err() {
+                citizen_sdk_engine::EngineError::Contract(error) => assert_eq!(error.code(), ContractErrorCode::Storage),
+                other => panic!("存储错误类型被改变：{other}"),
+            }
+        } else {
+            assert!(result.unwrap().profile().is_none());
+            assert!(futures_executor::block_on(composition.engine().wallet_profile()).unwrap().is_none());
+        }
+        assert_eq!(composition.engine().lifecycle().unwrap(), citizen_sdk_engine::EngineLifecycle::Created);
+    }
+}
+
+#[cfg(all(feature = "chain", feature = "wallet", feature = "transactions", feature = "history"))]
+#[test]
+fn local_wallet_refresh_does_not_replace_chain_or_history_readiness() {
+    let composition = ProductComposition::try_new(
+        provider_config("CitizenSDK-local-capability-test"),
+        ProductHostProviders::new(Some(Arc::new(SessionChainDatabaseStore::new())), None,
+            Some(wallet_bundle(VaultAvailability::Unavailable, false)), Some(Arc::new(FakeHistoryStore { fail_load: true }))),
+    ).unwrap();
+    let previous = composition.engine().capabilities().unwrap().unwrap();
+    let refreshed = composition.engine().update_local_wallet_readiness(composition.local_wallet_probes()).unwrap();
+    assert_eq!(previous.status(CapabilityName::ChainRead), refreshed.status(CapabilityName::ChainRead));
+    assert_eq!(previous.status(CapabilityName::History), refreshed.status(CapabilityName::History));
+    assert!(refreshed.status(CapabilityName::WalletProfile).unwrap().is_ready());
+    assert!(!refreshed.status(CapabilityName::HardwareVault).unwrap().is_ready());
+    assert!(!refreshed.status(CapabilityName::LocalSigning).unwrap().is_ready());
+}

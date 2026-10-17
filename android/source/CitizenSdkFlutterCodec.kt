@@ -38,6 +38,7 @@ internal object CitizenSdkFlutterCodec {
         "stop",
         "close",
         "getCapabilities",
+        "readDiagnostics",
         "getFinalizedHead",
         "getSyncStatus",
         "getBestHead",
@@ -439,7 +440,7 @@ internal object CitizenSdkFlutterCodec {
                     if (method == "respondCredential" && tuple[4] != null) bytes(tuple[4], "credential", true, 1024).fill(0)
                     Request.Resource(method, sessionId, sequence, id)
                 }
-                "start", "stop", "close", "getCapabilities", "getFinalizedHead", "getSyncStatus",
+                "start", "stop", "close", "getCapabilities", "readDiagnostics", "getFinalizedHead", "getSyncStatus",
                 "getBestHead", "exportState", "getGenesisHash",
                 "getFeeSnapshot", "getWalletState", "inspectWallets", "deleteWallet", "signAndDeleteWallet",
                 "reconcileWalletCleanup" -> {

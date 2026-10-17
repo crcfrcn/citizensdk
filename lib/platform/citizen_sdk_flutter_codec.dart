@@ -57,6 +57,7 @@ final class CitizenSdkFlutterCodec {
     'stop',
     'close',
     'getCapabilities',
+    'readDiagnostics',
     'getFinalizedHead',
     'getSyncStatus',
     'getBestHead',
@@ -1277,6 +1278,7 @@ final class CitizenSdkFlutterCodec {
       case 'start':
       case 'stop':
       case 'close':
+      case 'readDiagnostics':
       case 'getCapabilities':
       case 'getFinalizedHead':
       case 'getSyncStatus':
@@ -1961,6 +1963,12 @@ final class CitizenSdkFlutterCodec {
       case 'qrPrepareAccountAuthorization':
         _expectLength(value, 1, '$method value');
         decodeQrAuthorization(value[0]);
+        return;
+      case 'readDiagnostics':
+        _expectLength(value, 1, '$method value');
+        final rows = value[0];
+        if (rows is! List<Object?> || rows.length > 128) throw _decodeFailure('SDK安全诊断超限');
+        for (final row in rows) { CitizenSdkDiagnostic.decode(row); }
         return;
       case 'inspectWallets':
         _expectLength(value, 2, '$method value');

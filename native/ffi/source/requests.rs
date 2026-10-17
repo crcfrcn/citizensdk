@@ -1,5 +1,5 @@
 use std::{
-    panic::{catch_unwind, AssertUnwindSafe},
+    cell::Cell,
     sync::{mpsc, Arc, Mutex, OnceLock},
     thread,
 };
@@ -45,6 +45,7 @@ struct RequestExecutor {
 }
 
 static SHORT_EXECUTOR: OnceLock<Result<RequestExecutor, String>> = OnceLock::new();
+static CATALOG_EXECUTOR: OnceLock<Result<RequestExecutor, String>> = OnceLock::new();
 static WATCH_EXECUTOR: OnceLock<Result<RequestExecutor, String>> = OnceLock::new();
 
 pub fn accept<F>(
@@ -62,7 +63,7 @@ where
         + 'static,
 {
     let executor = short_executor()?;
-    accept_on(runtime, cancellable, false, operation, executor)
+    accept_on(runtime, cancellable, false, false, operation, executor)
 }
 
 /// Accepts a lifecycle operation only when no earlier asynchronous request is
@@ -81,7 +82,7 @@ where
         + 'static,
 {
     let executor = short_executor()?;
-    accept_on(runtime, false, true, operation, executor)
+    accept_on(runtime, false, true, false, operation, executor)
 }
 
 /// Accept a long-lived chain watch on a separate bounded pool so raw watches
@@ -98,13 +99,34 @@ where
         + 'static,
 {
     let executor = watch_executor()?;
-    accept_on(runtime, true, false, operation, executor)
+    accept_on(runtime, true, false, false, operation, executor)
 }
+
+/// 钱包目录独占两个有界worker，不与网络请求或用户认证共用可占满的队列。
+pub(crate) fn accept_catalog<F>(runtime: Arc<NativeRuntime>, operation: F) -> FfiResult<CitizenSdkRequestId>
+where F: FnOnce(&Arc<NativeRuntime>, CitizenSdkRequestId, Option<RequestCancellation>) -> FfiResult<ResultPayload> + Send + 'static,
+{
+    let executor = CATALOG_EXECUTOR.get_or_init(|| start_executor(2, "citizensdk-catalog"))
+        .as_ref().map_err(|message| FfiError::internal(message.clone()))?;
+    accept_on(runtime, true, false, true, operation, executor)
+}
+
+/// 只记录固定步骤；panic载荷、账户、秘密与请求参数永不进入诊断。
+#[derive(Clone, Copy)]
+pub(crate) enum RequestPoint { Admission, LocalRead, ResultReady }
+impl RequestPoint {
+    const fn token(self) -> &'static str { match self {
+        Self::Admission => "ADMISSION", Self::LocalRead => "LOCAL_READ", Self::ResultReady => "RESULT_READY",
+    } }
+}
+thread_local! { static REQUEST_POINT: Cell<RequestPoint> = const { Cell::new(RequestPoint::Admission) }; }
+pub(crate) fn mark_request_point(point: RequestPoint) { REQUEST_POINT.with(|value| value.set(point)); }
 
 fn accept_on<F>(
     runtime: Arc<NativeRuntime>,
     cancellable: bool,
     exclusive: bool,
+    catalog: bool,
     operation: F,
     executor: &RequestExecutor,
 ) -> FfiResult<CitizenSdkRequestId>
@@ -117,7 +139,9 @@ where
         + Send
         + 'static,
 {
-    let (request_id, cancellation) = if exclusive {
+    let (request_id, cancellation) = if catalog {
+        runtime.begin_catalog_request()?
+    } else if exclusive {
         runtime.begin_exclusive_request()?
     } else {
         runtime.begin_request(cancellable)?
@@ -200,17 +224,18 @@ fn worker_loop(receiver: Arc<Mutex<mpsc::Receiver<RequestJob>>>) {
             RequestJob::Standard(job) => job,
             RequestJob::PrivateView(operation) => {
                 // 作业持有会话并自行把 panic 转为受控错误；外层隔离防止单个视图杀死共享 worker。
-                let _ = catch_unwind(AssertUnwindSafe(operation));
+                let _ = crate::error::catch_native_panic(operation);
                 continue;
             }
         };
-        let outcome = catch_unwind(AssertUnwindSafe(|| {
+        mark_request_point(RequestPoint::Admission);
+        let outcome = crate::error::catch_native_panic(|| {
             (job.operation)(&job.runtime, job.request_id, job.cancellation)
-        }))
+        })
         .unwrap_or_else(|_| {
             Err(FfiError::new(
                 CitizenSdkErrorCode::Panic,
-                "CitizenSDK request panicked",
+                REQUEST_POINT.with(|point| format!("CitizenSDK request panicked at {}", point.get().token())),
             ))
         });
         job.runtime.complete_request(job.request_id, outcome);
@@ -255,6 +280,46 @@ mod tests {
             "1.0.0".to_owned(),
         )
         .unwrap_or_else(|error| panic!("runtime creation failed: {error:?}"))
+    }
+
+    /// 真实调度边界：网络worker被占满时，本地读取仍能返回安全panic并继续服务。
+    #[test]
+    fn blocked_network_executor_cannot_starve_catalog_or_leak_panic_payload() {
+        let runtime = runtime();
+        let (results, received) = mpsc::channel();
+        runtime.set_event_callback(Some(completion_callback),
+            (&results as *const mpsc::Sender<u64>).cast_mut().cast()).unwrap();
+        let blocked = super::start_executor(1, "citizensdk-test-network").unwrap();
+        let (entered, wait_entered) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        super::accept_on(Arc::clone(&runtime), false, false, false, move |_, _, _| {
+            entered.send(()).unwrap();
+            gate.recv_timeout(Duration::from_secs(10)).unwrap();
+            Ok(ResultPayload::Empty)
+        }, &blocked).unwrap();
+        wait_entered.recv_timeout(Duration::from_secs(2)).unwrap();
+        super::accept_catalog(Arc::clone(&runtime), |_, _, _| {
+            super::mark_request_point(super::RequestPoint::LocalRead);
+            panic!("synthetic private panic payload")
+        }).unwrap();
+        let result = received.recv_timeout(Duration::from_secs(2)).unwrap();
+        let error = ownership::get(result).unwrap();
+        assert_eq!(error.code, crate::abi::CitizenSdkErrorCode::Panic);
+        assert_eq!(error.message, "CitizenSDK request panicked at LOCAL_READ");
+        ownership::release(result).unwrap();runtime.result_released();
+        super::accept_catalog(Arc::clone(&runtime), |_, _, _| Ok(ResultPayload::Empty)).unwrap();
+        let result = received.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(ownership::get(result).unwrap().code, crate::abi::CitizenSdkErrorCode::Ok);
+        ownership::release(result).unwrap();runtime.result_released();
+        release.send(()).unwrap();
+        let result = received.recv_timeout(Duration::from_secs(2)).unwrap();
+        ownership::release(result).unwrap();runtime.result_released();
+        drop(blocked);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while runtime.set_event_callback(None, std::ptr::null_mut()).is_err() {
+            assert!(Instant::now() < deadline);std::thread::yield_now();
+        }
+        runtime.shutdown().unwrap();
     }
 
     #[test]

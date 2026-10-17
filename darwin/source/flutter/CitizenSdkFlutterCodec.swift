@@ -23,6 +23,7 @@ internal enum CitizenSdkFlutterCodec {
         "stop",
         "close",
         "getCapabilities",
+        "readDiagnostics",
         "getFinalizedHead",
         "getSyncStatus",
         "getBestHead",
@@ -318,7 +319,7 @@ internal enum CitizenSdkFlutterCodec {
                     credential.resetBytes(in: 0..<credential.count)
                 }
                 return .resource(method: method, session: session, sequence: sequence, id: String(id))
-            case "start", "stop", "close", "getCapabilities", "getFinalizedHead", "getSyncStatus",
+            case "start", "stop", "close", "getCapabilities", "readDiagnostics", "getFinalizedHead", "getSyncStatus",
                  "getBestHead", "exportState", "getGenesisHash", "getFeeSnapshot",
                  "getWalletState", "inspectWallets", "deleteWallet", "signAndDeleteWallet", "reconcileWalletCleanup":
                 try length(3); return .empty(method: method, session: session, sequence: sequence)

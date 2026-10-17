@@ -56,6 +56,7 @@ struct PendingRequest {
     completion_event: CompletionEventReservation,
     result: ResultReservation,
     exclusive: bool,
+    catalog: bool,
 }
 
 struct CapabilityMonitor {
@@ -184,7 +185,7 @@ impl NativeRuntime {
         Ok(Arc::new(Self {
             handle,
             composition,
-            dispatcher: EventDispatcher::new()?,
+            dispatcher: EventDispatcher::with_catalog_reserve(8)?,
             result_handles,
             request_state: Mutex::new(RequestState {
                 accepting: true,
@@ -323,7 +324,7 @@ impl NativeRuntime {
         &self,
         cancellable: bool,
     ) -> FfiResult<(CitizenSdkRequestId, Option<RequestCancellation>)> {
-        self.begin_request_with_policy(cancellable, false)
+        self.begin_request_with_policy(cancellable, false, false)
     }
 
     /// Reserves one host-composed start, stop or import operation that cannot
@@ -333,13 +334,19 @@ impl NativeRuntime {
     pub fn begin_exclusive_request(
         &self,
     ) -> FfiResult<(CitizenSdkRequestId, Option<RequestCancellation>)> {
-        self.begin_request_with_policy(false, true)
+        self.begin_request_with_policy(false, true, false)
+    }
+
+    /// 本地只读不等待链启停；关闭和回调更换仍具有完整排他性。
+    pub(crate) fn begin_catalog_request(&self) -> FfiResult<(CitizenSdkRequestId, Option<RequestCancellation>)> {
+        self.begin_request_with_policy(true, false, true)
     }
 
     fn begin_request_with_policy(
         &self,
         cancellable: bool,
         exclusive: bool,
+        catalog: bool,
     ) -> FfiResult<(CitizenSdkRequestId, Option<RequestCancellation>)> {
         let mut state = self
             .request_state
@@ -351,13 +358,18 @@ impl NativeRuntime {
                 "CitizenSDK instance is shutting down",
             ));
         }
-        if state.control_transition_in_progress() {
+        if state.callback_transition || (!catalog && (state.subscription_transition || state.exclusive_request.is_some())) {
             return Err(FfiError::new(
                 CitizenSdkErrorCode::Busy,
                 "a CitizenSDK callback, subscription, or lifecycle transition is in progress",
             ));
         }
-        if exclusive && self.pending_requests.load(Ordering::SeqCst) != 0 {
+        // 完成过程会先移除登记、再提交结果并归还计数；两者之间仍须排空普通请求。
+        // 已移除的本地请求至多使启停短暂返回Busy，不能放行尚未完成的普通请求。
+        let catalog_pending = self.cancellations.lock()
+            .map_err(|_| FfiError::internal("request cancellation state is poisoned"))?
+            .values().filter(|request| request.catalog).count() as u64;
+        if exclusive && self.pending_requests.load(Ordering::SeqCst) > catalog_pending {
             return Err(FfiError::new(
                 CitizenSdkErrorCode::Busy,
                 "a lifecycle request requires every earlier asynchronous request to complete",
@@ -378,7 +390,8 @@ impl NativeRuntime {
         // Both resources needed for the unique mandatory completion are
         // reserved before request acceptance becomes observable. Ordinary
         // events and watch updates cannot consume either reservation.
-        let completion_event = self.dispatcher.reserve_completion()?;
+        let completion_event = if catalog { self.dispatcher.reserve_catalog_completion()? }
+            else { self.dispatcher.reserve_completion()? };
         let result = ownership::reserve_with(self.handle, self.result_handles)?;
         let (cancel_state, cancel_receiver) = if cancellable {
             let (sender, receiver) = futures_channel::oneshot::channel();
@@ -398,6 +411,7 @@ impl NativeRuntime {
                     completion_event,
                     result,
                     exclusive,
+                    catalog,
                 });
             }
             Entry::Occupied(_) => {
@@ -479,10 +493,15 @@ impl NativeRuntime {
             completion_event,
             result: result_reservation,
             exclusive,
+            catalog,
         }) = pending
         else {
             return;
         };
+        // 只撤销本次公开目录结果；真实load和宿主completion退出后才完成请求。
+        let outcome = if catalog && matches!(cancellation, CancellationState::Requested) {
+            Err(FfiError::new(CitizenSdkErrorCode::Cancelled, "wallet catalog read cancelled"))
+        } else { outcome };
         #[cfg(feature = "qr")]
         let outcome = if matches!(cancellation, CancellationState::Requested)
             && matches!(
@@ -533,7 +552,7 @@ impl NativeRuntime {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             debug_assert_eq!(state.exclusive_request, Some(request_id));
             let previous = self.pending_requests.fetch_sub(1, Ordering::SeqCst);
-            debug_assert_eq!(previous, 1);
+            debug_assert!(previous > 0);
             if state.exclusive_request == Some(request_id) {
                 state.exclusive_request = None;
             }
@@ -593,6 +612,18 @@ impl NativeRuntime {
         let revision = self.capability_snapshot()?.revision();
         self.dispatcher
             .send(CitizenSdkEventType::CapabilitiesChanged, 0, 0, revision)
+    }
+
+    /// 本地钱包完整能力仍由真实仓储和金库决定，不探测provider或历史。
+    pub(crate) fn refresh_local_wallet_capabilities(&self) -> FfiResult<CapabilitySnapshot> {
+        let before = self.capability_snapshot()?.revision();
+        let snapshot = self.engine().update_local_wallet_readiness(self.composition.local_wallet_probes())?;
+        if snapshot.revision() != before { self.dispatcher.send(CitizenSdkEventType::CapabilitiesChanged, 0, 0, snapshot.revision())?; }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn drive_local<F: std::future::Future>(&self, future: F) -> FfiResult<F::Output> {
+        Ok(futures_executor::block_on(future))
     }
 
     /// Refresh readiness from the provider's own verified status. The ABI
@@ -1043,6 +1074,60 @@ mod tests {
         ownership::{self, ResultHandleAllocator, ResultPayload},
         runtime::NativeRuntime,
     };
+
+    /// 本地目录可跨链生命周期独占，普通请求仍拒绝，销毁仍等待所有请求。
+    #[test]
+    fn catalog_admission_is_independent_of_chain_exclusivity() {
+        let runtime = NativeRuntime::new(700_001,
+            crate::assets::verify_assets(include_bytes!("../../../chain/manifest.json"),
+                include_bytes!("../../../chain/chainspec.json"), include_bytes!("../../../chain/light_sync_state.json")).unwrap().combined_chain_spec,
+            "catalog-admission".into(), "1.0.0".into()).unwrap();
+        runtime.set_event_callback(Some(ignore_event), std::ptr::null_mut()).unwrap();
+        let (catalog, _) = runtime.begin_catalog_request().unwrap();
+        let (lifecycle, _) = runtime.begin_exclusive_request().unwrap();
+        assert!(runtime.begin_request(false).is_err());
+        let (second, _) = runtime.begin_catalog_request().unwrap();
+        runtime.request_cancel(second).unwrap();
+        runtime.reject_request(second);
+        runtime.reject_request(lifecycle);
+        runtime.reject_request(catalog);
+        runtime.set_event_callback(None, std::ptr::null_mut()).unwrap();
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn lifecycle_waits_for_ordinary_result_commit_after_registry_removal() {
+        let runtime = runtime();
+        runtime.set_event_callback(Some(ignore_event), std::ptr::null_mut()).unwrap();
+        let (request, _) = runtime.begin_request(false).unwrap();
+        // 复现complete_request移除登记到finish_request_admission之间的真实窗口。
+        let pending = runtime.cancellations.lock().unwrap().remove(&request).unwrap();
+        assert_eq!(runtime.begin_exclusive_request().err().unwrap().code, CitizenSdkErrorCode::Busy);
+        runtime.cancellations.lock().unwrap().insert(request, pending);
+        runtime.reject_request(request);
+        let (lifecycle, _) = runtime.begin_exclusive_request().unwrap();
+        runtime.reject_request(lifecycle);
+        runtime.set_event_callback(None, std::ptr::null_mut()).unwrap();
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn ordinary_requests_cannot_consume_catalog_completion_budget() {
+        let runtime = NativeRuntime::new(700_002,
+            crate::assets::verify_assets(include_bytes!("../../../chain/manifest.json"),
+                include_bytes!("../../../chain/chainspec.json"), include_bytes!("../../../chain/light_sync_state.json")).unwrap().combined_chain_spec,
+            "catalog-completion-budget".into(), "1.0.0".into()).unwrap();
+        runtime.set_event_callback(Some(ignore_event), std::ptr::null_mut()).unwrap();
+        let mut ordinary = Vec::new();
+        loop { match runtime.begin_request(false) {
+            Ok((id, _)) => { ordinary.push(id); assert!(ordinary.len() < 64); }
+            Err(error) => { assert_eq!(error.code, CitizenSdkErrorCode::QueueFull); break; }
+        }}
+        let catalog: Vec<_> = (0..8).map(|_| runtime.begin_catalog_request().unwrap().0).collect();
+        assert_eq!(runtime.begin_request(false).err().unwrap().code, CitizenSdkErrorCode::QueueFull);
+        for id in catalog.into_iter().chain(ordinary) { runtime.reject_request(id); }
+        runtime.set_event_callback(None, std::ptr::null_mut()).unwrap();runtime.shutdown().unwrap();
+    }
 
     static EXHAUSTED_RESULT_HANDLES: ResultHandleAllocator = ResultHandleAllocator::new(u64::MAX);
 

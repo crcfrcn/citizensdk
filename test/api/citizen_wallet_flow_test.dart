@@ -23,6 +23,39 @@ void main() {
     await platform.dispose();
   });
 
+  test('链启动在途不阻塞SDK目录读取，读诊断不调用钱包或链', () async {
+    final startup = Completer<List<Object?>>();
+    platform.handlers['start'] = (_) => startup.future;
+    platform.handlers['getWalletState'] = (_) => [_state()];
+    platform.handlers['readDiagnostics'] = (_) => [<Object?>[
+      ['inspectWallets', 'COMPLETE', 21, 8, 'LOCAL_READ', 3],
+    ]];
+    platform.handlers['stop'] = (_) => ['stopped'];
+    final sdk = await open();
+    final starting = sdk.start();
+    await Future<void>.delayed(Duration.zero);
+    expect((await sdk.wallet.getState().result).accounts, isNotEmpty);
+    expect((await sdk.readDiagnostics()).single.point, 'LOCAL_READ');
+    expect(platform.calls, isNot(contains('getSyncStatus')));
+    startup.complete(['running']);
+    await starting;
+    await sdk.stop();
+  });
+
+  test('安全诊断拒绝未知方法、额外字段及原始异常文本', () async {
+    final codec = CitizenSdkFlutterCodec();
+    for (final row in <List<Object?>>[
+      ['importWallet', 'COMPLETE', 21, 8, 'LOCAL_READ', 0],
+      ['inspectWallets', 'COMPLETE', 21, 8, 'synthetic private input', 0],
+      ['inspectWallets', 'COMPLETE', 21, 8, 'LOCAL_READ', -1],
+      ['inspectWallets', 'COMPLETE', 21, 8, 'LOCAL_READ', 0, 'extra'],
+    ]) {
+      expect(() => CitizenSdkDiagnostic.decode(row), throwsA(isA<CitizenSdkException>()));
+    }
+    expect(() => codec.encodeRequest(method: 'readDiagnostics', sessionId: 's',
+      requestSequence: 1, fields: ['untrusted path']), throwsA(isA<CitizenSdkException>()));
+  });
+
   test('钱包检查资源只接真实引用、准确索引，释放幂等且SDK关闭回收', () async {
     final id = _account(1);
     final state = <Object?>['1', null, <Object?>[], 1, false, 0,

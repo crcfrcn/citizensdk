@@ -240,6 +240,8 @@ impl EngineComponents {
 /// Product-independent CitizenSDK Core Engine.
 pub struct CitizenEngine {
     components: EngineComponents,
+    // 本地目录的销毁事实独立于链状态锁，链错误不能污染只读准入。
+    catalog_closed: AtomicBool,
     runtime_contexts: Mutex<RuntimeContextCache>,
     capabilities: Mutex<EngineCapabilityState>,
     state: Arc<Mutex<EngineState>>,
@@ -367,6 +369,7 @@ impl CitizenEngine {
     pub fn new(components: EngineComponents) -> Self {
         Self {
             components,
+            catalog_closed: AtomicBool::new(false),
             runtime_contexts: Mutex::new(RuntimeContextCache::new()),
             capabilities: Mutex::new(EngineCapabilityState::default()),
             state: Arc::new(Mutex::new(EngineState::default())),
@@ -394,6 +397,25 @@ impl CitizenEngine {
             .lock()
             .map_err(|_| EngineError::StatePoisoned)?;
         let snapshot = capabilities.tracker.update(effective)?;
+        capabilities.base_probes = Some(probes);
+        Ok(snapshot)
+    }
+
+    /// 仅替换钱包相关事实；保留同一能力真源中的链/历史状态及生命周期门。
+    /// 探测已在锁外完成，这里不调用仓储、金库或provider。
+    pub fn update_local_wallet_readiness(&self, updates: Vec<CapabilityProbe>) -> Result<CapabilitySnapshot, EngineError> {
+        let state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
+        let mut capabilities = self.capabilities.lock().map_err(|_| EngineError::StatePoisoned)?;
+        let mut probes = capabilities.base_probes.clone().ok_or_else(|| EngineError::CapabilityUnavailable("capability state has not been established".into()))?;
+        for update in updates {
+            if matches!(update.name, CapabilityName::WalletProfile | CapabilityName::HardwareVault | CapabilityName::UserAuthentication | CapabilityName::LocalSigning) {
+                let target = probes.iter_mut().find(|probe| probe.name == update.name)
+                    .ok_or_else(|| EngineError::CapabilityUnavailable("wallet capability is missing".into()))?;
+                *target = update;
+            }
+        }
+        self.components.enforce_component_presence(&mut probes);
+        let snapshot = capabilities.tracker.update(probes_for_lifecycle(probes.clone(), state.lifecycle))?;
         capabilities.base_probes = Some(probes);
         Ok(snapshot)
     }
@@ -1070,13 +1092,13 @@ impl CitizenEngine {
 
     /// 读取不含秘密的钱包公开资料；轻节点尚未启动时也可使用本机钱包能力。
     pub fn wallet_profile(&self) -> EngineFuture<'_, Option<WalletProfile>> {
-        let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
+        let service = self.local_wallet_read_service();
         Box::pin(async move { service?.profile().await })
     }
 
     /// 稳定冷热目录、初始化和待清理事实共享同一读取，不把读取失败合成为空钱包。
     pub fn wallet_state(&self) -> EngineFuture<'_, WalletStateSnapshot> {
-        let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
+        let service = self.local_wallet_read_service();
         Box::pin(async move { service?.state().await })
     }
 
@@ -1979,6 +2001,7 @@ impl CitizenEngine {
         }
         require_no_inflight_history_operations(&state, "engine dispose")?;
         state.lifecycle = EngineLifecycle::Disposed;
+        self.catalog_closed.store(true, std::sync::atomic::Ordering::Release);
         state.generation = next_generation(state.generation)?;
         state.export_in_progress = false;
         #[cfg(feature = "chain")]
@@ -2448,6 +2471,18 @@ impl CitizenEngine {
             Arc::new(SystemWalletEntropy),
             Arc::new(SystemWalletClock),
         ))
+    }
+
+    /// 目录读取只核对不可变模块及本实例销毁门；真实仓储错误由load原样返回。
+    /// 不刷新能力、不探测金库或历史、不读取provider及其运行状态。
+    fn local_wallet_read_service(&self) -> Result<WalletService, EngineError> {
+        if !cfg!(feature = "wallet") || !self.components.modules.contains(Modules::WALLET) {
+            return Err(EngineError::contract(ContractErrorCode::Unsupported, "wallet module is not selected"));
+        }
+        if self.catalog_closed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(EngineError::contract(ContractErrorCode::InvalidState, "wallet catalog is closed"));
+        }
+        self.wallet_service_from_components()
     }
 
     fn local_wallet_service(

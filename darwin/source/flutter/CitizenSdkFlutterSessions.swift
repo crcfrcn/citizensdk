@@ -15,6 +15,9 @@ import FlutterMacOS
 internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency FlutterStreamHandler {
     @MainActor private final class Session {
         let sdk: CitizenSdk
+        var diagnostics: [[Any]] = []
+        var diagnosticFile: URL?
+        var diagnosticSignatures: [String: String] = [:]
         var nextEvent: Int64 = 1
         var closing = false
         var outstanding: [UUID: Outstanding] = [:]
@@ -236,6 +239,7 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
                     )
                 }
             )
+            attachDiagnostics(session)
             sessions[sdk.sessionID] = session
             success(result, session: sdk.sessionID, sequence: 0,
                     value: [CitizenSdkFlutterCodec.lifecycle(sdk.lifecycle), Int64(1)])
@@ -245,6 +249,66 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
             }
         } catch {
             fail(result, error, .open(modules: modules))
+        }
+    }
+
+    private static let diagnosticMethods: Set<String> = ["open", "start", "stop", "getSyncStatus", "getWalletState", "inspectWallets", "releaseWalletInspection", "cancelOperation"]
+    private static let diagnosticPoints: Set<String> = ["NONE", "ADMISSION", "LOCAL_READ", "RESULT_READY", "RESTORE", "BEGIN", "PUBLISH_BEGIN", "PROVIDER_START", "REFRESH", "COMPLETE", "SERVICES", "PUBLISH_COMPLETE"]
+    private func validDiagnostic(_ row: [Any]) -> Bool {
+        guard row.count == 6, let method = row[0] as? String, Self.diagnosticMethods.contains(method),
+              let phase = row[1] as? String, ["ADMISSION", "BEGIN", "DECODE", "COMPLETE"].contains(phase),
+              let code = row[2] as? NSNumber, let stage = row[3] as? NSNumber,
+              let point = row[4] as? String, Self.diagnosticPoints.contains(point),
+              let elapsed = row[5] as? NSNumber else { return false }
+        return CFGetTypeID(code) != CFBooleanGetTypeID() && CFGetTypeID(stage) != CFBooleanGetTypeID() &&
+            CFGetTypeID(elapsed) != CFBooleanGetTypeID() &&
+            code.doubleValue == Double(code.intValue) && (0...22).contains(code.intValue) &&
+            stage.doubleValue == Double(stage.intValue) && (0...8).contains(stage.intValue) &&
+            elapsed.doubleValue == Double(elapsed.int64Value) && (0...86400000).contains(elapsed.int64Value)
+    }
+    private func attachDiagnostics(_ session: Session) {
+        do {
+            guard let identity = Bundle.main.bundleIdentifier,
+                  identity.range(of: "^[A-Za-z0-9.-]+$", options: .regularExpression) != nil else { return }
+            let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                appropriateFor: nil, create: true)
+            let directory = base.appendingPathComponent(identity).appendingPathComponent("citizensdk")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            guard directory.resolvingSymlinksInPath().standardizedFileURL == directory.standardizedFileURL else { return }
+            let file = directory.appendingPathComponent("diagnostics.json")
+            guard file.resolvingSymlinksInPath().standardizedFileURL == file.standardizedFileURL else { return }
+            session.diagnosticFile = file
+            if let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 65536,
+               let data = try? Data(contentsOf: file), let rows = try? JSONSerialization.jsonObject(with: data) as? [[Any]],
+               rows.count <= 128, rows.allSatisfy(validDiagnostic) { session.diagnostics = rows }
+        } catch { /* 诊断失效不能阻止SDK打开。 */ }
+    }
+
+    /// 诊断仅使用固定事实，不保存错误message、session或请求内容。
+    private func diagnose(_ session: Session, _ method: String, _ phase: String,
+                          _ error: CitizenSDKError? = nil) {
+        guard Self.diagnosticMethods.contains(method) else { return }
+        let prefix = method == "start" ? "CitizenSDK start panicked at " : "CitizenSDK request panicked at "
+        let points = Self.diagnosticPoints.filter { $0 != "NONE" }
+        let point = error?.code == .panic ? points.first(where: { error?.message == prefix + $0 }) ?? "NONE" : "NONE"
+        let key = method + "/" + phase
+        let signature = "\(error?.code.rawValue ?? 0)/\(error?.stage.rawValue ?? 0)/\(point)"
+        if error == nil && session.diagnosticSignatures[key] == signature { return }
+        session.diagnosticSignatures[key] = signature
+        session.diagnostics.append([method, phase, Int(error?.code.rawValue ?? 0),
+            Int(error?.stage.rawValue ?? 0), point, 0])
+        if session.diagnostics.count > 128 { session.diagnostics.removeFirst() }
+        if let file = session.diagnosticFile {
+            do {
+                guard file.resolvingSymlinksInPath().standardizedFileURL == file.standardizedFileURL else { return }
+                let data = try JSONSerialization.data(withJSONObject: session.diagnostics)
+                guard data.count <= 65536 else { return }
+                try data.write(to: file, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+                var location = file; var values = URLResourceValues(); values.isExcludedFromBackup = true
+                try location.setResourceValues(values)
+            } catch { /* 只写固定事实，不转发原始文件或异常。 */ }
         }
     }
 
@@ -260,6 +324,7 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
                 try await session.sdk.stop(); return [CitizenSdkFlutterCodec.lifecycle(session.sdk.lifecycle)]
             }
             case "close": close(session, request, result)
+            case "readDiagnostics": success(result, request, [session.diagnostics])
             case "getCapabilities":
                 do { success(result, request, [CitizenSdkFlutterCodec.capabilities(try session.sdk.capabilities())]) }
                 catch { fail(result, error, request) }
@@ -670,6 +735,7 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
     private func run(_ session: Session, _ request: CitizenSdkFlutterCodec.Request,
                      _ result: @escaping FlutterResult, cancel: (() -> Void)? = nil,
                      accepted: Bool = false, operation: @escaping @MainActor () async throws -> [Any?]) {
+        diagnose(session, request.method, "BEGIN")
         let id = UUID()
         let context = CitizenSdkFlutterCodec.Request.empty(method: request.method, session: request.sessionID!, sequence: request.sequence!)
         let task = Task { [weak self, weak session] in
@@ -687,8 +753,12 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
             // finish so Core can close, but it must not invoke a stale result.
             guard !self.detached, !self.subscriptionEpoch.isInvalidated else { return }
             switch outcome {
-            case let .success(value): self.success(result, context, value)
-            case let .failure(error): self.fail(result, error, context)
+            case let .success(value):
+                self.diagnose(session, context.method, "COMPLETE")
+                self.success(result, context, value)
+            case let .failure(error):
+                self.diagnose(session, context.method, "COMPLETE", error as? CitizenSDKError ?? CitizenSDKError(.internalFailure, "host failure"))
+                self.fail(result, error, context)
             }
         }
         session.outstanding[id] = Outstanding(task: task, cancel: cancel)

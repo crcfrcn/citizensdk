@@ -1898,7 +1898,7 @@ pub unsafe extern "C" fn citizensdk_last_error_copy(
 }
 
 fn ffi_status(operation: impl FnOnce() -> FfiResult<()>) -> i32 {
-    match catch_unwind(AssertUnwindSafe(operation)) {
+    match crate::error::catch_native_panic(operation) {
         Ok(Ok(())) => {
             clear_last_error();
             CitizenSdkErrorCode::Ok.as_i32()

@@ -17,26 +17,82 @@ import java.util.UUID
 import org.citizen.sdk.internal.CitizenSdkSensitiveBytes
 
 /** Owns public Flutter session identities without exposing Core ownership IDs. */
-/** 诊断只接受闭集事实；不接收异常、参数、账户或会话标识，最多3×8条。 */
+/** 诊断只接受闭集事实；保留最新128条，不接收异常、账户或会话标识。 */
 internal class CitizenSdkFlutterDiagnostics(private val emit: (String) -> Unit) {
     enum class Phase { BEGIN, ADMISSION, DECODE, COMPLETE }
     enum class Sync { UNKNOWN, SYNCING, USABLE, UNAVAILABLE }
     enum class StartStep { NONE, RESTORE, BEGIN, PUBLISH_BEGIN, PROVIDER_START, REFRESH, COMPLETE, SERVICES, PUBLISH_COMPLETE }
-    private val seen = mutableMapOf<String, MutableSet<String>>()
+    private val records = java.util.ArrayDeque<List<Any?>>()
+    private val last = mutableMapOf<String, List<Any?>>()
+    private var journal: java.io.File? = null
+    private var buildIdentity: String = "unknown"
+    private val allowed = setOf("open", "start", "stop", "getSyncStatus", "getWalletState", "inspectWallets", "releaseWalletInspection", "cancelOperation")
+    private val points = setOf("NONE", "ADMISSION", "LOCAL_READ", "RESULT_READY") + StartStep.entries.map { it.name }
 
-    @Synchronized
-    fun record(method: String, phase: Phase, code: CitizenSdkErrorCode = CitizenSdkErrorCode.OK,
-               stage: CitizenSdkFailureStage? = null, lifecycle: CitizenSdkLifecycle? = null,
-               elapsedNanos: Long = 0, sync: Sync = Sync.UNKNOWN, startStep: StartStep = StartStep.NONE) {
-        if (method !in setOf("open", "start", "getSyncStatus")) return
-        val step = if (method == "start") " start_step=${startStep.name}" else ""
-        val signature = "phase=${phase.name} code=${code.name} stage=${stage?.name ?: "NONE"} lifecycle=${lifecycle?.name ?: "UNKNOWN"} sync=${sync.name}$step"
-        val entries = seen.getOrPut(method) { mutableSetOf() }
-        if (entries.size >= 8 || !entries.add(signature)) return
-        val millis = (elapsedNanos.coerceAtLeast(0) / 1_000_000).coerceAtMost(86_400_000)
-        // 诊断失效不得改变原请求结果；Android日志缓冲由系统管理，不另存文件。
-        try { emit("method=$method $signature elapsed_ms=$millis") } catch (_: Throwable) {}
+    /** 由SDK自己的平台上下文确定私有文件；从不接受宿主交付的任意路径。 */
+    @Synchronized fun attachJournal(file: java.io.File, build: String = "unknown") {
+        try {
+            if (file.parentFile?.canonicalFile != file.parentFile?.absoluteFile ||
+                file.canonicalFile != file.absoluteFile) return
+            if (build != "unknown" && !Regex("^[0-9]{1,19}:[0-9]{1,19}$").matches(build)) return
+            buildIdentity = build
+            journal = file
+            readJournal(file)?.forEach { append(it) }
+        } catch (_: Throwable) { /* 诊断故障不影响SDK操作。 */ }
     }
+    private fun valid(row: List<Any?>): Boolean = row.size == 6 && row[0] in allowed &&
+        row[1] in Phase.entries.map { it.name } && row[2] is Int && (row[2] as Int) in 0..22 &&
+        row[3] is Int && (row[3] as Int) in 0..8 && row[4] in points &&
+        (row[5] is Int || row[5] is Long) && (row[5] as Number).toLong() in 0..86_400_000
+    private fun readJournal(file: java.io.File): List<List<Any?>>? {
+        if (!file.isFile || file.length() > 65536 || file.canonicalFile != file.absoluteFile) return null
+        val lines = file.readLines(Charsets.UTF_8)
+        if (lines.firstOrNull() != "CitizenSDK/1\t$buildIdentity" || lines.size > 129) return null
+        return lines.drop(1).map { line ->
+            val fields = line.split('\t')
+            if (fields.size != 6) throw IllegalStateException("diagnostic tuple rejected")
+            val row = listOf(fields[0], fields[1], fields[2].toInt(), fields[3].toInt(), fields[4], fields[5].toLong())
+            if (!valid(row)) throw IllegalStateException("diagnostic tuple rejected")
+            row
+        }
+
+    }
+    private fun append(row: List<Any?>) { records.addLast(row); while (records.size > 128) records.removeFirst() }
+    @Synchronized fun snapshot(): List<List<Any?>> = synchronized(journalLock) {
+        try { journal?.let(::readJournal) ?: records.toList() } catch (_: Throwable) { records.toList() }
+    }
+    @Synchronized fun record(method: String, phase: Phase, code: CitizenSdkErrorCode = CitizenSdkErrorCode.OK,
+               stage: CitizenSdkFailureStage? = null, lifecycle: CitizenSdkLifecycle? = null,
+               elapsedNanos: Long = 0, sync: Sync = Sync.UNKNOWN, startStep: StartStep = StartStep.NONE,
+               point: String = "NONE") {
+        if (method !in allowed || point !in points) return
+        val millis = (elapsedNanos.coerceAtLeast(0) / 1_000_000).coerceAtMost(86_400_000)
+        val fixedPoint = if (method == "start") startStep.name else point
+        val row = listOf(method, phase.name, code.value, stage?.value ?: 0, fixedPoint, millis)
+        // 连续相同健康状态去重；新的失败永不因历史容量耗尽而丢弃。
+        val key = "$method/${phase.name}"
+        val signature = row.take(5) + listOf(lifecycle?.name ?: "UNKNOWN", sync.name)
+        if (code == CitizenSdkErrorCode.OK && last[key] == signature) return
+        last[key] = signature
+        append(row)
+        try { emit("method=$method phase=${phase.name} code=${code.name} stage=${stage?.name ?: "NONE"} lifecycle=${lifecycle?.name ?: "UNKNOWN"} sync=${sync.name} point=$fixedPoint elapsed_ms=$millis") } catch (_: Throwable) {}
+        synchronized(journalLock) {
+            val file = journal ?: return
+            try {
+                if (file.canonicalFile != file.absoluteFile) return
+                val rows = ((readJournal(file) ?: emptyList()) + listOf(row)).takeLast(128)
+                val text = "CitizenSDK/1\t$buildIdentity\n" + rows.joinToString("\n") { it.joinToString("\t") } + "\n"
+                if (text.toByteArray(Charsets.UTF_8).size > 65536) return
+                val temporary = java.io.File(file.path + ".new")
+                if (temporary.canonicalFile != temporary.absoluteFile || (temporary.exists() && !temporary.isFile)) return
+                java.io.FileOutputStream(temporary).use { stream -> stream.write(text.toByteArray(Charsets.UTF_8)); stream.fd.sync() }
+                if (!temporary.renameTo(file)) { temporary.delete(); return }
+                file.setReadable(false, false); file.setWritable(false, false)
+                file.setReadable(true, true); file.setWritable(true, true)
+            } catch (_: Throwable) { /* 日志故障不改变原请求结果。 */ }
+        }
+    }
+    companion object { private val journalLock = Any() }
 }
 
 /** 只认可Rust固定文案；异常原文、后缀、控制字符和其它方法一律映射为NONE。 */
@@ -254,6 +310,7 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
         val privateKeys = ConcurrentHashMap<String, CitizenSdkPrivateKey>()
         val reviews = ConcurrentHashMap<String, CitizenQrReview>()
         val inspections = ConcurrentHashMap<String, CitizenWalletInspection>()
+        val diagnosticStarted = ConcurrentHashMap<Long, Long>()
         val captures = ConcurrentHashMap<String, CitizenSdkQrCapture>()
         private var closing = false
         private var closeCompletion: CompletableFuture<Void>? = null
@@ -448,6 +505,12 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
 
     private fun open(modules: Int, result: MethodChannel.Result) {
         val diagnostics = CitizenSdkFlutterDiagnostics { android.util.Log.i("CitizenSDK", it) }
+        try {
+            val info = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
+            @Suppress("DEPRECATION")
+            val version = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+            diagnostics.attachJournal(java.io.File(applicationContext.noBackupFilesDir.canonicalFile, "citizensdk-diagnostics.log"), "$version:${info.lastUpdateTime}")
+        } catch (_: Throwable) { /* 不明安装身份时只保留本实例内存诊断，不能冒充旧构建记录。 */ }
         val started = System.nanoTime()
         diagnostics.record("open", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
         var sdk: CitizenSdk? = null
@@ -500,8 +563,36 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
         result: MethodChannel.Result,
     ) {
         val sdk = session.sdk
+        val started = System.nanoTime()
+        val method = CitizenSdkFlutterCodec.requestMethod(request)
+        val detailed = method == "start" || method == "getSyncStatus"
+        session.diagnosticStarted[request.requestSequence] = started
+        if (!detailed) session.diagnostics.record(method, CitizenSdkFlutterDiagnostics.Phase.BEGIN, lifecycle = sdk.lifecycle)
+        val downstream = result
+        val result = object : MethodChannel.Result {
+            override fun success(value: Any?) {
+                val began = session.diagnosticStarted.remove(request.requestSequence) ?: started
+                if (!detailed) session.diagnostics.record(method, CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
+                    lifecycle = sdk.lifecycle, elapsedNanos = System.nanoTime() - began)
+                downstream.success(value)
+            }
+            override fun error(code: String, message: String?, details: Any?) {
+                // Throwable失败已由fail记录；直接错误同样只投影准确闭集错误码。
+                val began = session.diagnosticStarted.remove(request.requestSequence)
+                if (began != null) {
+                    val stable = CitizenSdkErrorCode.entries.firstOrNull {
+                        code == "citizensdk.${CitizenSdkFlutterCodec.errorName(it)}"
+                    } ?: CitizenSdkErrorCode.INTERNAL
+                    session.diagnostics.record(method, CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
+                        stable, CitizenSdkFailureStage.fromErrorCode(stable), sdk.lifecycle, System.nanoTime() - began)
+                }
+                downstream.error(code, message, details)
+            }
+            override fun notImplemented() = downstream.notImplemented()
+        }
         when (request) {
             is CitizenSdkFlutterCodec.Request.Empty -> when (request.method) {
+                "readDiagnostics" -> success(result, request.sessionId, request.requestSequence, listOf(session.diagnostics.snapshot()))
                 "start" -> complete(session, request, result, diagnosed(session, "start") { sdk.start() }) {
                     listOf(CitizenSdkFlutterCodec.lifecycle(sdk.lifecycle))
                 }
@@ -1083,6 +1174,9 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
         request: CitizenSdkFlutterCodec.Request,
     ) {
         val cause = unwrap(error)
+        val active = (request as? CitizenSdkFlutterCodec.Request.SessionRequest)?.let { synchronized(lock) { sessions[it.sessionId] } }
+        if (active != null) diagnosticFailure(active.diagnostics, CitizenSdkFlutterCodec.requestMethod(request), error,
+            active.sdk.lifecycle, active.diagnosticStarted.remove(request.requestSequence) ?: System.nanoTime())
         val sdkError = when (cause) {
             is CitizenSdkException -> cause
             is CitizenSdkFlutterCodec.ContractFailure -> CitizenSdkException(
@@ -1154,10 +1248,16 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
         val startStep = if (method == "start" && cause != null)
             citizenSdkFlutterStartStep(cause.code, cause.message)
         else CitizenSdkFlutterDiagnostics.StartStep.NONE
+        val point = if (cause?.code == CitizenSdkErrorCode.PANIC) when (cause.message) {
+            "CitizenSDK request panicked at ADMISSION" -> "ADMISSION"
+            "CitizenSDK request panicked at LOCAL_READ" -> "LOCAL_READ"
+            "CitizenSDK request panicked at RESULT_READY" -> "RESULT_READY"
+            else -> "NONE"
+        } else "NONE"
         diagnostics.record(method, CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
             cause?.code ?: CitizenSdkErrorCode.INTERNAL,
             cause?.stage ?: CitizenSdkFailureStage.TEARDOWN, lifecycle, System.nanoTime() - started,
-            startStep = startStep)
+            startStep = startStep, point = point)
     }
 
     private fun <T> diagnosed(session: Session, method: String, begin: () -> CompletableFuture<T>): CompletableFuture<T> {

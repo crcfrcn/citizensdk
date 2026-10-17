@@ -537,14 +537,14 @@ impl WalletService {
 
     /// 返回当前可见公开 profile；在途追加账户只暴露提交前的稳定 profile。
     pub async fn profile(&self) -> Result<Option<WalletProfile>, EngineError> {
-        let _guard = wallet_operation_gate().lock().await;
+        // 仓储load给出一次原子目录修订；只读投影无需等待创建/认证事务门。
         let state = self.profiles.load().await?;
         Ok(stable_profile(&state))
     }
 
     /// 返回稳定可见的钱包目录；在途热账户目标和内部 lifecycle 计划均不会进入公开投影。
     pub async fn state(&self) -> Result<WalletStateSnapshot, EngineError> {
-        let _guard = wallet_operation_gate().lock().await;
+        // 仓储load给出一次原子目录修订；只读投影无需等待创建/认证事务门。
         let state = self.profiles.load().await?;
         WalletStateSnapshot::from_state(&state)
     }

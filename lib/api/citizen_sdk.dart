@@ -93,6 +93,13 @@ final class CitizenSdk {
   /// 当前 session 的类型化生命周期与请求事件。
   Stream<CitizenSdkEvent> get events => _session.events;
 
+  /// 只读安全诊断，最多128条；不获取钱包、链数据或用户输入。
+  Future<List<CitizenSdkDiagnostic>> readDiagnostics() async {
+    final value = await _session.invoke('readDiagnostics');
+    return List<CitizenSdkDiagnostic>.unmodifiable(
+      (value[0]! as List<Object?>).map(CitizenSdkDiagnostic.decode));
+  }
+
   /// 当前 session 生命周期快照。
   CitizenSdkLifecycle get lifecycle => _session.lifecycle;
 

@@ -456,7 +456,7 @@ impl ProductComposition {
     ) -> Vec<citizen_sdk_engine::CapabilityProbe> {
         product_probes(
             provider_is_usable,
-            self.wallet_capability_facts(),
+            self.wallet_capability_facts(true),
             self.modules,
             self.history.is_some(),
         )
@@ -487,8 +487,13 @@ impl ProductComposition {
             && self.history.is_some()
     }
 
-    fn wallet_capability_facts(&self) -> ProductCapabilityFacts {
-        let history_store_ready = self
+    /// 本地钱包操作只探测自身仓储/金库，链与历史事实由各自刷新维护。
+    pub(crate) fn local_wallet_probes(&self) -> Vec<citizen_sdk_engine::CapabilityProbe> {
+        product_probes(false, self.wallet_capability_facts(false), self.modules, self.history.is_some())
+    }
+
+    fn wallet_capability_facts(&self, probe_history: bool) -> ProductCapabilityFacts {
+        let history_store_ready = probe_history && self
             .history
             .as_ref()
             .is_some_and(|history| futures_executor::block_on(history.load_index()).is_ok());

@@ -51,6 +51,7 @@ jobs:
       SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
       SDK_PLATFORM: "${{ matrix.platform }}"
       SDK_TARGET: "${{ matrix.target }}"
+      CITIZENSDK_VERIFY_TESTS: 'true'
     steps: &native_steps
       - name: 固定 Linux GLIBC 2.31 构建根
         if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD'
@@ -248,6 +249,17 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/build.mjs release-dependency-evidence
+      - name: Apple原生及Flutter绑定回归
+        if: matrix.platform == 'macOS'
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        shell: bash
+        run: node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native apple-tests
+      - name: SDK Rust与全部Dart回归
+        if: matrix.platform == 'macOS'
+        shell: bash
+        run: node scripts/build.mjs ci-test
       - name: 保存当前 Run 原生件
         shell: bash
         run: |

@@ -1,10 +1,38 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::sync::Once;
 
 use citizen_sdk_engine::EngineError;
 
 use crate::abi::{CitizenSdkErrorCode, CitizenSdkFailureStage};
 
 pub type FfiResult<T> = Result<T, FfiError>;
+
+static SAFE_PANIC_HOOK: Once = Once::new();
+thread_local! { static IN_SDK_BOUNDARY: Cell<bool> = const { Cell::new(false) }; }
+struct SdkPanicScope(bool);
+impl Drop for SdkPanicScope {
+    fn drop(&mut self) { let _ = IN_SDK_BOUNDARY.try_with(|active| active.set(self.0)); }
+}
+
+/// catch_unwind之前的默认hook也会打印载荷；SDK边界内必须抑制它，不能只清洗返回值。
+/// 非SDK线程及宿主自己的panic仍交还原hook，不改变其原始诊断行为。
+pub(crate) fn catch_native_panic<T>(operation: impl FnOnce() -> T) -> std::thread::Result<T> {
+    if !std::thread::panicking() {
+        SAFE_PANIC_HOOK.call_once(|| {
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if IN_SDK_BOUNDARY.try_with(Cell::get).unwrap_or(false) {
+                    // 固定字节，不读取payload、source location或任何被捕获对象。
+                    let _ = std::io::Write::write_all(&mut std::io::stderr(), b"CitizenSDK native panic captured\n");
+                } else { previous(info); }
+            }));
+        });
+    }
+    let old = IN_SDK_BOUNDARY.with(|active| active.replace(true));
+    let _scope = SdkPanicScope(old);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation))
+}
+
 
 thread_local! {
     static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
@@ -279,5 +307,20 @@ mod tests {
         for (code, expected) in cases {
             assert_eq!(super::default_stage(code), expected, "code {code:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod safe_panic_tests {
+    #[test]
+    fn sdk_scope_is_nested_and_restored_after_panic() {
+        assert!(!super::IN_SDK_BOUNDARY.with(std::cell::Cell::get));
+        let result = super::catch_native_panic(|| {
+            assert!(super::IN_SDK_BOUNDARY.with(std::cell::Cell::get));
+            assert!(super::catch_native_panic(|| panic!("synthetic private value")).is_err());
+            assert!(super::IN_SDK_BOUNDARY.with(std::cell::Cell::get));
+        });
+        assert!(result.is_ok());
+        assert!(!super::IN_SDK_BOUNDARY.with(std::cell::Cell::get));
     }
 }

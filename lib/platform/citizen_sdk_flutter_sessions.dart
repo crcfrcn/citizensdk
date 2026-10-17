@@ -101,6 +101,10 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
   String? _sessionId;
   int _nextRequestSequence = 1;
   int _nextEventSequence = 1;
+  // 本地目录只读不占用链启停等待计数；close仍等待全部真实操作。
+  static const _catalogReads = {'getWalletState', 'inspectWallets', 'readDiagnostics'};
+  int _catalogOperations = 0;
+  Completer<void>? _nonCatalogIdle;
   int _activeOperations = 0;
   Completer<void>? _idleCompleter;
   CitizenSdkLifecycle _lifecycle = CitizenSdkLifecycle.created;
@@ -152,7 +156,7 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
     required T Function(List<Object?> value) decode,
   }) {
     final sessionId = _sessionId;
-    if (sessionId == null || _closing || _closed || _exclusiveLifecycle) {
+    if (sessionId == null || _closing || _closed || (_exclusiveLifecycle && !_catalogReads.contains(method))) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.invalidState,
         message: 'CitizenSDK当前状态不接纳新操作',
@@ -207,7 +211,7 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
     if (method == 'start' || method == 'stop') {
       return _invokeExclusiveLifecycle(method, fields);
     }
-    if (_exclusiveLifecycle) {
+    if (_exclusiveLifecycle && !_catalogReads.contains(method) && !_teardownMethods.contains(method)) {
       return Future<List<Object?>>.error(
         const CitizenSdkException(
           code: CitizenSdkErrorCode.busy,
@@ -291,7 +295,7 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
     }
     _exclusiveLifecycle = true;
     try {
-      await _waitUntilIdle();
+      await _waitUntilNonCatalogIdle();
       if (_closing || _closed) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.invalidState,
@@ -311,10 +315,17 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
     final protocolError = _eventProtocolError;
     if (protocolError != null) throw protocolError;
     _activeOperations += 1;
+    final catalog = _catalogReads.contains(method);
+    if (catalog) _catalogOperations += 1;
     try {
       return await _invokeTransport(method, fields);
     } finally {
       _activeOperations -= 1;
+      if (catalog) _catalogOperations -= 1;
+      if (_activeOperations == _catalogOperations) {
+        _nonCatalogIdle?.complete();
+        _nonCatalogIdle = null;
+      }
       if (_activeOperations == 0) {
         _idleCompleter?.complete();
         _idleCompleter = null;
@@ -369,6 +380,11 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
       _lifecycle = _codec.decodeLifecycle(response.value[0]);
     }
     return response.value;
+  }
+
+  Future<void> _waitUntilNonCatalogIdle() async {
+    if (_activeOperations == _catalogOperations) return;
+    await (_nonCatalogIdle ??= Completer<void>()).future;
   }
 
   Future<void> _waitUntilIdle() async {

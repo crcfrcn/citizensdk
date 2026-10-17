@@ -112,25 +112,48 @@ class CitizenSdkFlutterSessionsTest {
         diagnostic.record("importWallet", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
         diagnostic.record("untrusted\nmethod", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
         assertTrue(lines.isEmpty())
-        repeat(100) {
-            diagnostic.record("getSyncStatus", CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
-                elapsedNanos = Long.MAX_VALUE, sync = CitizenSdkFlutterDiagnostics.Sync.USABLE)
-        }
+        repeat(100) { diagnostic.record("getSyncStatus", CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
+            elapsedNanos = Long.MAX_VALUE, sync = CitizenSdkFlutterDiagnostics.Sync.USABLE) }
         assertEquals(1, lines.size)
         assertTrue(lines.single().endsWith("elapsed_ms=86400000"))
-        for (code in CitizenSdkErrorCode.entries) {
-            diagnostic.record("getSyncStatus", CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
-                code, CitizenSdkFailureStage.fromErrorCode(code), elapsedNanos = -1)
-        }
-        assertEquals(8, lines.size)
-        assertTrue(lines.all { it.length < 256 && !it.contains('\n') })
-        diagnostic.record("start", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
-        assertEquals(9, lines.size)
-        CitizenSdkFlutterDiagnostics(lines::add).record("getSyncStatus", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
-        assertEquals(10, lines.size)
-        // 系统日志失败也不能让诊断反向改变原请求控制流。
+        repeat(200) { diagnostic.record("inspectWallets", CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
+            CitizenSdkErrorCode.PANIC, CitizenSdkFailureStage.TEARDOWN, point = "LOCAL_READ") }
+        assertEquals(128, diagnostic.snapshot().size)
+        assertEquals("inspectWallets", diagnostic.snapshot().last()[0])
+        assertEquals("LOCAL_READ", diagnostic.snapshot().last()[4])
+        diagnostic.record("inspectWallets", CitizenSdkFlutterDiagnostics.Phase.COMPLETE, point = "secret input")
+        assertTrue(lines.none { it.contains("secret input") || it.contains('\n') })
         CitizenSdkFlutterDiagnostics { throw IllegalStateException("synthetic sink failure") }
             .record("open", CitizenSdkFlutterDiagnostics.Phase.BEGIN)
+    }
+
+    @Test
+    fun safeJournalSurvivesReopenAndRejectsCorruptOrOversizedData() {
+        val directory = java.nio.file.Files.createTempDirectory("citizensdk-safe-diagnostics-").toFile().canonicalFile
+        try {
+            val file = java.io.File(directory, "diagnostics.log")
+            val first = CitizenSdkFlutterDiagnostics { }
+            first.attachJournal(file)
+            repeat(140) { first.record("inspectWallets", CitizenSdkFlutterDiagnostics.Phase.COMPLETE,
+                CitizenSdkErrorCode.PANIC, CitizenSdkFailureStage.TEARDOWN, point = "LOCAL_READ") }
+            val reopened = CitizenSdkFlutterDiagnostics { }
+            reopened.attachJournal(file)
+            assertEquals(128, reopened.snapshot().size)
+            assertEquals("LOCAL_READ", reopened.snapshot().last()[4])
+            assertTrue(file.length() <= 65536)
+            assertFalse(java.io.File(file.path + ".new").exists())
+            val otherBuild = CitizenSdkFlutterDiagnostics { }
+            otherBuild.attachJournal(file, "2:12345")
+            assertTrue(otherBuild.snapshot().isEmpty())
+            file.writeText("CitizenSDK/1\tunknown\ninspectWallets\tCOMPLETE\t21\t8\tsynthetic private input\t0\n")
+            val corrupt = CitizenSdkFlutterDiagnostics { }
+            corrupt.attachJournal(file)
+            assertTrue(corrupt.snapshot().isEmpty())
+            file.writeText("x".repeat(65537))
+            val oversized = CitizenSdkFlutterDiagnostics { }
+            oversized.attachJournal(file)
+            assertTrue(oversized.snapshot().isEmpty())
+        } finally { directory.deleteRecursively() }
     }
 
     @Test

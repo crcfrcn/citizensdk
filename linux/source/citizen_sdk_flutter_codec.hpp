@@ -103,6 +103,7 @@ enum class Method {
   stop,
   close,
   get_capabilities,
+  read_diagnostics,
   get_finalized_head,
   get_sync_status,
   get_best_head,

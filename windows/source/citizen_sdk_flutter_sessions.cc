@@ -1386,6 +1386,9 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
   struct CredentialReply;
   struct Session final {
     std::string id;
+    // 只保存闭集方法、阶段和错误码，不保存route、参数或异常文本。
+    std::vector<Value> diagnostics;
+    std::map<std::string, citizensdk_error_code_t> diagnostic_codes;
     std::shared_ptr<NativeTransport> transport;
 
     int64_t next_event{1};
@@ -2093,6 +2096,28 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
                                                     request.session, request.sequence);
   }
 
+  static bool diagnosed_method(Method method) {
+    return method == Method::start || method == Method::stop || method == Method::get_sync_status ||
+        method == Method::get_wallet_state || method == Method::inspect_wallets ||
+        method == Method::release_wallet_inspection || method == Method::cancel_operation;
+  }
+  static void diagnose(const std::shared_ptr<Session> &session, Method method, const char *phase,
+                       citizensdk_error_code_t code = CITIZENSDK_OK) noexcept {
+    if (!diagnosed_method(method)) return;
+    try {
+      Value row = Value::list({Value::string(method_name(method)), Value::string(phase),
+          Value::integer(code), Value::integer(code == CITIZENSDK_OK ? 0 : flutter_default_failure_stage(code)),
+          Value::string("NONE"), Value::integer(0)});
+      std::lock_guard<std::mutex> guard(session->lock);
+      const std::string key = std::string(method_name(method)) + "/" + phase;
+      const auto previous = session->diagnostic_codes.find(key);
+      if (code == CITIZENSDK_OK && previous != session->diagnostic_codes.end() && previous->second == code) return;
+      session->diagnostic_codes[key] = code;
+      session->diagnostics.push_back(std::move(row));
+      if (session->diagnostics.size() > 128) session->diagnostics.erase(session->diagnostics.begin());
+    } catch (...) { /* 诊断不能改变SDK请求结果。 */ }
+  }
+
   void dispatch(DecodedRequest request, ReplyCallback reply) {
     require_owner();
     if (!reply) throw ContractFailure(CITIZENSDK_ERROR_INVALID_ARGUMENT, "CitizenSDK reply is required");
@@ -2133,6 +2158,19 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
     const auto found = sessions.find(request.session);
     if (found == sessions.end()) { reply(failure(CITIZENSDK_ERROR_NOT_FOUND, "CitizenSDK session was not found", request)); return; }
     const auto session = found->second;
+    if (request.method == Method::read_diagnostics) {
+      Value::List rows;
+      { std::lock_guard<std::mutex> guard(session->lock); rows = session->diagnostics; }
+      reply(success(request, Value::list({Value::list(std::move(rows))})));
+      return;
+    }
+    const auto method = request.method;
+    diagnose(session, method, "BEGIN");
+    auto downstream = std::move(reply);
+    reply = [session, method, downstream = std::move(downstream)](Reply value) mutable {
+      diagnose(session, method, "COMPLETE", value.error_code);
+      downstream(std::move(value));
+    };
     if (session->closing) {
       reply(failure(CITIZENSDK_ERROR_INVALID_STATE, "CitizenSDK session is closing", request)); return;
     }
