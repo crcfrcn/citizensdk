@@ -8169,6 +8169,8 @@ if(inlineTestEntry){
   const fs=await import('node:fs/promises'),parent=join(root,'target/test');await fs.mkdir(parent,{recursive:true});
   const work=await fs.mkdtemp(join(parent,'supply-contract-'));t.after(()=>fs.rm(work,{recursive:true,force:true}));
   const node=supplyRequirements().tools.find(value=>value.id==='node'),payload=join(work,'payload');
+  assert.deepEqual(supplyRequirements().tools.filter(value=>!value.archive).map(value=>value.id),[]);
+  assert.ok(['android','android-sdk','android-ndk','xcode'].every(id=>!supplyRequirements().tools.some(value=>value.id===id)));
   assert.ok(node.cache_key);assert.equal(node.cache_key,toolSupplyKey(toolDefinitions.find(value=>value.id==='node')));
   const executable=join(payload,toolArchive(node).executable);await fs.mkdir(dirname(executable),{recursive:true});await fs.writeFile(executable,'fixture',{mode:0o755});
   const receipt={id:node.id,version:node.version,root:payload,path:executable};
@@ -8442,7 +8444,8 @@ async function materializeResources(platform,work,previous={},options={}){
 
 // 公开声明与候选配方；供给对象的领取、提交及删除只由调度方实现。
 function supplyRequirements(){
- const wanted=toolDefinitions.filter(tool=>tool.id!=='xcode').map(tool=>{const archive=toolArchive(tool);return {...tool,archive,cache_key:toolSupplyKey(tool),slots:[...new Set([archive?.executable,...(tool.slots||[])].filter(Boolean))]};});
+ // Android组合组件由平台资源流程交付；独立工具清单只包含有归档配方的工具。
+ const wanted=toolDefinitions.filter(tool=>tool.id!=='xcode'&&toolArchive(tool)).map(tool=>{const archive=toolArchive(tool);return {...tool,archive,cache_key:toolSupplyKey(tool),slots:[...new Set([archive.executable,...(tool.slots||[])].filter(Boolean))]};});
  const xcode=toolDefinitions.find(tool=>tool.id==='xcode');
  return {tools:wanted,apple:{version:xcode.version,source:xcode.source,names:[...new Set([...Object.keys(appleSystemTools),...appleBundleTools])]}};
 }
