@@ -4236,3 +4236,5 @@ SDK原生Gradle资源预解析同时覆盖真实Release和对应测试配置，�
 Linux 共享内存 DMS 合同先用 `F_OFD_GETLK` 证明现存共享锁，再用独立打开的描述符验证独占锁被拒绝；查询返回的 `l_pid=-1` 是持锁方身份，提交 `F_OFD_SETLK` 前须重置为零，不改变生产 VFS 的有界等待与终态错误。Windows 合同测试的源码根由 CMake 规范化后交付，C++ Host 资产根据此取本仓 `chain`；七个公开头以现有 `public/citizen_sdk` 构建投影验真，不从不存在的源码 `include` 目录读取。测试夹具修改 DACL 失败时仅报告 Win32 数值返回码并失败关闭，不改变生产 ACL 规则，也不输出本机路径或保密内容。两平台的原生合同只在 GitHub SDK 自动化中执行。
 
 Linux Core/Host 的 ELF `DT_NEEDED` 禁止项门禁继续拒绝动态泄漏；失败回执仅标明 Core 或 Host 及经固定字符集验真的违规 SONAME，其他名称仍以通用错误拒绝，不输出文件路径。Windows 原生测试支持目标单独启用 Host 创建阶段诊断，失败时只报告资产加载、Core 创建或创建后提供者设置阶段和公开错误码，正式 Host 不输出该诊断。Windows 测试夹具放宽自有临时文件 DACL 时同时请求 `READ_CONTROL` 与 `WRITE_DAC`，与既有目录夹具相同；生产存储继续拒绝放宽的文件。
+
+原生源码投影在每个平台 Runner 再次按本仓链资产合同验真三个资产文件的实际字节；若 Windows checkout 改写换行，必须在 Core 创建前以字段漂移失败，不能重算锚点来接纳变化。Linux Core 通过同一锁定 Cargo 工程和缓存取得最终链接命令，日志只输出 `libgcc_s` 及静态/动态链接固定标记是否存在；原始命令、环境、路径与令牌不进入日志。现有 ELF `DT_NEEDED` 禁止项门禁仍以最终二进制为准。
