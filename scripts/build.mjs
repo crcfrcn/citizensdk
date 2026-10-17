@@ -6744,7 +6744,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(prepare.text,/Linux固定CMake准备回执无效/u);
   assert.match(prepare.text,/GITHUB_PATH,path\.dirname\(tool\.path\)/u);
   assert.match(linuxRoot.text,/test "\$\(getconf GNU_LIBC_VERSION\)" = 'glibc 2\.31'/u);
-  assert.match(linuxRoot.text,/snapshot\.debian\.org\/archive\/debian\/20260701T000000Z/u);
+  assert.match(linuxRoot.text,/snapshot\.debian\.org\/archive\/debian\/20261001T000000Z/u);
+  assert.match(linuxRoot.text,/liblzma-dev=5\.2\.5-2\.1~deb11u2/u);
+  assert.match(linuxRoot.text,/liblzma5=5\.2\.5-2\.1~deb11u2/u);
   assert.match(workflow,/native-linux:[\s\S]*debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9/u);
   assert.match(workflow,/native-linux:[\s\S]*steps: \*native_steps/u);
   assert.match(workflow,/needs: \[prepare, native, native-linux\]/u);

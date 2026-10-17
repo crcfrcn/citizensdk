@@ -60,8 +60,8 @@ jobs:
           test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
           # 基础镜像没有CA包；首次APT仍由Debian签名InRelease与包摘要验真。
           printf '%s\n' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260701T000000Z bullseye main' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260701T000000Z bullseye-security main' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20261001T000000Z bullseye main' \
+            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20261001T000000Z bullseye-security main' \
             > /etc/apt/sources.list
           rm -f /etc/apt/sources.list.d/debian.sources
           apt-get -o Acquire::Check-Valid-Until=false update
@@ -69,7 +69,9 @@ jobs:
           sed -i 's@http://snapshot.debian.org@https://snapshot.debian.org@g' /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            curl git gcc g++ libstdc++6 clang llvm libclang-dev libssl-dev \
+            curl git gcc g++ libstdc++6 liblzma5=5.2.5-2.1~deb11u2 \
+            liblzma-dev=5.2.5-2.1~deb11u2 \
+            clang llvm libclang-dev libssl-dev \
             libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev pkg-config ninja-build \
             autoconf automake libtool make perl unzip zip xvfb xauth dbus-x11 \
