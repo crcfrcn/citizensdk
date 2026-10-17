@@ -4274,3 +4274,7 @@ Run 39061587665 的 `prepare` 通过，但 2026-10-01 快照虽有签名索引�
 同一 Run 的 Windows API 合同测试在首次后台 BUSY 后，单次主线程消息泵与单次 `close()` 重试仍返回 BUSY。现有日志只有返回码 18，不能断言是 Core 生命周期、在途回调还是 Win32 窗口退休门禁；代码允许这些阶段各自返回 BUSY。夹具按已有 Host 请求测试的做法，只对准确 `CITIZENSDK_ERROR_BUSY` 在五秒内泵消息并重试，其它错误立即失败，超时时记录 Host/Core 查询回执及 Core 生命周期，最终仍要求 Core/Host 双句柄清零。生产关闭流程不改。9 月快照在 ARM64/AMD64 的 62 个直接开发包的实际归档地址也逐一核对为可访问，候选尚未执行新一轮自动化。Run 39061587665 在原生矩阵已失败后应用户要求取消，最终状态为 cancelled；macOS 被取消，不能计为通过。
 
 同一 Run 的 Windows 安装来源校验已通过，14 项原生 CTest 仅 API 合同夹具失败：原“窗口退休”夹具使用默认全模块 Core，第二次关闭仍因 Core 生命周期返回 BUSY，不能把它当作仅窗口退休。该夹具改为钱包模块，保留真实 Win32 UI 调度与后台首次 BUSY、主线程重试及最终双句柄清零；完整链 C++ 消费者继续由独立测试覆盖。此改动不放宽生产关闭门禁。
+
+Run 39064623680 的 prepare 通过，2026-09-01 签名快照在 LinuxARM/LinuxAMD 均完成 CA 与全部开发依赖安装，修复了上一轮实际包地址 404。两架构随后在 `release-source native` 的合并身份断言处报“GitHub 版本化源码身份无效”，未开始原生编译。该 Run 的 checkout 日志确认 HEAD 是本轮 `5aa76516feb2cc0b2a628f4073379991d658e080`；Android、Windows、macOS 的同一步通过。Linux 容器中 checkout 使用临时 HOME 写入 `safe.directory`，正式 Node 步骤使用 `/github/home`；这提示 Git HEAD 读取可能被安全目录检查拒绝，但原合并断言没有单独记录 Git 子进程回执，不能把推断冒充已证实的唯一原因。用户要求一有失败即终止，Run 已通过控制台取消，最终状态为 cancelled；其余平台的原生构建被取消，未形成正式版。
+
+修复将正式版本计算、源码视图和 Release 三处 HEAD 检查收归同一读取函数。该函数先要求 `GITHUB_WORKSPACE` 精确等于当前产品工作根，再仅对该次只读 Git 命令指定准确 `safe.directory`，逐项检查退出状态与本轮 SHA，分别报告目录、Git 读取和 SHA 不符；不设置全局 Git 信任，不改变 SHA、workflow、分支及仓库身份门禁。同文件回归覆盖成功、目录越界、Git 失败、SHA 不符。生产公开接口、产品声明、资源锁和 README 均未变化。此修复需下一次完整 GitHub Run 验证；目前不宣称 Release 成功。
