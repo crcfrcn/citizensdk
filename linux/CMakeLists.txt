@@ -185,7 +185,8 @@ target_compile_options(citizensdk_host PRIVATE
 target_link_options(citizensdk_host PRIVATE
   -static-libstdc++ -static-libgcc
   "LINKER:-soname,libcitizensdk_host.so"
-  "LINKER:--exclude-libs,ALL"
+  # 公开 QR 包装由静态归档并入 Host；全局排除归档会隐藏本 SDK 自有导出。
+  # 下方精确版本脚本的 local:* 负责收口所有未声明的上游符号。
   "LINKER:--version-script=${CMAKE_CURRENT_LIST_DIR}/cmake/citizensdk_host.map"
   "LINKER:-z,defs" "LINKER:-z,relro" "LINKER:-z,now"
 )
