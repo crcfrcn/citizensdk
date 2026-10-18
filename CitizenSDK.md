@@ -1149,7 +1149,8 @@ C++ 消费者的异步完成断言失败时，仅报告固定请求阶段、请�
 Windows PE 导出闭集失败时报告有界的缺失与额外符号及总数；Linux Flutter 消费者
 仅在原命令失败时报告固定阶段和退出码，原工具错误输出仍由产品入口保留。
 Linux Flutter 消费者核验原生构建实际选用的 `CXX` 编译器；固定 Clang 16 无需无版本
-`clang` 或 `clang++` 别名，其他工具、离线隔离及包验真要求仍按原流程检查。
+`clang` 或 `clang++` 别名。Dart pub 与 Flutter create 使用 `--offline`，Flutter build 使用
+`--no-pub`；执行前验证完整工具缓存、版本戳和锁，缺件即失败，不在消费者阶段取得依赖。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；
@@ -3898,10 +3899,9 @@ Flutter版本、官方提交、来源和修订由SDK自身声明、锁及资源�
 MSVC，Flutter实际读取准备器注入的`CMAKE_COMMAND`而非Visual Studio内置CMake。Linux以固定官方Debian rootfs、签名APT快照和受控CMake保持原GLIBC2.31；LinuxAMD使用Google ZIP、LinuxARM使用Kitware归档，不改变最低系统。
 记录实际系统包清单。Debian 11 已结束常规 LTS，此环境只用于隔离构建，不作为新增生产支持声明。
 
-Linux容器只读取SDK自身代码、声明、锁和本轮已经验真的工具/依赖视图；不挂载控制台登记、旧产品分片或控制台执行模块，独立环境按相同产品声明自行准备资源。控制台可选原件仅经产品资源实现验真后复用，不传递私有库路径或凭据。Linux 容器断网、非 root、只读根、cap-drop ALL、no-new-privileges；仅挂载本作业目录、受控
-依赖原件与只读工具，不传令牌、宿主 HOME 或 Docker socket。固定 Moby 模板只增加 AppArmor
-userns 和 seccomp 准确 unshare(CLONE_NEWUSER|CLONE_NEWNET)，原拒绝项保留；策略具名且退出清理。
-实际加载只属于已获准的一次性 GitHub 环境，不允许修改本机全局安全策略。
+Linux构建使用既有摘要固定的Debian作业容器，依赖准备仍由SDK自己的声明和锁驱动；
+Flutter消费者只读取本轮验真的工具与依赖副本，使用本轮独占HOME及工具原生离线参数，
+不挂载控制台登记、旧产品分片或控制台执行模块，不增加容器或修改宿主安全策略。
 本机合同测试不能证明五平台、硬件金库或同包安装已验收。实际测试及本轮范围见任务卡 §41。
 
 Linux GitHub CTest 的源码合同测试必须与当前实现和生成布局一致：公开头秘密边界扫描读取构建目录
