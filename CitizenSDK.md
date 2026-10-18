@@ -1307,8 +1307,9 @@ adapter 使用官方 BinaryMessenger、StandardMethodCodec 和固定 22 方法/�
 DLL/import library、include、传递链接依赖；不重新编译 Host/Core，不依赖 Host 私有头。
 Windows 安装包导入 Host 后把公开链接属性精确收口为同包 `CitizenSDK::Core`；原生与
 Flutter 消费者继续拒绝任何额外公开链接，Host 自有系统与静态依赖仍只留在 DLL 内。
-Windows Flutter 工具树或 Pub 缓存发现链接、特殊节点时继续失败；诊断只输出来源类别、
-最多 200 字符的相对路径及节点类别，不输出绝对目录、链接目标或文件内容。
+Windows Flutter 固定源码仅接纳上游 `.claude/skills` 和 Web UI 测试夹具的两处既有链接，
+逐项核对相对路径、原始目标、根内真实目标与文件类型，并从本轮工具副本排除；其它
+Flutter 链接、Pub 缓存链接和特殊节点继续失败。临时路径诊断已删除。
 自有 C++17 目标开启异常错误映射，不改变宿主的全局 Flutter 编译配置。钱包创建、导入、
 备份确认仍由既有原生安全 UI 实现，秘密、句柄和文件路径不进入 Flutter tuple。
 官方 decoder 之前执行无分配的有界标准 wire 预检，防止截断零填充、尾随、巨长声明和
