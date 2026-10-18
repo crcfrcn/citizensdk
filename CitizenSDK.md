@@ -2,12 +2,11 @@
 
 > 当前塔塔鹿鹿：每仓 `.github/tatalulu.yml` 只登记仓库身份；控制台 `.github/tatalulu.mjs` 保存并推送后，以 GitHub `main` 回查结果收口。本文早期推送触发检查记录仅供历史追溯。
 
-## 平台编译现场
+## GitHub 平台编译现场
 
-本产品编译任务使用本仓 `target/build/<平台>` 独立临时目录，平台键为 `sdk`。不同平台同时领取并执行；同平台已有活跃任务时立即拒绝再次领取。资源准备、工程副本、缓存和编译输出只写本平台现场；确认进程及后代退出、结果被调用方消费后，删除整个平台目录。`target/build` 仅是父目录，`target/test` 仍用于独立测试。独立执行和控制台调度调用同一本仓编译入口与清理接口。
+公民SDK的测试、五平台原生编译、组包验真、Release及记录清理只由GitHub的`sdk.yml`执行。各Runner在本轮独立现场准备资源和构建，平台增量缓存由本仓工作流按锁及平台隔离。控制台只派发并观察这一个自动化工作流；本机不执行SDK编译或设备安装。
 
-
-公民SDK本机Build仅确认sdk目标的源码及多平台原生编译，结果不携带分发包、App或设备安装资产。SDK归档属于本仓正式自动化；本机结果不能冒充发布完成。
+SDK正式归档仅由该工作流在完整验收后生成，本机不产生正式包。
 
 ## 当前SDK流程目录与职责（2026-10-10）
 
@@ -22,9 +21,9 @@ citizensdk/
     └── tatalulu.yml
 ```
 
-`scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备、工作现场生命周期，以及 GitHub 同一 Run 的唯一正式 SDK 包组装和验真。本机 Build 回执仍只表示编译完成，不生成正式归档。`plan`、`prepare-environment`、`prepare-native`、`native`、`release-build` 与 `release-verify` 都归同一入口。
+`scripts/build.mjs` 独立拥有GitHub自动化的原生工程投影、资源需求与锁定坐标、资源准备、Runner现场生命周期，以及同一Run的唯一正式SDK包组装和验真。`plan`、`prepare-environment`、`prepare-native`、`native`、`release-build`与`release-verify`都归同一入口。
 
-本仓没有独立渠道发布脚本。GitHub 自动化对单一 SDK 包的来源、候选、Tag、Release 和正式字节验真均由 `scripts/build.mjs` 及现有 `sdk.yml` 完成；pub.dev 渠道上传未接入。控制台登记 SDK 本机编译与 SDK 自动化两个动作，任务名均由产品、流程、平台组成。
+本仓没有独立渠道发布脚本。GitHub自动化对单一SDK包的来源、候选、Tag、Release和正式字节验真均由`scripts/build.mjs`及现有`sdk.yml`完成；pub.dev渠道上传未接入。公民SDK在控制台当前只有一个可见自动化按钮。
 
 `.github/workflows/sdk.yml` 保持单一工作流，只安排准备阶段回归、五宿主正式原生件构建、汇总、消费回验与唯一 Release；Apple/Android附加测试宿主、Flutter测试及临时Android消费App编译不参与正式SDK产物流程。版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。`pubspec.yaml` 的 `1.0.0` 是正式版本种子；本产品派发前依据完整成功Run与其正式Release算出候选版本，传给工作流，prepare再次核对。失败Run不推进版本；若Release已发布但最终Run失败，后续派发会明确失败并等待修复该不一致状态，不把该Release当作成功版本。每次完整成功后下一候选patch增加`0.0.1`，五个矩阵宿主不是五次递增。原生Job采用`fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份`公民SDK·SDK·vX.Y.Z.tgz`和一个同名Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub产物不下载到本机补齐。
 
@@ -32,11 +31,11 @@ citizensdk/
 
 Windows原生入口在传给Git Bash前统一将源码、工作区、输出和已声明的工具/缓存路径转换为Git Bash绝对路径；原生依赖环境中预先声明的Windows盘符路径在比较前也转换为同一Git Bash格式。Windows Cargo链接器由VCToolsInstallDir解析并显式固定到验真的MSVC link.exe，避免Git Bash的同名link.exe抢先。CMake生成器按Runner的 `VSINSTALLDIR` 主版本匹配，并由原生构建与独立消费者共用。workflow不重复转换编译环境。原生Node执行Cargo源码投影时，产品入口将源码和目标目录交为规范Windows反斜线绝对路径，保持 `createNativeSourceView` 的严格路径检查；Node返回的本轮投影根再转换回Git Bash路径供后续Shell使用。Windows私有头回归的失败输出直接进入GitHub原生日志，不再被成功分支的stdout收集吞掉。Android固定NDK和CMake只在GitHub Runner安装；若固定归档损坏或安装不完整，步骤最多重试三次，并逐项确认版本目录与工具文件存在。Android每个GitHub Run/Attempt仅使用 checkout 的 `target/build/citizensdk-sdk-<run-id>-<attempt>` 作为原生工作目录，目录内所有权回执与Run、Attempt及提交SHA绑定；原生归档上传步骤结束后由 `always()` 清理器只删除回执匹配的本轮目录。Android正式原生输出、Cargo、Pub、Gradle和引擎缓存仍使用各自Runner临时目录。Linux Job安装Ubuntu官方 `libglib2.0-dev`、`libgtk-3-dev`、`libgstreamer1.0-dev` 和 `libgstreamer-plugins-base1.0-dev`，为 pkg-config 提供GLib/GIO、GTK3与GStreamer开发合同。Linux测试支持目标复用Host生成的public头文件投影；QR首帧仅在optional实际携带有效帧时转移，保留warnings-as-errors并覆盖正常首帧与无首帧关闭合同。公民SDK同文件回归路径期望按当前平台的path.join生成；Windows私有头文件回归验证普通独占文件和内容，POSIX平台继续精确验证0600模式。Linux Host CTest失败时，原生入口将完整标准输出和错误输出转发至GitHub stderr；SQLite测试回归额外输出共享内存锁失败阶段与errno，正式Host错误保持不变，最终仍按非零退出失败关闭。
 
-`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。产品测试、编译和自动化使用各自现有入口；不登记 SDK 渠道发布入口。
+`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。当前公民SDK流程只使用GitHub自动化按钮，测试与编译均在GitHub执行，不发起SDK本机编译或渠道发布。
 
 Linux/Windows Host仅在实际拥有公开存储、保密存储或设备金库资源时向Core传入HostServices；QR-only无资源实例传入空指针，不伪造全空资源组。Linux WAL DMS在有界等待结束后报告不可继续重试的SHM锁错误，避免SQLite重复执行整段等待；合同测试仅对Host销毁的真实BUSY状态有界重试。Windows xShmMap将扩展参数作为零/非零标记，合同测试中的分支诊断只输出阶段、页参数及Windows错误码，正式Host不输出测试诊断。Run记录最终清理即使遇到GitHub已把本轮取消Run标为completed，也按准确Run/Attempt/SHA保护本轮ID，只处理其它已完成的本仓main工作流Run；清理失败仍在Job中如实失败。
 
-CitizenApp 消费 SDK 的公开编译接口；塔塔控制台只负责调用和展示本仓入口。控制台公民链Tab当前仅登记一个“公民SDK／SDK”直接按钮，派发本仓现有 sdk.yml 并由该工作流创建正式Tag/Release；本机Build公开接口和独立执行能力仍归本仓。所有资源与编译决策由本仓声明及真实代码拥有；独立模式自行准备，调度模式由调用方按本仓声明供给，缺件按实际失败。
+CitizenApp消费SDK的公开软件接口；塔塔控制台只负责派发和展示本仓自动化。控制台公民链Tab当前仅显示一个“公民SDK／SDK”自动化按钮，派发本仓现有`sdk.yml`并由该工作流创建正式Tag/Release。所有资源与编译决策由本仓声明及真实代码拥有，缺件按实际失败。
 
 本文后续按日期记录的旧实施证据仅用于追溯；当前可执行入口与职责以本节和仓库真实代码为准。本次流程整理只做静态与不触发编译的回归，未运行真实 SDK 编译、自动化或正式发布。
 
@@ -70,7 +69,7 @@ Flutter官方工具按包名查找插件入口。仓库源码继续使用扁平�
 
 本文是 CitizenSDK 唯一技术事实文档，统一收录 SDK 现状、产品目标、公开能力、模块职责和长期验收标准。本次无UI职责调整、UI恢复步骤、确认状态与执行证据只记录在既有《公民接入公民软件包》任务卡；既往SDK独立交付记录仍保留在其原任务卡。
 
-**当前本机Build合同：**CitizenSDK是单一 `sdk` 平台，本机Build由产品完整入口完成编译和产物验真，不执行移动设备签名安装或正式发布。编译增量从本产品自有目录恢复到本轮独占工作区，仅成功后替换该平台最新快照。SDK是库，设备安装须由使用同一 SDK 提交的公民App既有设备安装流程承载；不能把 SDK 的 `compile-only` 回执冒充已安装。完整入口返回公开completion/files结果，工程视图和依赖可写状态归本轮target/build，源码原件只读。
+**当前自动化合同：**CitizenSDK是单一`sdk`产品平台。控制台只派发GitHub的`sdk.yml`；该工作流测试、编译、验真并创建唯一正式版。本轮不使用本机Build、设备安装或本机编译增量作为SDK成功证据。
 
 CitizenSDK 的 Dart 静态分析规则唯一归 `scripts/build.mjs` 的 `BUILD_SHELL_SOURCES.analysis` 所有；通过 `analysis-options <绝对路径>` 在本仓 target 工作区生成 Flutter 配置，源码不保留第二份 YAML。
 
@@ -895,9 +894,9 @@ SDK旧Dart钱包和差分实现不恢复，公开能力由Rust Core与官方绑�
   及同版候选源码合同；后续 8.2、8.4 节记录对应实现。Windows 真实平台编译、运行、硬件与
   正式分发尚未由本轮验证，不能用源码合同或 macOS 验收代替。
 
-#### 本机构建与受控目录
+#### 历史本机构建与受控目录（现不执行）
 
-本机Build直接读取`<本仓根>`并执行产品自己的唯一构建入口，不建立Git快照、不调用正式Release打包器；编译完成返回本产品现有 `compile-only` Build回执，不伪造正式包或设备安装回执。
+以下记录描述早期本机构建边界；当前SDK成功条件以本仓`sdk.yml`的完整GitHub Run及正式Tag/Release回执为准。本机不执行SDK编译或设备安装。
 
 本机任务的依赖展开、编译中间物和日志只写入永久固定容器：
 
@@ -905,7 +904,7 @@ SDK旧Dart钱包和差分实现不恢复，公开能力由Rust Core与官方绑�
 
 仅按同产品、同平台、同流程清理本轮工作内容，并保护活跃任务；不得整根清空target。CitizenSDK是一个`SDK`平台；Android、iOS、macOS、Windows、LinuxARM和LinuxAMD只是正式SDK包内部支持面，不是六个控制台产品平台。
 
-本产品按原锁取得、验真并复用独立资源原件；原件与任务可写展开分离。本机Build、测试和远端Release临时数据均在本产品target工作边界，不依赖外部原件库。
+本产品按原锁取得、验真并复用独立资源原件；原件与任务可写展开分离。当前测试、编译和Release临时数据由GitHub本轮Runner工作空间持有。
 
 正式Release由CitizenSDK自己的GitHub流程汇总平台输入、完成产品内部校验，并向GitHub Release只公开唯一`公民SDK·SDK·vX.Y.Z.tgz`。内部作业传递用的清单或摘要不是第二个产品资产，不进入控制台正式资产合同。
 
@@ -3830,13 +3829,13 @@ Core/Host 字节、版本/提交和法律材料。唯一候选附带生成 nativ
 SBOM 或签名证明。本步只固定上述三项静态组件的法律原文与归属，不能声称全部传递许可
 已闭合，也不能声称 Linux/Windows 真正编译/运行通过。历史执行结果不替代本仓本轮真实验收。
 
-## 产品本机编译生成边界
+## 历史本机编译生成边界（现不执行）
 
 GitHub上的Android插件输出、JNI暂存与独立AAR共用android/build.gradle定义的唯一物理路径校验；独立AAR由任务根脚本先装载该校验，再在native模块调用。输出必须是无链接、无路径别名的绝对目录，并位于实际GITHUB_WORKSPACE的既有target严格子目录；缺失工作区、缺失target、源码目录、target本身、越界路径及普通文件均拒绝，校验不创建或重建固定根。SDK作为依赖时源码原件整体只读；SDK自有Workflow只开放自身target，仍拒绝源码目录。已有本机输出与原件隔离合同保持，不新增工具、来源、版本、参数或签名配置。
 
 Android 原生构建中的 `CITIZENSDK_ANDROID_BUILD_DIR`、`CITIZENSDK_ANDROID_CORE_DIR`、`GRADLE_USER_HOME` 必须连续赋值给同一次 Gradle 子进程调用；注释放在赋值段前，禁止切断续行。SDK 自有 Gradle 工程、项目缓存、Kotlin 状态和原生产物必须位于 CitizenSDK 工作目录；调用产品显式提供的 `GRADLE_USER_HOME` 是产品任务的依赖缓存，只要求位于 CitizenSDK 源码树之外，不得错误要求它进入 SDK 子工作目录。Gradle 使用 `--no-problems-report` 阻止 HTML 问题报告写回 SDK 源码，受控日志继续保留完整错误栈，Gradle 非零退出码直接终止构建。回归测试执行生产脚本的调用段，用受控子进程核对环境、含空格路径、参数、外部依赖缓存边界及失败传播，不需要联网或编译 SDK。
 
-CitizenSDK本机编译只使用本轮`citizensdk/target/build/sdk/`，不生成正式Release包；完整入口输出本产品公开completion/files回执。产品源码只读读取，依赖可写视图与编译中间物归该现场；领取、结果验真及收尾清理由“本机固定执行目录”定义。
+早期本机编译曾使用本轮`citizensdk/target/build/sdk/`，不生成正式Release包；该记录不作为当前公民SDK流程。当前测试、编译与正式包均由GitHub的`sdk.yml`处理。
 
 Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。依赖由本产品准备，控制台只传递普通工具路径和本次已授权输入，不维护CitizenSDK包内平台合同。
 
@@ -3844,13 +3843,13 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。依赖由�
 
 本机持久原件只进入本产品自己的 `~/.local/share/citizensdk/`：`tools/` 保存已验真的工具对象，`dependencies/archives/` 保存本产品依赖归档。首次缺件由本产品按原始锁取得并验真，后续按相同摘要复用；工作中间物仍只进入本轮任务目录。本产品不接入外部依赖库存或供给索引，也不迁移、删除其它产品的持久数据。
 
-CI和Release不读取本机编译中间物，Release继续按正式合同从干净编译状态生成SDK。
+CI和Release只读取本轮GitHub固定提交及Runner受控现场，不读取本机编译中间物。
 
 ## CI 增量缓存
 
 CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存。Cargo target 使用独立键空间，每个支持平台只保留最新一份；Cargo registry/git、Pub hosted/git原件、Gradle modules/build cache/wrapper及固定Flutter engine仍走依赖缓存，不与Cargo target或Run记录共用清理规则。Cargo缓存清理只读取本仓 `main` 的本SDK target键，删除后回查保留数量；清理失败明确返回失败，不覆盖原生构建或Release Job的结论。
 
-同一 `sdk.yml` 依次完成本仓回归、五平台原生构建、正式包组装/复验、五平台消费复验和Release，最后执行Run记录清理。Run清理仅处理本仓 `main`、准确 `sdk.yml` 的已完成Run，不按事件过滤，因此旧 `push` Run也可进入候选；只保留最新成功和最新失败各一条，当前活动Run作为本轮候选并受保护。Run清理必须成功，且Tag/Release回执与源码SHA一致，整次GitHub Run才算正式成功。清理失败会让最终Run失败，但不会撤销已成功的构建或Release。Release资产、Tag和Cargo缓存不由Run记录清理删除。
+同一`sdk.yml`依次完成本仓回归、五平台原生构建、正式包组装/复验、五平台消费复验和Release，最后执行Run记录清理。Run清理仅处理本仓`main`、准确`sdk.yml`的已完成Run，不按事件过滤，因此旧`push` Run也可进入候选；只保留符合“公民SDK·SDK·vX.Y.Z”名称的最新成功和最新失败各一条，旧名称已完成Run在新Run终态后清理，当前活动Run作为本轮候选并受保护。Run清理必须成功，且Tag/Release回执与源码SHA一致，整次GitHub Run才算正式成功。清理失败会让最终Run失败，但不会撤销已成功的构建或Release。Release资产、Tag和Cargo缓存不由Run记录清理删除。
 
 Android工作流调用本产品 `prepare-environment`，由同一锁定工具配方验真并物化 Gradle 9.1.0 与 Temurin 17.0.20.1 Linux x64 到本次Runner工作目录，构建直接消费准备回执里的入口。Android与macOS分别在固定Flutter提交检出及缓存恢复后执行 `flutter precache --android` 与 `flutter precache --ios --macos`，再开始平台编译。缓存只加速依赖与中间构建；正式Release仍按既有合同从该Run源码和原生件执行完整编译、消费者复验与版本发布。Run和Actions缓存分别清理，不通过删除Run记录清理Tag、Release资产或Cargo缓存。
 

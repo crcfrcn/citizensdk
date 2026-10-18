@@ -5,7 +5,6 @@ import {spawn,spawnSync} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {rmSync,rmdirSync,chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,cpSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,renameSync,symlinkSync,writeFileSync} from 'node:fs';
 import {basename,dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
-import {homedir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {randomUUID as testRandomUUID} from 'node:crypto';
@@ -564,24 +563,6 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   assert.equal(fixedWork('test'),join(root,'target/test/sessions',testSession));
   for(const platform of Object.keys(contract.platforms))assert.equal(fixedWork('build/'+platform),join(fixedWork('test'),'build',platform));
  });
- test('本机SDK增量只在成功后替换最新平台快照',t=>{
-  const base=join(fixedWork('test'),'incremental-fixture'),cache=join(base,'cache');
-  t.after(()=>rmSync(base,{recursive:true,force:true}));
-  const first=join(base,'first'),second=join(base,'second'),third=join(base,'third');
-  mkdirSync(join(first,'work/cargo-target'),{recursive:true});
-  writeFileSync(join(first,'work/cargo-target/object'),'first');
-  const receipt={tools:{rust:{version:'1.97.1'}}};
-  assert.equal(restoreLocalIncremental('sdk',first,receipt,cache),false);
-  saveLocalIncremental('sdk',first,receipt,cache);
-  assert.equal(restoreLocalIncremental('sdk',second,receipt,cache),true);
-  assert.equal(readFileSync(join(second,'work/cargo-target/object'),'utf8'),'first');
-  assert.equal(restoreLocalIncremental('sdk',third,{tools:{rust:{version:'different'}}},cache),false);
-  mkdirSync(join(third,'work/cargo-target'),{recursive:true});
-  writeFileSync(join(third,'work/cargo-target/object'),'third');
-  saveLocalIncremental('sdk',third,{tools:{rust:{version:'different'}}},cache);
-  assert.deepEqual(readdirSync(cache),['current']);
-  assert.equal(restoreLocalIncremental('sdk',join(base,'fourth'),receipt,cache),false);
- });
  test('正式入口在领取工作根前拒绝合成阶段',()=>{
   const module=JSON.stringify(fileURLToPath(import.meta.url));
   const child=spawnSync(process.execPath,['--input-type=module','-e','import {execute} from '+module+';await execute("bad","/bad",{}, {stages:{}});'],{env:{PATH:process.env.PATH,HOME:process.env.HOME},encoding:'utf8'});
@@ -595,66 +576,6 @@ export async function execute(platform,work,request={},options={}) {
  if(options.stages&&!process.env.NODE_TEST_CONTEXT)fail('合成阶段仅用于本仓测试');
  checkFixedWork(work,{create:true});
  return withFixedWork(taskScope(work),()=>executeTask(platform,work,request,options),{run_id:request.run_id,environment:options.environment||process.env});
-}
-function localIncrementalKey(platform,receipt){
- const locks=['Cargo.lock','native/legacy/Cargo.lock','native/smoldot/Cargo.lock'].map(name=>{
-  const file=join(root,name),info=lstatSync(file);
-  if(!info.isFile()||info.isSymbolicLink())fail('增量输入锁文件无效：'+name);
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
- });
- const tools=Object.entries(receipt.tools||{}).map(([id,item])=>[id,item.version]).sort(([a],[b])=>a.localeCompare(b));
- return createHash('sha256').update(JSON.stringify({platform,locks,tools})).digest('hex');
-}
-function copyLocalIncremental(source,destination){
- const info=lstatSync(source);if(info.isSymbolicLink())return;
- if(info.isDirectory()){
-  if(existsSync(destination)){
-   const target=lstatSync(destination);if(!target.isDirectory()||target.isSymbolicLink()||realpathSync(destination)!==destination)fail('本机增量目录边界无效');
-  }
-  mkdirSync(destination,{recursive:true,mode:0o700});
-  for(const name of readdirSync(source))copyLocalIncremental(join(source,name),join(destination,name));
- }else if(info.isFile()){
-  if(existsSync(destination)){
-   const target=lstatSync(destination);if(!target.isFile()||target.isSymbolicLink()||target.nlink!==1)fail('本机增量文件边界无效');
-  }
-  copyFileSync(source,destination);
- }
- else fail('增量缓存包含特殊文件');
-}
-function localIncrementalRoot(){return join(homedir(),'.local/share/citizensdk/incremental/sdk');}
-function checkLocalIncrementalRoot(path,create=false){
- if(!isAbsolute(path)||resolve(path)!==path)fail('本机增量缓存根无效');
- let current=parse(path).root;
- for(const segment of relative(current,path).split(sep).filter(Boolean)){
-  current=join(current,segment);
-  if(!existsSync(current)){if(!create)return false;mkdirSync(current,{mode:0o700});}
-  const info=lstatSync(current);if(!info.isDirectory()||info.isSymbolicLink()||realpathSync(current)!==current)fail('本机增量缓存经过链接');
- }
- return true;
-}
-function restoreLocalIncremental(platform,work,receipt,cacheRoot=localIncrementalRoot()){
- const current=join(cacheRoot,'current'),target=join(work,'work/cargo-target');
- if(!checkLocalIncrementalRoot(cacheRoot)||!existsSync(current))return false;
- const manifest=join(current,'manifest.json'),info=lstatSync(current);
- if(!info.isDirectory()||info.isSymbolicLink()||!existsSync(manifest)||!lstatSync(manifest).isFile()
-  ||lstatSync(manifest).isSymbolicLink()||lstatSync(manifest).size>1024)fail('本机增量缓存身份无效');
- const value=JSON.parse(readFileSync(manifest,'utf8'));
- if(value.schema!==1||value.platform!==platform||value.key!==localIncrementalKey(platform,receipt))return false;
- const source=join(current,'target');if(!existsSync(source)||!lstatSync(source).isDirectory())fail('本机增量正文缺失');
- copyLocalIncremental(source,target);return true;
-}
-function saveLocalIncremental(platform,work,receipt,cacheRoot=localIncrementalRoot()){
- const source=join(work,'work/cargo-target');if(!existsSync(source)||!lstatSync(source).isDirectory())fail('本机增量编译正文缺失');
- checkLocalIncrementalRoot(cacheRoot,true);
- const candidate=join(cacheRoot,'.candidate-'+testRandomUUID()),current=join(cacheRoot,'current'),old=join(cacheRoot,'.old-'+testRandomUUID());
- mkdirSync(candidate,{mode:0o700});
- try{
-  copyLocalIncremental(source,join(candidate,'target'));
-  writeFileSync(join(candidate,'manifest.json'),JSON.stringify({schema:1,platform,key:localIncrementalKey(platform,receipt)})+'\n',{flag:'wx',mode:0o600});
-  if(existsSync(current))renameSync(current,old);
-  try{renameSync(candidate,current);}catch(error){if(existsSync(old))renameSync(old,current);throw error;}
-  if(existsSync(old))rmSync(old,{recursive:true,force:true});
- }finally{if(existsSync(candidate))rmSync(candidate,{recursive:true,force:true});}
 }
 async function executeTask(platform,work,request={},options={}) {
  checkWork(work);platformContract(platform);
@@ -680,10 +601,8 @@ async function executeTask(platform,work,request={},options={}) {
   await stages.prepare(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
   await stages.requirements(platform,work);
   receipt=await stages.resources(platform,work,receipt,resourcesOptions);state.signal.throwIfAborted();
-  if(!options.stages)restoreLocalIncremental(platform,work,receipt);
   const result=await stages.build(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
   checkBuildResult(result,platform,work,request.run_id);
-  if(!options.stages)saveLocalIncremental(platform,work,receipt);
   writeFileSync(resultFile,JSON.stringify(result)+'\n',{flag:'wx',mode:0o600});return result;
  });}catch(error){if(String(error?.message).includes('退出未确认'))state.unconfirmed=true;throw error;}finally{state.finished=true;options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed){unlinkSync(lock);clearWork(work);}}
 }
@@ -6606,6 +6525,7 @@ function ciReleaseWorkflowRuns(api){
  return api(['--paginate','--jq','.workflow_runs[] | @json',route]).split('\n').filter(Boolean).map(line=>JSON.parse(line));
 }
 function ciReleaseRunBucket(run){return run.conclusion==='success'?'success':'failure';}
+function ciReleaseCanonicalRun(run){return ciReleaseOfficialTagPattern.test(run?.display_title||'');}
 function ciReleaseRunOrder(left,right){return right.run_number-left.run_number
  ||right.run_attempt-left.run_attempt||right.id-left.id;}
 function ciReleaseCheckRun(run,{current=false,environment}){
@@ -6637,8 +6557,8 @@ export function ciReleaseRunPrune(outcome,environment=process.env,{call=spawnSyn
   &&value.head_branch==='main'&&value.status==='completed');
  if(eligible.some(value=>value.run_number>=current.run_number))
   fail('GitHub SDK Run顺序或活动身份不一致');
- // 当前活动Run用前置Job的最终候选结果代表；只删除本仓main本Workflow的已完成旧Run，保留最新相反结果。
- const opposite=eligible.filter(value=>ciReleaseRunBucket(value)!==outcome).sort(ciReleaseRunOrder)[0];
+ // 旧命名Run不能作为正式列表的保留项；当前活动Run始终由准确ID保护。
+ const opposite=eligible.filter(value=>ciReleaseCanonicalRun(value)&&ciReleaseRunBucket(value)!==outcome).sort(ciReleaseRunOrder)[0];
  const keep=new Set([current.id,...(opposite?[opposite.id]:[])]),deleted=[];
  for(const value of eligible){if(keep.has(value.id))continue;
   api(['-X','DELETE','repos/'+ciReleaseRepo+'/actions/runs/'+value.id]);deleted.push(value.id);
@@ -6796,10 +6716,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    GITHUB_RUN_ID:'50',GITHUB_RUN_NUMBER:'10',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
   const make=(id,number,conclusion,event='workflow_dispatch',path=ciReleaseWorkflow,branch='main')=>({
    id,path,repository:{full_name:ciReleaseRepo},head_branch:branch,head_sha:'b'.repeat(40),run_number:number,
-   run_attempt:1,status:'completed',conclusion,event});
+   run_attempt:1,status:'completed',conclusion,event,display_title:'公民SDK·SDK·v1.0.0'});
   const current={...make(50,10,null),'status':'in_progress','conclusion':null,head_sha:environment.GITHUB_SHA};
   let rows=[make(40,4,'success','push'),make(44,6,'failure'),make(46,7,'success'),make(48,8,'cancelled'),
-   make(49,9,'failure'),make(30,3,'success','push','.github/workflows/other.yml'),make(29,2,'success','push',ciReleaseWorkflow,'topic')];
+   {...make(49,9,'failure'),display_title:'公民SDK-v1.0.0'},make(30,3,'success','push','.github/workflows/other.yml'),make(29,2,'success','push',ciReleaseWorkflow,'topic')];
   const deleted=[];
   const call=(command,args)=>{
    assert.equal(command,'gh');const path=args.at(-1);
@@ -6809,9 +6729,9 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    assert.fail('unrequested GitHub path: '+path);
   };
   const result=ciReleaseRunPrune('success',environment,{call});
-  assert.deepEqual(deleted,[40,44,46,48]);
+  assert.deepEqual(deleted,[40,44,46,49]);
   assert.deepEqual(result,{outcome:'success',run_id:50,deleted:4,retained_other:1});
-  assert.ok(rows.some(run=>run.id===49));
+  assert.ok(rows.some(run=>run.id===48));
   assert.ok(rows.some(run=>run.id===30)&&rows.some(run=>run.id===29));
   assert.ok(!deleted.includes(50));
   current.status='completed';current.conclusion=null;rows.push({...current});
@@ -6821,7 +6741,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   current.status='completed';current.conclusion='cancelled';rows.push({...current});
   const cancelled=ciReleaseRunPrune('failure',environment,{call});
   assert.deepEqual(cancelled,{outcome:'failure',run_id:50,deleted:1,retained_other:0});
-  assert.deepEqual(deleted,[40,44,46,48,49]);
+  assert.deepEqual(deleted,[40,44,46,49,48]);
   assert.ok(rows.some(run=>run.id===50));
   current.head_sha='c'.repeat(40);
   assert.throws(()=>ciReleaseRunPrune('failure',environment,{call}),/候选身份无效/u);
@@ -11931,7 +11851,8 @@ async function automationReconcileRecords(current,token){
   ||!Number.isSafeInteger(run.run_attempt)||run.run_attempt<1||typeof run.conclusion!=='string')
   throw Error('公民SDK记录清理候选身份无效');
  eligible.sort(ciReleaseRunOrder);
- const keep=new Map();for(const run of eligible){const bucket=ciReleaseRunBucket(run);
+ const keep=new Map();for(const run of eligible){if(run.id!==current.id&&!ciReleaseCanonicalRun(run))continue;
+  const bucket=ciReleaseRunBucket(run);
   if(!keep.has(bucket))keep.set(bucket,run.id);}
  if(![...keep.values()].includes(current.id))throw Error('公民SDK终态Run不是最新同类记录');
  for(const run of eligible)if(![...keep.values()].includes(run.id))
@@ -12098,8 +12019,9 @@ if(inlineTestEntry){
  });
  test('SDK终态记录只保留本仓main工作流的最新成功和失败',async()=>{
   const make=(id,number,conclusion)=>({id,run_number:number,run_attempt:1,status:'completed',conclusion,
-   path:'.github/workflows/sdk.yml',head_branch:'main',repository:{full_name:'crcfrcn/citizensdk'}});
-  const current=make(50,10,'success'),rows=[current,make(49,9,'success'),make(48,8,'failure'),make(47,7,'failure')],deleted=[];
+   path:'.github/workflows/sdk.yml',head_branch:'main',repository:{full_name:'crcfrcn/citizensdk'},display_title:'公民SDK·SDK·v1.0.0'});
+  const current=make(50,10,'success'),rows=[current,make(49,9,'success'),
+   {...make(48,8,'failure'),display_title:'公民SDK-v1.0.0'},make(47,7,'failure')],deleted=[];
   const fetchImpl=async(url,options)=>{
    const path=new URL(url).pathname;
    if(path.endsWith('/actions/workflows/sdk.yml/runs'))return Response.json({workflow_runs:rows});
@@ -12110,7 +12032,7 @@ if(inlineTestEntry){
    assert.fail('unrequested SDK record route: '+path);
   };
   const receipt=await automationTransport.run({fetchImpl},()=>automationReconcileRecords(current,'fixture'));
-  assert.deepEqual(deleted,[49,47]);assert.deepEqual(receipt,{run_id:50,retained:2});
-  assert.deepEqual(rows.map(run=>run.id),[50,48]);
+  assert.deepEqual(deleted,[49,48]);assert.deepEqual(receipt,{run_id:50,retained:2});
+  assert.deepEqual(rows.map(run=>run.id),[50,47]);
  });
 }
