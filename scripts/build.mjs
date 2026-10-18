@@ -6960,8 +6960,8 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(androidCleanup.text,/release-cleanup-android-work/u);
   assert.doesNotMatch(compile.text,/cygpath -u/u,'Windows路径转换由产品入口统一完成');
   assert.match(consume,/release-verify --verify/u,'正式候选仍须经过平台消费复验');
-  assert.match(release,/needs: \[prepare, native, native-linux, assemble, consume\]/u,
-   'Tag/Release必须等待五平台正式构建与消费复验');
+  assert.match(release,/needs: \[prepare, native, native-linux, assemble, consume, cargo-retention\]/u,
+   'Tag/Release必须等待五平台正式构建、消费复验与增量缓存收敛');
   assert.match(release,/actions: write/u,'正式发布Job必须把下一个补丁版本写回GitHub变量');
   const cargoRetention=workflow.slice(workflow.indexOf('\n  cargo-retention:'),workflow.indexOf('\n  run-retention:'));
   const runRetention=workflow.slice(workflow.indexOf('\n  run-retention:'));

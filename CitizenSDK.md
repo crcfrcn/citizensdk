@@ -4258,7 +4258,7 @@ Run 39056915501 已证实上一轮 Linux QR 导出和 Windows 来源硬链接门
 
 Linux 构建候选改为同一 `sdk.yml` 内独立 `native-linux` 矩阵，两架构均使用已固定多架构摘要的官方 Debian 11 镜像。镜像先核对 GLIBC 2.31，以 2026-09-01 Debian 签名快照安装现有开发依赖，再使用本仓既有 CMake 3.31.6 平台归档、摘要及版本验收；Android、Apple、Windows 仍由原 `native` 矩阵构建。两组原生作业都必须成功，才允许组包、消费复验和 Release；缓存保留与末尾 Run 清理仍覆盖五平台。固定 GLIBC 2.31 及 ELF 动态依赖门禁保持不变。Windows 关闭回归改为依据 Host 当前真实 Core 状态核对 C++ 缓存句柄：BUSY 可发生在 Core 销毁前，最终成功关闭仍必须清零双句柄。以上候选须经下一次 GitHub 完整自动化验证，当前不宣称正式版已生成。
 
-Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖，且保持 Release 必须等待五平台与消费复验的条件；该 Run 未进入原生构建或生成正式资产。
+Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖；Release 必须等待五平台、消费复验与增量缓存收敛，末尾 Run 清理仍独立验真。该 Run 未进入原生构建或生成正式资产。
 
 Run 39059895404 的 `prepare` 通过，两项 Debian `native-linux` Job 在安装开发依赖时同因 `libdw-dev` 要求 `liblzma-dev` 而失败，未进入 Core 编译。对照固定快照的 AMD64/ARM64 签名包索引，2026-07-01 的 `liblzma-dev` 为 `5.2.5-2.1~deb11u1`，而当前固定镜像与较新安全版本不能组成同版依赖。2026-09-01 安全快照中两架构的 `liblzma5`、`liblzma-dev` 均为 `5.2.5-2.1~deb11u2`，且两架构 OpenSSL、CA 与上述两包的实际归档地址均已回读为 HTTP 200；候选统一改用该日 Debian 与安全快照并显式锁定同版包，不改变 GLIBC 基线或 CMake 来源。
 
