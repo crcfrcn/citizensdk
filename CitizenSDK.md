@@ -11,6 +11,8 @@ SDK正式归档仅由该工作流在完整验收后生成，本机不产生正�
 LinuxARM 是唯一 Linux SDK 目标，正式安装闭集为 19 项；候选的原生依赖证据只包含
 LinuxARM 与 Windows。Android 使用的 Linux x64 Java/NDK 输入属于 Runner 构建宿主，
 不构成另一个 Linux SDK 平台或交付件。
+LinuxARM 与 Windows 各自在原生消费者验真后由产品入口生成一次依赖与最终运行库证据；
+工作流只归档该普通文件，重复写入继续按独占创建失败，不再运行第二个生成入口。
 
 ## 当前SDK流程目录与职责（2026-10-10）
 

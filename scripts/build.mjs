@@ -6890,6 +6890,18 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   const consume=workflow.slice(workflow.indexOf('\n  consume:'),workflow.indexOf('\n  release:'));
   const release=workflow.slice(workflow.indexOf('\n  release:'));
   const nativeShell=BUILD_SHELL_SOURCES.native,dependencyStart=nativeShell.indexOf('load_native_dependencies() {');
+  assert.doesNotMatch(workflow,/release-dependency-evidence|id: dependency_evidence/u,
+   '原生依赖证据必须由原生入口生成，workflow不能重复写入');
+  for(const [platform,consumer,evidence] of [
+   ['LinuxARM','build_linux_flutter_consumer "$platform"','record_native_dependencies "$platform"'],
+   ['Windows','build_windows_flutter_consumer "$build_root"','record_native_dependencies Windows'],
+  ]){
+   assert.equal(nativeShell.split(evidence).length-1,1,platform+'依赖证据只能生成一次');
+   assert.ok(nativeShell.indexOf(consumer)>=0&&nativeShell.indexOf(evidence)>nativeShell.indexOf(consumer),
+    platform+'依赖证据必须在消费者验真后生成');
+  }
+  assert.ok(workflow.includes('dependencies/$SDK_PLATFORM.json')&&workflow.includes('dependencies/Windows.json'),
+   'LinuxARM与Windows上传路径必须包含原生入口生成的唯一依赖证据');
   assert.equal(nativeShell.split('CITIZENSDK_ANDROID_CORE_DIR="$core_stage"').length-1,2,
    'Android正式AAR与原生Release单测必须复用仅Core staging');
   assert.equal(nativeShell.split('CITIZENSDK_ANDROID_CORE_DIR="$test_stage"').length-1,1,
@@ -7128,20 +7140,16 @@ async function runCLI(){
  return runCommand();
 }
 async function runCommand(){
- if(['release-dependency-env','release-dependency-evidence'].includes(process.argv[2])){
+ if(process.argv[2]==='release-dependency-env'){
   if(process.argv.length!==3||process.env.GITHUB_ACTIONS!=='true'
    ||process.env.GITHUB_REPOSITORY!=='crcfrcn/citizensdk'
    ||!['LinuxARM','Windows'].includes(process.env.SDK_PLATFORM)
    ||!/^[a-f0-9]{40}$/u.test(process.env.GITHUB_SHA||''))fail('原生依赖回执身份无效');
-  if(process.argv[2]==='release-dependency-env'){
-   const result=JSON.parse(readFileSync(join(process.env.CITIZENSDK_RESOURCE_WORK_DIR,'dependency-result.json'),'utf8'));
-   const variables={...citizenSdkDependencyEnvironment(result.receipt,process.env.SDK_PLATFORM),
-    CITIZENSDK_DEPENDENCY_RECEIPT:result.receipt};
-   if(!isAbsolute(process.env.GITHUB_ENV||''))fail('GitHub 环境回执缺失');
-   writeFileSync(process.env.GITHUB_ENV,Object.entries(variables).map(([key,value])=>key+'='+value+'\n').join(''),{flag:'a'});
-  }else writeCitizenSdkDependencyEvidence({receiptPath:process.env.CITIZENSDK_DEPENDENCY_RECEIPT,
-   platform:process.env.SDK_PLATFORM,nativePath:process.env.CITIZENSDK_NATIVE_OUTPUT_DIR,
-   sourcePath:process.env.CITIZENSDK_SOURCE_ROOT,sourceSha:process.env.GITHUB_SHA});
+  const result=JSON.parse(readFileSync(join(process.env.CITIZENSDK_RESOURCE_WORK_DIR,'dependency-result.json'),'utf8'));
+  const variables={...citizenSdkDependencyEnvironment(result.receipt,process.env.SDK_PLATFORM),
+   CITIZENSDK_DEPENDENCY_RECEIPT:result.receipt};
+  if(!isAbsolute(process.env.GITHUB_ENV||''))fail('GitHub 环境回执缺失');
+  writeFileSync(process.env.GITHUB_ENV,Object.entries(variables).map(([key,value])=>key+'='+value+'\n').join(''),{flag:'a'});
   return;
  }
  if(process.argv[2]==='release-version'){

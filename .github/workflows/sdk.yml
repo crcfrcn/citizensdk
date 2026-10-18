@@ -275,13 +275,6 @@ jobs:
           else
             node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
           fi
-      - name: 绑定原生依赖与运行库证据
-        id: dependency_evidence
-        if: matrix.platform == 'LinuxARM' || matrix.platform == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/build.mjs release-dependency-evidence
       - name: Apple原生及Flutter绑定回归
         if: matrix.platform == 'macOS'
         env:
