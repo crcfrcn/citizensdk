@@ -95,6 +95,13 @@ target_include_directories(citizen_sdk_plugin
 )
 target_link_libraries(citizen_sdk_plugin PRIVATE
   flutter CitizenSDK::Host Threads::Threads)
+# 只把官方注册入口交给 Flutter；编译可见性不足以约束静态运行库带入的动态导出。
+# 版本脚本只生成在本轮构建目录，内容变化时必须重新链接插件。
+set(_citizensdk_plugin_export_map "${CMAKE_CURRENT_BINARY_DIR}/citizen_sdk_plugin.map")
+file(GENERATE OUTPUT "${_citizensdk_plugin_export_map}"
+  CONTENT "{\n  global:\n    citizen_sdk_plugin_register_with_registrar;\n  local:\n    *;\n};\n")
+set_property(TARGET citizen_sdk_plugin APPEND PROPERTY LINK_DEPENDS
+  "${_citizensdk_plugin_export_map}")
 set_target_properties(citizen_sdk_plugin PROPERTIES
   OUTPUT_NAME citizen_sdk_plugin
   CXX_EXTENSIONS OFF
@@ -111,6 +118,7 @@ target_compile_options(citizen_sdk_plugin PRIVATE
   $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:-Werror>)
 target_link_options(citizen_sdk_plugin PRIVATE
   -static-libstdc++ -static-libgcc "LINKER:--exclude-libs,ALL"
+  "LINKER:--version-script=${_citizensdk_plugin_export_map}"
   "LINKER:-z,defs" "LINKER:-z,relro" "LINKER:-z,now")
 
 # Flutter 自己把 plugin target 加入 bundle；这里只交付其同版依赖双库。
