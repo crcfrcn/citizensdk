@@ -8,6 +8,10 @@
 
 SDK正式归档仅由该工作流在完整验收后生成，本机不产生正式包。
 
+LinuxARM 是唯一 Linux SDK 目标，正式安装闭集为 19 项；候选的原生依赖证据只包含
+LinuxARM 与 Windows。Android 使用的 Linux x64 Java/NDK 输入属于 Runner 构建宿主，
+不构成另一个 Linux SDK 平台或交付件。
+
 ## 当前SDK流程目录与职责（2026-10-10）
 
 ```text
@@ -172,9 +176,9 @@ Flutter Sessions不再保有钱包/QR窗口Presenter或窗口结果到公开prof
 
 桌面wallet_validation.cc/.hpp两平台共4个旧UI专属文件已经删除，不属于Core wallet_input或实际设备授权，不保留空壳或兼容流程。Linux宿主对象弱引用与释放现由既有HostBridge承载，不再依赖GTK钱包窗口文件；Windows隐藏消息派发和真实金库实现保留。原窗口测试改为Core输入、敏感缓冲及生产无UI绑定边界测试；Linux/Windows原生执行属于GitHub对应平台流程，不要求本机另备环境。
 
-Build/Release安装清单不再包含旧钱包窗口头或Flutter窗口源，五份绑定的方法权威表与独立94方法/v2金标逐项同序。Linux每个平台安装清单19项，两平台合并26项，共享6个Host头；源码摘要闭集包含新增两移动端无UICapture，移动绑定85项、Linux绑定51项，来源必须按实际字节反向核对，未执行编译/产物验真不能声称可交付。
+Build/Release安装清单不再包含旧钱包窗口头或Flutter窗口源，五份绑定的方法权威表与独立94方法/v2金标逐项同序。LinuxARM安装清单精确为19项，包含6个Host头；源码摘要闭集包含新增两移动端无UICapture，移动绑定85项、Linux绑定51项，来源必须按实际字节反向核对，未执行编译/产物验真不能声称可交付。
 
-Host回调表包含返回citizensdk_error_code_t的函数指针；符号提取必须排除紧随左括号的指针声明，不能把返回类型误计成第20个导出。Host仍准确19项、图像4项；Windows安装21项、Linux单架构19项/双架构合并26项，旧窗口头不恢复。发布测试保留这些独立数量和成员断言；消费者审阅测试要求确认同一review后签名并finally释放，不再期望SDK窗口或直接字符串签名。
+Host回调表包含返回citizensdk_error_code_t的函数指针；符号提取必须排除紧随左括号的指针声明，不能把返回类型误计成第20个导出。Host仍准确19项、图像4项；Windows安装21项、LinuxARM安装19项，旧窗口头不恢复。发布测试保留这些独立数量和成员断言；消费者审阅测试要求确认同一review后签名并finally释放，不再期望SDK窗口或直接字符串签名。
 
 桌面Lifecycle不再保存无消费者的钱包窗口token；实际Host服务租约逐一排空，Core请求由既有RequestRouter保有至真实终态。并发关闭仍BUSY，拆卸开始后的失败不能重新接纳服务；私钥/采集资源不能以取消请求代替排空或另造监督器。
 
@@ -338,7 +342,7 @@ nonce实网验收在既有provider合同测试中显式选择，以合成公有�
 
 ### 产品范围与实现基线（2026-09-06）
 
-CitizenSDK 是三仓自有产品及外部第三方集成的钱包、账户、签名、轻节点、交易、历史和扫码 SDK。当前目标是在已实现功能上满足 CitizenApp 现有钱包行为，完成按需模块使用和四平台交付，不重新建设一套钱包核心。
+CitizenSDK 是三仓自有产品及外部第三方集成的钱包、账户、签名、轻节点、交易、历史和扫码 SDK。当前目标是在已实现功能上满足 CitizenApp 现有钱包行为，完成按需模块使用和五个用户平台交付，不重新建设一套钱包核心。
 
 - 平台限定 iOS、Android、macOS、Windows、Linux；Linux 仅保留 LinuxARM 目标，macOS 沿用 Apple Silicon。原生与 Flutter 使用同一核心实现、公开合同和正式版本。
 - 保持一只无根热钱包及统一公开冷账户目录：热钱包下含多个 `//index` 派生账户，冷账户只保存公开AccountId／SS58；助记词与母种子不持久保存，热账户 child mini-secret 由现有金库加密保护。SDK 已实现的 12／18／24 词、选填派生密码、安全输入、备份确认和账户码冷导入继续保留。
@@ -364,7 +368,7 @@ CitizenSDK 是三仓自有产品及外部第三方集成的钱包、账户、签
 | 金库授权与本地签名 | `wallet_service.rs` 中独立 SigningService 验证账户、秘密归属和公钥，复用只读 `native/signer/`；不实例化 WalletService | 钱包与签名分别启用，保持认证及用后清理边界 |
 | 轻节点与基础链读取 | `native/provider/`、`native/engine/source/engine.rs` 已有订阅、storage/runtime、余额、nonce、费率和状态能力 | 保留上游与 SDK 自有适配；按实际需要补公共投影 |
 | 转账、历史及恢复 | Engine 的 transfer_with_remark_and_watch 及 history 服务保留广播前 pending、同块核验和恢复；`lib/api/citizen_transactions.dart` 分别定义 CitizenTransactions、CitizenHistory | 两个门面独立；本地转账仍必须完整组合所需五模块，不等于已覆盖 App 全部业务交易 |
-| 四平台绑定 | `android/`、`darwin/`、`linux/`、`windows/` 及 Flutter 绑定已有源码和交付合同 | 在现有实现上同步必要入口，分别完成真实环境验收 |
+| 四类原生绑定 | `android/`、`darwin/`、`linux/`、`windows/` 及 Flutter 绑定已有源码和交付合同 | 在现有实现上同步必要入口，分别完成五个用户平台的真实环境验收 |
 | 独立模块组合 | EngineComponents 与 ProductComposition 已改为可选真实链；实例模块选择、编译支持、组件存在和实时就绪分别判断 | 纯钱包／签名不构造轻节点；保留已有核心服务，实际特性编译和资源隔离验收见任务卡 |
 | 统一扫码签名 | `native/qr` 已实现严格 `QR_V1` 协议与会话，`native/image` 是唯一 ZXing-C++ 3.1.1 图像层；C ABI、Dart 和五端原生绑定公开同一能力 | 保持 QR 与 signing 独立选择；平台只交付亮度帧，协议、审阅、请求关联和验签由同一 Rust Core 完成 |
 
@@ -577,7 +581,7 @@ smoldot 轻节点、无根热钱包、sr25519 本地签名和链上交易能力�
 CitizenSDK 不包含聊天、广场、OpenMLS、TUYU 账户协议、业务授权会话或服务端验证。
 CitizenWallet 为独立产品，SDK 当前范围不包含其功能实现或接入。
 
-#### 四平台与交付类型
+#### 五个用户平台与交付类型
 
 本产品支持范围为 iOS、Android、macOS、Windows 和 Linux；Linux 仅支持 LinuxARM。准确机器字段、流程值和命名以本仓实际平台声明与工具链合同为准；本文不重新定义三仓平台闭集，
 不改变其它产品的平台支持范围。
@@ -1150,9 +1154,9 @@ Windows PE 导出闭集失败时报告有界的缺失与额外符号及总数；
 Linux Flutter 消费者核验原生构建实际选用的 `CXX` 编译器；固定 Clang 16 无需无版本
 `clang` 或 `clang++` 别名。Dart pub 与 Flutter create 使用 `--offline`，Flutter build 使用
 `--no-pub`；执行前验证完整工具缓存、版本戳和锁，缺件即失败，不在消费者阶段取得依赖。
-GitHub Linux 双架构在现有平台缓存恢复后由本仓固定 Flutter 执行 `precache --linux`，
+GitHub LinuxARM 在现有平台缓存恢复后由本仓固定 Flutter 执行 `precache --linux`，
 将引擎原件及 `bin/cache/pkg` 一起按平台复用；消费者的缺件拒绝仍独立执行。
-Linux 双架构随后在本轮独立临时目录复制产品 `pubspec.yaml` 与原始 `pubspec.lock`，
+LinuxARM 随后在本轮独立临时目录复制产品 `pubspec.yaml` 与原始 `pubspec.lock`，
 通过固定 Flutter 的 `pub get --enforce-lockfile` 填充既有平台 Pub 缓存，核对锁文件
 未漂移并执行一次 `--offline --enforce-lockfile` 验证。消费者继续离线解析，缺件即失败。
 固定 Flutter 的 Linux 构建子进程使用 `clang` 与 `clang++` 名称；SDK 消费者仅在本轮
@@ -4295,11 +4299,9 @@ Linux 构建在同一 `sdk.yml` 内使用独立 `native-linux` Job，LinuxARM �
 
 Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖；Release 必须等待四平台、消费复验与增量缓存收敛，末尾 Run 清理仍独立验真。该 Run 未进入原生构建或生成正式资产。
 
-Run 39059895404 的 `prepare` 通过，当时的 Debian `native-linux` Job 在安装开发依赖时同因 `libdw-dev` 要求 `liblzma-dev` 而失败，未进入 Core 编译。对照固定快照的 AMD64/ARM64 签名包索引，2026-07-01 的 `liblzma-dev` 为 `5.2.5-2.1~deb11u1`，而当前固定镜像与较新安全版本不能组成同版依赖。2026-09-01 安全快照中两架构的 `liblzma5`、`liblzma-dev` 均为 `5.2.5-2.1~deb11u2`，且两架构 OpenSSL、CA 与上述两包的实际归档地址均已回读为 HTTP 200；候选统一改用该日 Debian 与安全快照并显式锁定同版包，不改变 GLIBC 基线或 CMake 来源。
-
 Run 39061587665 的 `prepare` 通过，但 2026-10-01 快照虽有签名索引，首次 CA/OpenSSL 包的实际归档地址在当时的 Linux 构建返回 404，因此 Linux 未开始 SDK 编译。仅替换为已核实文件地址可取的 2026-09-01 快照；此结果仍需下一次 GitHub 自动化验收。
 
-同一 Run 的 Windows API 合同测试在首次后台 BUSY 后，单次主线程消息泵与单次 `close()` 重试仍返回 BUSY。现有日志只有返回码 18，不能断言是 Core 生命周期、在途回调还是 Win32 窗口退休门禁；代码允许这些阶段各自返回 BUSY。夹具按已有 Host 请求测试的做法，只对准确 `CITIZENSDK_ERROR_BUSY` 在五秒内泵消息并重试，其它错误立即失败，超时时记录 Host/Core 查询回执及 Core 生命周期，最终仍要求 Core/Host 双句柄清零。生产关闭流程不改。9 月快照在 ARM64/AMD64 的 62 个直接开发包的实际归档地址也逐一核对为可访问，候选尚未执行新一轮自动化。Run 39061587665 在原生矩阵已失败后应用户要求取消，最终状态为 cancelled；macOS 被取消，不能计为通过。
+同一 Run 的 Windows API 合同测试在首次后台 BUSY 后，单次主线程消息泵与单次 `close()` 重试仍返回 BUSY。现有日志只有返回码 18，不能断言是 Core 生命周期、在途回调还是 Win32 窗口退休门禁；代码允许这些阶段各自返回 BUSY。夹具按已有 Host 请求测试的做法，只对准确 `CITIZENSDK_ERROR_BUSY` 在五秒内泵消息并重试，其它错误立即失败，超时时记录 Host/Core 查询回执及 Core 生命周期，最终仍要求 Core/Host 双句柄清零。生产关闭流程不改。
 
 同一 Run 的 Windows 安装来源校验已通过，14 项原生 CTest 仅 API 合同夹具失败：原“窗口退休”夹具使用默认全模块 Core，第二次关闭仍因 Core 生命周期返回 BUSY，不能把它当作仅窗口退休。该夹具改为钱包模块，保留真实 Win32 UI 调度与后台首次 BUSY、主线程重试及最终双句柄清零；完整链 C++ 消费者继续由独立测试覆盖。此改动不放宽生产关闭门禁。
 
