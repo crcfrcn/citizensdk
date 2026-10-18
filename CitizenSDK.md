@@ -1156,6 +1156,9 @@ GitHub Linux 双架构在现有平台缓存恢复后由本仓固定 Flutter 执�
 Linux 双架构随后在本轮独立临时目录复制产品 `pubspec.yaml` 与原始 `pubspec.lock`，
 通过固定 Flutter 的 `pub get --enforce-lockfile` 填充既有平台 Pub 缓存，核对锁文件
 未漂移并执行一次 `--offline --enforce-lockfile` 验证。消费者继续离线解析，缺件即失败。
+固定 Flutter 的 Linux 构建子进程使用 `clang` 与 `clang++` 名称；SDK 消费者仅在本轮
+独占工作目录将这两个入口映射到实际选定的同根 Clang 16，并仅给 Flutter build 的
+`PATH` 使用，不修改 Runner 系统工具或原生编译器选择。映射缺失或目标漂移即失败。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；
