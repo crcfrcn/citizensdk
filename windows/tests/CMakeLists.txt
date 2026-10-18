@@ -44,6 +44,10 @@ if(TARGET citizen_sdk_plugin)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:${_library}>" "$<TARGET_FILE_DIR:${test_name}>")
     endforeach()
+    add_custom_command(TARGET ${test_name} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_LIST_DIR}/../bin/Windows/aws_lc_0_45_0_crypto.dll"
+      "$<TARGET_FILE_DIR:${test_name}>")
     # 官方 flutter 是 INTERFACE target，DLL 路径来自 Flutter 的固定导出变量。
     add_custom_command(TARGET ${test_name} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -103,6 +107,8 @@ foreach(test_name IN LISTS CITIZENSDK_WINDOWS_CONTRACT_TESTS)
     $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)
   add_custom_command(TARGET ${test_name} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${CITIZENSDK_CORE_LIBRARY}" "$<TARGET_FILE_DIR:${test_name}>")
+  add_custom_command(TARGET ${test_name} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CITIZENSDK_PRIVATE_CRYPTO_LIBRARY}" "$<TARGET_FILE_DIR:${test_name}>")
   add_test(NAME CitizenSDK.Windows.${test_name} COMMAND ${test_name})
   set_tests_properties(CitizenSDK.Windows.${test_name} PROPERTIES TIMEOUT 120
     LABELS "CitizenSDK;WindowsHost;Contract"

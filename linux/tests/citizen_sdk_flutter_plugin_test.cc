@@ -418,7 +418,8 @@ void pending_detach_contract(GMainContext *context, bool engine_gone) {
       [](uint32_t) { return csf::OpenEnvironment{}; },
       [native](const citizen_sdk::Config &) { return native; });
   auto *opened = send_method(registrar, "open",
-                             csf::Value::list({csf::Value::integer(1), csf::Value::integer(63)}));
+                             csf::Value::list({csf::Value::integer(csf::kProtocolVersion),
+                                 csf::Value::integer(63), csf::Value::boolean(false)}));
   assert(registrar->messenger->responses == 1);
   bool opened_alive = true;
   observe_release(G_OBJECT(opened), &opened_alive);
@@ -436,7 +437,7 @@ void pending_detach_contract(GMainContext *context, bool engine_gone) {
       std::get<csf::Value::List>(open_value.data).at(1).data);
 
   auto *pending = send_method(registrar, "getFinalizedHead", csf::Value::list({
-      csf::Value::integer(1), csf::Value::string(session), csf::Value::integer(1)}));
+      csf::Value::integer(csf::kProtocolVersion), csf::Value::string(session), csf::Value::integer(1)}));
   assert(native->accepted && registrar->messenger->responses == 1);
   bool pending_alive = true;
   observe_release(G_OBJECT(pending), &pending_alive);

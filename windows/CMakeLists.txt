@@ -18,6 +18,7 @@ if(NOT CITIZENSDK_PLATFORM STREQUAL "Windows")
 endif()
 set(CITIZENSDK_CORE_LIBRARY "" CACHE FILEPATH "Matching citizensdk.dll")
 set(CITIZENSDK_CORE_IMPORT_LIBRARY "" CACHE FILEPATH "Matching citizensdk.dll.lib")
+set(CITIZENSDK_PRIVATE_CRYPTO_LIBRARY "" CACHE FILEPATH "Locked private AWS-LC runtime")
 set(CITIZENSDK_CORE_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../include" CACHE PATH "Core public headers")
 set(CITIZENSDK_INTERNAL_INCLUDE_DIR "" CACHE PATH "本轮构建生成的 SDK 私有声明目录；不安装")
 set(CITIZENSDK_ASSET_DIR "${CMAKE_CURRENT_LIST_DIR}/../chain" CACHE PATH "Canonical chain assets")
@@ -37,7 +38,8 @@ if(NOT IS_ABSOLUTE "${CITIZENSDK_INTERNAL_INCLUDE_DIR}" OR
    NOT EXISTS "${CITIZENSDK_INTERNAL_INCLUDE_DIR}/citizensdk_internal.h")
   message(FATAL_ERROR "CITIZENSDK_INTERNAL_INCLUDE_DIR must contain the generated private header")
 endif()
-foreach(_file CITIZENSDK_CORE_LIBRARY CITIZENSDK_CORE_IMPORT_LIBRARY CITIZENSDK_SQLITE_ARCHIVE)
+foreach(_file CITIZENSDK_CORE_LIBRARY CITIZENSDK_CORE_IMPORT_LIBRARY
+              CITIZENSDK_PRIVATE_CRYPTO_LIBRARY CITIZENSDK_SQLITE_ARCHIVE)
   if(NOT IS_ABSOLUTE "${${_file}}" OR NOT EXISTS "${${_file}}" OR IS_DIRECTORY "${${_file}}")
     message(FATAL_ERROR "${_file} must be an existing absolute file")
   endif()
@@ -46,6 +48,11 @@ get_filename_component(_core_name "${CITIZENSDK_CORE_LIBRARY}" NAME)
 get_filename_component(_core_import_name "${CITIZENSDK_CORE_IMPORT_LIBRARY}" NAME)
 if(NOT _core_name STREQUAL "citizensdk.dll" OR NOT _core_import_name STREQUAL "citizensdk.dll.lib")
   message(FATAL_ERROR "Core DLL/import-library names must match the Rust MSVC output")
+endif()
+get_filename_component(_private_crypto_name "${CITIZENSDK_PRIVATE_CRYPTO_LIBRARY}" NAME)
+if(NOT _private_crypto_name STREQUAL "aws_lc_0_45_0_crypto.dll" OR
+   IS_SYMLINK "${CITIZENSDK_PRIVATE_CRYPTO_LIBRARY}")
+  message(FATAL_ERROR "Private AWS-LC runtime must match the locked ordinary DLL")
 endif()
 foreach(_header citizensdk.h citizensdk_types.h)
   if(NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/${_header}")
@@ -132,6 +139,7 @@ install(TARGETS citizensdk_host EXPORT CitizenSDKTargets
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}/Windows"
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/Windows")
 install(FILES "${CITIZENSDK_CORE_LIBRARY}" DESTINATION "${CMAKE_INSTALL_BINDIR}/Windows")
+install(FILES "${CITIZENSDK_PRIVATE_CRYPTO_LIBRARY}" DESTINATION "${CMAKE_INSTALL_BINDIR}/Windows")
 install(FILES "${CITIZENSDK_CORE_IMPORT_LIBRARY}" DESTINATION "${CMAKE_INSTALL_LIBDIR}/Windows")
 install(FILES "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk.h"
   "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h"

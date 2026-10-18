@@ -1169,6 +1169,12 @@ Linux 插件消息测试通过固定 Flutter 公开的 `FlMethodCodecClass` 编�
 真实 MethodChannel，保留成功、错误响应及待处理句柄的生命周期断言。
 Linux 事件输出按公开结果语义报告形状错误；Flutter 合同夹具使用当前七字段钱包状态、
 协议 v2 验签输入和实际 `source/` 路径，输入型方法须携带自身必需材料。
+Linux 方法闭集包含诊断读取；引擎 detach 的延迟取消夹具等待真实完成后才退役，
+插件挂起请求的 open 与后续读取均使用协议 v2 的当前外壳。
+Windows 的锁定 `aws-lc-sys 0.45.0` 使用官方动态构建，保留 JENT 熵源；同轮生成的
+`aws_lc_0_45_0_crypto.dll` 作为私有运行件随 Core、Host 一起安装、复验、供原生与
+Flutter 消费者加载并收入正式包。CitizenSDK 的 PE 导出仍按原公开闭集逐项验真，
+私有 DLL 的来源字节、机器类型、导入关系和全部安装文件闭集独立核对。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；

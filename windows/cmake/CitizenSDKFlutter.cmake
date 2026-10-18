@@ -128,10 +128,18 @@ add_library(citizen_sdk_plugin SHARED ${CITIZENSDK_FLUTTER_ADAPTER_SOURCES})
 citizensdk_configure_flutter_target(citizen_sdk_plugin)
 target_link_options(citizen_sdk_plugin PRIVATE /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
 
-# Flutter 负责 plugin 自身；只追加该次安装的双库，不让宿主重复收集或重建。
+# Flutter 负责 plugin 自身；追加该次安装的 Core、Host 与锁定私有加密运行件。
+set(_citizensdk_private_crypto
+  "${_citizensdk_windows_root}/bin/Windows/aws_lc_0_45_0_crypto.dll")
+if(NOT EXISTS "${_citizensdk_private_crypto}" OR
+   IS_DIRECTORY "${_citizensdk_private_crypto}" OR
+   IS_SYMLINK "${_citizensdk_private_crypto}")
+  message(FATAL_ERROR "CitizenSDK locked private crypto runtime is missing")
+endif()
 set(citizen_sdk_bundled_libraries
   "${_citizensdk_windows_root}/bin/Windows/citizensdk.dll"
   "${_citizensdk_windows_root}/bin/Windows/citizensdk_host.dll"
+  "${_citizensdk_private_crypto}"
   PARENT_SCOPE)
 if(CITIZENSDK_BUILD_TESTS)
   enable_testing()

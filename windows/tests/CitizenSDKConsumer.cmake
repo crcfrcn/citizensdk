@@ -161,6 +161,12 @@ add_custom_target(citizensdk_consumer_runtime
     "$<TARGET_FILE:CitizenSDK::Host>" "${_runtime_dir}/citizensdk_host.dll"
   COMMAND ${CMAKE_COMMAND} -E compare_files
     "$<TARGET_FILE:CitizenSDK::Host>" "${_runtime_dir}/citizensdk_host.dll"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CITIZENSDK_CONSUMER_PREFIX}/bin/Windows/aws_lc_0_45_0_crypto.dll"
+    "${_runtime_dir}/aws_lc_0_45_0_crypto.dll"
+  COMMAND ${CMAKE_COMMAND} -E compare_files
+    "${CITIZENSDK_CONSUMER_PREFIX}/bin/Windows/aws_lc_0_45_0_crypto.dll"
+    "${_runtime_dir}/aws_lc_0_45_0_crypto.dll"
   VERBATIM)
 foreach(_consumer citizen_sdk_c_consumer citizen_sdk_cpp_consumer)
   target_link_libraries(${_consumer} PRIVATE CitizenSDK::Host)

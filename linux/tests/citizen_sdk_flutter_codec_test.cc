@@ -254,6 +254,7 @@ void test_method_closure_and_requests() {
       Method::stop,
       Method::close,
       Method::get_capabilities,
+      Method::read_diagnostics,
       Method::get_finalized_head,
       Method::get_sync_status,
       Method::get_best_head,
