@@ -164,6 +164,7 @@ jobs:
             ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
             ${{ runner.temp }}/citizensdk-release/work/tools/archives
             ${{ runner.temp }}/citizensdk-flutter/bin/cache/artifacts/engine
+            ${{ runner.temp }}/citizensdk-flutter/bin/cache/pkg
           key: citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
@@ -180,6 +181,12 @@ jobs:
         run: |
           set -euo pipefail
           "$FLUTTER_ROOT/bin/flutter" precache --android
+      - name: 准备Linux固定引擎原件
+        if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$FLUTTER_ROOT/bin/flutter" precache --linux
       - name: 准备Apple固定引擎原件
         if: matrix.platform == 'macOS'
         shell: bash

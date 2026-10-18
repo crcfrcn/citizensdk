@@ -1151,6 +1151,8 @@ Windows PE 导出闭集失败时报告有界的缺失与额外符号及总数；
 Linux Flutter 消费者核验原生构建实际选用的 `CXX` 编译器；固定 Clang 16 无需无版本
 `clang` 或 `clang++` 别名。Dart pub 与 Flutter create 使用 `--offline`，Flutter build 使用
 `--no-pub`；执行前验证完整工具缓存、版本戳和锁，缺件即失败，不在消费者阶段取得依赖。
+GitHub Linux 双架构在现有平台缓存恢复后由本仓固定 Flutter 执行 `precache --linux`，
+将引擎原件及 `bin/cache/pkg` 一起按平台复用；消费者的缺件拒绝仍独立执行。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；
