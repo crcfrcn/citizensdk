@@ -20,8 +20,15 @@ futures-channel = "=0.3.34"
 futures-util = "=0.3.34"
 hex = "=0.4.3"
 parking_lot = "=0.12.5"
-# SDK 只读取非权威 HTTPS 启动节点建议；不增加远端链 RPC 客户端。
-reqwest = { version = "=0.13.4", default-features = false, features = ["rustls"] }
+# SDK 只读取非权威 HTTPS 启动节点建议；复用已锁定的 HTTP/1.1 与
+# rustls/ring，并继续通过操作系统验证证书和主机名，不引入远端链 RPC。
+bytes = "=1.12.1"
+http = "=1.5.0"
+http-body-util = "=0.1.5"
+hyper-rustls = { version = "=0.27.9", default-features = false, features = ["http1", "ring", "rustls-platform-verifier", "tls12"] }
+hyper-util = { version = "=0.1.20", default-features = false, features = ["client-legacy", "http1", "tokio"] }
+rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+url = "=2.5.8"
 serde_json = "=1.0.151"
 smoldot-light = { path = "../smoldot/light-base" }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "sync", "time", "net"] }

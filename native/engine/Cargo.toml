@@ -17,7 +17,7 @@ default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
 # 钱包派生需要密码学实现，但实例的公开签名授权仍由独立 modules 位控制。
 wallet = ["signing"]
 signing = []
-chain = ["dep:subxt-core", "dep:tokio"]
+chain = ["dep:subxt-core"]
 transactions = ["chain"]
 history = ["chain"]
 qr = ["dep:citizen-sdk-qr"]
@@ -36,13 +36,10 @@ sha2 = "=0.10.9"
 # client tooling. This crate decodes metadata and System.Events only; it does
 # not add an online RPC client or a second light-node implementation.
 subxt-core = { version = "=0.43.0", default-features = true, optional = true }
-# 原生 provider 已使用的官方运行时；仅为 finalized 执行核验的一秒重试间隔。
-tokio = { version = "=1.53.1", features = ["time"], optional = true }
 unicode-normalization = "=0.1.25"
 unicode-segmentation = "=1.13.3"
 zeroize = "=1.9.0"
 
 [dev-dependencies]
-tokio = { version = "=1.53.1", features = ["rt", "time"] }
 citizen-signer = { path = "../signer" }
 serde_json = "=1.0.151"

@@ -5,7 +5,7 @@ if(DEFINED CITIZENSDK_PLATFORM AND
    NOT "${CITIZENSDK_PLATFORM}" STREQUAL "${_CITIZENSDK_PACKAGE_PLATFORM}")
   set(CitizenSDK_FOUND FALSE)
   set(CitizenSDK_NOT_FOUND_MESSAGE
-      "CitizenSDK cannot mix LinuxARM and LinuxAMD targets in one CMake graph")
+      "CitizenSDK installed package platform differs from the requested LinuxARM target")
   return()
 endif()
 set(CITIZENSDK_PLATFORM "${_CITIZENSDK_PACKAGE_PLATFORM}")

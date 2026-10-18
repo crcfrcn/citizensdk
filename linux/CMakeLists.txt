@@ -9,8 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-set(CITIZENSDK_PLATFORM "" CACHE STRING "Public CitizenSDK platform identity: LinuxARM or LinuxAMD")
-set_property(CACHE CITIZENSDK_PLATFORM PROPERTY STRINGS LinuxARM LinuxAMD)
+set(CITIZENSDK_PLATFORM "" CACHE STRING "Public CitizenSDK platform identity: LinuxARM")
+set_property(CACHE CITIZENSDK_PLATFORM PROPERTY STRINGS LinuxARM)
 set(CITIZENSDK_CORE_LIBRARY "" CACHE FILEPATH "Absolute path to the matching libcitizensdk.so")
 set(CITIZENSDK_CORE_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../include" CACHE PATH "Directory containing citizensdk.h")
 set(CITIZENSDK_INTERNAL_INCLUDE_DIR "" CACHE PATH "本轮构建生成的 SDK 私有声明目录；不安装")
@@ -42,8 +42,9 @@ if(NOT IS_ABSOLUTE "${CITIZENSDK_INTERNAL_INCLUDE_DIR}" OR
   message(FATAL_ERROR "CITIZENSDK_INTERNAL_INCLUDE_DIR must contain the generated private header")
 endif()
 
-if(NOT CITIZENSDK_PLATFORM STREQUAL "LinuxARM" AND NOT CITIZENSDK_PLATFORM STREQUAL "LinuxAMD")
-  message(FATAL_ERROR "CITIZENSDK_PLATFORM must be exactly LinuxARM or LinuxAMD")
+if(NOT CITIZENSDK_PLATFORM STREQUAL "LinuxARM" OR
+   NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  message(FATAL_ERROR "CitizenSDK Linux Host requires LinuxARM on an ARM64 machine")
 endif()
 if(NOT IS_ABSOLUTE "${CITIZENSDK_CORE_LIBRARY}" OR NOT EXISTS "${CITIZENSDK_CORE_LIBRARY}")
   message(FATAL_ERROR "CITIZENSDK_CORE_LIBRARY must be an existing absolute libcitizensdk.so path")

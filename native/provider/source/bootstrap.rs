@@ -2,8 +2,12 @@
 use citizen_sdk_contracts::{
     ContractError, ContractErrorCode, ContractResult, CITIZENCHAIN_GENESIS_HASH,
 };
+use http_body_util::{BodyExt, Empty};
+use hyper_rustls::HttpsConnectorBuilder;
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use serde_json::{Map, Value};
 use std::time::Duration;
+use url::Url;
 
 const DEFAULT_BASE_URL: &str = "https://www.crcfrcn.com/api";
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
@@ -165,9 +169,9 @@ pub(crate) fn merge_bootnodes(chain_spec: &str, bytes: &[u8]) -> ContractResult<
     serde_json::to_string(&spec).map_err(|_| invalid())
 }
 
-fn endpoint(base: &str) -> ContractResult<reqwest::Url> {
+fn endpoint(base: &str) -> ContractResult<Url> {
     let base = base.trim().trim_end_matches('/');
-    let url = reqwest::Url::parse(base).map_err(|_| invalid())?;
+    let url = Url::parse(base).map_err(|_| invalid())?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -177,40 +181,64 @@ fn endpoint(base: &str) -> ContractResult<reqwest::Url> {
     {
         return Err(invalid());
     }
-    reqwest::Url::parse(&format!("{base}/chain/citizensdk/bootstrap")).map_err(|_| invalid())
+    Url::parse(&format!("{base}/chain/citizensdk/bootstrap")).map_err(|_| invalid())
 }
 
-/// 复用 provider 的 Tokio runtime；完整响应受同一六秒预算与实际字节数上限约束。
+fn accept_content_length(headers: &http::HeaderMap) -> ContractResult<()> {
+    if let Some(value) = headers.get(http::header::CONTENT_LENGTH) {
+        let declared = value
+            .to_str()
+            .ok()
+            .and_then(|text| text.parse::<u64>().ok())
+            .ok_or_else(invalid)?;
+        if declared > MAX_RESPONSE_BYTES as u64 {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+fn append_bounded(bytes: &mut Vec<u8>, chunk: &[u8]) -> ContractResult<()> {
+    if bytes.len().checked_add(chunk.len()).is_none_or(|length| length > MAX_RESPONSE_BYTES) {
+        return Err(invalid());
+    }
+    bytes.extend_from_slice(chunk);
+    Ok(())
+}
+
+/// 复用 provider 的 Tokio runtime；证书与主机名交给系统验证器，完整响应受
+/// 同一六秒预算与实际字节数上限约束，不使用进程全局的 TLS 提供者。
 pub(crate) async fn discover(chain_spec: &str) -> ContractResult<String> {
     let configured =
         option_env!("CITIZEN_SDK_BOOTSTRAP_URL").filter(|value| !value.trim().is_empty());
     let url = endpoint(configured.unwrap_or(DEFAULT_BASE_URL))?;
     tokio::time::timeout(TIMEOUT, async {
-        let client = reqwest::Client::builder()
-            .https_only(true)
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(TIMEOUT)
-            .build()
+        let connector = HttpsConnectorBuilder::new()
+            .with_provider_and_platform_verifier(rustls::crypto::ring::default_provider())
+            .map_err(|_| invalid())?
+            .https_only()
+            .enable_http1()
+            .build();
+        let client = Client::builder(TokioExecutor::new())
+            .build::<_, Empty<bytes::Bytes>>(connector);
+        let request = http::Request::builder()
+            .method(http::Method::GET)
+            .uri(url.as_str())
+            .header(http::header::ACCEPT, "application/json")
+            .body(Empty::new())
             .map_err(|_| invalid())?;
         let mut response = client
-            .get(url)
-            .header("accept", "application/json")
-            .send()
+            .request(request)
             .await
             .map_err(|_| invalid())?;
-        if response.status() != reqwest::StatusCode::OK
-            || response
-                .content_length()
-                .is_some_and(|size| size > MAX_RESPONSE_BYTES as u64)
-        {
+        if response.status() != http::StatusCode::OK {
             return Err(invalid());
         }
+        accept_content_length(response.headers())?;
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| invalid())? {
-            if chunk.len() > MAX_RESPONSE_BYTES - bytes.len() {
-                return Err(invalid());
-            }
-            bytes.extend_from_slice(&chunk);
+        while let Some(frame) = response.body_mut().frame().await {
+            let chunk = frame.map_err(|_| invalid())?.into_data().map_err(|_| invalid())?;
+            append_bounded(&mut bytes, &chunk)?;
         }
         merge_bootnodes(chain_spec, &bytes)
     })

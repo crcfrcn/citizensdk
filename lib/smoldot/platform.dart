@@ -15,7 +15,8 @@ class SmoldotPlatform {
 
   /// Get the dynamic library for the current platform
   static DynamicLibrary loadLibrary() {
-    if (Platform.isAndroid || Platform.isLinux) {
+    if (Platform.isAndroid ||
+        (Platform.isLinux && Abi.current() == Abi.linuxArm64)) {
       return _loadLinux();
     } else if (Platform.isIOS || Platform.isMacOS) {
       return _loadDarwin();
@@ -25,12 +26,12 @@ class SmoldotPlatform {
       throw SmoldotFfiException(
         'Unsupported platform: ${Platform.operatingSystem}',
         details:
-            'Only Android, iOS, macOS, LinuxARM, LinuxAMD, and Windows are supported',
+            'Only Android, iOS, macOS, LinuxARM, and Windows are supported',
       );
     }
   }
 
-  /// Load library for the LinuxARM/LinuxAMD or Android ELF technical path.
+  /// Load library for the LinuxARM or Android ELF technical path.
   static DynamicLibrary _loadLinux() {
     try {
       // Try loading from system library path
@@ -120,7 +121,7 @@ class SmoldotPlatform {
     return Platform.isAndroid ||
         Platform.isIOS ||
         Platform.isMacOS ||
-        Platform.isLinux ||
+        (Platform.isLinux && Abi.current() == Abi.linuxArm64) ||
         Platform.isWindows;
   }
 

@@ -154,3 +154,28 @@ fn malformed_or_oversized_responses_are_not_accepted() {
     assert!(merge_bootnodes(SPEC, &vec![b' '; MAX_RESPONSE_BYTES + 1]).is_err());
     assert!(merge_bootnodes("{}", &serde_json::to_vec(&manifest()).unwrap()).is_err());
 }
+
+#[test]
+fn https_response_length_is_bounded_before_and_during_streaming() {
+    let mut headers = http::HeaderMap::new();
+    assert!(accept_content_length(&headers).is_ok());
+    headers.insert(
+        http::header::CONTENT_LENGTH,
+        http::HeaderValue::from_str(&MAX_RESPONSE_BYTES.to_string()).unwrap(),
+    );
+    assert!(accept_content_length(&headers).is_ok());
+    headers.insert(
+        http::header::CONTENT_LENGTH,
+        http::HeaderValue::from_str(&(MAX_RESPONSE_BYTES + 1).to_string()).unwrap(),
+    );
+    assert!(accept_content_length(&headers).is_err());
+    headers.insert(http::header::CONTENT_LENGTH, http::HeaderValue::from_static("invalid"));
+    assert!(accept_content_length(&headers).is_err());
+
+    let mut bytes = Vec::new();
+    assert!(append_bounded(&mut bytes, &[1, 2]).is_ok());
+    assert!(append_bounded(&mut bytes, &vec![3; MAX_RESPONSE_BYTES - 2]).is_ok());
+    assert_eq!(bytes.len(), MAX_RESPONSE_BYTES);
+    assert!(append_bounded(&mut bytes, &[4]).is_err());
+    assert_eq!(bytes.len(), MAX_RESPONSE_BYTES);
+}

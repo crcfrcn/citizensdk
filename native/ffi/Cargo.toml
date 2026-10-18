@@ -21,7 +21,7 @@ default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
 # 模块编译依赖不等于实例启用权限：wallet 复用 signer 算法，不自动开放签名入口。
 signing = ["dep:citizen-signer", "citizen-sdk-engine/signing"]
 wallet = ["signing", "citizen-sdk-engine/wallet"]
-chain = ["dep:citizen-sdk-smoldot-provider", "citizen-sdk-engine/chain", "dep:tokio"]
+chain = ["dep:citizen-sdk-smoldot-provider", "citizen-sdk-engine/chain"]
 transactions = ["chain", "citizen-sdk-engine/transactions"]
 history = ["chain", "citizen-sdk-engine/history"]
 qr = ["dep:citizen-sdk-qr", "dep:citizen-signer", "citizen-sdk-engine/qr"]
@@ -49,7 +49,6 @@ ghash = { version = "=0.5.1", features = ["zeroize"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
-tokio = { version = "=1.53.1", features = ["time"], optional = true }
 zeroize = "=1.9.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
