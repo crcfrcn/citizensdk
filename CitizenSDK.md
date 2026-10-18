@@ -4279,6 +4279,8 @@ Run 39065651236 的 prepare 成功，LinuxARM/LinuxAMD 均越过原 HEAD 门禁�
 本次候选在 `acquireArchive` 请求 `Accept-Encoding: identity`；若来源仍声明非 identity 编码，只跳过传输长度与解压正文长度的混合比较。锁定 SHA、非空正文、响应声明上限和实际正文上限照常强制核对；identity 响应仍核对正文与 `Content-Length` 一致。既有同文件回归覆盖 identity 长度不符、压缩传输长度不同但摘要正确、压缩正文摘要错误及实际正文超限。资源版本、URL 和锁定摘要均未改；README、产品声明和公开接口不受影响。修复尚需 GitHub 完整自动化验证。
 
 
+LinuxARM 与 LinuxAMD 保留多架构摘要固定的 Debian 11、2026-09-01 签名 APT 快照和 GLIBC 2.31 门禁；锁定 ZXing-C++ 3.1.1 的 core 源码按上游 CMake 要求使用 C++20。该快照显式安装同版 Clang、LLVM、libclang 13，先检查 coroutine 与 `using enum`，再通过产品原有 `CXX` 环境入口交给同一本仓原生构建；不修改上游源码、ZXing 锁、运行库基线或 `-Werror`。Android 正式 AAR 与随后两个合同测试共用本轮 checkout `target` 内的 Core staging，交付目录仍只存最终产物，原 Gradle 路径门禁保持。
+
 ## 本地钱包目录与安全故障诊断
 
 钱包存储、派生、创建导入、账户管理、金库、认证及签名始终归本SDK；宿主只消费公开接口。本地目录读取不刷新provider、签名或历史能力，不使用provider运行时，也不等待认证事务门。目录由原子仓储load及现有稳定投影返回，读取失败保持真实类型，不能合成空钱包。SDK保留单一session和单一仓储，新增的只是两线程有界本地读取调度；启停和链状态不参与目录准入，close仍排空全部请求及结果。

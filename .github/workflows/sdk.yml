@@ -79,12 +79,19 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             curl git gcc g++ libstdc++6 liblzma5=5.2.5-2.1~deb11u2 \
             liblzma-dev=5.2.5-2.1~deb11u2 \
-            clang llvm libclang-dev libssl-dev \
+            clang-13=1:13.0.1-6~deb11u1 llvm-13=1:13.0.1-6~deb11u1 \
+            libclang-13-dev=1:13.0.1-6~deb11u1 libssl-dev \
             libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev pkg-config ninja-build \
             autoconf automake libtool make perl unzip zip xvfb xauth dbus-x11 \
             python3 xz-utils file procps
           test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
+          # 同一签名快照的Clang 13必须支持固定ZXing 3.1.1使用的C++20语法。
+          printf '%s\n' '#include <coroutine>' 'enum class Format { QRCode };' \
+            'using enum Format;' 'static_assert(QRCode == Format::QRCode);' \
+            'static_assert(sizeof(std::coroutine_handle<>) > 0);' \
+            | /usr/bin/clang++-13 -std=c++20 -x c++ -fsyntax-only -
+          printf '%s\n' 'CXX=/usr/bin/clang++-13' >> "$GITHUB_ENV"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: "${{ github.sha }}"
