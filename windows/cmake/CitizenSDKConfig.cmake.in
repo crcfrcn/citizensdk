@@ -22,4 +22,8 @@ if(NOT TARGET CitizenSDK::Core)
     INTERFACE_INCLUDE_DIRECTORIES "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/CitizenSDKTargets.cmake")
+# 安装包的公开 Host 链接合同只有同包 Core；私有系统与静态依赖已在 Host DLL 内。
+# 导入后明确收口，避免生成器附带的链接属性传给独立消费者或 Flutter 插件。
+set_property(TARGET CitizenSDK::Host PROPERTY
+  INTERFACE_LINK_LIBRARIES CitizenSDK::Core)
 check_required_components(CitizenSDK)

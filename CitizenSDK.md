@@ -1305,6 +1305,8 @@ Windows 因此需要一次原生身份配置，不宣传为完全零配置接入
 adapter 使用官方 BinaryMessenger、StandardMethodCodec 和固定 22 方法/双通道；公共门面
 仍为 `CitizenSdk`。其 CMake 只链接同版本已安装的 Host/Core，并验证所有已声明配置的
 DLL/import library、include、传递链接依赖；不重新编译 Host/Core，不依赖 Host 私有头。
+Windows 安装包导入 Host 后把公开链接属性精确收口为同包 `CitizenSDK::Core`；原生与
+Flutter 消费者继续拒绝任何额外公开链接，Host 自有系统与静态依赖仍只留在 DLL 内。
 自有 C++17 目标开启异常错误映射，不改变宿主的全局 Flutter 编译配置。钱包创建、导入、
 备份确认仍由既有原生安全 UI 实现，秘密、句柄和文件路径不进入 Flutter tuple。
 官方 decoder 之前执行无分配的有界标准 wire 预检，防止截断零填充、尾随、巨长声明和

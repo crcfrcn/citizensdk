@@ -6267,6 +6267,19 @@ if(inlineTestEntry){
    assert.ok(source.includes('NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$"'),
     'Linux安装与消费者必须拒绝非ARM64机器');
  });
+ test('Windows安装包只向原生与Flutter消费者公开同版Core',()=>{
+  const config=readFileSync(join(root,'windows/cmake/CitizenSDKConfig.cmake.in'),'utf8');
+  const imported=config.indexOf('include("${CMAKE_CURRENT_LIST_DIR}/CitizenSDKTargets.cmake")');
+  const normalized=config.match(/set_property\(TARGET CitizenSDK::Host PROPERTY\s+INTERFACE_LINK_LIBRARIES ([^)]+)\)/u);
+  assert.ok(imported>=0&&normalized&&config.indexOf(normalized[0])>imported,
+   'Windows安装包必须在导入Host后收口公开链接');
+  assert.equal(normalized[1],'CitizenSDK::Core','Host只能公开同包Core');
+  for(const path of ['windows/tests/CitizenSDKConsumer.cmake','windows/cmake/CitizenSDKFlutter.cmake']){
+   const consumer=readFileSync(join(root,path),'utf8');
+   assert.match(consumer,/_kind STREQUAL "Host" AND NOT _links STREQUAL "CitizenSDK::Core"/u,
+    path+'必须继续严格拒绝额外公开链接');
+  }
+ });
 }
 
 return {buildCitizenSdkRelease,verifyCitizenSdkRelease,buildCitizenSdkHosted,verifyCitizenSdkHosted,
