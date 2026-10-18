@@ -1,7 +1,12 @@
-name: citizensdk.sdk
-run-name: "公民SDK-v${{ vars.CITIZENSDK_NEXT_VERSION || '1.0.0' }}"
+name: 公民SDK·SDK
+run-name: "公民SDK·SDK·v${{ inputs.version }}"
 'on':
   workflow_dispatch:
+    inputs:
+      version:
+        description: 公民SDK本轮候选版本
+        required: true
+        type: string
 concurrency:
   group: "${{ github.repository }}-sdk"
   cancel-in-progress: false
@@ -10,6 +15,7 @@ permissions:
   actions: read
 jobs:
   prepare:
+    name: "公民SDK·SDK·v${{ inputs.version }}"
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     outputs:
@@ -31,10 +37,11 @@ jobs:
         name: 确定正式版本与本次 Tag
         env:
           GH_TOKEN: "${{ github.token }}"
-          EXPECTED_RELEASE_VERSION: "${{ vars.CITIZENSDK_NEXT_VERSION || '1.0.0' }}"
+          EXPECTED_RELEASE_VERSION: "${{ inputs.version }}"
         shell: bash
         run: node scripts/build.mjs release-version
   native:
+    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
     needs: prepare
     strategy:
       fail-fast: false
@@ -274,8 +281,9 @@ jobs:
             *) exit 1 ;;
           esac
           for path in "${paths[@]}"; do test -e "$output/$path"; done
-          tar -czf "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz" -C "$output" "${paths[@]}"
-          test -s "$RUNNER_TEMP/citizensdk-$SDK_PLATFORM.tgz"
+          archive="$RUNNER_TEMP/公民SDK·$SDK_PLATFORM·v$SOFTWARE_VERSION.tgz"
+          tar -czf "$archive" -C "$output" "${paths[@]}"
+          test -s "$archive"
       - name: 保存本平台Cargo编译缓存
         if: success()
         continue-on-error: true
@@ -285,8 +293,8 @@ jobs:
           key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: "native-${{ matrix.platform }}"
-          path: "${{ runner.temp }}/citizensdk-${{ matrix.platform }}.tgz"
+          name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
+          path: "${{ runner.temp }}/公民SDK·${{ matrix.platform }}·v${{ inputs.version }}.tgz"
           if-no-files-found: error
           retention-days: 7
       - name: 清理Android本轮构建目录
@@ -294,6 +302,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs release-cleanup-android-work
   native-linux:
+    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
     needs: prepare
     strategy:
       fail-fast: false
@@ -313,6 +322,7 @@ jobs:
       SDK_TARGET: "${{ matrix.target }}"
     steps: *native_steps
   assemble:
+    name: "公民SDK·SDK·v${{ inputs.version }}"
     needs: [prepare, native, native-linux]
     runs-on: xcode-27
     timeout-minutes: 120
@@ -329,7 +339,7 @@ jobs:
           node-version: 25.2.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: native-*
+          pattern: "公民SDK·*·v${{ inputs.version }}"
           path: "${{ runner.temp }}/native-artifacts"
           merge-multiple: false
       - name: 汇总同一源码的五平台原生件并构造正式包
@@ -338,34 +348,30 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/citizensdk-native"
           for platform in Android macOS LinuxARM LinuxAMD Windows; do
-            archive="$RUNNER_TEMP/native-artifacts/native-$platform/citizensdk-$platform.tgz"
+            archive="$RUNNER_TEMP/native-artifacts/公民SDK·$platform·v$SOFTWARE_VERSION/公民SDK·$platform·v$SOFTWARE_VERSION.tgz"
             test -s "$archive"
             tar -xzf "$archive" -C "$RUNNER_TEMP/citizensdk-native"
           done
+          mkdir -p "$RUNNER_TEMP/citizensdk-transfer/release" "$RUNNER_TEMP/citizensdk-transfer/candidate"
           node scripts/build.mjs release-source assemble
           node scripts/build.mjs release-build \
             --source "$RUNNER_TEMP/citizensdk-source" \
             --native "$RUNNER_TEMP/citizensdk-native" \
             --output "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk.tgz" \
+            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" \
             --git-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION"
           node scripts/build.mjs release-verify --verify "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk.tgz" --expected-git-sha "$GITHUB_SHA"
-          test -s "$RUNNER_TEMP/citizensdk.tgz"
-          tar -czf "$RUNNER_TEMP/citizensdk-candidate.tgz" -C "$RUNNER_TEMP/citizensdk-candidate" .
+            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" --expected-git-sha "$GITHUB_SHA"
+          test -s "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz"
+          tar -czf "$RUNNER_TEMP/citizensdk-transfer/candidate/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" -C "$RUNNER_TEMP/citizensdk-candidate" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: release-output
-          path: "${{ runner.temp }}/citizensdk.tgz"
-          if-no-files-found: error
-          retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: candidate-output
-          path: "${{ runner.temp }}/citizensdk-candidate.tgz"
+          name: "公民SDK·SDK·v${{ inputs.version }}"
+          path: "${{ runner.temp }}/citizensdk-transfer/"
           if-no-files-found: error
           retention-days: 7
   consume:
+    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
     needs: [prepare, assemble]
     strategy:
       fail-fast: false
@@ -388,23 +394,22 @@ jobs:
           node-version: 25.2.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: release-output
-          path: "${{ runner.temp }}/citizensdk-release"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: candidate-output
-          path: "${{ runner.temp }}/citizensdk-candidate-artifact"
+          name: "公民SDK·SDK·v${{ inputs.version }}"
+          path: "${{ runner.temp }}/citizensdk-transfer"
       - name: 本平台复验同一正式候选
+        env:
+          SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/citizensdk-candidate"
-          tar -xzf "$RUNNER_TEMP/citizensdk-candidate-artifact/citizensdk-candidate.tgz" -C "$RUNNER_TEMP/citizensdk-candidate"
+          tar -xzf "$RUNNER_TEMP/citizensdk-transfer/candidate/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" -C "$RUNNER_TEMP/citizensdk-candidate"
           node scripts/build.mjs release-verify --verify "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk-release/citizensdk.tgz" \
+            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" \
             --expected-git-sha "$GITHUB_SHA"
   release:
-    needs: [prepare, native, native-linux, assemble, consume]
+    name: "公民SDK·SDK·v${{ inputs.version }}"
+    needs: [prepare, native, native-linux, assemble, consume, cargo-retention]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -420,19 +425,16 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: release-output
-          path: "${{ runner.temp }}/citizensdk-release"
+          name: "公民SDK·SDK·v${{ inputs.version }}"
+          path: "${{ runner.temp }}/citizensdk-transfer"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 25.2.1
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: candidate-output
-          path: "${{ runner.temp }}/citizensdk-candidate-artifact"
       - name: 创建并逐件回读唯一正式 SDK Release
         shell: bash
         run: node scripts/build.mjs release-github
   cargo-retention:
+    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
     needs: [native, native-linux]
     if: always() && github.ref == 'refs/heads/main'
     strategy:
@@ -459,12 +461,14 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 25.2.1
-      - name: 每个平台只保留最新Cargo缓存
+      - name: 每个平台只保留最新增量缓存
         env:
           CARGO_CACHE_KEY: citizensdk-cargo-v1-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          SDK_DEPS_CACHE_KEY: citizensdk-sdk-deps-v2-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: node scripts/build.mjs release-cache-prune
   run-retention:
+    name: "公民SDK·SDK·v${{ inputs.version }}"
     needs: [prepare, native, native-linux, assemble, consume, release, cargo-retention]
     if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04

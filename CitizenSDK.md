@@ -24,9 +24,9 @@ citizensdk/
 
 `scripts/build.mjs` 独立拥有本机源码编译、原生工程投影、资源需求与锁定坐标、资源准备、工作现场生命周期，以及 GitHub 同一 Run 的唯一正式 SDK 包组装和验真。本机 Build 回执仍只表示编译完成，不生成正式归档。`plan`、`prepare-environment`、`prepare-native`、`native`、`release-build` 与 `release-verify` 都归同一入口。
 
-本仓没有独立渠道发布脚本。GitHub 自动化对单一 SDK 包的来源、候选、Tag、Release 和正式字节验真均由 `scripts/build.mjs` 及现有 `sdk.yml` 完成；pub.dev 渠道上传未接入，控制台只登记 SDK 自动化按钮。
+本仓没有独立渠道发布脚本。GitHub 自动化对单一 SDK 包的来源、候选、Tag、Release 和正式字节验真均由 `scripts/build.mjs` 及现有 `sdk.yml` 完成；pub.dev 渠道上传未接入。控制台登记 SDK 本机编译与 SDK 自动化两个动作，任务名均由产品、流程、平台组成。
 
-`.github/workflows/sdk.yml` 保持原名，只安排准备阶段回归、五宿主正式原生件构建、汇总、消费回验与唯一 Release；Apple/Android附加测试宿主、Flutter测试及临时Android消费App编译不参与正式SDK产物流程。版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。`pubspec.yaml` 的 `1.0.0` 是正式版本种子；首个完整成功并创建正式 Release 的自动化使用 `1.0.0`，之后每完成一次完整五平台构建、消费复验并创建正式 Release，patch 增加 `0.0.1`。版本从已创建的正式 Release 计算；Release 创建前失败的阶段不占用版本，若 Release 已实际创建，即使后续回读使工作流报错，该正式版本仍已存在并会成为下一次递增依据。五个矩阵宿主不是五次版本递增。原生 Job 采用 `fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份 `citizensdk.tgz` 和一个 Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub 产物不下载到本机补齐。
+`.github/workflows/sdk.yml` 保持单一工作流，只安排准备阶段回归、五宿主正式原生件构建、汇总、消费回验与唯一 Release；Apple/Android附加测试宿主、Flutter测试及临时Android消费App编译不参与正式SDK产物流程。版本计算、版本化源码视图、原生依赖证明、组包和 Release 回读由本仓 `scripts/build.mjs` 实现。`pubspec.yaml` 的 `1.0.0` 是正式版本种子；本产品派发前依据完整成功Run与其正式Release算出候选版本，传给工作流，prepare再次核对。失败Run不推进版本；若Release已发布但最终Run失败，后续派发会明确失败并等待修复该不一致状态，不把该Release当作成功版本。每次完整成功后下一候选patch增加`0.0.1`，五个矩阵宿主不是五次递增。原生Job采用`fail-fast: false`，各自运行和记录结果；只有全部成功才构造一份`公民SDK·SDK·vX.Y.Z.tgz`和一个同名Tag/Release。任一宿主失败时其它宿主继续运行，本轮不产生不完整正式包。GitHub产物不下载到本机补齐。
 
 原生 Job 设置 `CARGO_INCREMENTAL=1`，并按操作系统、架构、平台及依赖锁隔离 `citizensdk-sdk-deps-v2` 编译依赖缓存与 `citizensdk-cargo-v1` Cargo target 缓存；Cargo target 缓存由独立矩阵 Job 按平台各保留最新一份，Run 记录清理也由单独的最终 Job 执行。Cargo构建保留 `--locked`，按 `Cargo.lock` 从锁定来源取得缺失crate；缓存只提供加速，不改变锁定来源、构建输入、版本计算或验收结果。Release仍由当前Run从固定提交构建，并执行原有候选及五平台消费复验。Flutter引擎使用同一固定提交：Android执行 `flutter precache --android`，macOS执行 `flutter precache --ios --macos`，engine缓存只复用同平台资源。每个原生 Job 的其它资源准备按本仓锁展开 ZXing 源码并将准确目录交给构建入口；Linux/Windows原生依赖回执须与唯一锁合同匹配。Windows解包在调用Git Bash归档工具前转换驱动器路径，归档来源和成员校验保持由产品入口完成。Windows原生构建通过Runner PATH中的Git Bash启动；本仓显式交付的 `PRODUCT_BASH_BIN` 优先，启动错误诊断只报告系统错误码。
 
@@ -70,7 +70,7 @@ Flutter官方工具按包名查找插件入口。仓库源码继续使用扁平�
 
 本文是 CitizenSDK 唯一技术事实文档，统一收录 SDK 现状、产品目标、公开能力、模块职责和长期验收标准。本次无UI职责调整、UI恢复步骤、确认状态与执行证据只记录在既有《公民接入公民软件包》任务卡；既往SDK独立交付记录仍保留在其原任务卡。
 
-**当前本机Build合同：**CitizenSDK是单一 `sdk` 平台，本机Build由产品完整入口完成编译和产物验真，仅允许编译，不执行移动设备签名安装或正式发布，不生成 `citizensdk.tgz` 等正式Release包。资源职责按“工具与依赖的声明和供给职责”执行；完整入口返回公开completion/files结果，工程视图、依赖可写状态及编译中间物仅归本轮target/build，源码原件只读。Flutter源码外消费视图用于官方工具读取，不作为正式交付资产。本段不沿用历史“无Build回执”或清空整个target的约束。
+**当前本机Build合同：**CitizenSDK是单一 `sdk` 平台，本机Build由产品完整入口完成编译和产物验真，不执行移动设备签名安装或正式发布。编译增量从本产品自有目录恢复到本轮独占工作区，仅成功后替换该平台最新快照。SDK是库，设备安装须由使用同一 SDK 提交的公民App既有设备安装流程承载；不能把 SDK 的 `compile-only` 回执冒充已安装。完整入口返回公开completion/files结果，工程视图和依赖可写状态归本轮target/build，源码原件只读。
 
 CitizenSDK 的 Dart 静态分析规则唯一归 `scripts/build.mjs` 的 `BUILD_SHELL_SOURCES.analysis` 所有；通过 `analysis-options <绝对路径>` 在本仓 target 工作区生成 Flutter 配置，源码不保留第二份 YAML。
 
@@ -897,7 +897,7 @@ SDK旧Dart钱包和差分实现不恢复，公开能力由Rust Core与官方绑�
 
 #### 本机构建与受控目录
 
-本机Build直接读取`<本仓根>`并执行产品自己的唯一构建入口，不建立Git快照、不复制源码、不调用正式Release打包器，也不生成`citizensdk.tgz`、三件套或Build回执。
+本机Build直接读取`<本仓根>`并执行产品自己的唯一构建入口，不建立Git快照、不调用正式Release打包器；编译完成返回本产品现有 `compile-only` Build回执，不伪造正式包或设备安装回执。
 
 本机任务的依赖展开、编译中间物和日志只写入永久固定容器：
 
@@ -907,7 +907,7 @@ SDK旧Dart钱包和差分实现不恢复，公开能力由Rust Core与官方绑�
 
 本产品按原锁取得、验真并复用独立资源原件；原件与任务可写展开分离。本机Build、测试和远端Release临时数据均在本产品target工作边界，不依赖外部原件库。
 
-正式Release由CitizenSDK自己的GitHub流程汇总平台输入、完成产品内部校验，并向GitHub Release只公开唯一`citizensdk.tgz`。内部作业传递用的清单或摘要不是第二个产品资产，不进入控制台正式资产合同。
+正式Release由CitizenSDK自己的GitHub流程汇总平台输入、完成产品内部校验，并向GitHub Release只公开唯一`公民SDK·SDK·vX.Y.Z.tgz`。内部作业传递用的清单或摘要不是第二个产品资产，不进入控制台正式资产合同。
 
 原生构建脚本与 Release 工具在首次创建目录前校验绝对规范路径，并逐级拒绝 `.`、`..`、
 重复/末尾分隔符、符号链接祖先和非目录祖先；不能借路径穿越把任何生成状态写入
@@ -1001,7 +1001,7 @@ target，Criterion 性能基准中的随机输入不作为确定性 CI 测试执
 不读取、下载或比较 CI 资产；再从同一 source SHA 独立执行检查、测试、原生构建和候选
 生成。流程强调准确来源、重新验证和重新构建，不宣称不同 Runner/run 的 tgz 天然逐字节一致。
 
-正式Tag与Release标题使用`公民SDK-vX.Y.Z`，GitHub Run名称读取下一正式版本变量，Release列表与Tag列表只保留最新一条，只公开唯一`citizensdk.tgz`。发布成功后推进补丁版本变量。外部调用方只核对
+正式Tag与Release标题使用`公民SDK·SDK·vX.Y.Z`，GitHub Run名称由派发时本产品计算并由prepare复核的版本输入决定；Release列表与Tag列表只保留最新一条，只公开唯一同名`.tgz`资产。下一个候选版本只从关联完整成功Run的正式Release推导，失败Run不推进补丁号。外部调用方只核对
 不验证SDK内部平台实现，也不维护外部manifest或校验和资产。Release终态只形成待发布目标，不自动
 上传pub.dev。
 
@@ -3909,7 +3909,7 @@ CI 编译件，消费全部通过后才进入一个正式 Release 作业，共�
 software_version、platforms 和文件摘要。普通文件独占写入；合法 Apple 五链接使用
 SDK 发布器的唯一官方元数据规则重建，拒绝硬链接、路径穿越、未登记件和跨作业覆盖。
 阶段传输不是新增分发产品：产品流程可以使用内部清单和同源Hosted包完成汇总，但最终GitHub
-Release只公开唯一`citizensdk.tgz`，pub.dev渠道仍未接入，本次控制台不提供对应按钮。
+Release只公开唯一`公民SDK·SDK·vX.Y.Z.tgz`，pub.dev渠道仍未接入，本次控制台不提供对应按钮。
 
 阶段证明、监控读取结果与历史事件的既有字段由实际产品接口定义，平台值取本仓声明；文档不维护第二套字段登记。
 
