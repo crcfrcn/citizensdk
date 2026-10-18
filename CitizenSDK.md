@@ -1142,7 +1142,8 @@ Core、Host/adapter 实现、公开 Dart API、移动平台、其它产品或 �
 原生消费者仅通过安装后 `CitizenSDK::Host`/`CitizenSDK::Core` 构建，不回指私有实现；C 夹具
 验证异步结果所有权与关闭重试，C++ 夹具验证轻节点启停/checkpoint 和公开 wrapper 所有权。
 Linux Host 在构建时私有链接 Core，安装接口只公开 `CitizenSDK::Core`；安装消费者先核对
-`INTERFACE_LINK_LIBRARIES` 不含构建树目标名，再以安装的双库完成 C/C++ 链接验收。
+`INTERFACE_LINK_LIBRARIES` 精确等于 `CitizenSDK::Core`，否则输出实际导出值，再以安装的
+双库完成 C/C++ 链接验收。包配置在加载安装导出后固定该公开链接身份。
 第 7.3 步当时的 Flutter 只在受控临时副本注册 plugin，使用正式工具生成 runner/registrant，调用真实通道并
 运行 Release bundle；成功要求限时、退出码和已刷新标记同时满足。12 个 Host、6 个 adapter、
 2 个原生消费者按实际 CTest 名称闭集分别核对，零测试不是通过。

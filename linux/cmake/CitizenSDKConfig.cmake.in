@@ -22,4 +22,7 @@ endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/CitizenSDKDependencies.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/CitizenSDKTargets.cmake")
+# 安装后的 Host 仅向消费者传递本包自己的 Core，避免构建树目标名进入链接行。
+set_property(TARGET CitizenSDK::Host PROPERTY
+  INTERFACE_LINK_LIBRARIES CitizenSDK::Core)
 check_required_components(CitizenSDK)

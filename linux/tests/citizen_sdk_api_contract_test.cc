@@ -443,6 +443,9 @@ int main() {
          std::string::npos);
   assert(package_config.find("add_library(CitizenSDK::Core SHARED IMPORTED)") !=
          std::string::npos);
+  assert(package_config.find(
+             "INTERFACE_LINK_LIBRARIES CitizenSDK::Core)") !=
+         std::string::npos);
   assert(package_config.find("CitizenSDKDependencies.cmake") !=
          std::string::npos);
   assert(package_config.find("CitizenSDKTargets.cmake") !=

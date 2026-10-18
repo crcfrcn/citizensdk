@@ -95,12 +95,9 @@ foreach(_kind Core Host)
   endforeach()
 endforeach()
 get_target_property(_host_links CitizenSDK::Host INTERFACE_LINK_LIBRARIES)
-if(NOT _host_links OR NOT "CitizenSDK::Core" IN_LIST _host_links)
-  message(FATAL_ERROR "CitizenSDK installed Host must expose CitizenSDK::Core")
-endif()
-if("citizensdk_core" IN_LIST _host_links OR
-   "\$<LINK_ONLY:citizensdk_core>" IN_LIST _host_links)
-  message(FATAL_ERROR "CitizenSDK installed Host leaks the build-tree Core target")
+if(NOT "${_host_links}" STREQUAL "CitizenSDK::Core")
+  message(FATAL_ERROR
+    "CitizenSDK installed Host must expose only CitizenSDK::Core; actual=${_host_links}")
 endif()
 if(NOT CITIZENSDK_ASSET_DIR STREQUAL
    "${CITIZENSDK_CONSUMER_PREFIX}/share/citizensdk/chain")
