@@ -627,7 +627,7 @@ pub unsafe extern "C" fn citizensdk_stop(
                     runtime.uses_host_services(),
                     || -> FfiResult<()> {
                         runtime
-                            .drive(runtime.engine().export_and_persist_state())?
+                            .drive(runtime.engine().persist_state_before_stop())?
                             .map(|_| ())
                             .map_err(FfiError::from)
                     },

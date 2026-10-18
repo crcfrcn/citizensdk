@@ -754,6 +754,54 @@ fn persistent_export_commits_the_exact_revisioned_snapshot() {
 }
 
 #[test]
+fn stop_persists_verified_anchor_before_chain_read_becomes_usable() {
+    let (engine, context, _, counters) = running_engine(None);
+    engine
+        .update_chain_readiness(false)
+        .unwrap_or_else(|error| panic!("readiness update failed: {error}"));
+    assert!(futures::executor::block_on(engine.export_state()).is_err());
+    assert!(futures::executor::block_on(engine.export_and_persist_state()).is_err());
+    assert_eq!(counters.exports.load(Ordering::SeqCst), 0);
+
+    let exported = futures::executor::block_on(engine.persist_state_before_stop())
+        .unwrap_or_else(|error| panic!("verified stop persistence failed: {error}"));
+    assert_eq!(
+        exported.finalized(),
+        context
+            .block()
+            .require_finalized()
+            .unwrap_or_else(|error| panic!("finalized fixture failed: {error}"))
+    );
+    assert_eq!(counters.exports.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        counters.chain_database.snapshot(),
+        ChainDatabaseSnapshot::new(1, Some(exported))
+    );
+    engine
+        .mark_provider_stopped()
+        .unwrap_or_else(|error| panic!("stop after persistence failed: {error}"));
+    assert_eq!(engine.lifecycle(), Ok(EngineLifecycle::Stopped));
+}
+
+#[test]
+fn stop_persistence_still_rejects_missing_proof_and_competing_store() {
+    let (created, _, _, created_counters) = engine(None);
+    assert!(futures::executor::block_on(created.persist_state_before_stop()).is_err());
+    assert_eq!(created.lifecycle(), Ok(EngineLifecycle::Created));
+    assert_eq!(created_counters.exports.load(Ordering::SeqCst), 0);
+
+    let (running, _, _, counters) =
+        engine_with_options(None, false, None, StoreFailure::ConcurrentReplacement);
+    start_engine(&running);
+    running
+        .update_chain_readiness(false)
+        .unwrap_or_else(|error| panic!("readiness update failed: {error}"));
+    assert!(futures::executor::block_on(running.persist_state_before_stop()).is_err());
+    assert_eq!(counters.exports.load(Ordering::SeqCst), 1);
+    assert_eq!(running.lifecycle(), Ok(EngineLifecycle::Running));
+}
+
+#[test]
 fn persistent_export_converges_only_the_exact_write_after_error() {
     let (converging, _, _, converging_counters) =
         engine_with_options(None, false, None, StoreFailure::AfterWrite);

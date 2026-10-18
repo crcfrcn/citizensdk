@@ -2302,16 +2302,26 @@ impl CitizenEngine {
     /// provider's verified finalized head to remain unchanged across
     /// serialization.
     pub fn export_state(&self) -> EngineFuture<'_, ExportedChainState> {
-        self.export_state_inner(false)
+        self.export_state_inner(false, true)
     }
 
     /// Export one stable provider snapshot and atomically persist it to the
     /// configured typed chain database before releasing the Engine generation.
     pub fn export_and_persist_state(&self) -> EngineFuture<'_, ExportedChainState> {
-        self.export_state_inner(true)
+        self.export_state_inner(true, true)
     }
 
-    fn export_state_inner(&self, persist: bool) -> EngineFuture<'_, ExportedChainState> {
+    /// 停止时允许已验证的 finalized 锚点进入同一持久化验真流程；同步未 usable
+    /// 不等于允许跳过身份、前后 finalized 一致性或存储 CAS。
+    pub fn persist_state_before_stop(&self) -> EngineFuture<'_, ExportedChainState> {
+        self.export_state_inner(true, false)
+    }
+
+    fn export_state_inner(
+        &self,
+        persist: bool,
+        require_readiness: bool,
+    ) -> EngineFuture<'_, ExportedChainState> {
         let reservation = self.prepare_state_export();
         let store = if persist {
             self.components.chain_database().map(Arc::clone)
@@ -2320,7 +2330,13 @@ impl CitizenEngine {
         };
         Box::pin(async move {
             let mut reservation = reservation?;
-            self.require_capabilities(&[CapabilityName::ChainRead])?;
+            if require_readiness {
+                self.require_capabilities(&[CapabilityName::ChainRead])?;
+            } else if reservation.verified_finalized.is_none() {
+                return Err(EngineError::CapabilityUnavailable(
+                    "stop persistence requires a verified finalized anchor".to_owned(),
+                ));
+            }
             let stored = if persist {
                 let store = store.as_ref().ok_or_else(|| {
                     EngineError::CapabilityUnavailable(
