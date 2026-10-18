@@ -6824,8 +6824,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    const android=step('准备Android固定引擎原件'),apple=step('准备Apple固定引擎原件');
    const prepare=step('准备本仓锁定原件');
   const compile=step('编译本平台原生件');
-  const rustStart=workflow.indexOf('      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5\n',
-   workflow.indexOf('\n  native:'));
+  const rustStart=workflow.indexOf('      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5\n');
   assert.notEqual(rustStart,-1,'工作流缺少固定 Rust 工具链');
   const rustEnd=workflow.indexOf('\n      - ',rustStart+1);
   const rust=workflow.slice(rustStart,rustEnd<0?workflow.length:rustEnd);

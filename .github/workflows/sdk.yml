@@ -33,25 +33,6 @@ jobs:
       - name: 先执行本仓代码回归
         shell: bash
         run: node --test scripts/build.mjs
-      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
-        with:
-          toolchain: 1.97.1
-      - name: 一次性诊断 Cargo 原锁差异
-        shell: bash
-        run: |
-          set -euo pipefail
-          work="$RUNNER_TEMP/citizensdk-lock-diagnostic-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          mkdir -m 700 "$work"
-          trap 'rm -rf "$work"' EXIT
-          node scripts/build.mjs projection --native-source-view "$GITHUB_WORKSPACE" --output "$work/native-source"
-          cp "$work/native-source/Cargo.lock" "$work/original.lock"
-          cargo metadata --format-version 1 --manifest-path "$work/native-source/Cargo.toml" > "$work/metadata.json"
-          if cmp -s "$work/original.lock" "$work/native-source/Cargo.lock"; then
-            echo 'Cargo 元数据解析未改变原锁；当前 --locked 失败需另查来源投影' >&2
-          else
-            diff -u "$work/original.lock" "$work/native-source/Cargo.lock" || test "$?" -eq 1
-          fi
-          exit 1
       - id: identity
         name: 确定正式版本与本次 Tag
         env:
