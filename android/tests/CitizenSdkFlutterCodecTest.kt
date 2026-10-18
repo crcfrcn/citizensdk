@@ -277,6 +277,7 @@ class CitizenSdkFlutterCodecTest {
                 "stop",
                 "close",
                 "getCapabilities",
+                "readDiagnostics",
                 "getFinalizedHead",
                 "getSyncStatus",
                 "getBestHead",
@@ -394,7 +395,7 @@ class CitizenSdkFlutterCodecTest {
         val requests = linkedMapOf<String, List<Any?>>()
         requests["open"] = listOf(2, 63, false)
         for (method in listOf(
-            "start", "stop", "close", "getCapabilities", "getFinalizedHead", "getSyncStatus",
+            "start", "stop", "close", "getCapabilities", "readDiagnostics", "getFinalizedHead", "getSyncStatus",
             "getBestHead", "exportState", "getGenesisHash",
             "getFeeSnapshot", "getWalletState", "inspectWallets", "deleteWallet", "signAndDeleteWallet",
             "reconcileWalletCleanup",

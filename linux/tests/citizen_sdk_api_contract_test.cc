@@ -429,9 +429,11 @@ int main() {
   assert(gtk_parent.find(
              "static_cast<GObject *>(g_weak_ref_get(&impl_->weak))") !=
          std::string::npos);
-  assert(cmake.find("$<BUILD_INTERFACE:citizensdk_core>") !=
+  assert(cmake.find("$<BUILD_INTERFACE:CitizenSDK::Core>") !=
          std::string::npos);
   assert(cmake.find("$<INSTALL_INTERFACE:CitizenSDK::Core>") !=
+         std::string::npos);
+  assert(cmake.find("$<BUILD_INTERFACE:citizensdk_core>") ==
          std::string::npos);
   assert(cmake.find("EXPORT_NAME Host") != std::string::npos);
   assert(cmake.find("CITIZENSDK_PACKAGED_ASSET_DIR") == std::string::npos);

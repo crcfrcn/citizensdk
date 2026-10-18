@@ -176,7 +176,7 @@ class CitizenSdkFlutterSessionsTest {
             CitizenSdkErrorCode.PANIC, CitizenSdkFailureStage.TEARDOWN,
             startStep = CitizenSdkFlutterDiagnostics.StartStep.PROVIDER_START)
         assertEquals(1, lines.size)
-        assertTrue(lines.single().contains("start_step=PROVIDER_START"))
+        assertTrue(lines.single().contains("point=PROVIDER_START"))
         assertTrue(lines.single().length < 256)
     }
 

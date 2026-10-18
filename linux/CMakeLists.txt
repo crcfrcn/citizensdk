@@ -156,15 +156,17 @@ target_include_directories(citizensdk_host
     ${CITIZENSDK_TSS2_INCLUDE_DIR}
 )
 target_link_libraries(citizensdk_host
-  PUBLIC
-  "$<BUILD_INTERFACE:citizensdk_core>"
-  "$<INSTALL_INTERFACE:CitizenSDK::Core>"
   PRIVATE
+  citizensdk_core
   "$<LINK_GROUP:RESCAN,${CITIZENSDK_SQLITE_ARCHIVE},${CITIZENSDK_CRYPTO_ARCHIVE},${CITIZENSDK_TSS2_ESYS_ARCHIVE},${CITIZENSDK_TSS2_MU_ARCHIVE},${CITIZENSDK_TSS2_SYS_ARCHIVE},${CITIZENSDK_TSS2_RC_ARCHIVE},${CITIZENSDK_TSS2_TCTI_DEVICE_ARCHIVE}>"
   PkgConfig::GLIB
   Threads::Threads
   "$<LINK_LIBRARY:WHOLE_ARCHIVE,citizensdk_qr_image>"
   ${CMAKE_DL_LIBS}
+)
+target_link_libraries(citizensdk_host INTERFACE
+  "$<BUILD_INTERFACE:CitizenSDK::Core>"
+  "$<INSTALL_INTERFACE:CitizenSDK::Core>"
 )
 if(CITIZENSDK_ENABLE_QR_CAPTURE)
   target_link_libraries(citizensdk_host PRIVATE PkgConfig::GTK3 PkgConfig::GSTREAMER)
