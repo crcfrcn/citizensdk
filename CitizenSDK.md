@@ -1153,6 +1153,9 @@ Linux Flutter 消费者核验原生构建实际选用的 `CXX` 编译器；固�
 `--no-pub`；执行前验证完整工具缓存、版本戳和锁，缺件即失败，不在消费者阶段取得依赖。
 GitHub Linux 双架构在现有平台缓存恢复后由本仓固定 Flutter 执行 `precache --linux`，
 将引擎原件及 `bin/cache/pkg` 一起按平台复用；消费者的缺件拒绝仍独立执行。
+Linux 双架构随后在本轮独立临时目录复制产品 `pubspec.yaml` 与原始 `pubspec.lock`，
+通过固定 Flutter 的 `pub get --enforce-lockfile` 填充既有平台 Pub 缓存，核对锁文件
+未漂移并执行一次 `--offline --enforce-lockfile` 验证。消费者继续离线解析，缺件即失败。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；

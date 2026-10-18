@@ -187,6 +187,18 @@ jobs:
         run: |
           set -euo pipefail
           "$FLUTTER_ROOT/bin/flutter" precache --linux
+      - name: 准备Linux锁定Pub依赖
+        if: matrix.platform == 'LinuxARM' || matrix.platform == 'LinuxAMD'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 在本轮独立目录按产品原锁填充Pub缓存，不改写源码或消费者现场。
+          seed="$(mktemp -d "$RUNNER_TEMP/citizensdk-release/pub-seed.XXXXXX")"
+          trap 'rm -rf -- "$seed"' EXIT
+          cp "$CITIZENSDK_SOURCE_ROOT/pubspec.yaml" "$CITIZENSDK_SOURCE_ROOT/pubspec.lock" "$seed/"
+          (cd "$seed" && "$FLUTTER_ROOT/bin/flutter" pub get --enforce-lockfile)
+          cmp "$CITIZENSDK_SOURCE_ROOT/pubspec.lock" "$seed/pubspec.lock"
+          (cd "$seed" && "$FLUTTER_ROOT/bin/flutter" pub get --offline --enforce-lockfile)
       - name: 准备Apple固定引擎原件
         if: matrix.platform == 'macOS'
         shell: bash
