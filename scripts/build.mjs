@@ -6842,12 +6842,12 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.match(linuxRoot.text,/snapshot\.debian\.org\/archive\/debian\/20260901T000000Z/u);
   assert.match(linuxRoot.text,/liblzma-dev=5\.2\.5-2\.1~deb11u2/u);
   assert.match(linuxRoot.text,/liblzma5=5\.2\.5-2\.1~deb11u2/u);
-  for(const pkg of ['clang-13','llvm-13','libclang-13-dev'])
-   assert.ok(linuxRoot.text.includes(pkg+'=1:13.0.1-6~deb11u1'),'Linux C++20工具必须来自同一签名快照：'+pkg);
-  assert.match(linuxRoot.text,/\/usr\/bin\/clang\+\+-13 -std=c\+\+20 -x c\+\+ -fsyntax-only -/u,
+  for(const pkg of ['clang-16','llvm-16','libclang-16-dev'])
+   assert.ok(linuxRoot.text.includes(pkg+'=1:16.0.6-15~deb11u2'),'Linux C++20工具必须来自同一签名快照：'+pkg);
+  assert.match(linuxRoot.text,/\/usr\/bin\/clang\+\+-16 -std=c\+\+20 -x c\+\+ -fsyntax-only -/u,
    'Linux原生构建前必须验证锁定ZXing所需的C++20能力');
-  assert.match(linuxRoot.text,/CXX=\/usr\/bin\/clang\+\+-13/u,
-   'Linux两架构必须使用同一固定Clang 13编译ZXing');
+  assert.match(linuxRoot.text,/CXX=\/usr\/bin\/clang\+\+-16/u,
+   'Linux两架构必须使用同一固定Clang 16编译ZXing');
   assert.doesNotMatch(linuxRoot.text,/\bclang llvm libclang-dev\b/u,
    'Linux不能同时保留旧版默认Clang工具链');
   assert.match(workflow,/native-linux:[\s\S]*debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9/u);
