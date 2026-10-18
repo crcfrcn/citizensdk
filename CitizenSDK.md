@@ -1165,6 +1165,8 @@ Linux Flutter 插件将唯一生成的注册头目录传给插件和官方 regis
 复编同一插件源码的 Linux Flutter 合同测试支持目标直接继承正式插件的公开 include，
 使官方 registrant 与六项合同测试都使用同一生成头投影。
 Linux 终态交易回归直接构造成功、错配和失败三类公开结果，不保留未使用的重复夹具。
+Linux 插件消息测试通过固定 Flutter 公开的 `FlMethodCodecClass` 编码与解码入口驱动
+真实 MethodChannel，保留成功、错误响应及待处理句柄的生命周期断言。
 其 Flutter/Dart 专用 `HOME` 由 SDK 在本轮独占工作目录中新建并验真为当前用户所有的
 `0700` 普通目录，只在消费者子流程生效；旧设置和外部工作目录不能带入。
 Host 停止前的持久化可使用本次启动已验证的 finalized 锚点，即使链同步状态尚未 usable；

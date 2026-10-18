@@ -386,7 +386,8 @@ FlBinaryMessengerResponseHandle *send_method(
   g_autoptr(FlStandardMethodCodec) codec = csf::new_method_codec();
   auto args = csf::to_fl_value(arguments);
   g_autoptr(GError) error = nullptr;
-  g_autoptr(GBytes) message = fl_method_codec_encode_method_call(
+  // 固定 Flutter 的公开 MethodCodec 类接口提供编码入口，避免调用未公开的函数。
+  g_autoptr(GBytes) message = FL_METHOD_CODEC_GET_CLASS(codec)->encode_method_call(
       FL_METHOD_CODEC(codec), name, args.get(), &error);
   assert(message != nullptr && error == nullptr);
   auto *response = FL_BINARY_MESSENGER_RESPONSE_HANDLE(
@@ -426,7 +427,7 @@ void pending_detach_contract(GMainContext *context, bool engine_gone) {
 
   g_autoptr(FlStandardMethodCodec) codec = csf::new_method_codec();
   g_autoptr(GError) decode_error = nullptr;
-  g_autoptr(FlMethodResponse) open_reply = fl_method_codec_decode_response(
+  g_autoptr(FlMethodResponse) open_reply = FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
       FL_METHOD_CODEC(codec), registrar->messenger->last_response, &decode_error);
   assert(decode_error == nullptr && FL_IS_METHOD_SUCCESS_RESPONSE(open_reply));
   auto open_value = csf::from_fl_value(fl_method_success_response_get_result(
@@ -457,7 +458,7 @@ void pending_detach_contract(GMainContext *context, bool engine_gone) {
   assert(!pending_alive && registrar->messenger->responses == 2);
   assert(registrar->messenger->responses_in_destroy == 0);
 
-  g_autoptr(FlMethodResponse) detached_reply = fl_method_codec_decode_response(
+  g_autoptr(FlMethodResponse) detached_reply = FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
       FL_METHOD_CODEC(codec), registrar->messenger->last_response, &decode_error);
   assert(decode_error == nullptr && FL_IS_METHOD_ERROR_RESPONSE(detached_reply));
   auto *error_reply = FL_METHOD_ERROR_RESPONSE(detached_reply);
@@ -511,7 +512,7 @@ void test_stateless_verification(GMainContext *context) {
         csf::Value::bytes(signature), csf::Value::bytes({})}));
     g_object_unref(response);
     g_autoptr(GError) error = nullptr;
-    g_autoptr(FlMethodResponse) reply = fl_method_codec_decode_response(
+    g_autoptr(FlMethodResponse) reply = FL_METHOD_CODEC_GET_CLASS(codec)->decode_response(
         FL_METHOD_CODEC(codec), registrar->messenger->last_response, &error);
     assert(error == nullptr);
     if (valid_shape) {
@@ -563,7 +564,7 @@ int main() {
   fl_value_append_take(open_args, fl_value_new_int(31));
   fl_value_append_take(open_args, fl_value_new_bool(FALSE));
   g_autoptr(GError) encode_error = nullptr;
-  g_autoptr(GBytes) message = fl_method_codec_encode_method_call(
+  g_autoptr(GBytes) message = FL_METHOD_CODEC_GET_CLASS(method)->encode_method_call(
       FL_METHOD_CODEC(method), "open", open_args, &encode_error);
   assert(message != nullptr && encode_error == nullptr);
   auto *response = FL_BINARY_MESSENGER_RESPONSE_HANDLE(
