@@ -11891,9 +11891,20 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
  });
 }
 
-if(inlineTestEntry){
+// 正式plan/导入不依赖资源闭包中的测试局部变量；只在原真实Node测试入口注册。
+if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename){
  const {test}=await import('node:test');const assert=(await import('node:assert/strict')).default;
  test('SDK完整回归入口拒绝非GitHub执行且不领取工作根',async()=>{
   await assert.rejects(ciTest({}),/仅允许本仓GitHub/);
  });
+ test('正式plan和模块导入在测试上下文外正常退出',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  const env={HOME:root,LANG:'C',LC_ALL:'C',PATH:'',NODE_OPTIONS:''};
+  const check=result=>{assert.equal(result.error,undefined);assert.equal(result.signal,null);assert.equal(result.status,0,result.stderr);assert.equal(result.stderr,'');};
+  const plan=spawnSync(process.execPath,[import.meta.filename,'plan','--platform','macOS'],{cwd:root,env,encoding:'utf8',timeout:30000});
+  check(plan);const value=JSON.parse(plan.stdout);assert.equal(value.schema,1);assert.equal(value.platform,'macOS');assert.ok(value.archives.length>0);
+  const imported=spawnSync(process.execPath,['--input-type=module','-e','await import('+JSON.stringify(import.meta.url)+')'],{cwd:root,env,encoding:'utf8',timeout:30000});
+  check(imported);assert.equal(imported.stdout,'');
+ });
+
 }
