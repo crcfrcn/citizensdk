@@ -639,7 +639,7 @@ Value profile_fixture() {
   auto item = list({Value::integer(0), Value::string(id), Value::string(address),
       Value::string("主账户"), Value::string("0"), Value::boolean(true)});
   return list({Value::integer(0), Value::string("created"), Value::string("0"),
-      Value::string(id), Value::string(id), list({std::move(item)})});
+      Value::string(id), Value::string(id), list({std::move(item)}), Value::string("主钱包")});
 }
 Value history_fixture() {
   const auto id = Value::string("0x00112233445566778899aabbccddeeff");

@@ -2433,6 +2433,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
     // This method is called synchronously by plugin dispose on its owner
     // thread, before messenger handles are retired. Host callbacks never wait
     // for this UI thread, so Host's callback barrier cannot deadlock it.
+    if (is_detached()) return;
     try { advance_epoch(true); } catch (...) {}
     sink = {};
     if (!sessions.empty()) retain_detached_state();

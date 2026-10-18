@@ -472,7 +472,7 @@ void pending_detach_contract(GMainContext *context, bool engine_gone) {
   assert(std::get<int64_t>(fields.at(2).data) == 1);
   assert(std::get<int64_t>(fields.at(3).data) == CITIZENSDK_ERROR_INVALID_STATE);
   assert(std::get<int64_t>(fields.at(4).data) == CITIZENSDK_FAILURE_STAGE_ADMISSION);
-  assert(std::get<std::string>(fields.at(5).data) == "getCapabilities");
+  assert(std::get<std::string>(fields.at(5).data) == "getFinalizedHead");
   if (!engine_gone) {
     assert(registrar->messenger->handlers->at(csf::kMethodChannel).callback ==
            replacement_handler);
