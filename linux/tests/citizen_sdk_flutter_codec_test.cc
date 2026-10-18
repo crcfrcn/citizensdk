@@ -630,10 +630,6 @@ Value block_fixture(char hash = '1', const char *number = "7", bool finalized = 
   return list({Value::string(account(hash)), Value::string(number),
                Value::string(finalized ? "finalized" : "best")});
 }
-Value execution_fixture(bool success = true) {
-  return list({Value::string(success ? "success" : "failed"), block_fixture(),
-      Value::integer(0), success ? Value::null() : Value::integer(0), Value::null(), Value::null()});
-}
 Value profile_fixture() {
   // Public AccountId/SS58 golden pair from citizenchain-wallet-derivation-v1;
   // no mnemonic, child seed or password is copied into this fixture.
