@@ -73,7 +73,8 @@ class FakeTransport final : public csf::NativeTransport {
     if (projection_handler) return projection_handler(method);
     if (method == csf::Method::get_wallet_state)
       return csf::Value::list({csf::Value::list({csf::Value::string("0"), csf::Value::null(),
-          csf::Value::list({}), csf::Value::integer(0), csf::Value::boolean(false), csf::Value::null()})});
+          csf::Value::list({}), csf::Value::integer(0), csf::Value::boolean(false),
+          csf::Value::null(), csf::Value::list({})})});
 
     if (method == csf::Method::get_account_balances) {
       csf::Value::List balances;
@@ -118,7 +119,8 @@ class FakeTransport final : public csf::NativeTransport {
         return csf::Value::list({csf::Value::list({scalar("1"), profile,
           csf::Value::list({csf::Value::list({scalar("hot"), csf::Value::integer(0), csf::Value::integer(0),
             identity, scalar("synthetic-address"), scalar("账户0"), scalar("1"), csf::Value::boolean(true)})}),
-          csf::Value::integer(1), csf::Value::boolean(false), csf::Value::integer(0)})});
+          csf::Value::integer(1), csf::Value::boolean(false), csf::Value::integer(0),
+          csf::Value::list({})})});
       case csf::Method::get_finalized_head: return csf::Value::list({block(false)});
       case csf::Method::get_account_balance:
         return csf::Value::list({csf::Value::list({identity, block(false), scalar("1"), scalar("0"), scalar("1")})});
@@ -998,6 +1000,11 @@ int main() {
   int replies = 0;
   for (const auto method : methods) {
     auto call = request(method, session, sequence++);
+    // 输入型方法必须携带各自真实合同所需材料；结果夹具不能绕过接纳门禁。
+    if (method == csf::Method::prepare_wallet_creation || method == csf::Method::import_wallet ||
+        method == csf::Method::add_wallet_accounts) call.password.emplace(std::string("synthetic"));
+    if (method == csf::Method::import_wallet || method == csf::Method::add_wallet_accounts)
+      call.mnemonic.emplace(std::string("synthetic"));
     sessions->dispatch(std::move(call), [&](csf::Reply value) {
       assert(value.success); ++replies;
     });

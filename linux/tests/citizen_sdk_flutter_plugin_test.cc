@@ -508,7 +508,7 @@ void test_stateless_verification(GMainContext *context) {
   for (const bool valid_shape : {true, false}) {
     if (!valid_shape) signature.pop_back();
     auto *response = send_method(registrar, "verifySignature", csf::Value::list({
-        csf::Value::integer(1), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
+        csf::Value::integer(csf::kProtocolVersion), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
         csf::Value::bytes(signature), csf::Value::bytes({})}));
     g_object_unref(response);
     g_autoptr(GError) error = nullptr;

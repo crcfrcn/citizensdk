@@ -1513,7 +1513,7 @@ Value event(const std::string &session, int64_t sequence,
   }
   if (type == "privateKeyClosed") validate_public_value(Method::open_private_key, payload);
   if (type == "credentialRequest" || type == "credentialCancelled") {
-    const auto &fields = list(payload, type == "credentialRequest" ? 3 : 1);
+    const auto &fields = semantic_tuple(payload, type == "credentialRequest" ? 3 : 1);
     require(u64_text(fields[0]) != 0, CITIZENSDK_ERROR_INTEGRITY, "Invalid credential identity");
     if (type == "credentialRequest") {
       const auto purpose = semantic_text(fields[1]);
@@ -1522,9 +1522,9 @@ Value event(const std::string &session, int64_t sequence,
       if (!null_value(fields[2])) (void)account(fields[2]);
     }
   }
-  if (type == "historyChanged" || type == "walletChanged") (void)list(payload, 0);
+  if (type == "historyChanged" || type == "walletChanged") (void)semantic_tuple(payload, 0);
   if (type == "finalizedBlockChanged") {
-    const auto &items = list(payload, 1);
+    const auto &items = semantic_tuple(payload, 1);
     require(semantic_block(items[0]).finalized, CITIZENSDK_ERROR_INTEGRITY,
             "Finalized event must carry one finalized block");
   }

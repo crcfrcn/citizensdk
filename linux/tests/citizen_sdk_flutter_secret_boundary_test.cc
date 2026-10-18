@@ -37,9 +37,9 @@ int main() {
 
   // 下面只是源码额外门禁；上面实际生产解码和所有权断言才验证行为。
   const std::filesystem::path root(CITIZENSDK_LINUX_TEST_SOURCE_DIR);
-  for (const auto *relative : {"headers/citizen_sdk_plugin.h", "src/citizen_sdk_plugin.cc",
-      "src/citizen_sdk_flutter_environment.hpp", "src/citizen_sdk_flutter_environment.cc",
-      "src/citizen_sdk_flutter_codec.hpp", "src/citizen_sdk_flutter_sessions.hpp"}) {
+  for (const auto *relative : {"headers/citizen_sdk_plugin.h", "source/citizen_sdk_plugin.cc",
+      "source/citizen_sdk_flutter_environment.hpp", "source/citizen_sdk_flutter_environment.cc",
+      "source/citizen_sdk_flutter_codec.hpp", "source/citizen_sdk_flutter_sessions.hpp"}) {
     std::ifstream stream(root / relative, std::ios::binary);
     assert(stream.good());
     const std::string source((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
