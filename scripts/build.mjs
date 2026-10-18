@@ -12168,4 +12168,13 @@ if(inlineTestEntry){
   assert.deepEqual(deleted,[49,48]);assert.deepEqual(receipt,{run_id:50,retained:2});
   assert.deepEqual(rows.map(run=>run.id),[50,47]);
  });
+ test('正式plan和模块导入在测试上下文外正常退出',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  const env={HOME:root,LANG:'C',LC_ALL:'C',PATH:'',NODE_OPTIONS:''};
+  const check=result=>{assert.equal(result.error,undefined);assert.equal(result.signal,null);assert.equal(result.status,0,result.stderr);assert.equal(result.stderr,'');};
+  const plan=spawnSync(process.execPath,[import.meta.filename,'plan','--platform','macOS'],{cwd:root,env,encoding:'utf8',timeout:30000});
+  check(plan);const value=JSON.parse(plan.stdout);assert.equal(value.schema,1);assert.equal(value.platform,'macOS');assert.ok(value.archives.length>0);
+  const imported=spawnSync(process.execPath,['--input-type=module','-e','await import('+JSON.stringify(import.meta.url)+')'],{cwd:root,env,encoding:'utf8',timeout:30000});
+  check(imported);assert.equal(imported.stdout,'');
+ });
 }
