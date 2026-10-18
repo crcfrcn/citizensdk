@@ -39,8 +39,9 @@ if(TARGET citizen_sdk_plugin)
     ${CITIZENSDK_FLUTTER_ADAPTER_SOURCES})
   target_compile_features(citizensdk_linux_flutter_test_support PUBLIC cxx_std_17)
   target_compile_definitions(citizensdk_linux_flutter_test_support PRIVATE FLUTTER_PLUGIN_IMPL)
+  # 测试支持库复编正式插件源码，直接继承同一生成头目录，不复制插件头或另建路径。
   target_include_directories(citizensdk_linux_flutter_test_support PUBLIC
-    "${CMAKE_CURRENT_LIST_DIR}/.."
+    "$<TARGET_PROPERTY:citizen_sdk_plugin,INTERFACE_INCLUDE_DIRECTORIES>"
     "${CMAKE_CURRENT_LIST_DIR}/../source")
   target_link_libraries(citizensdk_linux_flutter_test_support PUBLIC
     flutter CitizenSDK::Host Threads::Threads)
