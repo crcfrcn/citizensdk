@@ -90,9 +90,9 @@ target_compile_definitions(citizen_sdk_plugin PRIVATE FLUTTER_PLUGIN_IMPL)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk")
 configure_file("${_citizensdk_linux_root}/headers/citizen_sdk_plugin.h"
   "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk/citizen_sdk_plugin.h" COPYONLY)
-target_include_directories(citizen_sdk_plugin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/public")
 target_include_directories(citizen_sdk_plugin
-  PUBLIC "${_citizensdk_linux_root}"
+  # Flutter generated registrant 编译时也包含插件声明，必须传播构建目录中的唯一投影。
+  PUBLIC "${_citizensdk_linux_root}" "${CMAKE_CURRENT_BINARY_DIR}/public"
   PRIVATE "${_citizensdk_linux_root}/source"
 )
 target_link_libraries(citizen_sdk_plugin PRIVATE

@@ -515,6 +515,15 @@ class HostTransport final : public NativeTransport, public std::enable_shared_fr
       case Method::cancel_prepared_transaction_execution:
       case Method::verify_signature:
       case Method::open: case Method::close: case Method::get_capabilities: case Method::get_genesis_hash:
+      case Method::read_diagnostics:
+      case Method::validate_wallet_password: case Method::validate_wallet_mnemonic:
+      case Method::wallet_word_suggestions: case Method::copy_recovery_phrase:
+      case Method::release_prepared_wallet:
+      case Method::open_private_key: case Method::reveal_private_key: case Method::close_private_key:
+      case Method::cancel_operation: case Method::release_qr_review:
+      case Method::open_qr_capture: case Method::close_qr_capture:
+      case Method::pause_qr_capture: case Method::resume_qr_capture:
+      case Method::set_qr_capture_torch: case Method::qr_decode_image:
       case Method::qr_parse: case Method::qr_create_sign_request:
       case Method::qr_validate_sign_response: case Method::qr_consume_sign_response: case Method::qr_cancel_sign_request:
       case Method::qr_encode_account_id:
@@ -803,7 +812,8 @@ class HostTransport final : public NativeTransport, public std::enable_shared_fr
       std::size_t offset = 0;
       for (std::size_t i = 0; i <= bytes.size(); ++i) {
         if (i != bytes.size() && bytes[i] != '\n') continue;
-        if (i > offset) words.push_back(Value::string(std::string(bytes.begin() + offset, bytes.begin() + i)));
+        if (i > offset) words.push_back(Value::string(std::string(
+            reinterpret_cast<const char *>(bytes.data() + offset), i - offset)));
         else if (!bytes.empty()) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Wallet word suggestion is empty");
         offset = i + 1;
       }

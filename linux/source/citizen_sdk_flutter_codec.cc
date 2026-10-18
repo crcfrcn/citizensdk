@@ -1967,12 +1967,15 @@ Value copy_transaction_execution(citizensdk_result_handle_t result) {
   auto verified = prepared<citizensdk_execution_info_t>();
   verified.status = value.status == CITIZENSDK_TRANSACTION_EXECUTION_FINALIZED_SUCCESS
       ? CITIZENSDK_EXECUTION_SUCCESS : CITIZENSDK_EXECUTION_FAILED;
-  verified.has_block = value.has_block;
-  verified.has_extrinsic_index = value.has_extrinsic_index;
+  (void)flag(value.has_module_failure);
+  require(value.pallet_index <= UINT8_MAX && value.error_index <= UINT8_MAX,
+          CITIZENSDK_ERROR_INTEGRITY, "Core finalized execution module fields exceed ABI range");
+  verified.has_block = static_cast<uint8_t>(value.has_block);
+  verified.has_extrinsic_index = static_cast<uint8_t>(value.has_extrinsic_index);
   verified.reason_or_dispatch_variant = value.dispatch_variant;
-  verified.has_module = value.has_module_failure;
-  verified.pallet_index = value.pallet_index;
-  verified.error_index = value.error_index;
+  verified.has_module = static_cast<uint8_t>(value.has_module_failure);
+  verified.pallet_index = static_cast<uint8_t>(value.pallet_index);
+  verified.error_index = static_cast<uint8_t>(value.error_index);
   verified.block = value.block;
   verified.extrinsic_index = value.extrinsic_index;
   require((verified.status == CITIZENSDK_EXECUTION_FAILED) ==
@@ -2589,8 +2592,8 @@ void validate_public_value(Method method, const Value &value) {
         }
         const auto verified = semantic_execution(outcome[7]);
         require(null_value(outcome[8]) && null_value(outcome[9]) &&
-                    ((status == 2 && verified.status == "success") ||
-                     (status == 3 && verified.status == "failed")),
+                    ((status == 2 && verified.success) ||
+                     (status == 3 && !verified.success)),
                 CITIZENSDK_ERROR_INTEGRITY,
                 "Finalized transaction execution fields are invalid");
         return;
@@ -2631,8 +2634,6 @@ void validate_public_value(Method method, const Value &value) {
       case Method::qr_decode_image:
       case Method::delete_wallet:
       case Method::sign_and_delete_wallet:
-      case Method::respond_credential:
-      case Method::cancel_credential:
         fail(CITIZENSDK_ERROR_INVALID_STATE, "This method uses its dedicated lifecycle/capability encoder");
     }
   } catch (const ContractFailure &error) {

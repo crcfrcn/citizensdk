@@ -173,6 +173,22 @@ void test_headless_contract() {
   validate_public_value(Method::wallet_word_suggestions, list({list({Value::string("synthetic")})}));
   expect_failure([&] { validate_public_value(Method::wallet_word_suggestions,
       list({list({Value::string("UPPER")})})); }, CITIZENSDK_ERROR_INTEGRITY);
+  // 终态数字状态必须与已验证的公开 execution 成败一致，不能读不存在的字符串字段。
+  const auto finalized_block = list({Value::string(account('1')), Value::string("1"),
+      Value::string("finalized")});
+  const auto success_execution = list({Value::string("success"), finalized_block,
+      Value::integer(0), Value::null(), Value::null(), Value::null()});
+  auto terminal = list({Value::integer(2), Value::string("0x" + std::string(32, '1')),
+      Value::string(account('1')), Value::string(account('2')),
+      Value::string(account('1')), Value::null(), Value::null(), success_execution,
+      Value::null(), Value::null()});
+  validate_public_value(Method::execute_prepared_transaction, list({terminal}));
+  std::get<Value::List>(terminal.data)[0] = Value::integer(3);
+  expect_failure([&] { validate_public_value(Method::execute_prepared_transaction, list({terminal})); },
+                 CITIZENSDK_ERROR_INTEGRITY);
+  std::get<Value::List>(std::get<Value::List>(terminal.data)[7].data)[0] = Value::string("failed");
+  std::get<Value::List>(std::get<Value::List>(terminal.data)[7].data)[3] = Value::integer(0);
+  validate_public_value(Method::execute_prepared_transaction, list({terminal}));
   for (Method method : {Method::delete_wallet, Method::sign_and_delete_wallet, Method::close_private_key,
        Method::release_prepared_wallet, Method::release_qr_review, Method::release_wallet_inspection, Method::close_qr_capture,
        Method::pause_qr_capture, Method::resume_qr_capture, Method::set_qr_capture_torch}) {
