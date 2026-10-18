@@ -93,6 +93,7 @@ void check_capabilities(const citizen_sdk::Capabilities &snapshot) {
 }
 
 struct Completion final {
+  enum class Stage { BeforeStartHead, Start, Stop };
   std::mutex lock;
   std::condition_variable changed;
   citizensdk_request_id_t request{};
@@ -127,11 +128,20 @@ struct Completion final {
     count = 0;
   }
 
-  void await(citizen_sdk::Host &host, citizensdk_request_id_t accepted,
+  void await(citizen_sdk::Host &host, Stage stage, citizensdk_request_id_t accepted,
              citizensdk_error_code_t expected = CITIZENSDK_OK) {
     {
       std::unique_lock<std::mutex> guard(lock);
       CHECK(changed.wait_for(guard, std::chrono::seconds(60), [&] { return count == 1; }));
+      if (request != accepted || accepted == 0 || info.error_code != expected) {
+        const char *name = stage == Stage::BeforeStartHead ? "before_start_head" :
+                           stage == Stage::Start ? "start" : "stop";
+        // 只打印固定阶段、匹配事实和公开错误码，不输出请求标识或结果内容。
+        std::fprintf(stderr,
+                     "CitizenSDK C++ completion stage=%s request_match=%d accepted_nonzero=%d expected_code=%d actual_code=%d\n",
+                     name, request == accepted, accepted != 0,
+                     static_cast<int>(expected), static_cast<int>(info.error_code));
+      }
       CHECK(request == accepted && accepted != 0 && info.error_code == expected);
       if (expected == CITIZENSDK_OK) CHECK(info.kind == CITIZENSDK_RESULT_EMPTY);
     }
@@ -221,12 +231,12 @@ int main(int argc, char **argv) {
     completion.prepare();
     citizensdk_request_id_t request = 0;
     CHECK(citizensdk_get_finalized_head(sdk, &request) == CITIZENSDK_OK);
-    completion.await(host, request, CITIZENSDK_ERROR_NOT_READY);
+    completion.await(host, Completion::Stage::BeforeStartHead, request, CITIZENSDK_ERROR_NOT_READY);
 
     // 只启动轻节点并验证 checkpoint，不发送 extrinsic、不建立钱包、不操作 TPM。
     completion.prepare();
     CHECK(citizensdk_start(sdk, &request) == CITIZENSDK_OK);
-    completion.await(host, request);
+    completion.await(host, Completion::Stage::Start, request);
     CHECK(citizensdk_get_lifecycle(sdk, &lifecycle) == CITIZENSDK_OK);
     CHECK(lifecycle == CITIZENSDK_LIFECYCLE_RUNNING);
     check_capabilities(host.capabilities());
@@ -241,7 +251,7 @@ int main(int argc, char **argv) {
 
     completion.prepare();
     CHECK(citizensdk_stop(sdk, &request) == CITIZENSDK_OK);
-    completion.await(host, request);
+    completion.await(host, Completion::Stage::Stop, request);
     CHECK(citizensdk_get_lifecycle(sdk, &lifecycle) == CITIZENSDK_OK);
     CHECK(lifecycle == CITIZENSDK_LIFECYCLE_STOPPED);
     check_capabilities(host.capabilities());
