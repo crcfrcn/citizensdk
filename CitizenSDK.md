@@ -1,5 +1,15 @@
 # CitizenSDK 技术文档
 
+## 当前构建合同
+
+本产品唯一构建实现为 scripts/build.mjs，平台 GitHub 任务只使用 .github/workflows 下的既有工作流文件。实际流程为sdk.yml；准备、四宿主原生件、消费回验与唯一SDK正式包。完整构建只在本产品塔塔自动化中运行，由控制台通过公开接口发起并记录；产品自行准备工具依赖、运行测试、编译、验收、处理版本和产物。控制台不提供产品资源库存或构建实现。
+
+增量及依赖缓存可用就复用，缺少的工具和依赖按原始锁从官方来源获取，缺少的中间物由官方编译器重建。缓存解析、恢复、复制、保存、上传或旧缓存清理失败只提示，不覆盖真实测试、编译和产物验收结果。不用旧缓存、旧产物或其它产品、其它平台的任务状态作为本平台新构建门禁。
+
+保留本平台最近一条成功、一条失败的记录，活动任务独立；只有真实自动化成功才推进成功版本，失败和取消不消耗版本。任务显示名为“产品·流程·平台”，Run、Job及产物显示名归产品唯一命名实现。签名材料不进入缓存、普通日志或测试资源。
+
+产品功能、接口、UI、交互与协议保持。现有控制台编译按钮保持原有显示和身份，安装另行接入；本机完整构建执行链已退出。塔塔控制台自身的本机编译不属于本产品改造，完整保留。
+
 > 当前塔塔鹿鹿：每仓 `.github/tatalulu.yml` 只登记仓库身份；控制台 `.github/tatalulu.mjs` 保存并推送后，以 GitHub `main` 回查结果收口。本文早期推送触发检查记录仅供历史追溯。
 
 ## GitHub 平台编译现场
@@ -37,8 +47,6 @@ citizensdk/
 
 Windows原生入口在传给Git Bash前统一将源码、工作区、输出和已声明的工具/缓存路径转换为Git Bash绝对路径；原生依赖环境中预先声明的Windows盘符路径在比较前也转换为同一Git Bash格式。Windows Cargo链接器由VCToolsInstallDir解析并显式固定到验真的MSVC link.exe，避免Git Bash的同名link.exe抢先。CMake生成器按Runner的 `VSINSTALLDIR` 主版本匹配，并由原生构建与独立消费者共用。workflow不重复转换编译环境。原生Node执行Cargo源码投影时，产品入口将源码和目标目录交为规范Windows反斜线绝对路径，保持 `createNativeSourceView` 的严格路径检查；Node返回的本轮投影根再转换回Git Bash路径供后续Shell使用。Windows私有头回归的失败输出直接进入GitHub原生日志，不再被成功分支的stdout收集吞掉。Android固定NDK和CMake只在GitHub Runner安装；若固定归档损坏或安装不完整，步骤最多重试三次，并逐项确认版本目录与工具文件存在。Android每个GitHub Run/Attempt仅使用 checkout 的 `target/build/citizensdk-sdk-<run-id>-<attempt>` 作为原生工作目录，目录内所有权回执与Run、Attempt及提交SHA绑定；原生归档上传步骤结束后由 `always()` 清理器只删除回执匹配的本轮目录。Android正式原生输出、Cargo、Pub、Gradle和引擎缓存仍使用各自Runner临时目录。Linux Job安装Ubuntu官方 `libglib2.0-dev`、`libgtk-3-dev`、`libgstreamer1.0-dev` 和 `libgstreamer-plugins-base1.0-dev`，为 pkg-config 提供GLib/GIO、GTK3与GStreamer开发合同。Linux测试支持目标复用Host生成的public头文件投影；QR首帧仅在optional实际携带有效帧时转移，保留warnings-as-errors并覆盖正常首帧与无首帧关闭合同。公民SDK同文件回归路径期望按当前平台的path.join生成；Windows私有头文件回归验证普通独占文件和内容，POSIX平台继续精确验证0600模式。Linux Host CTest失败时，原生入口将完整标准输出和错误输出转发至GitHub stderr；SQLite测试回归额外输出共享内存锁失败阶段与errno，正式Host错误保持不变，最终仍按非零退出失败关闭。
 
-`.github/tatalulu.yml`只声明本仓GitHub身份与main分支；控制台完成保存、推送和远端main回查。当前公民SDK流程只使用GitHub自动化按钮，测试与编译均在GitHub执行，不发起SDK本机编译或渠道发布。
-
 Linux/Windows Host仅在实际拥有公开存储、保密存储或设备金库资源时向Core传入HostServices；QR-only无资源实例传入空指针，不伪造全空资源组。Linux WAL DMS在有界等待结束后报告不可继续重试的SHM锁错误，避免SQLite重复执行整段等待；合同测试仅对Host销毁的真实BUSY状态有界重试。Windows xShmMap将扩展参数作为零/非零标记，合同测试中的分支诊断只输出阶段、页参数及Windows错误码，正式Host不输出测试诊断。Run记录最终清理即使遇到GitHub已把本轮取消Run标为completed，也按准确Run/Attempt/SHA保护本轮ID，只处理其它已完成的本仓main工作流Run；清理失败仍在Job中如实失败。
 
 CitizenApp消费SDK的公开软件接口；塔塔控制台只负责派发和展示本仓自动化。控制台公民链Tab当前仅显示一个“公民SDK／SDK”自动化按钮，派发本仓现有`sdk.yml`并由该工作流创建正式Tag/Release。所有资源与编译决策由本仓声明及真实代码拥有，缺件按实际失败。
@@ -48,7 +56,6 @@ CitizenApp消费SDK的公开软件接口；塔塔控制台只负责派发和展�
 ## 当前工作目录归属（第8步，2026-10-06）
 
 第8、9步完成目录与路径实现、根文档迁移及测试源码维护，未运行测试、门禁、编译或安装。本文唯一原件位于<本仓根>/CitizenSDK.md；产品接口及流程直接以本仓实际代码和声明为准，业务字典库与其检查已撤销，不另建登记副本。历史验收事实不表示本轮改造已经通过验收，统一测试在第10步进行。根技术文档由本仓门禁按原文、JSON解码值及既有补丁快照扫描机密，仅报告路径；文档迁出不减少资料安全检查。
-
 
 测试中的禁用协议样本采用分段字符串构造，运行值和拒绝断言保持不变；生产代码仍仅允许 QR_V1。仓库守卫按当前存在的跟踪源码及未忽略的新文件检查，SDK 测试目录不整体豁免。
 
@@ -72,10 +79,13 @@ Flutter官方工具按包名查找插件入口。仓库源码继续使用扁平�
 
 钱包签名模式由实际钱包、签名接口直接定义；SDK各语言绑定读取同一Core结果，不维护额外字段登记。
 
-
 本文是 CitizenSDK 唯一技术事实文档，统一收录 SDK 现状、产品目标、公开能力、模块职责和长期验收标准。本次无UI职责调整、UI恢复步骤、确认状态与执行证据只记录在既有《公民接入公民软件包》任务卡；既往SDK独立交付记录仍保留在其原任务卡。
 
-**当前自动化合同：**CitizenSDK是单一`sdk`产品平台。控制台只派发GitHub的`sdk.yml`；该工作流测试、编译、验真并创建唯一正式版。本轮不使用本机Build、设备安装或本机编译增量作为SDK成功证据。
+**当前依赖边界：**正式轻节点只由 `native/provider` 连接仓内锁定的 smoldot Rust 来源；
+正式 Flutter 包只声明 Flutter SDK 与 `polkadart_keyring` 运行依赖。旧独立 smoldot FFI、
+Dart 绑定、专属测试和第二份 Cargo 锁已删除。完整 GitHub 回归复用产品 `abi-host`，
+Android Runner 不安装 Linux 桌面图形开发包；LinuxARM 相机回归所需 GTK/GStreamer
+开发包仍按该平台声明准备。删减只覆盖经实际入口核实的额外依赖，不改变现有四平台产物。
 
 CitizenSDK 的 Dart 静态分析规则唯一归 `scripts/build.mjs` 的 `BUILD_SHELL_SOURCES.analysis` 所有；通过 `analysis-options <绝对路径>` 在本仓 target 工作区生成 Flutter 配置，源码不保留第二份 YAML。
 
@@ -86,7 +96,6 @@ CitizenSDK 是公民、途遇系列及第三方共用的无UI区块链SDK，只�
 平台适配只承载系统底层能力与语言绑定，不提供钱包窗口、扫码预览、签名审阅页或自建认证对话框。真实设备授权不可绕过：授权交互与可视展示属于App或操作系统，SDK仍绑定实际密钥操作、实例、账户和取消归属。纯数据能力不得以存在SDK界面为前置条件。隐藏的线程消息分派设施不能仅因名称含window而误判为业务UI；其窗口依赖须单独审查。
 
 ### 非UI能力归属与接口合同
-
 
 原冷钱包重导修复要求证明该账户无本机秘密、该钱包索引无硬件密钥。SecretRef精确槽读取及指定generation的has_wallet_key不能替代跨代际存在性检查；冷账户不提供可供此查询使用的generation或owner。唯一仓储/金库合同已增加has_account_secret与has_any_wallet_key，Host独立32字节提供者只允许首次Host操作前登记一次，沿原布尔完成及操作ID跟踪，不扩长既有v1结构。未登记、替换、关闭、错误或非法回包均不能冒充不存在。
 
@@ -464,15 +473,6 @@ Android预览使用Flutter的SurfaceTexture，Flutter引擎会应用相机写入
 
 ### 长期验收标准
 
-- 保留现有派生、可选密码、账户归属、金库授权、准确链读取、转账和历史固定向量及失败恢复回归，不用接口改名或删测试掩盖行为变化。
-- App 每个所需调用都能对应 SDK 现有入口、获准补充入口或明确保留的 App 业务，不以一项转账成功宣称全部 App 钱包调用已覆盖。
-- 模块隔离同时检查编译依赖和真实初始化行为；钱包不要求链同步，验签不访问金库，读链不创建钱包，扫码权限按调用申请。
-- wallet-only必须支持独立输入与私钥资源测试，不因夹具要求链资产或启动。合成数据验证错误/取消/清理不能替代真实设备授权、宿主原UI清屏及迟到回调验收；测试不得访问用户钱包或采集真实秘密。
-- 统一扫码覆盖合法请求与响应、未知动作、错链／错账户、过期、串请求、重复消费、取消、超限及审阅与待签字节一致性；采用多帧时补齐相应传输边界。
-- 各端使用同一公开合同，验证内存归属、线程、事件、授权与关闭排空；签名有随机性时比较消息、账户、context 和验签结果，不要求签名字节恒等。
-- iOS、Android、macOS、Windows、LinuxARM分别报告真实构建与运行；相机、宿主敏感UI、硬件金库和交易闭环按实际环境验收，不能用源码存在或其它平台结果替代。
-- 本机源码、Git 锁定源码和公开包分别验证独立消费；公开包不泄漏本机路径或要求第三方使用 外部调用方。正式发布状态与本机构建状态分开报告。
-
 ### 钱包秘密查看与链查询边界
 
 genesis和批量余额继续复用既有ChainIdentity/Engine同块查询；本次不修改轻节点或另造RPC。账户查看由wallet的无UI资源承接，SDK只交付明确请求的短时32字节副本，不负责警告、确认、布局或清屏界面；普通签名仍在原金库及Signer内完成。
@@ -610,13 +610,12 @@ Release。源码树最终无生成状态或原生产物残留；本轮受控临�
 
 ```text
 citizensdk/
-├── lib/                         产品无关 Dart/Flutter API 与 smoldot 绑定
+├── lib/                         产品无关 Dart/Flutter API
 ├── native/contracts/            类型化链、签名、金库、能力、钱包与状态仓储合同
 ├── native/engine/               产品无关 Rust Core Engine
 ├── native/ffi/                  唯一 citizensdk_* 产品 C ABI
 ├── native/signer/               唯一 sr25519 实现
 ├── native/provider/     VerifiedChainClient 的真实 smoldot 实现
-├── native/legacy/          仅供归档差分测试的 legacy 轻节点/signer C ABI
 ├── native/smoldot/          PoW + GRANDPA Rust 轻节点闭包
 ├── include/                     产品 C/C++ 头文件与所有权合同
 ├── android/                     Android 插件与硬件金库
@@ -626,7 +625,6 @@ citizensdk/
 ├── chain/         manifest、chain spec 与 light sync state
 ├── scripts/                     外部构建与候选工具
 ├── test/                        SDK 合同测试与 smoldot 来源测试
-├── docs/smoldot-dart/           smoldot Dart 来源审计资料
 ├── Cargo.toml                   contracts、engine、ffi、signer、provider 根 workspace
 └── Cargo.lock                   Rust Core 可复现依赖闭包
 ```
@@ -636,18 +634,16 @@ citizensdk/
   `ChainSigner` 共同调用；重构后的 `lib.rs` 不再宣称与 shared 逐字节一致。Release 对 crate
   清单、两份 README、三个 `src/*.rs` 与四份 `tests/*.rs` 执行 10 文件哈希与反向闭集检查，
   `build.rs`、`src/bin` 或任何额外文件都会失败关闭。
-- smoldot Dart 生产绑定已并入唯一 `citizen_sdk` 根包的 `lib/smoldot`，来源测试并入
-  `test/smoldot`，上游说明、原始 pubspec/lock 与示例归档在 `docs/smoldot-dart`。无需适配的
-  资料和夹具继续逐字节对齐 CitizenApp；适配文件由 Release 固定哈希和反向闭集约束。
+- 正式轻节点仍由 `native/provider` 调用仓内固定的 smoldot Rust 来源；旧 Dart 绑定、
+  独立 FFI、头文件和差分测试已从 SDK 构建闭集中删除。上游锁和许可证继续保留。
 - `citizensdk` 只有根 `pubspec.yaml` 与根 `pubspec.lock` 一个 Dart/Flutter 包边界，禁止恢复
   `native/smoldot/dart` 嵌套包或第二次依赖解析。
 - Hosted Dart 运行闭包精确为 17 个文件：根入口 1 个、`lib/api` 6 个、
   `lib/account_codec.dart` 1 个、`lib/models` 5 个和 `lib/platform` 4 个。
-  运行依赖只有 Flutter SDK 与 `polkadart_keyring`；SDK 自有旧 Dart 轻节点、钱包、交易和
-  Preferences 实现已删除，仅受保护的上游 smoldot 快照保留为审计输入并排除于 Hosted 运行时。
-- 外部调用方 本机动作同样只在根包执行一次锁定依赖解析、格式检查、
-  `flutter analyze --no-fatal-infos --no-fatal-warnings` 与 `flutter test --timeout=2m`；该静态
-  `libsmoldot.dylib` 只注入隔离构建根，禁止向已经删除的嵌套包路径复制产物或再次运行 Dart 工具链。
+  运行依赖只有 Flutter SDK 与 `polkadart_keyring`；受保护的上游 smoldot Rust 快照
+  继续作为正式 Core 的来源输入，不进入 Hosted Dart 运行时。
+- GitHub 完整回归只构建正式 `citizensdk_*` ABI 宿主库，并在同一根 Flutter 包执行
+  锁定解析、静态分析和全部现存 Dart 测试；不再生成或注入旧轻节点动态库。
 - PoW 锁的 342 个 registry 身份与 CitizenApp 来源一致；FFI 锁 337 个中 336 个匹配来源，
   另有 signer → contracts 所需的 blake2 0.10.6，不能继续称 FFI 锁只有裁剪、没有新增身份。
   来源清单五单元 223 项目标哈希自洽；声明 byte_identical 的 177 项已全部与当前
@@ -704,8 +700,7 @@ CitizenSDK canonical Release 合同反向枚举 `chain` 三文件闭集并逐文
 `native/provider` 是真实链 provider。依赖方向固定为
 `bindings -> ffi -> engine -> contracts <- providers`，Flutter、Swift、Kotlin、宿主页面、
 TUYU、聊天和广场均不能反向进入 Core。根 Dart API、Android 原生/Flutter 以及共享
-Darwin Swift/Flutter 投影都通过产品 C ABI 接入 Engine；legacy `libsmoldot` 只侜为源码树外
-差分测试宿主库，不进入任何正式绑定或候选。
+Darwin Swift/Flutter 投影都通过产品 C ABI 接入 Engine。
 
 合同层已经固定：
 
@@ -899,10 +894,6 @@ SDK旧Dart钱包和差分实现不恢复，公开能力由Rust Core与官方绑�
   及同版候选源码合同；后续 8.2、8.4 节记录对应实现。Windows 真实平台编译、运行、硬件与
   正式分发尚未由本轮验证，不能用源码合同或 macOS 验收代替。
 
-#### 历史本机构建与受控目录（现不执行）
-
-以下记录描述早期本机构建边界；当前SDK成功条件以本仓`sdk.yml`的完整GitHub Run及正式Tag/Release回执为准。本机不执行SDK编译或设备安装。
-
 本机任务的依赖展开、编译中间物和日志只写入永久固定容器：
 
 `<本仓根>/target/`
@@ -934,7 +925,6 @@ CitizenSDK 原生入口自身也固定 NDK `28.2.13676358`，不把可编译性�
 缺失时，产品脚本可从标准宿主目录解析固定版本（macOS：`$HOME/Library/Android/sdk`；
 LinuxARM：
 `$HOME/Android/Sdk`）。该规则完全属于 CitizenSDK 产品；外部调用方 不保留前置校验。
-
 
 第 10.1 步同源调用、依赖位置与统一缓存接线已完成本机专项验收，尚不代表完整 CI 或 Release 可运行。
 SDK 生成/验真参数逐项传给唯一源脚本，拒绝空、重复、未知及混用参数，源码必须来自同一
@@ -991,8 +981,7 @@ CI 目标合同对准确提交执行发布闭集、锁定依赖、Dart/Flutter�
 Android 宿主插件（官方 ABI `arm64-v8a`）构建与 Kotlin 单测、iOS 设备与模拟器的 `arm64`
 技术变体编译、iOS 模拟器 XCTest、macOS（当前机器架构值 `arm64`）XCTest 与单一 XCFramework
 候选检查。
-单包重构后，smoldot Dart 绑定和
-来源测试位于唯一根 Flutter 包并由逐文件哈希保护。统一格式检查失败关闭；
+根 Flutter 包的正式绑定和测试由逐文件闭集保护。统一格式检查失败关闭；
 `flutter analyze --no-fatal-infos --no-fatal-warnings` 完整报告迁入源码的既有 warning/info，任何 analyzer
 error 仍阻断流程，禁止为了消除历史 lint 批量改写已经验证的行为源码。三个 Rust workspace
 都执行锁定测试；PoW workspace 另外用 `cargo check --workspace --all-targets --locked` 编译全部
@@ -1345,10 +1334,6 @@ Host 生产实现、Core/Rust、链资产或控制台流程；Windows 默认入�
 
 #### 第 8.2.1 步旧本机发布路径（已废止）
 
-旧的CitizenSDK本机发布器与产品专用target目录已经删除。当前控制台统一把CitizenSDK登记为
-单一`sdk`平台：本机Build只使用`citizensdk/target/`并执行产品入口；正式包只由GitHub
-Release生成，控制台本机不建立SDK产物路径或包内平台门禁。
-
 #### 第 8.3 步 Windows 已安装 C/C++ 消费者
 
 唯一 Windows 原生构建器保留既有 14 项 CTest，先安装到本次工作目录，再核验 21 项
@@ -1361,16 +1346,6 @@ Release生成，控制台本机不建立SDK产物路径或包内平台门禁。
 DLL 路径、能力、启停/checkpoint、异步结果唯一所有权与关闭 BUSY 重试。C 回调取得的结果
 由主线程唯一释放；C++ 回调只借用结果，公开包装层负责释放。等待和重试必须有界，检查
 不能依赖 Release 会删除的 assert。
-
-两个消费者均关闭钱包并使用空 HWND，不触发 TPM、钱包 UI、真实秘密或链上交易。安装、
-消费者全部成功后才同卷导出全新 output_dir/Windows；失败、目标已存在或跨卷均不改变
-已有输出。本步不开放 Windows Dart 默认入口、Hosted 或根候选，也不改 Host/Core、其它
-平台、控制台或 GitHub 流程。本步源码、本机编译与合同回归已完成当前开发验收并清理生成
-状态；Windows 实际运行证据只能由后续统一平台验收取得，本机 macOS 编译和 Node 合成
-输入不替代 Windows/MSVC 结果。准确命令、结果与清理证据见任务卡 32.1。
-公开链-only 文档示例与 Host 一致：enable_wallet=false 时 hwnd 必须为空，不因示例放宽
-生产窗口校验。以上为第 8.3 步边界；默认入口、候选/Hosted 投影和真实 Flutter 消费者
-由已确认的第 8.4 步接入，准确范围与执行结果见任务卡第三十三节。
 
 #### 第 8.4 步 Windows 正式入口与单一候选
 
@@ -3894,21 +3869,15 @@ Core/Host 字节、版本/提交和法律材料。唯一候选附带生成 nativ
 SBOM 或签名证明。本步只固定上述三项静态组件的法律原文与归属，不能声称全部传递许可
 已闭合，也不能声称 Linux/Windows 真正编译/运行通过。历史执行结果不替代本仓本轮真实验收。
 
-## 历史本机编译生成边界（现不执行）
-
 GitHub上的Android插件输出、JNI暂存与独立AAR共用android/build.gradle定义的唯一物理路径校验；独立AAR由任务根脚本先装载该校验，再在native模块调用。输出必须是无链接、无路径别名的绝对目录，并位于实际GITHUB_WORKSPACE的既有target严格子目录；缺失工作区、缺失target、源码目录、target本身、越界路径及普通文件均拒绝，校验不创建或重建固定根。SDK作为依赖时源码原件整体只读；SDK自有Workflow只开放自身target，仍拒绝源码目录。已有本机输出与原件隔离合同保持，不新增工具、来源、版本、参数或签名配置。
 
 Android 原生构建中的 `CITIZENSDK_ANDROID_BUILD_DIR`、`CITIZENSDK_ANDROID_CORE_DIR`、`GRADLE_USER_HOME` 必须连续赋值给同一次 Gradle 子进程调用；注释放在赋值段前，禁止切断续行。SDK 自有 Gradle 工程、项目缓存、Kotlin 状态和原生产物必须位于 CitizenSDK 工作目录；调用产品显式提供的 `GRADLE_USER_HOME` 是产品任务的依赖缓存，只要求位于 CitizenSDK 源码树之外，不得错误要求它进入 SDK 子工作目录。Gradle 使用 `--no-problems-report` 阻止 HTML 问题报告写回 SDK 源码，受控日志继续保留完整错误栈，Gradle 非零退出码直接终止构建。回归测试执行生产脚本的调用段，用受控子进程核对环境、含空格路径、参数、外部依赖缓存边界及失败传播，不需要联网或编译 SDK。
-
-早期本机编译曾使用本轮`citizensdk/target/build/sdk/`，不生成正式Release包；该记录不作为当前公民SDK流程。当前测试、编译与正式包均由GitHub的`sdk.yml`处理。
 
 Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。依赖由本产品准备，控制台只传递普通工具路径和本次已授权输入，不维护CitizenSDK包内平台合同。
 
 本产品的锁解析器、固定提交Git bundle和Pod spec/源码只在当前固定任务根内物化与消费，不把派生目录写回永久原件缓存。独立执行与外部调用均由本产品按同一声明准备原件；显式离线缺原件必须失败。原件来源、版本及锁仍归本产品声明，任务结束后按现有所有权收尾清理派生视图。
 
 本机持久原件只进入本产品自己的 `~/.local/share/citizensdk/`：`tools/` 保存已验真的工具对象，`dependencies/archives/` 保存本产品依赖归档。首次缺件由本产品按原始锁取得并验真，后续按相同摘要复用；工作中间物仍只进入本轮任务目录。本产品不接入外部依赖库存或供给索引，也不迁移、删除其它产品的持久数据。
-
-CI和Release只读取本轮GitHub固定提交及Runner受控现场，不读取本机编译中间物。
 
 ## CI 增量缓存
 
@@ -3920,12 +3889,7 @@ Android工作流调用本产品 `prepare-environment`，由同一锁定工具配
 
 ## Release 全量构建（第 7.4 步）
 
-正式 Release 从本次Run固定提交独立构建，不复用本机编译中间物；同平台、同架构、同锁输入的增量缓存按“CI增量缓存”节使用。版本、签名、校验、产物和发布流程保持原有产品合同。
-
 ## 双仓统一流程最终收口（第 7.5 步）
-
-本产品执行统一流程规则：本机编译中间物只进入本轮塔塔缓存库的build目录并按终态规则清理；GitHub CI 的作业过程数据只进入该次Runner任务空间；正式Release从干净编译状态执行。源码不进入塔塔缓存库或塔塔产物库。
-## CI 阶段 0 四宿主接线（第 10.6 步）
 
 同一 `citizensdk.sdk.ci` 路由、同一冻结 CitizenSDK SHA 与 SDK version：
 
@@ -3959,7 +3923,6 @@ SecureStore 的完整 SQLite schema 由 Linux 集成测试实际打开验证；S
 Linux测试支持库，不改变正式Host错误消息。失败时Host创建回归输出Host最后错误，跨进程WAL夹具输出失败阶段，
 CTest诊断保留在GitHub作业日志。Windows依赖版本比较先规范化
 CRLF，再按准确版本字段校验；这些回归仍以 GitHub 自动化结果为准。
-
 
 同一路由、同一冻结源码、同一 SDK 版本：CI 为四宿主原生构建 → 一个 macOS 汇总 →
 四宿主最终同包消费，共九项作业；Release 使用相同三个阶段，但全量构建、不恢复任何
@@ -4043,10 +4006,7 @@ Android ARM64 Core/JNI/AAR、native JVM 与 Flutter 插件单元测试通过。�
 
 ## 单一SDK平台与受控目录（2026-09-10）
 
-CitizenSDK在外部调用方中只有一个`sdk`产品平台。本机Build使用`<本仓根>/target/build/sdk/`本轮现场，由产品完整入口按锁准备资源并调用同一原生编译实现；控制台不得清空整个target或建立第二份SDK源码与正式打包实现。准确现场与清理合同见“本机固定执行目录”。
-
 CitizenSDK依赖由产品锁文件和Gradle声明决定。Android唯一工具链为Gradle9.1.0、AGP9.0.1、Kotlin2.2.20、AGP内置Kotlin和新DSL；宿主与SDK使用同一个来自本产品自有`tools/`缓存的已验真Gradle执行器，不存在SDK专用第二版本。三仓第一方直接依赖必须统一，上游smoldot闭包按其准确锁原样保存，控制台不得替产品选择目标版本或修改上游。
-
 
 CitizenSDK 产品源码与候选包不保存 README、CHANGELOG、产品 `docs/` 或目录占位说明；长期产品事实只进入本产品唯一 TataDoc。Release 仍逐字节固定许可证、`native/smoldot/UPSTREAM.md`、源码、测试和来源清单，并按当前真实文件反向校验根、资产、公开 ABI、Core、signer、smoldot、平台绑定及 Hosted 闭包；删除说明文件不得通过恢复占位文件或保留新旧双轨来满足发布门禁。
 
@@ -4057,8 +4017,6 @@ CitizenSDK 产品源码与候选包不保存 README、CHANGELOG、产品 `docs/`
 接受默认标签参数的抛出函数在 Swift 6.4 集合变换中使用显式闭包调用，不能把双参数函数直接作为单参数 `map` 函数值。该规则只修复 CitizenSDK 自身的 Apple 源码和公开 ABI，不改变途遇产品逻辑、C ABI 名称、数值或结构布局。
 
 ## 缓存工程视图中的真实源码身份（2026-09-10）
-
-CitizenSDK 本机 Build 仍是单一 `sdk` 平台的纯原生入口，不为没有执行的 Flutter 步骤创建虚假产物。SDK 被 Flutter/CocoaPods 产品作为本地 `path:` 依赖使用时，其文件可以呈现在调用产品的缓存工程视图中；`build.mjs` 的 `native` 子命令使用明确的 `CITIZENSDK_SOURCE_ROOT` 指向真实 SDK 源码根，并在首次写入前校验工作与输出路径。不得以缓存视图当前目录执行 `find -type f` 并把 Swift 符号链接误判为空，所有原生输出仍由调用任务显式写入自己的缓存。
 
 ## 通用接入合同补齐（2026-09-11）
 
@@ -4105,9 +4063,7 @@ Flutter 插件及独立 AAR Gradle 配置均声明同版 `rustls:rustls-platform
 插件把该只读仓库限制为 `rustls` 组并登记到 Gradle 根工程的全部项目，确保宿主
 `:app` 解析插件传递依赖时能找到同轮原件；仅登记在插件子项目不足以供宿主解析。
 消费者混淆规则保留 `org.rustls.platformverifier` 类。缺包或坐标不一致必须构建失败，
-不得复制依赖原件进 SDK 包或把证书策略改为自定义信任。归档的独立 smoldot FFI
-直接 JNI 声明也统一为 `0.22.4`，其锁文件删除旧版独占依赖；该模块只生成
-macOS host 差分测试运行件，不进入 Android 正式包。
+不得复制依赖原件进 SDK 包或把证书策略改为自定义信任。
 
 链 provider 启动 Future 如发生 panic，先把 provider 从 STARTING 收敛到 StartFailed，
 释放状态锁后再由 FFI 的固定步骤诊断捕获 unwind 并收敛 Engine；`start_step` 仍只取既有闭集值，
@@ -4175,15 +4131,13 @@ CitizenSDK是单一sdk整体包，仅允许下列一份SDK CI和一份SDK Releas
 
 Linux、Windows 头文件源码直接位于各平台 `citizen_sdk/`，删除源码 `include/` 包装层；构建 include 根指向平台根。公开安装目录仍为 `<prefix>/include/citizen_sdk/`，`#include <citizen_sdk/...>`、C ABI 与导出符号保持不变。原生安装头文件与唯一源码逐字节对拍，发布来源闭集与安装闭集分别检查。
 
-账户编码位于 `lib/account_codec.dart`；消费者夹具位于 `test/consumers/`，基线合同测试位于 `test/sdk_1_10_1_contract_test.dart`。smoldot 的单文件包装层已展平，归档头文件为 `include/smoldot.h`；上游与派生 Rust 文件只改变存放路径，文件正文保持逐字节一致。
+账户编码位于 `lib/account_codec.dart`；消费者夹具位于 `test/consumers/`，基线合同测试位于 `test/sdk_1_10_1_contract_test.dart`。smoldot 上游 Rust 来源仍按固定映射恢复编译所需路径，原始实现保持受保护。
 
 `scripts/build.mjs` 唯一定义仓库存放路径到 Cargo 编译路径的映射。`createNativeSourceView` 先校验现有来源清单、源码闭集和夹具，再将 Cargo 声明与锁、native、include、chain、test 的普通文件装配到源码外工程；14 个展平文件在工程内恢复编译所需路径。它不改写 `mod`、上游 Cargo 声明或算法，不创建返回源码的链接。重复阶段只复用闭集和字节完全一致的工程；漂移直接失败，`build.rs` 只能写本轮副本。
-
 
 ## 独立仓库源码与初始提交
 
 远端Job与回归身份统一为citizensdk.sdk.ci或citizensdk.sdk.release，不重复仓库名。CI实际workflowSteps内的Node正文经JSON解码后才执行；正则和单引号字符串保留所需反斜杠，环境输出使用实际换行。CITIZENSDK_WORK_DIR只有阶段root一份有效登记；聚合回归检查全部11个CI Job正文和重复属性，不派发真实CI或生成资产。
-
 
 ## 完整产品组织与执行合同
 
@@ -4195,7 +4149,6 @@ Linux、Windows 头文件源码直接位于各平台 `citizen_sdk/`，删除源�
 
 本仓已移除GitHub main推送门禁触发器；main上传后不自动运行产品自动化。自动化由用户单独发起，产品仍拥有自己的Workflow、声明、资源、测试和产物实现；产品不导入控制台源码，不依赖控制台工具库、私有规则或其它仓库工作树。控制台只是可选Git客户端。各仓可独立使用公开Git接口完成仓库操作，公开SDK依赖不构成流程耦合。
 
-
 技术文档由所属完整产品仓根唯一持有；私有规则和任务库由控制台私仓持有，公开产品不读取它们。公开门禁不依赖私仓资料、安装包源码、其它本机产品或个人账号；必要链真源只读本仓明确固定的公开40位SHA，不在门禁中跟随main。本机开发跨产品验收仍比较三仓已保存快照与各端真实镜像。
 
 ### 门禁与开发审查职责
@@ -4203,7 +4156,6 @@ Linux、Windows 头文件源码直接位于各平台 `citizen_sdk/`，删除源�
 准确中文注释按开发阶段逐项复核，不以保留源码每文件包含汉字作为仓库门禁的开发凭证。初始完整内容、生成文件和上游原件保持原文；真实第一方临时注释、机密、源码输出、Workflow、依赖和适用测试仍由本仓同提交门禁验真。公民门禁只把scripts中的Node命令行结果报告识别为CLI输出；本仓实际执行测试的准确协议拒绝断言不属于新运行协议，字符串、注释、模板和未登记测试中的同文不豁免。保存及推送仍逐仓独立授权，并以本机门禁和同SHA的GitHub门禁双成功为唯一终态。
 
 ### 仓库合同与平台验收归属
-
 
 本仓推送门禁按准确既定资源/API/ABI或正式软件Tag判断协议归属，不把平台资源目录、已冻结接口类型及软件版本当作新增二维码协议。拒绝断言识别同时把JavaScript正则字面量作为不可执行文本边界，避免正则中的引号改变后续语句归属；未知版本化地址、类型、资源及伪装在注释/字符串中的拒绝语句仍失败。既有业务源码与测试不改。
 
@@ -4217,7 +4169,7 @@ Linux、Windows 头文件源码直接位于各平台 `citizen_sdk/`，删除源�
 
 ## 产品介绍与开源许可
 
-本次依赖统一同时覆盖归档差分测试的第一方smoldot C ABI适配及hex/parking_lot直接声明；对应Cargo锁与SDK冻结摘要原子同步。上游PoW与libp2p内部闭包仍按来源保留，不把第一方适配当成上游例外。全17仓直接声明回归按准确源码归属检查Cargo、Pub与npm，逐项读取所属产品真实原锁。
+上游PoW与libp2p内部闭包按来源保留；正式 SDK 只保留当前产品直接依赖与同版锁闭包。
 
 Hosted Package 负向回归按当前精确依赖声明注入范围或版本漂移，并同步 Release 自有测试源码摘要，确保失败用例实际改变输入而非匹配旧范围字符串。
 
@@ -4253,12 +4205,9 @@ SDK在本仓独立拥有实现和测试，不依赖独立公民钱包的代码�
 
 GitHub 自动化仅由 `.github/workflows/sdk.yml` 启动，四宿主原生件通过当前 Run 的独立 Artifact 汇总；完整候选经本仓发布器验真并在四宿主复验后，才创建和回读正式 Tag、Release。控制台直接按钮只派发本仓SDK自动化，正式Tag/Release由该工作流回读确认。
 
-本机 Build 只负责本仓编译，GitHub 自动化在四宿主原生件全部验真后生成唯一正式包及 Tag/Release；本仓不再提供独立发布检查入口，控制台不登记本产品渠道发布动作。本文后续历史段落提及的旧 `publish.mjs` 属于当时实施记录，不代表当前仓库还存在该文件。
-
 塔塔门禁从 `.github/tatagate/tatagate.json` 读取本仓静态登记，仅使用只读 Git 查询与文件读取核对正式 `main`、HTTPS origin、提交范围、脚本闭集和旧入口残留。它不创建现场、不取得工具、不启动产品步骤或测试进程。真实编译、测试与发布须按各自操作授权单独执行。
 
 本轮开发只做静态语法复核；未运行测试、门禁、构建、安装、发布、保存或推送。完整实际验收须在对应授权后按每一流程自身状态执行。
-
 
 ## GitHub塔塔门禁与同类记录清理
 
@@ -4302,7 +4251,6 @@ Linux Core/Host 的 ELF `DT_NEEDED` 禁止项门禁继续拒绝动态泄漏；�
 
 本产品工具归档配方只对有独立归档的工具计算缓存身份。`android`、`android-sdk`、`android-ndk` 属于 Android 平台组合组件，仍由本产品平台资源流程按锁准备与验真；`xcode` 仍由 Apple 工具验真路径取得。GitHub Run 39044113929 的 `prepare` 回归曾因对无独立归档组件读取 `sha256` 失败，现由配方边界回归覆盖。
 
-
 ## 独立执行与外部接入边界
 
 依赖由本产品的原始锁和既有独立实现准备、保存及复用；直接执行与控制台调用使用同一完整入口。控制台通过对应tata产品文件传递动作、普通工具路径、已授权输入与取消信号，不登记或供应产品依赖，不要求私有资源通道。显式离线缺件和真实执行错误按本产品接口失败，不改变版本、来源或SDK提交。
@@ -4337,7 +4285,6 @@ Run 39065108840 在提交 `f78d8cfc846da233e7ede8d96abc82bdcebfcd6f` 上通过 p
 
 本次候选在 `acquireArchive` 请求 `Accept-Encoding: identity`；若来源仍声明非 identity 编码，只跳过传输长度与解压正文长度的混合比较。锁定 SHA、非空正文、响应声明上限和实际正文上限照常强制核对；identity 响应仍核对正文与 `Content-Length` 一致。既有同文件回归覆盖 identity 长度不符、压缩传输长度不同但摘要正确、压缩正文摘要错误及实际正文超限。资源版本、URL 和锁定摘要均未改；README、产品声明和公开接口不受影响。修复尚需 GitHub 完整自动化验证。
 
-
 LinuxARM 保留摘要固定的 Debian 11、2026-09-01 签名 APT 快照和 GLIBC 2.31 门禁；锁定 ZXing-C++ 3.1.1 的 core 源码按上游 CMake 要求使用 C++20。该快照显式安装同版 Clang、LLVM、libclang 16，先检查 coroutine 与 `using enum`，再通过产品原有 `CXX` 环境入口交给同一本仓原生构建；不修改上游源码、ZXing 锁、运行库基线或 `-Werror`。Android 正式 AAR 与其原生 Release JVM 单测共用本轮 checkout `target` 内仅含 Core 的 staging；根 Flutter 绑定 Release 单测另用本轮 `target` 内独占双库 staging，从已验真的正式输出复制 Core/JNI 后再以同一 AAR 逐字节核对。两模块测试分开运行，原 Gradle 路径门禁和逐模块非空、零失败、零跳过的 JUnit XML 验收保持；首次 AAR 构建不增加测试组件。
 
 ## 本地钱包目录与安全故障诊断
@@ -4361,3 +4308,4 @@ readDiagnostics是第94项Flutter通道方法，零输入、只读，返回最�
 GitHub完整Rust回归显式使用--include-ignored，纳入既有四项受时间上限约束的实网只读验收；无钱包账户输入、不发送有效交易。真实网络不可用按原测试失败，不以忽略或零执行通过；其结果不等同于手机现场复现。
 
 提交 `9fc030c65396fd5e403d216be55ed43f8772c4aa` 通过塔塔鹿鹿后，控制台启动 SDK 自动化时在导入本产品 `scripts/build.mjs` 阶段返回 `inlineTestEntry is not defined`，尚未派发 GitHub Run，故编译和 Release 均未开始。原因是测试入口常量原来定义在资源实现的内部作用域，新增的模块末尾回归在外层直接引用。修复把同一测试入口判定置于模块顶层并删除内部重复声明；GitHub prepare 中另以普通子进程导入本模块，核对无导入异常及测试输出。普通控制台导入仍不执行 SDK 测试，测试和编译继续只由 GitHub 自动化完成。
+

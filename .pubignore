@@ -56,9 +56,7 @@
 !/linux/source/citizen_sdk_flutter_environment.hpp
 
 # CitizenSDK 在 Android/Apple/Linux/Windows 统一经固定 Flutter tuple 调用产品 C ABI。
-# 仅保留SDK 自有 smoldot Dart 差分封装作审计输入，不能成为 Hosted 运行闭包。
 # account_codec.dart 只负责公开 AccountId/SS58 投影，不处理秘密。
-/lib/smoldot/
 
 # Android Flutter compiles the one shared Kotlin facade directly. Native/AAR
 # build descriptions, C++ sources, tests and generated packages remain audit
@@ -90,6 +88,3 @@
 /lib/**/README.md
 /android/src/main/**/README.md
 /android/native/src/main/**/README.md
-
-# 自有兼容节点头不属于 Flutter 产品运行接口。
-/include/smoldot.h

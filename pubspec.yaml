@@ -13,14 +13,11 @@ dependencies:
   polkadart_keyring: 0.7.1
 
 dev_dependencies:
-  # 正式 Binding/资产测试和受保护 smoldot 来源测试；无第二套 Dart 钱包或交易。
+  # 正式 Binding 与链资产回归；旧 Dart 轻节点差分链不再参与 SDK 构建。
   crypto: 3.0.7
-  ffi: 2.2.0
   flutter_lints: 6.0.0
   flutter_test:
     sdk: flutter
-  meta: 1.19.0
-  path: ^1.9.1
 
 flutter:
   plugin:

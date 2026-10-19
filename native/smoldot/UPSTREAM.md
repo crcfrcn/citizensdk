@@ -8,10 +8,9 @@
 
 `native/provider` 是 CitizenSDK 自有适配层，不属于上游 smoldot 快照。它只能依赖
 上述收编源码并实现 `VerifiedChainClient`，不能把上游 JSON-RPC 任意透传成产品公共 API。
-`native/legacy` 是 SDK 自有兼容 FFI，公共兼容头唯一存放在 `include/smoldot.h`。
 原 pow 内八个 SDK 自有边界测试已经迁入 `native/provider/tests`，唯一编译映射记录实际
 编译位置；编译视图恢复原 Cargo 测试目标，不改上游源码、manifest 或锁文件。
-自有 crate 的源码存放在 source/，编译视图恢复 src/；Dart 适配和回归也属于 SDK 自有代码。
+自有 crate 的源码存放在 source/，编译视图恢复 src/；正式 Flutter 绑定经产品 C ABI 调用。
 
 本目录不保存 `.git`、构建产物或临时 patch，CI/Release 也不联网拉取上游源码。GMB
 `citizensdk` 是发布时的唯一源码输入。
