@@ -1320,6 +1320,8 @@ Windows 与其它目标一样在本轮缓存恢复后执行官方 `flutter preca
 再进入原生编译；缺件在准备阶段直接失败，最终仍由 SDK 严格验真全部缓存内容。
 Windows Flutter 源码投影和最终 bundle 验真传给原生 Node 的三个路径统一使用
 `cygpath -w` 的反斜线规范驱动器路径；Git Bash、CMake 等其余入口保持各自既定格式。
+Windows 安装包的 CMake 版本文件、依赖文件、Config、Targets、Release Targets 仍逐项严格验真；
+一轮内列出所有漂移项的固定类别，不输出生成文件内容或路径。
 自有 C++17 目标开启异常错误映射，不改变宿主的全局 Flutter 编译配置。钱包创建、导入、
 备份确认仍由既有原生安全 UI 实现，秘密、句柄和文件路径不进入 Flutter tuple。
 官方 decoder 之前执行无分配的有界标准 wire 预检，防止截断零填充、尾随、巨长声明和

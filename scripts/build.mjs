@@ -4118,14 +4118,25 @@ function assertWindowsInstalledPlatform(sourceRoot, prefix) {
     .replaceAll('@PACKAGE_CMAKE_INSTALL_BINDIR@', '${PACKAGE_PREFIX_DIR}/bin')
     .replaceAll('@PACKAGE_CMAKE_INSTALL_DATADIR@', '${PACKAGE_PREFIX_DIR}/share')
     .replaceAll('@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@', '${PACKAGE_PREFIX_DIR}/include');
+  // 保留五项严格验真，同轮只输出固定失败类别，不记录生成内容或路径。
+  const cmakeFailures = [];
   if (configs['CitizenSDKConfigVersion.cmake'] !== template('CitizenSDKConfigVersion.cmake.in')
-    .replaceAll('@PROJECT_VERSION@', version).replaceAll('@PROJECT_VERSION_MAJOR@', version.split('.')[0])
-      || configs['CitizenSDKDependencies.cmake'] !== template('CitizenSDKDependencies.cmake')
-      || cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)
-      || !linuxCmakeTargetVariants().has(cmakeInstructions(configs['CitizenSDKTargets.cmake']))
-      || cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
-    fail('CitizenSDK Windows CMake 版本、依赖、路径或导入目标合同漂移');
+    .replaceAll('@PROJECT_VERSION@', version).replaceAll('@PROJECT_VERSION_MAJOR@', version.split('.')[0])) {
+    cmakeFailures.push('版本文件');
   }
+  if (configs['CitizenSDKDependencies.cmake'] !== template('CitizenSDKDependencies.cmake')) {
+    cmakeFailures.push('依赖文件');
+  }
+  if (cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)) {
+    cmakeFailures.push('Config');
+  }
+  if (!linuxCmakeTargetVariants().has(cmakeInstructions(configs['CitizenSDKTargets.cmake']))) {
+    cmakeFailures.push('Targets');
+  }
+  if (cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
+    cmakeFailures.push('ReleaseTargets');
+  }
+  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}`);
   const coreSymbols = expectedCitizenSdkLinkedSymbols(sourceRoot);
   const hostSymbols = [...new Set([...readFileSync(join(sourceRoot, 'windows/headers/citizensdk_host.h'), 'utf8')
     .matchAll(/\b(citizensdk_host_[a-z0-9_]+)\s*\(/g)].map((match) => match[1]))].sort();
@@ -11115,14 +11126,25 @@ function assertWindowsInstalledPlatform(sourceRoot, prefix) {
     .replaceAll('@PACKAGE_CMAKE_INSTALL_BINDIR@', '${PACKAGE_PREFIX_DIR}/bin')
     .replaceAll('@PACKAGE_CMAKE_INSTALL_DATADIR@', '${PACKAGE_PREFIX_DIR}/share')
     .replaceAll('@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@', '${PACKAGE_PREFIX_DIR}/include');
+  // 保留五项严格验真，同轮只输出固定失败类别，不记录生成内容或路径。
+  const cmakeFailures = [];
   if (configs['CitizenSDKConfigVersion.cmake'] !== template('CitizenSDKConfigVersion.cmake.in')
-    .replaceAll('@PROJECT_VERSION@', version).replaceAll('@PROJECT_VERSION_MAJOR@', version.split('.')[0])
-      || configs['CitizenSDKDependencies.cmake'] !== template('CitizenSDKDependencies.cmake')
-      || cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)
-      || !linuxCmakeTargetVariants().has(cmakeInstructions(configs['CitizenSDKTargets.cmake']))
-      || cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
-    fail('CitizenSDK Windows CMake 版本、依赖、路径或导入目标合同漂移');
+    .replaceAll('@PROJECT_VERSION@', version).replaceAll('@PROJECT_VERSION_MAJOR@', version.split('.')[0])) {
+    cmakeFailures.push('版本文件');
   }
+  if (configs['CitizenSDKDependencies.cmake'] !== template('CitizenSDKDependencies.cmake')) {
+    cmakeFailures.push('依赖文件');
+  }
+  if (cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)) {
+    cmakeFailures.push('Config');
+  }
+  if (!linuxCmakeTargetVariants().has(cmakeInstructions(configs['CitizenSDKTargets.cmake']))) {
+    cmakeFailures.push('Targets');
+  }
+  if (cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
+    cmakeFailures.push('ReleaseTargets');
+  }
+  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}`);
   const coreSymbols = expectedCitizenSdkLinkedSymbols(sourceRoot);
   const hostSymbols = [...new Set([...readFileSync(join(sourceRoot, 'windows/headers/citizensdk_host.h'), 'utf8')
     .matchAll(/\b(citizensdk_host_[a-z0-9_]+)\s*\(/g)].map((match) => match[1]))].sort();
@@ -11779,6 +11801,20 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    '最终bundle验真必须使用同一Windows规范路径');
   assert.ok(!consumer.includes('node --input-type=module - "$(cygpath -m'),
    '严格Node入口禁止正斜线驱动器别名');
+ });
+ test('Windows CMake安装合同同轮报告全部固定失败类别',()=>{
+  const script=readFileSync(join(root,'scripts/build.mjs'),'utf8');
+  const marker=['function assertWindowsInstalledPlatform','(sourceRoot, prefix) {'].join('');
+  const starts=[];let at=0;
+  while((at=script.indexOf(marker,at))>=0){starts.push(at);at+=marker.length;}
+  assert.equal(starts.length,2,'正式打包与产品入口必须各保留一份相同验真');
+  const blocks=starts.map(start=>script.slice(start,script.indexOf('  const coreSymbols =',start)));
+  assert.equal(blocks[0],blocks[1],'正式打包与产品入口的Windows CMake检查不得分叉');
+  for(const category of ['版本文件','依赖文件','Config','Targets','ReleaseTargets'])
+   assert.ok(blocks[0].includes(`cmakeFailures.push('${category}')`),'缺少固定失败类别：'+category);
+  assert.ok(blocks[0].includes("cmakeFailures.join(',')"),'同轮必须列出所有漂移类别');
+  assert.ok(!blocks[0].includes('版本、依赖、路径或导入目标合同漂移'),
+   '不得退回无法定位原因的复合失败');
  });
  test('Windows Flutter仅接纳并排除锁定来源的两处上游链接',async()=>{
   const {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,unlinkSync,rmSync,lstatSync}=await import('node:fs');
