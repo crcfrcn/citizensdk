@@ -3587,14 +3587,15 @@ function cmakeInstructions(source) {
   return lines.join('\n');
 }
 
-function linuxCmakeTargetVariants() {
+function linuxCmakeTargetVariants(windowsPolicy42 = false) {
   const current = cmakeInstructions(LINUX_CMAKE_TARGETS);
   const variants = new Set();
   // CMake's official 3.x/4.x exporters change policy ceilings, old-consumer
   // guards and the XCFramework existence guard. Admit those complete, safe
   // structures only; never delete arbitrary instructions from candidate input.
   // References: Kitware/CMake cmExport{File,CMakeConfig}Generator.cxx (3.24/3.31).
-  for (const ceiling of ['3.22', '3.23', '3.26', '3.29', '4.0']) {
+  // 4.2 只由已观测的Windows导出显式启用，Linux默认候选不扩展。
+  for (const ceiling of ['3.22', '3.23', '3.26', '3.29', '4.0', ...(windowsPolicy42 ? ['4.2'] : [])]) {
     for (const legacy of [false, true]) {
       let expected = current.replace('2.8.12...4.0', `2.8.12...${ceiling}`);
       if (legacy) {
@@ -4130,36 +4131,13 @@ function assertWindowsInstalledPlatform(sourceRoot, prefix) {
   if (cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)) {
     cmakeFailures.push('Config');
   }
-  let targetDrift = '';
   const installedTargets = cmakeInstructions(configs['CitizenSDKTargets.cmake']);
-  const targetVariants = linuxCmakeTargetVariants();
-  if (!targetVariants.has(installedTargets)) {
-    cmakeFailures.push('Targets');
-    const actual = installedTargets.split('\n');
-    let closest = [], prefix = -1;
-    for (const variant of targetVariants) {
-      const expected = variant.split('\n');
-      let common = 0;
-      while (common < actual.length && common < expected.length && actual[common] === expected[common]) common += 1;
-      if (common > prefix) { prefix = common; closest = expected; }
-    }
-    const safeKind = (line) => {
-      if (line === undefined) return 'end';
-      const policy = /^cmake_policy\(VERSION [0-9.]+\.\.\.([0-9.]+)\)$/u.exec(line);
-      if (policy) return 'policy-' + policy[1];
-      const minimum = /^if\(CMAKE_VERSION VERSION_LESS "?([0-9.]+)"?\)$/u.exec(line);
-      if (minimum) return 'minimum-' + minimum[1];
-      const property = /^INTERFACE_(COMPILE_FEATURES|INCLUDE_DIRECTORIES|LINK_LIBRARIES) /u.exec(line);
-      if (property) return 'property-' + property[1] + (line.includes('CitizenSDK::Core') ? (line.includes(';') ? '-core-plus' : '-core') : '-other');
-      const command = /^([a-z_]+)\(/iu.exec(line)?.[1]?.toLowerCase();
-      return new Set(['if','endif','set','unset','foreach','endforeach','add_library','set_target_properties','get_filename_component','cmake_policy','message','list','file','return']).has(command) ? command : 'other';
-    };
-    targetDrift = `；Targets首差=${prefix + 1},实际=${safeKind(actual[prefix])},参照=${safeKind(closest[prefix])},行数=${actual.length}/${closest.length}`;
-  }
+  // Runner 已证实 Windows 导出 policy 4.2；仅增加此平台的完整结构候选。
+  if (!linuxCmakeTargetVariants(true).has(installedTargets)) cmakeFailures.push('Targets');
   if (cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
     cmakeFailures.push('ReleaseTargets');
   }
-  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}${targetDrift}`);
+  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}`);
   const coreSymbols = expectedCitizenSdkLinkedSymbols(sourceRoot);
   const hostSymbols = [...new Set([...readFileSync(join(sourceRoot, 'windows/headers/citizensdk_host.h'), 'utf8')
     .matchAll(/\b(citizensdk_host_[a-z0-9_]+)\s*\(/g)].map((match) => match[1]))].sort();
@@ -10691,14 +10669,15 @@ function cmakeInstructions(source) {
   return lines.join('\n');
 }
 
-function linuxCmakeTargetVariants() {
+function linuxCmakeTargetVariants(windowsPolicy42 = false) {
   const current = cmakeInstructions(LINUX_CMAKE_TARGETS);
   const variants = new Set();
   // CMake's official 3.x/4.x exporters change policy ceilings, old-consumer
   // guards and the XCFramework existence guard. Admit those complete, safe
   // structures only; never delete arbitrary instructions from candidate input.
   // References: Kitware/CMake cmExport{File,CMakeConfig}Generator.cxx (3.24/3.31).
-  for (const ceiling of ['3.22', '3.23', '3.26', '3.29', '4.0']) {
+  // 4.2 只由已观测的Windows导出显式启用，Linux默认候选不扩展。
+  for (const ceiling of ['3.22', '3.23', '3.26', '3.29', '4.0', ...(windowsPolicy42 ? ['4.2'] : [])]) {
     for (const legacy of [false, true]) {
       let expected = current.replace('2.8.12...4.0', `2.8.12...${ceiling}`);
       if (legacy) {
@@ -11161,36 +11140,13 @@ function assertWindowsInstalledPlatform(sourceRoot, prefix) {
   if (cmakeInstructions(configs['CitizenSDKConfig.cmake']) !== cmakeInstructions(`${LINUX_CMAKE_PACKAGE_INIT}\n${body}`)) {
     cmakeFailures.push('Config');
   }
-  let targetDrift = '';
   const installedTargets = cmakeInstructions(configs['CitizenSDKTargets.cmake']);
-  const targetVariants = linuxCmakeTargetVariants();
-  if (!targetVariants.has(installedTargets)) {
-    cmakeFailures.push('Targets');
-    const actual = installedTargets.split('\n');
-    let closest = [], prefix = -1;
-    for (const variant of targetVariants) {
-      const expected = variant.split('\n');
-      let common = 0;
-      while (common < actual.length && common < expected.length && actual[common] === expected[common]) common += 1;
-      if (common > prefix) { prefix = common; closest = expected; }
-    }
-    const safeKind = (line) => {
-      if (line === undefined) return 'end';
-      const policy = /^cmake_policy\(VERSION [0-9.]+\.\.\.([0-9.]+)\)$/u.exec(line);
-      if (policy) return 'policy-' + policy[1];
-      const minimum = /^if\(CMAKE_VERSION VERSION_LESS "?([0-9.]+)"?\)$/u.exec(line);
-      if (minimum) return 'minimum-' + minimum[1];
-      const property = /^INTERFACE_(COMPILE_FEATURES|INCLUDE_DIRECTORIES|LINK_LIBRARIES) /u.exec(line);
-      if (property) return 'property-' + property[1] + (line.includes('CitizenSDK::Core') ? (line.includes(';') ? '-core-plus' : '-core') : '-other');
-      const command = /^([a-z_]+)\(/iu.exec(line)?.[1]?.toLowerCase();
-      return new Set(['if','endif','set','unset','foreach','endforeach','add_library','set_target_properties','get_filename_component','cmake_policy','message','list','file','return']).has(command) ? command : 'other';
-    };
-    targetDrift = `；Targets首差=${prefix + 1},实际=${safeKind(actual[prefix])},参照=${safeKind(closest[prefix])},行数=${actual.length}/${closest.length}`;
-  }
+  // Runner 已证实 Windows 导出 policy 4.2；仅增加此平台的完整结构候选。
+  if (!linuxCmakeTargetVariants(true).has(installedTargets)) cmakeFailures.push('Targets');
   if (cmakeInstructions(configs['CitizenSDKTargets-release.cmake']) !== cmakeInstructions(WINDOWS_CMAKE_RELEASE)) {
     cmakeFailures.push('ReleaseTargets');
   }
-  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}${targetDrift}`);
+  if (cmakeFailures.length) fail(`CitizenSDK Windows CMake 合同漂移：${cmakeFailures.join(',')}`);
   const coreSymbols = expectedCitizenSdkLinkedSymbols(sourceRoot);
   const hostSymbols = [...new Set([...readFileSync(join(sourceRoot, 'windows/headers/citizensdk_host.h'), 'utf8')
     .matchAll(/\b(citizensdk_host_[a-z0-9_]+)\s*\(/g)].map((match) => match[1]))].sort();
@@ -11859,14 +11815,13 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   for(const category of ['版本文件','依赖文件','Config','Targets','ReleaseTargets'])
    assert.ok(blocks[0].includes(`cmakeFailures.push('${category}')`),'缺少固定失败类别：'+category);
   assert.ok(blocks[0].includes("cmakeFailures.join(',')"),'同轮必须列出所有漂移类别');
-  assert.ok(blocks[0].includes('targetVariants.has(installedTargets)'),
-   'Targets仍须精确命中已登记的完整生成结构');
-  assert.ok(blocks[0].includes('Targets首差=${prefix + 1}')
-   &&blocks[0].includes('实际=${safeKind(actual[prefix])}')
-   &&blocks[0].includes('参照=${safeKind(closest[prefix])}'),
-   'Targets只报告安全的差异位置和指令类别');
-  assert.ok(blocks[0].includes('policy-')&&blocks[0].includes('property-'),
-   '策略版本和公开目标属性必须有固定诊断类别');
+  assert.ok(blocks[0].includes('linuxCmakeTargetVariants(true).has(installedTargets)'),
+   'Windows Targets必须精确命中其完整生成结构候选');
+  assert.ok(!blocks[0].includes('Targets首差=')&&!blocks[0].includes('targetDrift'),
+   '临时结构差异诊断不得留在正式验真');
+  const policy42=cmakeInstructions(LINUX_CMAKE_TARGETS).replace('2.8.12...4.0','2.8.12...4.2');
+  assert.ok(linuxCmakeTargetVariants(true).has(policy42),'Windows必须接纳完整的CMake policy 4.2结构');
+  assert.ok(!linuxCmakeTargetVariants().has(policy42),'Linux不得扩展到Windows生成器policy 4.2');
   assert.ok(!blocks[0].includes('版本、依赖、路径或导入目标合同漂移'),
    '不得退回无法定位原因的复合失败');
  });
