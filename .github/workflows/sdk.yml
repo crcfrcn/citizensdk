@@ -194,6 +194,15 @@ jobs:
           key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-
+      - name: 准备Windows固定引擎原件
+        if: matrix.platform == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$FLUTTER_ROOT/bin/flutter" precache --windows
+          for name in flutter_sdk windows-sdk font-subset material_fonts gradle_wrapper; do
+            test -s "$FLUTTER_ROOT/bin/cache/$name.stamp"
+          done
       - name: 准备Android固定引擎原件
         if: matrix.platform == 'Android'
         shell: bash

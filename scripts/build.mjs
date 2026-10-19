@@ -6840,15 +6840,15 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   };
   const linuxRoot=step('固定 Linux GLIBC 2.31 构建根');
   const flutter=step('安装本仓固定 Flutter'),cache=step('恢复本平台编译与依赖缓存'),cargoCache=step('恢复本平台Cargo编译缓存');
-   const android=step('准备Android固定引擎原件'),apple=step('准备Apple固定引擎原件');
+   const windows=step('准备Windows固定引擎原件'),android=step('准备Android固定引擎原件'),apple=step('准备Apple固定引擎原件');
    const prepare=step('准备本仓锁定原件');
   const compile=step('编译本平台原生件');
   const rustStart=workflow.indexOf('      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5\n');
   assert.notEqual(rustStart,-1,'工作流缺少固定 Rust 工具链');
   const rustEnd=workflow.indexOf('\n      - ',rustStart+1);
   const rust=workflow.slice(rustStart,rustEnd<0?workflow.length:rustEnd);
-  assert.ok(flutter.start<cache.start&&cache.start<cargoCache.start&&cargoCache.start<android.start&&android.start<apple.start&&apple.start<prepare.start&&prepare.start<compile.start,
-    'Flutter checkout、依赖/Cargo缓存、Android/Apple precache、锁原件准备与原生构建顺序漂移');
+  assert.ok(flutter.start<cache.start&&cache.start<cargoCache.start&&cargoCache.start<windows.start&&windows.start<android.start&&android.start<apple.start&&apple.start<prepare.start&&prepare.start<compile.start,
+    'Flutter checkout、依赖/Cargo缓存、各平台precache、锁原件准备与原生构建顺序漂移');
   assert.match(flutter.text,/if \[\[ "\$SDK_PLATFORM" == Windows \]\]; then/u);
   assert.match(flutter.text,/shared\.bat/u);
   assert.match(flutter.text,/\$git rev-parse HEAD/u);
@@ -6861,6 +6861,10 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   assert.doesNotMatch(rust,/^\s+toolchain:/mu,'固定 Action 已在其 SHA 中锁定 Rust 版本，不能传入不支持的 toolchain 参数');
   assert.match(apple.text,/if: matrix\.platform == 'macOS'/u);
   assert.match(apple.text,/"\$FLUTTER_ROOT\/bin\/flutter" precache --ios --macos/u);
+  assert.match(windows.text,/if: matrix\.platform == 'Windows'/u);
+  assert.match(windows.text,/"\$FLUTTER_ROOT\/bin\/flutter" precache --windows/u);
+  assert.match(windows.text,/for name in flutter_sdk windows-sdk font-subset material_fonts gradle_wrapper; do/u);
+  assert.match(windows.text,/test -s "\$FLUTTER_ROOT\/bin\/cache\/\$name\.stamp"/u);
    assert.match(android.text,/if: matrix\.platform == 'Android'/u);
    assert.match(android.text,/"\$FLUTTER_ROOT\/bin\/flutter" precache --android/u);
   assert.match(cache.text,/citizensdk-flutter\/bin\/cache\/artifacts\/engine/u);

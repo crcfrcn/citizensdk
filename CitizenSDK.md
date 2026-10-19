@@ -1315,6 +1315,9 @@ Runner 临时副本中，将上游 `shared.bat` 误写的字面量 `$git` 精确
 批处理将带引号的 `"frameworkRevision:"` 写入 `flutter_tools.stamp`，SDK 只接受这一种格式，
 继续逐项核对框架修订、引擎戳与源码引擎版本。失败仅报告固定的字段类别，
 不输出版本值或绝对路径。
+Windows 与其它目标一样在本轮缓存恢复后执行官方 `flutter precache --windows`，
+先取得通用 Flutter SDK、Windows 引擎、字体和 Gradle 包装器的戳与原件，
+再进入原生编译；缺件在准备阶段直接失败，最终仍由 SDK 严格验真全部缓存内容。
 自有 C++17 目标开启异常错误映射，不改变宿主的全局 Flutter 编译配置。钱包创建、导入、
 备份确认仍由既有原生安全 UI 实现，秘密、句柄和文件路径不进入 Flutter tuple。
 官方 decoder 之前执行无分配的有界标准 wire 预检，防止截断零填充、尾随、巨长声明和
