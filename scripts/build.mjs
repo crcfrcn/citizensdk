@@ -11819,9 +11819,17 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
    'Windows Targets必须精确命中其完整生成结构候选');
   assert.ok(!blocks[0].includes('Targets首差=')&&!blocks[0].includes('targetDrift'),
    '临时结构差异诊断不得留在正式验真');
-  const policy42=cmakeInstructions(LINUX_CMAKE_TARGETS).replace('2.8.12...4.0','2.8.12...4.2');
-  assert.ok(linuxCmakeTargetVariants(true).has(policy42),'Windows必须接纳完整的CMake policy 4.2结构');
-  assert.ok(!linuxCmakeTargetVariants().has(policy42),'Linux不得扩展到Windows生成器policy 4.2');
+  const variantMarker=['function linuxCmakeTargetVariants','(windowsPolicy42 = false) {'].join('');
+  const variantStarts=[];at=0;
+  while((at=script.indexOf(variantMarker,at))>=0){variantStarts.push(at);at+=variantMarker.length;}
+  assert.equal(variantStarts.length,2,'正式打包与产品入口必须各自登记相同的生成结构');
+  const variants=variantStarts.map(start=>script.slice(start,script.indexOf('\n}\n',start)+2));
+  assert.equal(variants[0],variants[1],'两份CMake生成结构候选不得分叉');
+  assert.ok(variants[0].includes("...(windowsPolicy42 ? ['4.2'] : [])"),
+   'policy 4.2只能由Windows显式启用');
+  const linuxGate=['if (!linuxCmakeTargetVariants()', '.has(cmakeInstructions(targets))'].join('');
+  assert.equal(script.split(linuxGate).length-1,1,
+   'Linux必须沿用不含Windows policy 4.2的默认候选');
   assert.ok(!blocks[0].includes('版本、依赖、路径或导入目标合同漂移'),
    '不得退回无法定位原因的复合失败');
  });
