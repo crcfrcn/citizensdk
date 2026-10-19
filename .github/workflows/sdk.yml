@@ -147,40 +147,29 @@ jobs:
           set -euo pipefail
           git clone --filter=blob:none https://github.com/flutter/flutter.git "$RUNNER_TEMP/citizensdk-flutter"
           git -C "$RUNNER_TEMP/citizensdk-flutter" checkout --detach d3b14c876900e553bc736ca19295fc09e3853e8e
+          if [[ "$SDK_PLATFORM" == Windows ]]; then
+            # 固定提交的 Windows 包装脚本会转入 shared.bat；只在本轮副本修正上游的字面量 $git。
+            CITIZENSDK_FLUTTER_ROOT="$RUNNER_TEMP/citizensdk-flutter" node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const {execFileSync} = require('node:child_process');
+          const root = process.env.CITIZENSDK_FLUTTER_ROOT;
+          const head = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+          if (head !== 'd3b14c876900e553bc736ca19295fc09e3853e8e') throw Error('Windows Flutter fixed source mismatch');
+          const file = path.join(root, 'bin/internal/shared.bat');
+          const stat = fs.lstatSync(file);
+          if (!stat.isFile() || stat.isSymbolicLink()) throw Error('Windows Flutter batch entry is not a regular file');
+          const source = fs.readFileSync(file, 'utf8');
+          const before = "FOR /f %%r IN ('PUSHD %FLUTTER_ROOT% ^& $git rev-parse HEAD') DO (";
+          const after = "FOR /f %%r IN ('PUSHD %FLUTTER_ROOT% ^& git rev-parse HEAD') DO (";
+          if (source.split(before).length !== 2) throw Error('Windows Flutter batch Git revision entry mismatch');
+          fs.writeFileSync(file, source.replace(before, after));
+          NODE
+          fi
           echo "FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
           echo "CITIZENSDK_FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/citizensdk-flutter/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/citizensdk-flutter/bin/flutter" --version
-          if [[ "$SDK_PLATFORM" == Windows ]]; then
-            # 一次性诊断只输出固定类别；在原生编译前停止，不泄露戳内容。
-            CITIZENSDK_STAMP_ROOT="$RUNNER_TEMP/citizensdk-flutter" node - <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const {execFileSync} = require('node:child_process');
-          try {
-            const root = process.env.CITIZENSDK_STAMP_ROOT;
-            const version = JSON.parse(fs.readFileSync(path.join(root, 'bin/cache/flutter.version.json'), 'utf8'));
-            const framework = version.frameworkRevision;
-            const head = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
-            const raw = fs.readFileSync(path.join(root, 'bin/cache/flutter_tools.stamp'));
-            const stamp = raw.toString('utf8').trim();
-            const category = revision => {
-              if (stamp === revision + ':') return 'bash-exact';
-              if (stamp === '"' + revision + ':"') return 'batch-exact';
-              if (stamp.startsWith(revision + ':')) return 'bash-extra';
-              if (stamp.startsWith('"' + revision + ':') && stamp.endsWith('"')) return 'batch-extra';
-              return null;
-            };
-            const match = category(framework) || category(head) || 'other';
-            const shape = stamp.startsWith('"') && stamp.endsWith('"') ? 'quoted' : 'plain';
-            const ending = raw.length && raw[raw.length-1] === 10 ? 'lf' : 'other';
-            console.error(`Windows Flutter stamp category=${match} shape=${shape} ending=${ending} frameworkHead=${framework===head?'equal':'different'}`);
-          } catch {
-            console.error('Windows Flutter stamp category=unreadable');
-          }
-          process.exit(1);
-          NODE
-          fi
       - name: 恢复本平台编译与依赖缓存
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:

@@ -1310,9 +1310,11 @@ Flutter 消费者继续拒绝任何额外公开链接，Host 自有系统与静�
 Windows Flutter 固定源码仅接纳上游 `.claude/skills` 和 Web UI 测试夹具的两处既有链接，
 逐项核对相对路径、原始目标、根内真实目标与文件类型，并从本轮工具副本排除；其它
 Flutter 链接、Pub 缓存链接和特殊节点继续失败。临时路径诊断已删除。
-Windows 固定 Flutter 由工作流的 Bash 入口 `bin/flutter` 准备，其 `shared.sh` 将不带引号的
-`frameworkRevision:` 写入 `flutter_tools.stamp`；SDK 只接受这一种格式，继续逐项核对框架修订、引擎戳与源码引擎
-版本。失败仅报告固定的字段类别，不输出版本值或绝对路径。
+Windows 固定 Flutter 的 Bash 包装入口会转入 `flutter.bat`。工作流仅在锁定提交的
+Runner 临时副本中，将上游 `shared.bat` 误写的字面量 `$git` 精确修正为 `git`；
+批处理将带引号的 `"frameworkRevision:"` 写入 `flutter_tools.stamp`，SDK 只接受这一种格式，
+继续逐项核对框架修订、引擎戳与源码引擎版本。失败仅报告固定的字段类别，
+不输出版本值或绝对路径。
 自有 C++17 目标开启异常错误映射，不改变宿主的全局 Flutter 编译配置。钱包创建、导入、
 备份确认仍由既有原生安全 UI 实现，秘密、句柄和文件路径不进入 Flutter tuple。
 官方 decoder 之前执行无分配的有界标准 wire 预检，防止截断零填充、尾随、巨长声明和
