@@ -239,12 +239,12 @@ void validate_wallet_state(const Value &value) {
             CITIZENSDK_ERROR_INTEGRITY, "Diagnostic sign mode is invalid");
     if (!null_value(fields[6])) {
       const auto &targets = semantic_tuple(fields[6], 2);
-      const auto &accounts = bounded_list(targets[0], kMaximumWalletAccounts, 1);
+      const auto &cleanup_accounts = bounded_list(targets[0], kMaximumWalletAccounts, 1);
       (void)semantic_bool(targets[1]);
       std::optional<std::array<uint8_t, 32>> previous;
-      for (const auto &value : accounts) {
-        const auto id = account(value); std::array<uint8_t, 32> current{};
-        std::copy(std::begin(id.bytes), std::end(id.bytes), current.begin());
+      for (const auto &cleanup_value : cleanup_accounts) {
+        const auto cleanup_id = account(cleanup_value); std::array<uint8_t, 32> current{};
+        std::copy(std::begin(cleanup_id.bytes), std::end(cleanup_id.bytes), current.begin());
         require(!previous || *previous < current, CITIZENSDK_ERROR_INTEGRITY, "Cleanup accounts are not uniquely ordered");
         previous = current;
       }
@@ -1056,11 +1056,11 @@ DecodedRequest decode_request(const std::string &name,
       case Method::call_runtime_api: {
         (void)list(root, 6); result.block = request_block(fields[3]);
         result.runtime_api_method = string(fields[4], 1, 128);
-        const auto *arguments = std::get_if<Value::Bytes>(&fields[5].data);
+        const auto *runtime_arguments = std::get_if<Value::Bytes>(&fields[5].data);
         require(valid_runtime_api_method(result.runtime_api_method) &&
-                    arguments != nullptr && arguments->size() <= 1024 * 1024,
+                    runtime_arguments != nullptr && runtime_arguments->size() <= 1024 * 1024,
                 CITIZENSDK_ERROR_INVALID_ARGUMENT, "Runtime API request is invalid");
-        result.payload = *arguments; break;
+        result.payload = *runtime_arguments; break;
       }
       case Method::import_state: {
         (void)list(root, 6);
@@ -1916,15 +1916,19 @@ Value copy_transaction_execution(citizensdk_result_handle_t result) {
               !flag(value.has_replacement_hash),
           CITIZENSDK_ERROR_INTEGRITY,
           "Core finalized transaction execution is inconsistent");
+  // Core的宽字段必须先保留原值验界，再写入公开窄字段，禁止截断掩盖损坏。
+  require(value.dispatch_variant <= UINT8_MAX && value.pallet_index <= UINT8_MAX &&
+              value.error_index <= UINT8_MAX, CITIZENSDK_ERROR_INTEGRITY,
+          "Core execution failure fields exceed public byte bounds");
   auto verified = prepared<citizensdk_execution_info_t>();
   verified.status = value.status == CITIZENSDK_TRANSACTION_EXECUTION_FINALIZED_SUCCESS
       ? CITIZENSDK_EXECUTION_SUCCESS : CITIZENSDK_EXECUTION_FAILED;
-  verified.has_block = value.has_block;
-  verified.has_extrinsic_index = value.has_extrinsic_index;
-  verified.reason_or_dispatch_variant = value.dispatch_variant;
-  verified.has_module = value.has_module_failure;
-  verified.pallet_index = value.pallet_index;
-  verified.error_index = value.error_index;
+  verified.has_block = static_cast<uint8_t>(flag(value.has_block));
+  verified.has_extrinsic_index = static_cast<uint8_t>(flag(value.has_extrinsic_index));
+  verified.reason_or_dispatch_variant = static_cast<uint8_t>(value.dispatch_variant);
+  verified.has_module = static_cast<uint8_t>(flag(value.has_module_failure));
+  verified.pallet_index = static_cast<uint8_t>(value.pallet_index);
+  verified.error_index = static_cast<uint8_t>(value.error_index);
   verified.block = value.block;
   verified.extrinsic_index = value.extrinsic_index;
   require((verified.status == CITIZENSDK_EXECUTION_FAILED) ==
@@ -2401,9 +2405,9 @@ void validate_public_value(Method method, const Value &value) {
       case Method::get_account_balances: {
         const auto &balances = bounded_list(item, 1990, 0);
         std::optional<SemanticBlock> anchor;
-        for (const auto &value : balances) {
-          validate_public_value(Method::get_account_balance, tuple({value}));
-          const auto current = semantic_block(semantic_tuple(value, 5)[1]);
+        for (const auto &balance_value : balances) {
+          validate_public_value(Method::get_account_balance, tuple({balance_value}));
+          const auto current = semantic_block(semantic_tuple(balance_value, 5)[1]);
           require(!anchor || same_block(*anchor, current), CITIZENSDK_ERROR_INTEGRITY,
                   "Balances must reference the same finalized block");
           anchor = current;
@@ -2541,8 +2545,8 @@ void validate_public_value(Method method, const Value &value) {
         }
         const auto verified = semantic_execution(outcome[7]);
         require(null_value(outcome[8]) && null_value(outcome[9]) &&
-                    ((status == 2 && verified.status == "success") ||
-                     (status == 3 && verified.status == "failed")),
+                    ((status == 2 && verified.success) ||
+                     (status == 3 && !verified.success)),
                 CITIZENSDK_ERROR_INTEGRITY,
                 "Finalized transaction execution fields are invalid");
         return;
@@ -2583,8 +2587,6 @@ void validate_public_value(Method method, const Value &value) {
       case Method::qr_decode_image:
       case Method::delete_wallet:
       case Method::sign_and_delete_wallet:
-      case Method::respond_credential:
-      case Method::cancel_credential:
         fail(CITIZENSDK_ERROR_INVALID_STATE, "This method uses its dedicated lifecycle/capability encoder");
     }
   } catch (const ContractFailure &error) {

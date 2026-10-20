@@ -119,6 +119,93 @@ class HostTransport final : public NativeTransport, public std::enable_shared_fr
     host_->set_event_observer(std::move(observer));
   }
 
+  // 每个Windows会话只持有本实例资源；秘密仍由Core接收器与既有PrivateKeyResource所有。
+  void observe_resources(ResourceObserver observer) override {
+    std::lock_guard<std::mutex> guard(private_keys_->lock);
+    private_keys_->observer = std::move(observer);
+  }
+  void private_key(const DecodedRequest &request, PrivateKeyResource::Completion completion) override {
+    require_open();
+    const auto registry = private_keys_;
+    if (request.method == Method::open_private_key) {
+      const auto id = random_session_id();
+      const std::weak_ptr<PrivateKeys> owner = registry;
+      auto resource = std::make_shared<PrivateKeyResource>(host_->native_handle(), id,
+          std::move(completion), [owner, id](bool granted) {
+        if (const auto current = owner.lock()) {
+          ResourceObserver observer;
+          { std::lock_guard<std::mutex> guard(current->lock);
+            observer = current->observer;
+            if (!granted) current->values.erase(id);
+          }
+          if (granted && observer) observer("privateKeyClosed", Value::list({Value::string(id)}));
+        }
+      });
+      { std::lock_guard<std::mutex> guard(registry->lock);
+        if (!registry->values.emplace(id, resource).second)
+          throw Error(CITIZENSDK_ERROR_CONFLICT, "Private key identity collision");
+      }
+      citizensdk_request_id_t native_request = 0;
+      try {
+        const auto code = host_->submit_request(
+            [resource, account_id = request.account_id](citizensdk_handle_t core, citizensdk_request_id_t *out) {
+              const auto receiver = resource->receiver(); uint64_t secret = 0;
+              const auto status = citizensdk_private_key_open(core, &account_id, &receiver, &secret, out);
+              if (status == CITIZENSDK_OK) resource->bind(secret);
+              return status;
+            }, [resource](citizensdk_request_id_t, citizensdk_result_handle_t result) {
+              detail::EventResultScope owned(result);
+              citizensdk_error_code_t completion_code = CITIZENSDK_OK;
+              try { require_result(result, CITIZENSDK_RESULT_EMPTY); }
+              catch (const Error &error) { completion_code = error.code(); }
+              catch (...) { completion_code = CITIZENSDK_ERROR_INTERNAL; }
+              resource->terminal(completion_code);
+            }, [resource](citizensdk_handle_t) { resource->request_close(); }, &native_request);
+        if (code != CITIZENSDK_OK) resource->terminal(code);
+      } catch (...) { resource->terminal(CITIZENSDK_ERROR_INTERNAL); }
+      return;
+    }
+    std::shared_ptr<PrivateKeyResource> resource;
+    { std::lock_guard<std::mutex> guard(registry->lock);
+      const auto entry = registry->values.find(request.resource_id);
+      if (entry == registry->values.end())
+        throw Error(CITIZENSDK_ERROR_NOT_FOUND, "Private key is not owned by this session");
+      resource = entry->second;
+    }
+    if (request.method == Method::reveal_private_key) { resource->reveal(std::move(completion)); return; }
+    if (request.method != Method::close_private_key)
+      throw Error(CITIZENSDK_ERROR_UNSUPPORTED, "Unsupported private key control");
+    const std::weak_ptr<PrivateKeys> owner = registry;
+    resource->close([owner, resource, id = request.resource_id, completion = std::move(completion)](std::function<Value()> project) {
+      completion([owner, resource, id, project = std::move(project)] {
+        auto value = project();
+        if (!resource->is_closed()) throw Error(CITIZENSDK_ERROR_INTEGRITY, "Private key close is not terminal");
+        if (const auto current = owner.lock()) {
+          std::lock_guard<std::mutex> guard(current->lock);
+          const auto entry = current->values.find(id);
+          if (entry != current->values.end() && entry->second == resource) current->values.erase(entry);
+        }
+        return value;
+      });
+    });
+  }
+  void close_private_keys() override {
+    std::vector<std::shared_ptr<PrivateKeyResource>> pending;
+    { std::lock_guard<std::mutex> guard(private_keys_->lock);
+      for (const auto &entry : private_keys_->values) pending.push_back(entry.second);
+    }
+    std::exception_ptr failure;
+    for (const auto &resource : pending) {
+      try { resource->request_close(); } catch (...) { if (!failure) failure = std::current_exception(); }
+    }
+    if (failure) std::rethrow_exception(failure);
+  }
+  bool private_keys_closed() override {
+    std::lock_guard<std::mutex> guard(private_keys_->lock);
+    for (const auto &entry : private_keys_->values) if (!entry.second->is_closed()) return false;
+    return true;
+  }
+
   void capture(const DecodedRequest &r, PrivateKeyResource::Completion completion) override {
     if (r.method == Method::qr_decode_image) {
       if (image_jobs_ >= 4) throw Error(CITIZENSDK_ERROR_QUEUE_FULL, "图片解码任务已达上限");
@@ -2214,9 +2301,9 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         {
           std::lock_guard<std::mutex> guard(session->lock);
           if (sequence <= static_cast<uint64_t>(INT64_MAX)) {
-            const auto found = session->routes.find(static_cast<int64_t>(sequence));
-            if (found != session->routes.end() && !found->second->terminal_seen)
-              native = found->second->native_id;
+            const auto route_entry = session->routes.find(static_cast<int64_t>(sequence));
+            if (route_entry != session->routes.end() && !route_entry->second->terminal_seen)
+              native = route_entry->second->native_id;
           }
         }
         const bool accepted = native != 0 && session->transport->cancel(native);

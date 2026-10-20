@@ -238,6 +238,7 @@ void test_method_closure_and_requests() {
       Method::stop,
       Method::close,
       Method::get_capabilities,
+      Method::read_diagnostics,
       Method::get_finalized_head,
       Method::get_sync_status,
       Method::get_best_head,
@@ -839,6 +840,23 @@ Value execution_fixture(bool success = true) {
   return list({Value::string(success ? "success" : "failed"), block_fixture(),
       Value::integer(0), success ? Value::null() : Value::integer(0), Value::null(), Value::null()});
 }
+// 已有最终状态以同一成功布尔事实核对，拒绝外层状态与内层执行证明不一致。
+void test_finalized_execution_semantics() {
+  using citizen_sdk::flutter::validate_public_value;
+  for (bool success : {false, true}) {
+    const auto execution = execution_fixture(success);
+    auto outcome = list({Value::integer(success ? 2 : 3),
+        Value::string("0x00112233445566778899aabbccddeeff"), Value::string(account('1')),
+        Value::string(account('2')), Value::string(account('3')), Value::null(), Value::null(),
+        execution, Value::null(), Value::null()});
+    for (Method method : {Method::execute_prepared_transaction, Method::consume_prepared_transaction_qr_response}) {
+      validate_public_value(method, list({outcome}));
+      auto mismatched = outcome;
+      mutable_list(mismatched)[0] = Value::integer(success ? 3 : 2);
+      expect_failure([&] { validate_public_value(method, list({mismatched})); }, CITIZENSDK_ERROR_INTEGRITY);
+    }
+  }
+}
 Value profile_fixture() {
   // Public AccountId/SS58 golden pair from citizenchain-wallet-derivation-v1;
   // no mnemonic, child seed or password is copied into this fixture.
@@ -1047,6 +1065,7 @@ int main() {
   test_raw_wire_bounds();
   test_envelopes_and_decimal();
   test_windows_value_types_and_limits();
+  test_finalized_execution_semantics();
   test_profile_semantics();
   test_history_semantics();
   test_balance_nonce_fee_semantics();

@@ -4240,3 +4240,9 @@ LinuxARM在Debian11官方归档使用既有Clang/LLVM/libclang16.0.6-15~deb11u2�
 Dart平台选择回归依据真实Abi.current验证LinuxARM准入，不把macOS的TargetPlatform覆盖当作真实Linux机器；未支持Linux架构与Fuchsia必须在进入任何通道之前拒绝。固定方法测试包含既有第94项readDiagnostics的零输入和多余字段拒绝。
 
 Windows独立Host与消费者显式使用Ninja生成器及已交付的x64 MSVC环境，不向NMake传递Visual Studio专用-A选项；Flutter消费者仍使用未修改的官方Flutter/Visual Studio工具闭包。
+
+完整Rust回归串行执行，包含全部显式实网只读用例，避免多个实网观察同时争用链状态；断言、超时和失败结果不改。Unix工具返回后有界等待本轮独立进程组退出，Linux容器仅将官方ps确认的Z状态认定为已退出；活动或未知状态仍保留现场并失败。
+
+Windows Flutter绑定完整实现既有NativeTransport私钥资源接口：Core仍拥有私钥，PrivateKeyResource负责既有接收器、显式查看、真实关闭和敏感副本清空；资源仅归创建会话，未关闭不得报告排空。交易执行证明沿用SemanticExecution成功布尔事实核对，外内状态不一致必须拒绝。插件声明只投影到本轮CMake构建目录，源码不生成平行头文件；MSVC严格警告保持。
+
+Windows将Core宽字段投影为公开字节前先验原值边界，布尔标志先通过严格0/1解析；禁止通过强制转换掩盖损坏。

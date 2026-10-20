@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 只执行本仓真实测试、宿主编译和完整SDK目录装配；版本与GitHub交给工作流。
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync,readlinkSync} from 'node:fs';
 import {join,dirname,resolve,basename,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -28,7 +28,20 @@ async function run(command,args,{cwd=root,env={},capture=false}={}){
   child.once('close',async(code,signal)=>{controller.signal.removeEventListener('abort',stop);
    if(stopping&&!await stopping){clearTimeout(timer);const failure=Error('Windows进程树退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}
    if(controller.signal.aborted&&process.platform!=='win32'){await new Promise(resolve=>setTimeout(resolve,2100));try{process.kill(-child.pid,0);const failure=Error('子进程退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}catch(value){if(value.code!=='ESRCH')return fail(value);}}
-   clearTimeout(timer);if(process.platform!=='win32'&&child.pid){try{process.kill(-child.pid,0);const failure=Error('工具后代尚未退出，保留现场');failure.keepWork=true;return fail(failure);}catch(value){if(value.code!=='ESRCH')return fail(value);}}
+   clearTimeout(timer);
+   if(process.platform!=='win32'&&child.pid){
+    // Flutter启动器可能先于短命后代返回；只等待本轮独立进程组，禁止抢先删除现场。
+    for(let attempt=0;attempt<=50;attempt++){
+     try{process.kill(-child.pid,0);}catch(value){if(value.code==='ESRCH')break;return fail(value);}
+     if(process.platform==='linux'){
+      // 容器PID1可能未回收已经退出的僵尸；Z状态不能再运行或写入，不作为活动工具。
+      const result=spawnSync('ps',['--sid',String(child.pid),'-o','stat='],{env:environment,encoding:'utf8'});
+      if(!result.error&&[0,1].includes(result.status)&&result.stdout.trim().split(/\s+/u).every(state=>!state||state.startsWith('Z')))break;
+     }
+     if(attempt===50){const failure=Error('工具后代尚未退出，保留现场');failure.keepWork=true;return fail(failure);}
+     await new Promise(resolve=>setTimeout(resolve,100));
+    }
+   }
    error||code!==0||signal||controller.signal.aborted?fail(error||Error(basename(command)+'执行失败')):ok(output.trim());
   });
  });
@@ -183,7 +196,7 @@ export async function build({target,test=false,version=process.env.SDK_VERSION||
  try{
   if(cache.project)rmSync(cache.project,{recursive:true,force:true});
   const project=createNativeSourceView(root,cache.project||join(work,'project')),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
-  if(test){await run('cargo',['test','--workspace','--locked','--','--include-ignored'],{cwd:project,env});put(join(project,'analysis_options.yaml'),'include: package:flutter_lints/flutter.yaml\nanalyzer:\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n  errors:\n    invalid_use_of_visible_for_testing_member: error\n    missing_required_param: error\n    missing_return: error\nlinter:\n  rules:\n    avoid_dynamic_calls: false\n    directives_ordering: true\n    discarded_futures: true\n    prefer_final_locals: true\n    unawaited_futures: true\n');const flutter=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin',process.platform==='win32'?'flutter.bat':'flutter');await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});await run(flutter,['analyze','--fatal-infos'],{cwd:project,env});await run(flutter,['test','--reporter=expanded'],{cwd:project,env});return {tests:true};}
+  if(test){await run('cargo',['test','--workspace','--locked','--','--include-ignored','--test-threads=1'],{cwd:project,env});put(join(project,'analysis_options.yaml'),'include: package:flutter_lints/flutter.yaml\nanalyzer:\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n  errors:\n    invalid_use_of_visible_for_testing_member: error\n    missing_required_param: error\n    missing_return: error\nlinter:\n  rules:\n    avoid_dynamic_calls: false\n    directives_ordering: true\n    discarded_futures: true\n    prefer_final_locals: true\n    unawaited_futures: true\n');const flutter=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin',process.platform==='win32'?'flutter.bat':'flutter');await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});await run(flutter,['analyze','--fatal-infos'],{cwd:project,env});await run(flutter,['test','--reporter=expanded'],{cwd:project,env});return {tests:true};}
   if(native){const output=createFlutterSourceView(root,join(work,'output'));for(const name of ['android','darwin','linux','windows'])copy(join(native,name),join(output,name));setVersion(output,version);verifyComplete(output);}
   else{setVersion(project,version);if(target==='Android')await android(project,work,env,headers);else if(target==='Apple')await apple(project,work,env,headers,version);else await desktop(project,work,env,headers,target);}
   for(const name of readdirSync(work))if(name!=='output')rmSync(join(work,name),{recursive:true,force:true});complete=true;return {work,output:join(work,'output')};
