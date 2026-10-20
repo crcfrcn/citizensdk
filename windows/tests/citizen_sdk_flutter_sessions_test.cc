@@ -929,6 +929,8 @@ int main() {
   // Host graph exactly once; it never invents a successful native completion.
   auto orphan_native = std::make_shared<FakeTransport>();
   orphan_native->defer_history = true;
+  // 明确模拟取消尚未到达真实终态，原有双detach及所有权断言不变。
+  orphan_native->complete_on_cancel = false;
   auto orphan = csf::Sessions::create(
       [](uint32_t) { return csf::OpenEnvironment{}; },
       [&](std::function<void()> work) { queue.push_back(std::move(work)); },
@@ -943,6 +945,7 @@ int main() {
   orphan->detach();
   assert(!orphan_replied && orphan_native->cancelled == 1 &&
          orphan_native->retired == 0 && orphan->session_count() == 1);
+  orphan_native->complete_deferred();
   drain_tasks(queue);
   assert(!orphan_replied && orphan_native->retired == 1 &&
          orphan->session_count() == 0);

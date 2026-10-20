@@ -277,7 +277,8 @@ int main() {
     exactly(messenger.call(csf::kEventChannel, "listen", subscription), true);
     pump();
     assert(messenger.events.size() == after_cancel + 2);
-    exactly(messenger.call(csf::kMethodChannel, "unknown", subscription), false, "citizensdk.unsupported");
+    // 未知方法用合法外壳验证Unsupported；不能用订阅元组触发更早的参数错误。
+    exactly(messenger.call(csf::kMethodChannel, "unknown", request(session, 1)), false, "citizensdk.unsupported");
     exactly(messenger.call(csf::kMethodChannel, "open", csf::Value::null()), false,
             "citizensdk.invalidArgument");
     // 两个生产 channel 均在官方解码器分配/递归前检查原始标准 wire。
@@ -294,7 +295,7 @@ int main() {
 
     // 真正后台 observer 经生产 HWND 队列回到 UI；早完成与完成后 pending 清理共用该路径。
     native->defer_profile = true;
-    const auto profile = messenger.call(csf::kMethodChannel, "getWalletProfile", request(session, 1));
+    const auto profile = messenger.call(csf::kMethodChannel, "getWalletState", request(session, 2));
     assert(profile->wire_calls == 0 && csf::plugin_pending_reply_count(*plugin) == 1);
     std::thread worker([&] { native->complete_deferred(); });
     worker.join();
@@ -303,8 +304,8 @@ int main() {
     exactly(profile, true);
     assert(csf::plugin_pending_reply_count(*plugin) == 0);
     native->busy_closes = 1;
-    exactly(messenger.call(csf::kMethodChannel, "close", request(session, 2)), false, "citizensdk.busy");
-    exactly(messenger.call(csf::kMethodChannel, "close", request(session, 3)), true);
+    exactly(messenger.call(csf::kMethodChannel, "close", request(session, 3)), false, "citizensdk.busy");
+    exactly(messenger.call(csf::kMethodChannel, "close", request(session, 4)), true);
     assert(native->closed == 1);
     plugin.reset();
     pump();
@@ -352,7 +353,7 @@ int main() {
     native->defer_profile = true;
     auto plugin = attach(messenger, native);
     const auto session = session_of(*messenger.call(csf::kMethodChannel, "open", open_request));
-    const auto pending = messenger.call(csf::kMethodChannel, "getWalletProfile", request(session, 1));
+    const auto pending = messenger.call(csf::kMethodChannel, "getWalletState", request(session, 1));
     int replacement_calls = 0;
     messenger.SetMessageHandler(csf::kMethodChannel,
         [&](const uint8_t *, std::size_t, ::flutter::BinaryReply reply) {

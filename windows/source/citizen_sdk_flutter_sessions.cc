@@ -1505,6 +1505,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
   std::mutex epoch_lock;
   uint64_t epoch{};
   bool detached{};
+  bool detach_started{};
   std::shared_ptr<State> detached_owner;
   void retain_detached_state() {
     // detach 只撤销 Flutter 回调，不等于原生操作完成。自保活无需新增线程或
@@ -2449,6 +2450,9 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
   }
 
   void detach() noexcept {
+    // 同一收口只执行一次；订阅失效标记仍保留其原有安全语义。
+    if (detach_started) return;
+    detach_started = true;
     // This method is called synchronously by plugin dispose on its owner
     // thread, before messenger handles are retired. Host callbacks never wait
     // for this UI thread, so Host's callback barrier cannot deadlock it.

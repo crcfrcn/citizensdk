@@ -14,13 +14,19 @@ fn assert_verified_client<T: VerifiedChainClient>() {}
 
 // 实网诊断只记录固定阶段、既有错误枚举及分类布尔值，不回显原始错误或链业务数据。
 fn observe_error(error: &ContractError, operation: &'static str) {
+    // 只解析SDK扩展附加的固定数字字段，不回显整个错误字符串。
+    let count = |name: &str| error.message().split_whitespace()
+        .find_map(|field| field.strip_prefix(name).and_then(|value| value.parse::<usize>().ok()))
+        .unwrap_or(0);
     eprintln!(
-        "LIVE_FAILURE operation={operation} code={:?} stage={:?} storage_unavailable={} runtime_execution={} api_requirement={} rpc_rejected={}",
+        "LIVE_FAILURE operation={operation} code={:?} stage={:?} storage_unavailable={} runtime_execution={} api_requirement={} rpc_rejected={} proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={}",
         error.code(), error.stage(),
         error.message().contains("Error trying to access the storage"),
         error.message().contains("Error during the execution of the runtime:"),
         error.message().contains("ApiVersionRequirementUnfulfilled"),
         error.message().contains("RPC"),
+        count("proof_network="), count("proof_invalid="), count("proof_missing="),
+        count("storage_request="), count("child_storage_request="),
     );
 }
 

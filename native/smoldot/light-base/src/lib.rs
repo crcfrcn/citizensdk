@@ -2461,9 +2461,7 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
                     NonZero::<u32>::new(1).unwrap(),
                 )
                 .await
-                .map_err(|error| {
-                    format!("Failed to execute AccountNonceApi_account_nonce: {error}")
-                });
+                .map_err(nonce_runtime_error);
             call_span.finish(nonce_result.is_ok());
             drop(cleanup);
             let _ = cleanup_rx.await;
@@ -3260,6 +3258,25 @@ fn nonce_block_hash(
         || header::hash_from_scale_encoded_header(finalized_header),
         |block| header::hash_from_scale_encoded_header(&block.scale_encoded_header),
     )
+}
+
+// 本SDK的nonce扩展只提取闭集错误分类，不输出证明、节点、账户或上游错误载荷。
+fn nonce_runtime_error(error: runtime_service::RuntimeCallError) -> String {
+    use runtime_service::{RuntimeCallError, RuntimeCallInaccessibleError};
+    let mut counts = [0usize; 5];
+    if let RuntimeCallError::Inaccessible(errors) = &error {
+        for error in errors {
+            let index = match error {
+                RuntimeCallInaccessibleError::Network(_) => 0,
+                RuntimeCallInaccessibleError::InvalidCallProof(_) => 1,
+                RuntimeCallInaccessibleError::MissingProofEntry => 2,
+                RuntimeCallInaccessibleError::StorageRequest(_) => 3,
+                RuntimeCallInaccessibleError::ChildStorageRequest(_) => 4,
+            };
+            counts[index] += 1;
+        }
+    }
+    format!("Failed to execute AccountNonceApi_account_nonce: {error}; proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={}", counts[0], counts[1], counts[2], counts[3], counts[4])
 }
 
 /// AccountNonceApi v1在本链返回SCALE u32；拒绝截断、空值和多余字节。
