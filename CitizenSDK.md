@@ -4256,3 +4256,7 @@ Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两�
 本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
 
 Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前目标release/libcitizensdk.a、二维码CMake根目录libcitizensdk_qr_image.a及zxing/core/libZXing.a。不递归搜索Cargo内部缓存或把同名中间件当最终件，正式库缺失、为空或真实链接失败仍失败；不删除缓存解决路径选择错误。Windows Flutter测试的整数断言直接读取Value已有int64_t类型，测试夹具观察回调沿用原成员，严格告警及失败阶段断言不变。
+
+三个显式实网回归在原有Option短路前记录LIVE_FAILURE固定操作阶段、ContractErrorCode、FailureStage及存储不可访问/Runtime执行/API要求/RPC分类布尔值；不输出原始错误、账户、块标识或Runtime内容。原120/90秒期限、真实网络失败、准确空闲块、状态证明和Runtime拒绝断言保持，不增加自动重试或跳过。诊断仅定位故障，不把不可用当通过。
+
+Windows Flutter正常测试请求复用现行kProtocolVersion，open正常夹具明确提供凭据提供者布尔值；v1、缺字段及其它负例保持拒绝断言。合成Transport的空钱包/热钱包状态补齐生产合同的诊断列表字段，reconcileWalletCleanup按现行公开投影返回profile，不将格式错误伪装成成功。Codec、Session、Plugin在原断言前仅输出用例组、方法枚举、固定错误码及计数；Environment记录固定阶段并分类异常，不输出输入、路径、账户或原始错误。原生产协议、校验、超时和断言不变。

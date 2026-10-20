@@ -1,5 +1,5 @@
 use citizen_sdk_contracts::{
-    ChainIdentity, ContractErrorCode, ExportedChainState, FinalizedBlockRef, VerifiedChainClient,
+    ChainIdentity, ContractError, ContractErrorCode, ExportedChainState, FinalizedBlockRef, VerifiedChainClient,
     CITIZENCHAIN_GENESIS_HASH,
 };
 use citizen_sdk_smoldot_provider::{
@@ -11,6 +11,19 @@ const INVALID_CHAIN_SPEC: &str =
     r#"{"name":"CitizenChain","id":"citizenchain","protocolId":"citizenchain"}"#;
 
 fn assert_verified_client<T: VerifiedChainClient>() {}
+
+// 实网诊断只记录固定阶段、既有错误枚举及分类布尔值，不回显原始错误或链业务数据。
+fn observe_error(error: &ContractError, operation: &'static str) {
+    eprintln!(
+        "LIVE_FAILURE operation={operation} code={:?} stage={:?} storage_unavailable={} runtime_execution={} api_requirement={} rpc_rejected={}",
+        error.code(), error.stage(),
+        error.message().contains("Error trying to access the storage"),
+        error.message().contains("Error during the execution of the runtime:"),
+        error.message().contains("ApiVersionRequirementUnfulfilled"),
+        error.message().contains("RPC"),
+    );
+}
+
 
 fn require_ok<T, E>(result: Result<T, E>, context: &str) -> T {
     match result {
@@ -57,7 +70,7 @@ fn live_runtime_context_reuses_verified_exact_block() {
         let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
         let result = require_ok(provider.drive(async {
             tokio::time::timeout(Duration::from_secs(120), async {
-                provider.start().await.ok()?;
+                provider.start().await.inspect_err(|error| observe_error(error, "runtime_start")).ok()?;
                 let block = loop {
                     if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(3), provider.get_sync_status()).await {
                         if status.is_usable() && status.peer_count() > 0 && status.best().hash() == status.finalized().hash() { break status.best(); }
@@ -67,25 +80,25 @@ fn live_runtime_context_reuses_verified_exact_block() {
                 let finalized = VerifiedBlockRef::finalized(block.hash(), block.number());
                 let start = Instant::now();
                 let (a,b) = futures::join!(provider.get_runtime_context_at(block), provider.get_runtime_context_at(finalized));
-                let (a,b) = (a.ok()?, b.ok()?);
+                let (a,b) = (a.inspect_err(|error| observe_error(error, "runtime_current")).ok()?, b.inspect_err(|error| observe_error(error, "runtime_finalized")).ok()?);
                 let same = a.metadata() == b.metadata() && a.version() == b.version() && a.block() == block && b.block() == finalized;
                 println!("RUNTIME_OBSERVATION session={session} stage=first_pair elapsed_us={} exact_match={same}", start.elapsed().as_micros());
-                if !same { return None; }
+                if !same { eprintln!("LIVE_FAILURE operation=runtime_compare mismatch=true"); return None; }
                 for sample in 0..3 {
                     let start = Instant::now();
-                    let c = provider.get_runtime_context_at(finalized).await.ok()?;
+                    let c = provider.get_runtime_context_at(finalized).await.inspect_err(|error| observe_error(error, "runtime_repeat")).ok()?;
                     let same = c == b;
                     println!("RUNTIME_OBSERVATION session={session} stage=repeat sample={sample} elapsed_us={} exact_match={same}", start.elapsed().as_micros());
-                    if !same { return None; }
+                    if !same { eprintln!("LIVE_FAILURE operation=runtime_compare mismatch=true"); return None; }
                 }
                 // 历史块仍经准确身份/状态证明读取；仅核对身份，不输出任何链业务值。
                 if block.number() > 0 {
-                    let historical = provider.get_finalized_block_at(block.number() - 1).await.ok()?;
+                    let historical = provider.get_finalized_block_at(block.number() - 1).await.inspect_err(|error| observe_error(error, "runtime_historical_block")).ok()?;
                     let start = Instant::now();
-                    let c = provider.get_finalized_runtime_context_at(historical).await.ok()?;
+                    let c = provider.get_finalized_runtime_context_at(historical).await.inspect_err(|error| observe_error(error, "runtime_historical_context")).ok()?;
                     let exact = c.block() == historical.into();
                     println!("RUNTIME_OBSERVATION session={session} stage=historical elapsed_us={} exact_match={exact}", start.elapsed().as_micros());
-                    if !exact { return None; }
+                    if !exact { eprintln!("LIVE_FAILURE operation=runtime_historical_identity mismatch=true"); return None; }
                 }
                 Some(true)
             }).await
@@ -158,11 +171,11 @@ fn live_nonce_queries_reuse_pinned_runtime_without_transaction_submission() {
         let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
         let result = require_ok(provider.drive(async {
             tokio::time::timeout(Duration::from_secs(120), async {
-                provider.start().await.ok()?;
+                provider.start().await.inspect_err(|error| observe_error(error, "nonce_start")).ok()?;
                 let best = loop {
                     if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(3), provider.get_sync_status()).await {
                         if status.is_usable() && status.peer_count() > 0 && status.best().hash() == status.finalized().hash() {
-                            break provider.get_best_head().await.ok()?;
+                            break provider.get_best_head().await.inspect_err(|error| observe_error(error, "nonce_best_head")).ok()?;
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -171,15 +184,17 @@ fn live_nonce_queries_reuse_pinned_runtime_without_transaction_submission() {
                 let mut previous = None;
                 for sample in 0..3 {
                     let started = Instant::now();
-                    let nonce = provider.account_next_index(account_id, best).await.ok()?;
+                    let nonce = provider.account_next_index(account_id, best).await.inspect_err(|error| observe_error(error, "nonce_read")).ok()?;
                     let matches = nonce.account_id() == account_id && nonce.best_block() == best;
                     let stable = previous.is_none_or(|value| value == nonce.value());
                     previous = Some(nonce.value());
                     println!("NONCE_OBSERVATION session={session} sample={sample} elapsed_us={} identity_match={matches} same_block_value={stable}", started.elapsed().as_micros());
-                    if !matches || !stable { return None; }
+                    if !matches || !stable { eprintln!("LIVE_FAILURE operation=nonce_compare identity_match={matches} same_block_value={stable}"); return None; }
                 }
-                let after = provider.get_sync_status().await.ok()?;
-                Some(after.best().hash() == best.hash() && after.best().hash() == after.finalized().hash())
+                let after = provider.get_sync_status().await.inspect_err(|error| observe_error(error, "nonce_after_status")).ok()?;
+                let same_block = after.best().hash() == best.hash() && after.best().hash() == after.finalized().hash();
+                if !same_block { eprintln!("LIVE_FAILURE operation=nonce_idle_block same_block=false"); }
+                Some(same_block)
             }).await
         }), "nonce executor");
         require_ok(provider.stop(), "stop provider");
@@ -398,14 +413,16 @@ fn live_idle_chain_rejects_inherent_without_a_new_block() {
                 };
                 // SCALE长度4、unsigned v4、Timestamp(1)::set(0)、compact时刻0。
                 // 格式合法，Executive 在外部验证中以 MandatoryValidation 拒绝，绝不执行调用。
-                let inherent = SignedExtrinsic::try_new(vec![16, 4, 1, 0, 0]).ok()?;
+                let inherent = SignedExtrinsic::try_new(vec![16, 4, 1, 0, 0]).inspect_err(|error| observe_error(error, "idle_inherent_input")).ok()?;
                 let mut watch = provider.watch_extrinsic(inherent);
                 let first = tokio::time::timeout(Duration::from_secs(45), watch.next())
                     .await
+                    .inspect_err(|_| eprintln!("LIVE_FAILURE operation=idle_first_event timeout=true"))
                     .ok()?;
                 let runtime_rejected = match first {
                     Some(Ok(ExtrinsicWatchEvent::Invalid)) => true,
                     Some(Err(error)) => {
+                        observe_error(&error, "idle_first_event");
                         // 只输出固定枚举与分类布尔值，失败也不能回显原始错误。
                         let execution = error.message().contains("Error during the execution of the runtime:");
                         println!("IDLE_VALIDATION error_code={:?} execution={} api_requirement={} inaccessible={} rpc_rejected={}",
@@ -422,12 +439,13 @@ fn live_idle_chain_rejects_inherent_without_a_new_block() {
                             matches!(event, ExtrinsicWatchEvent::Dropped));
                         false
                     }
-                    None => false,
+                    None => { eprintln!("LIVE_FAILURE operation=idle_first_event stream_closed=true"); false },
                 };
                 drop(watch);
                 let after = match provider.get_sync_status().await {
                     Ok(status) => status,
                     Err(error) => {
+                        observe_error(&error, "idle_after_status");
                         println!("IDLE_VALIDATION stage=after_unavailable code={:?}", error.code());
                         return None;
                     }

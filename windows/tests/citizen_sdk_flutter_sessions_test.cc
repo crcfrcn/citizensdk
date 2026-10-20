@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdio>
 #include <algorithm>
 #include <future>
 #include <functional>
@@ -811,6 +812,7 @@ int main() {
   for (const auto method : methods) {
     auto call = request(method, session, sequence++);
     sessions->dispatch(std::move(call), [&](csf::Reply value) {
+      if (!value.success) { std::fprintf(stderr, "WINDOWS_SESSION_REPLY method=%d expected_success=true actual_code=%d\n", static_cast<int>(method), static_cast<int>(value.error_code)); std::fflush(stderr); }
       assert(value.success); ++replies;
     });
   }

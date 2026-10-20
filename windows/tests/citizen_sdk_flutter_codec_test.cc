@@ -5,6 +5,7 @@
 #include <any>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <initializer_list>
 #include <set>
@@ -23,11 +24,14 @@ using citizen_sdk::flutter::Method;
 using citizen_sdk::flutter::Value;
 
 Value list(Value::List items) { return Value::list(std::move(items)); }
+const char *codec_stage = "initial_contracts";
 template <class Callback>
 void expect_failure(Callback callback, citizensdk_error_code_t expected) {
   try { callback(); } catch (const ContractFailure &error) {
+    if (error.code != expected) { std::fprintf(stderr, "WINDOWS_CODEC_FAILURE stage=%s expected=%d actual=%d\n", codec_stage, static_cast<int>(expected), static_cast<int>(error.code)); std::fflush(stderr); }
     assert(error.code == expected); return;
   }
+  std::fprintf(stderr, "WINDOWS_CODEC_FAILURE stage=%s expected=%d rejected=false\n", codec_stage, static_cast<int>(expected)); std::fflush(stderr);
   assert(false && "Expected a contract failure");
 }
 
@@ -719,8 +723,9 @@ class CapturedResult final : public ::flutter::MethodResult<::flutter::Encodable
 void test_windows_value_types_and_limits() {
   using namespace citizen_sdk::flutter;
   using ::flutter::EncodableValue;
-  for (const auto &integer : {EncodableValue(int32_t{1}), EncodableValue(int64_t{1})}) {
-    EncodableValue arguments(::flutter::EncodableList{integer, EncodableValue(int32_t{31})});
+  // 正常int32/int64封装都携带现行协议；专门的v1拒绝用例保持原样。
+  for (const auto &integer : {EncodableValue(static_cast<int32_t>(citizen_sdk::flutter::kProtocolVersion)), EncodableValue(citizen_sdk::flutter::kProtocolVersion)}) {
+    EncodableValue arguments(::flutter::EncodableList{integer, EncodableValue(int32_t{31}), EncodableValue(false)});
     assert(decode_request("open", &arguments).method == Method::open);
     EncodableValue subscription_arguments(::flutter::EncodableList{integer});
     assert(decode_subscription(&subscription_arguments));
@@ -1057,17 +1062,29 @@ int main() {
   expect_failure([] {
     (void)citizen_sdk::flutter::event("s", 1, "historyChanged", Value::list({Value::integer(1)}));
   }, CITIZENSDK_ERROR_INTEGRITY);
+  codec_stage = "test_headless_contract"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_headless_contract();
+  codec_stage = "test_method_closure_and_requests"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_method_closure_and_requests();
+  codec_stage = "test_inspection_contract"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_inspection_contract();
+  codec_stage = "test_strict_failures"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_strict_failures();
+  codec_stage = "test_standard_wire_preserves_nul_and_unicode"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_standard_wire_preserves_nul_and_unicode();
+  codec_stage = "test_raw_wire_bounds"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_raw_wire_bounds();
+  codec_stage = "test_envelopes_and_decimal"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_envelopes_and_decimal();
+  codec_stage = "test_windows_value_types_and_limits"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_windows_value_types_and_limits();
+  codec_stage = "test_finalized_execution_semantics"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_finalized_execution_semantics();
+  codec_stage = "test_profile_semantics"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_profile_semantics();
+  codec_stage = "test_history_semantics"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_history_semantics();
+  codec_stage = "test_balance_nonce_fee_semantics"; std::fprintf(stderr, "WINDOWS_CODEC_STAGE stage=%s\n", codec_stage); std::fflush(stderr);
   test_balance_nonce_fee_semantics();
   return 0;
 }

@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <cassert>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <string>
@@ -193,7 +194,7 @@ void pump() {
 }
 
 csf::Value request(const std::string &session, int64_t sequence) {
-  return csf::test::list({csf::Value::integer(1), csf::Value::string(session),
+  return csf::test::list({csf::Value::integer(csf::kProtocolVersion), csf::Value::string(session),
                          csf::Value::integer(sequence)});
 }
 std::string session_of(const Response &response) {
@@ -207,6 +208,10 @@ std::unique_ptr<::flutter::Plugin> attach(Messenger &messenger,
       [native](const citizen_sdk::Config &) { return native; });
 }
 void exactly(const std::shared_ptr<Response> &response, bool success, const char *code = "") {
+  // 只记录固定错误名及计数，不输出响应载荷、会话或原始错误文本。
+  if (response->wire_calls != 1 || response->results != 1 || response->success != success || response->code != code) {
+    std::fprintf(stderr, "WINDOWS_PLUGIN_REPLY wire=%d results=%d expected_success=%d actual_success=%d expected_code=%s actual_code=%s\n", response->wire_calls, response->results, static_cast<int>(success), static_cast<int>(response->success), code, response->code.c_str()); std::fflush(stderr);
+  }
   assert(response->wire_calls == 1 && response->results == 1 && response->success == success);
   assert(response->code == code);
 }
@@ -227,7 +232,7 @@ int main() {
     csf::Value::Bytes signature(64);
     signature.back() = 0x80;
     const auto verified = messenger.call(csf::kMethodChannel, "verifySignature",
-        csf::test::list({csf::Value::integer(1), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
+        csf::test::list({csf::Value::integer(csf::kProtocolVersion), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
                         csf::Value::bytes(signature), csf::Value::bytes({})}));
     exactly(verified, true);
     const auto result = csf::from_encodable_value(verified->value);
@@ -235,7 +240,7 @@ int main() {
            !std::get<bool>(csf::test::items(result)[1].data));
     signature.pop_back();
     const auto rejected = messenger.call(csf::kMethodChannel, "verifySignature",
-        csf::test::list({csf::Value::integer(1), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
+        csf::test::list({csf::Value::integer(csf::kProtocolVersion), csf::Value::string("0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972"),
                         csf::Value::bytes(signature), csf::Value::bytes({})}));
     exactly(rejected, false, "citizensdk.invalidArgument");
     const auto error = csf::from_encodable_value(rejected->value);
@@ -248,8 +253,9 @@ int main() {
     pump();
   }
   assert(csf::plugin_dispatcher_count() == initial_dispatchers);
-  const auto subscription = csf::test::list({csf::Value::integer(1)});
-  const auto open_request = csf::test::list({csf::Value::integer(1), csf::Value::integer(63)});
+  // 正常消息只复用现行协议常量，open明确声明未注册凭据提供者。
+  const auto subscription = csf::test::list({csf::Value::integer(csf::kProtocolVersion)});
+  const auto open_request = csf::test::list({csf::Value::integer(csf::kProtocolVersion), csf::Value::integer(63), csf::Value::boolean(false)});
   {
     Messenger messenger;
     auto native = std::make_shared<csf::test::FakeTransport>();

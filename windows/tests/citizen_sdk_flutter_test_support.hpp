@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdio>
 #include <cstddef>
 #include <deque>
 #include <filesystem>
@@ -45,7 +46,11 @@ template <class Function>
 void expect_failure(Function &&function, citizensdk_error_code_t expected) {
   bool rejected = false;
   try { std::forward<Function>(function)(); }
-  catch (const ContractFailure &error) { rejected = error.code == expected; }
+  catch (const ContractFailure &error) {
+    rejected = error.code == expected;
+    if (!rejected) { std::fprintf(stderr, "WINDOWS_EXPECT_FAILURE expected=%d actual=%d\n", static_cast<int>(expected), static_cast<int>(error.code)); std::fflush(stderr); }
+  }
+  if (!rejected) { std::fprintf(stderr, "WINDOWS_EXPECT_FAILURE rejected=false expected=%d\n", static_cast<int>(expected)); std::fflush(stderr); }
   assert(rejected);
 }
 
@@ -371,9 +376,10 @@ class FakeTransport final : public csf::NativeTransport {
     ++copied_results;
     if (fail_copy) throw ContractFailure(CITIZENSDK_ERROR_INTEGRITY, "injected public result failure");
     if (projection_handler) return projection_handler(method);
+    // 夹具按生产钱包状态七字段合同补齐诊断列表，不放宽生产结果校验。
     if (method == csf::Method::get_wallet_state)
       return csf::Value::list({csf::Value::list({csf::Value::string("0"), csf::Value::null(),
-          csf::Value::list({}), csf::Value::integer(0), csf::Value::boolean(false), csf::Value::null()})});
+          csf::Value::list({}), csf::Value::integer(0), csf::Value::boolean(false), csf::Value::null(), csf::Value::list({})})});
 
     if (method == csf::Method::get_account_balances) {
       csf::Value::List balances;
@@ -391,8 +397,7 @@ class FakeTransport final : public csf::NativeTransport {
       return csf::Value::list({csf::Value::list({csf::Value::string("0"),
           csf::Value::list({}), csf::Value::null()})});
     if (method == csf::Method::start || method == csf::Method::stop ||
-        method == csf::Method::delete_wallet ||
-        method == csf::Method::reconcile_wallet_cleanup)
+        method == csf::Method::delete_wallet)
       return csf::Value::list({}); // canonical Core EMPTY, not a fake profile
     // 有限执行器只返回该测试明确覆盖的方法形状；未配置能力不得假成功。
     const auto scalar = [](const char *value) { return csf::Value::string(value); };
@@ -408,7 +413,7 @@ class FakeTransport final : public csf::NativeTransport {
         return csf::Value::list({scalar("prepared-test")});
       case csf::Method::import_wallet: case csf::Method::commit_wallet_creation:
       case csf::Method::add_wallet_accounts: case csf::Method::add_next_wallet_account:
-      case csf::Method::set_active_wallet_account:
+      case csf::Method::set_active_wallet_account: case csf::Method::reconcile_wallet_cleanup:
         return csf::Value::list({profile});
       case csf::Method::set_active_wallet: case csf::Method::rename_wallet:
       case csf::Method::rename_account: case csf::Method::delete_account:
@@ -418,7 +423,7 @@ class FakeTransport final : public csf::NativeTransport {
         return csf::Value::list({csf::Value::list({scalar("1"), profile,
           csf::Value::list({csf::Value::list({scalar("hot"), csf::Value::integer(0), csf::Value::integer(0),
             identity, scalar("synthetic-address"), scalar("账户0"), scalar("1"), csf::Value::boolean(true)})}),
-          csf::Value::integer(1), csf::Value::boolean(false), csf::Value::integer(0)})});
+          csf::Value::integer(1), csf::Value::boolean(false), csf::Value::integer(0), csf::Value::list({})})});
       case csf::Method::get_finalized_head: return csf::Value::list({block(false)});
       case csf::Method::get_account_balance:
         return csf::Value::list({csf::Value::list({identity, block(false), scalar("1"), scalar("0"), scalar("1")})});
