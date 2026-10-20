@@ -1,539 +1,706 @@
+# SDK唯一公开平台；四个内部宿主独立构建，内部传递包按用户确认增加目标后缀。
 name: 公民SDK·SDK
-run-name: "公民SDK·SDK·v${{ inputs.version }}"
+run-name: 公民SDK·SDK·v${{ inputs.version }}
 'on':
   workflow_dispatch:
     inputs:
       version:
-        description: 公民SDK本轮候选版本
+        description: 从最新成功Run计算的候选版本
         required: true
         type: string
 concurrency:
-  group: "${{ github.repository }}-sdk"
+  group: ${{ github.repository }}-sdk
   cancel-in-progress: false
 permissions:
-  contents: read
-  actions: read
+  contents: write
+  actions: write
+env:
+  SDK_VERSION: ${{ inputs.version }}
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'
 jobs:
-  prepare:
-    name: "公民SDK·SDK·v${{ inputs.version }}"
+  android:
+    name: 公民SDK·SDK·v${{ inputs.version }}
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    outputs:
-      version: "${{ steps.identity.outputs.version }}"
-      tag: "${{ steps.identity.outputs.tag }}"
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: "${{ github.sha }}"
-          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          node-version: 25.2.1
-      - name: 先执行本仓代码回归
-        shell: bash
-        run: node --test scripts/build.mjs
-      - id: identity
-        name: 确定正式版本与本次 Tag
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          EXPECTED_RELEASE_VERSION: "${{ inputs.version }}"
-        shell: bash
-        run: node scripts/build.mjs release-version
-  native:
-    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {platform: Android, target: android, runner: ubuntu-24.04, rust-targets: aarch64-linux-android}
-          - {platform: macOS, target: apple, runner: xcode-27, rust-targets: 'aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin'}
-          - {platform: Windows, target: Windows, runner: windows-2025, rust-targets: x86_64-pc-windows-msvc}
-    runs-on: "${{ matrix.runner }}"
-    timeout-minutes: 180
-    env:
-      GH_TOKEN: "${{ github.token }}"
-      CARGO_INCREMENTAL: '1'
-      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
-      SDK_PLATFORM: "${{ matrix.platform }}"
-      SDK_TARGET: "${{ matrix.target }}"
-      CITIZENSDK_VERIFY_TESTS: 'true'
-    steps: &native_steps
-      - name: 固定 Linux GLIBC 2.31 构建根
-        if: matrix.platform == 'LinuxARM'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
-          # 基础镜像没有CA包；首次APT仍由Debian签名InRelease与包摘要验真。
-          printf '%s\n' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260901T000000Z bullseye main' \
-            'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260901T000000Z bullseye-security main' \
-            > /etc/apt/sources.list
-          rm -f /etc/apt/sources.list.d/debian.sources
-          apt-get -o Acquire::Check-Valid-Until=false update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates
-          sed -i 's@http://snapshot.debian.org@https://snapshot.debian.org@g' /etc/apt/sources.list
-          apt-get -o Acquire::Check-Valid-Until=false update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            curl git gcc g++ libstdc++6 liblzma5=5.2.5-2.1~deb11u2 \
-            liblzma-dev=5.2.5-2.1~deb11u2 \
-            clang-16=1:16.0.6-15~deb11u2 llvm-16=1:16.0.6-15~deb11u2 \
-            libclang-16-dev=1:16.0.6-15~deb11u2 libssl-dev \
-            libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev pkg-config ninja-build \
-            autoconf automake libtool make perl unzip zip xvfb xauth dbus-x11 \
-            python3 xz-utils file procps
-          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
-          # 同一签名快照的Clang 16必须支持固定ZXing 3.1.1使用的C++20语法。
-          printf '%s\n' '#include <coroutine>' 'enum class Format { QRCode };' \
-            'using enum Format;' 'static_assert(QRCode == Format::QRCode);' \
-            'static_assert(sizeof(std::coroutine_handle<>) > 0);' \
-            | /usr/bin/clang++-16 -std=c++20 -x c++ -fsyntax-only -
-          printf '%s\n' 'CXX=/usr/bin/clang++-16' >> "$GITHUB_ENV"
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
-        with:
-          targets: "${{ matrix.rust-targets }}"
-          components: rust-src
-      - name: Linux 编译依赖
-        if: matrix.platform == 'Android'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang llvm libclang-dev libssl-dev pkg-config cmake ninja-build autoconf automake libtool make perl unzip zip
-      - name: 安装 Android 固定 NDK 与 CMake
-        if: matrix.platform == 'Android'
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${ANDROID_SDK_ROOT:?Runner缺少Android SDK根}"
-          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          test -x "$sdkmanager"
-          installed=0
-          for attempt in 1 2 3; do
-            if "$sdkmanager" "ndk;28.2.13676358" "cmake;3.31.6" \
-              && test -f "$ANDROID_SDK_ROOT/ndk/28.2.13676358/source.properties" \
-              && test -x "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" \
-              && test -x "$ANDROID_SDK_ROOT/cmake/3.31.6/bin/cmake"; then
-              installed=1
-              break
-            fi
-            if (( attempt == 3 )); then
-              echo "Android NDK/CMake固定包在3次尝试后仍未完整安装" >&2
-              exit 1
-            fi
-            rm -rf -- "$ANDROID_SDK_ROOT/ndk/28.2.13676358" "$ANDROID_SDK_ROOT/.temp"
-            sleep "$((attempt * 2))"
-          done
-          test "$installed" -eq 1
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
-      - name: 准备版本化独立源码
-        shell: bash
-        run: node scripts/build.mjs release-source native
-      - name: 安装本仓固定 Flutter
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --filter=blob:none https://github.com/flutter/flutter.git "$RUNNER_TEMP/citizensdk-flutter"
-          git -C "$RUNNER_TEMP/citizensdk-flutter" checkout --detach d3b14c876900e553bc736ca19295fc09e3853e8e
-          if [[ "$SDK_PLATFORM" == Windows ]]; then
-            # 固定提交的 Windows 包装脚本会转入 shared.bat；只在本轮副本修正上游的字面量 $git。
-            CITIZENSDK_FLUTTER_ROOT="$RUNNER_TEMP/citizensdk-flutter" node - <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const {execFileSync} = require('node:child_process');
-          const root = process.env.CITIZENSDK_FLUTTER_ROOT;
-          const head = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
-          if (head !== 'd3b14c876900e553bc736ca19295fc09e3853e8e') throw Error('Windows Flutter fixed source mismatch');
-          const file = path.join(root, 'bin/internal/shared.bat');
-          const stat = fs.lstatSync(file);
-          if (!stat.isFile() || stat.isSymbolicLink()) throw Error('Windows Flutter batch entry is not a regular file');
-          const source = fs.readFileSync(file, 'utf8');
-          const before = "FOR /f %%r IN ('PUSHD %FLUTTER_ROOT% ^& $git rev-parse HEAD') DO (";
-          const after = "FOR /f %%r IN ('PUSHD %FLUTTER_ROOT% ^& git rev-parse HEAD') DO (";
-          if (source.split(before).length !== 2) throw Error('Windows Flutter batch Git revision entry mismatch');
-          fs.writeFileSync(file, source.replace(before, after));
-          NODE
-          fi
-          echo "FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
-          echo "CITIZENSDK_FLUTTER_ROOT=$RUNNER_TEMP/citizensdk-flutter" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/citizensdk-flutter/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/citizensdk-flutter/bin/flutter" --version
-      - name: 恢复本平台编译与依赖缓存
+          node-version: ${{ steps.tools.outputs.node }}
+      - name: 恢复官方增量缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        timeout-minutes: 2
         with:
           path: |
-            ${{ runner.temp }}/citizensdk-release/cargo-home/registry
-            ${{ runner.temp }}/citizensdk-release/cargo-home/git
-            ${{ runner.temp }}/citizensdk-release/pub-cache/hosted
-            ${{ runner.temp }}/citizensdk-release/pub-cache/git
-            ${{ runner.temp }}/citizensdk-release/gradle/caches/modules-2
-            ${{ runner.temp }}/citizensdk-release/gradle/caches/build-cache-1
-            ${{ runner.temp }}/citizensdk-release/gradle/wrapper/dists
-            ${{ runner.temp }}/citizensdk-release/work/tools/archives
-            ${{ runner.temp }}/citizensdk-flutter/bin/cache/artifacts/engine
-            ${{ runner.temp }}/citizensdk-flutter/bin/cache/pkg
-          key: citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            citizensdk-sdk-deps-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-
-      - name: 恢复本平台Cargo编译缓存
-        continue-on-error: true
-        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+          fail-on-cache-miss: false
+      - name: 准备官方Rust与二维码源码
+        env:
+          PRODUCT_RUST: ${{ steps.tools.outputs.rust }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$PRODUCT_RUST" --profile minimal
+          mkdir -p target/cache/sources
+          node --input-type=module -e 'import {nativeSources} from "./scripts/config.mjs";for(const [name,value] of Object.entries(nativeSources))console.log([name,value.url,value.archive_root].join(" "))' > "$RUNNER_TEMP/native-sources.txt"
+          while read -r source url directory; do
+            case "$RUNNER_OS-$RUNNER_ARCH-$source" in *-zxing|Linux-ARM64-*|Windows-X64-sqlite) ;; *) continue ;; esac
+            if [ ! -d "target/cache/sources/$directory" ]; then
+              case "$url" in *.zip) archive="$RUNNER_TEMP/$source.zip" ;; *) archive="$RUNNER_TEMP/$source.tar.gz" ;; esac
+              curl --fail --location --proto '=https' --tlsv1.2 "$url" -o "$archive"
+              case "$archive" in *.zip) unzip -q "$archive" -d target/cache/sources ;; *) tar -xzf "$archive" -C target/cache/sources ;; esac
+            fi
+          done < "$RUNNER_TEMP/native-sources.txt"
+          printf 'CITIZENSDK_ZXING_SOURCE_DIR=%s/target/cache/sources/zxing-cpp-3.1.1\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方Flutter Android embedding
+        env:
+          PRODUCT_FLUTTER: ${{ steps.tools.outputs.flutter }}
+        run: |
+          if [ ! -x target/cache/flutter/bin/flutter ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
+          "$GITHUB_WORKSPACE/target/cache/flutter/bin/flutter" precache --android
+          printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方Android和Gradle
+        env:
+          PRODUCT_NDK: ${{ steps.tools.outputs.ndk }}
+          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
+          PRODUCT_GRADLE: ${{ steps.tools.outputs.gradle }}
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$PRODUCT_NDK" "cmake;$PRODUCT_CMAKE" "platforms;android-36"
+          printf 'ANDROID_NDK_HOME=%s/ndk/%s\n' "$ANDROID_HOME" "$PRODUCT_NDK" >> "$GITHUB_ENV"
+          if [ ! -d "target/cache/gradle/gradle-$PRODUCT_GRADLE" ]; then
+            curl --fail --location --proto '=https' --tlsv1.2 "https://services.gradle.org/distributions/gradle-$PRODUCT_GRADLE-bin.zip" -o "$RUNNER_TEMP/gradle.zip"
+            mkdir -p target/cache/gradle
+            unzip -q "$RUNNER_TEMP/gradle.zip" -d target/cache/gradle
+          fi
+          printf '%s/target/cache/gradle/gradle-%s/bin\n' "$GITHUB_WORKSPACE" "$PRODUCT_GRADLE" >> "$GITHUB_PATH"
+      - name: 核对候选版本
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/sdk-runs.json"
+          node --input-type=module - "$RUNNER_TEMP/sdk-runs.json" <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {nextVersion,sdkName} from './scripts/config.mjs';
+          const rows=JSON.parse(readFileSync(process.argv[2],'utf8')).flatMap(page=>page.workflow_runs);
+          if(nextVersion(rows)!==process.env.SDK_VERSION)throw Error('候选版本已变化');
+          sdkName(process.env.SDK_VERSION);
+          NODE
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: 编译真实内部宿主并汇入累计SDK
+        id: build
+        env:
+          INTERNAL_TARGET: Android
+        run: |
+          set -euo pipefail
+          result="$(node scripts/build.mjs native "$INTERNAL_TARGET")"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          output="$(printf '%s' "$result" | jq -r .output)"
+          # Windows Node返回原生盘符，Bash仅在路径边界使用官方cygpath转换。
+          if [ "$RUNNER_OS" = Windows ]; then work="$(cygpath -u "$work")"; output="$(cygpath -u "$output")"; fi
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/native" "$RUNNER_TEMP/artifact"
+          cp -R "$output/." "$RUNNER_TEMP/native/"
+          tar -czf "$RUNNER_TEMP/artifact/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          path: ${{ runner.temp }}/citizensdk-release/cargo-target
-          key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: 公民SDK·SDK·v${{ inputs.version }}·Android
+          path: ${{ runner.temp }}/artifact
+          if-no-files-found: error
+          compression-level: 0
+      - name: 保存官方增量缓存
+        if: ${{ always() && steps.tools.outcome == 'success' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: 清理本轮独占现场
+        if: ${{ always() && steps.build.outputs.work != '' }}
+        env:
+          PRODUCT_WORK: ${{ steps.build.outputs.work }}
+        run: |
+          workspace="$GITHUB_WORKSPACE"
+          if [ "$RUNNER_OS" = Windows ]; then workspace="$(cygpath -u "$workspace")"; fi
+          [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
+          rm -rf "$PRODUCT_WORK"
+  apple:
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+      - name: 恢复官方增量缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-
-      - name: 准备Windows固定引擎原件
-        if: matrix.platform == 'Windows'
-        shell: bash
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+          fail-on-cache-miss: false
+      - name: 准备官方Rust与二维码源码
+        env:
+          PRODUCT_RUST: ${{ steps.tools.outputs.rust }}
         run: |
           set -euo pipefail
-          "$FLUTTER_ROOT/bin/flutter" precache --windows
-          for name in flutter_sdk windows-sdk font-subset material_fonts gradle_wrapper; do
-            test -s "$FLUTTER_ROOT/bin/cache/$name.stamp"
-          done
-      - name: 准备Android固定引擎原件
-        if: matrix.platform == 'Android'
-        shell: bash
+          rustup toolchain install "$PRODUCT_RUST" --profile minimal
+          mkdir -p target/cache/sources
+          node --input-type=module -e 'import {nativeSources} from "./scripts/config.mjs";for(const [name,value] of Object.entries(nativeSources))console.log([name,value.url,value.archive_root].join(" "))' > "$RUNNER_TEMP/native-sources.txt"
+          while read -r source url directory; do
+            case "$RUNNER_OS-$RUNNER_ARCH-$source" in *-zxing|Linux-ARM64-*|Windows-X64-sqlite) ;; *) continue ;; esac
+            if [ ! -d "target/cache/sources/$directory" ]; then
+              case "$url" in *.zip) archive="$RUNNER_TEMP/$source.zip" ;; *) archive="$RUNNER_TEMP/$source.tar.gz" ;; esac
+              curl --fail --location --proto '=https' --tlsv1.2 "$url" -o "$archive"
+              case "$archive" in *.zip) unzip -q "$archive" -d target/cache/sources ;; *) tar -xzf "$archive" -C target/cache/sources ;; esac
+            fi
+          done < "$RUNNER_TEMP/native-sources.txt"
+          printf 'CITIZENSDK_ZXING_SOURCE_DIR=%s/target/cache/sources/zxing-cpp-3.1.1\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方CMake
+        env:
+          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
         run: |
-          set -euo pipefail
-          "$FLUTTER_ROOT/bin/flutter" precache --android
-      - name: 准备Linux固定引擎原件
-        if: matrix.platform == 'LinuxARM'
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$FLUTTER_ROOT/bin/flutter" precache --linux
-      - name: 准备Linux锁定Pub依赖
-        if: matrix.platform == 'LinuxARM'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 在本轮独立目录按产品原锁填充Pub缓存，不改写源码或消费者现场。
-          seed="$(mktemp -d "$RUNNER_TEMP/citizensdk-release/pub-seed.XXXXXX")"
-          trap 'rm -rf -- "$seed"' EXIT
-          cp "$CITIZENSDK_SOURCE_ROOT/pubspec.yaml" "$CITIZENSDK_SOURCE_ROOT/pubspec.lock" "$seed/"
-          (cd "$seed" && "$FLUTTER_ROOT/bin/flutter" pub get --enforce-lockfile)
-          cmp "$CITIZENSDK_SOURCE_ROOT/pubspec.lock" "$seed/pubspec.lock"
-          (cd "$seed" && "$FLUTTER_ROOT/bin/flutter" pub get --offline --enforce-lockfile)
-      - name: 准备Apple固定引擎原件
-        if: matrix.platform == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$FLUTTER_ROOT/bin/flutter" precache --ios --macos
-      - name: 准备本仓锁定原件
-        shell: bash
-        run: |
-          set -euo pipefail
-          receipt="$(node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-environment --scope citizensdk --platform "$SDK_PLATFORM" --work "$CITIZENSDK_RESOURCE_WORK_DIR/tools")"
-          if [[ "$SDK_PLATFORM" == Android ]]; then
-            printf '%s' "$receipt" | node -e '
-              let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
-                const fs=require("node:fs"),r=JSON.parse(input),root=process.env.CITIZENSDK_RESOURCE_WORK_DIR+"/tools/";
-                const gradle=r.tools?.gradle,java=r.tools?.java;
-                if(r.platform!=="Android"||!gradle||!java||typeof gradle.version!=="string"||typeof java.version!=="string"
-                  ||gradle.path!==root+"gradle-"+gradle.version+"/bin/gradle"||java.home!==root+"java-"+java.version
-                  ||!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(gradle.version)||!/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(java.version)
-                  ||/[\r\n=]/.test(gradle.path+java.home))throw Error("Android锁定Gradle/Java准备回执无效");
-                fs.accessSync(gradle.path,fs.constants.X_OK);fs.accessSync(java.home+"/bin/java",fs.constants.X_OK);
-                fs.appendFileSync(process.env.GITHUB_ENV,"CITIZENSDK_GRADLE="+gradle.path+"\nJAVA_HOME="+java.home+"\n");
-              });
-            '
+          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          mkdir -p target/cache/cmake
+          if [ ! -f target/cache/cmake/ready ]; then
+            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
+            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
+            touch target/cache/cmake/ready
           fi
-          if [[ "$SDK_PLATFORM" == LinuxARM ]]; then
-            printf '%s' "$receipt" | node -e '
-              let input="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>input+=x);process.stdin.on("end",()=>{
-                const fs=require("node:fs"),path=require("node:path"),r=JSON.parse(input),tool=r.tools?.cmake;
-                if(r.platform!==process.env.SDK_PLATFORM||tool?.version!=="3.31.6"
-                  ||typeof tool.path!=="string"||!path.isAbsolute(tool.path)
-                  ||!tool.path.startsWith(process.env.CITIZENSDK_RESOURCE_WORK_DIR+"/tools/cmake-3.31.6-"+r.platform+"/bin/"))
-                  throw Error("Linux固定CMake准备回执无效");
-                for(const name of ["cmake","ctest"])fs.accessSync(path.join(path.dirname(tool.path),name),fs.constants.X_OK);
-                fs.appendFileSync(process.env.GITHUB_PATH,path.dirname(tool.path)+"\n");
-              });
-            '
+          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+      - name: 准备官方Flutter
+        env:
+          PRODUCT_FLUTTER: ${{ steps.tools.outputs.flutter }}
+        run: |
+          if [ ! -x target/cache/flutter/bin/flutter ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
+          printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方Flutter宿主和真实Rust、Dart回归
+        run: |
+          "$FLUTTER_ROOT/bin/flutter" precache --ios --macos --android
+          node --test test/build.test.mjs
+          node scripts/build.mjs test
+      - name: 编译真实内部宿主并汇入累计SDK
+        id: build
+        env:
+          INTERNAL_TARGET: Apple
+        run: |
+          set -euo pipefail
+          result="$(node scripts/build.mjs native "$INTERNAL_TARGET")"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          output="$(printf '%s' "$result" | jq -r .output)"
+          # Windows Node返回原生盘符，Bash仅在路径边界使用官方cygpath转换。
+          if [ "$RUNNER_OS" = Windows ]; then work="$(cygpath -u "$work")"; output="$(cygpath -u "$output")"; fi
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/native" "$RUNNER_TEMP/artifact"
+          cp -R "$output/." "$RUNNER_TEMP/native/"
+          tar -czf "$RUNNER_TEMP/artifact/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: 公民SDK·SDK·v${{ inputs.version }}·Apple
+          path: ${{ runner.temp }}/artifact
+          if-no-files-found: error
+          compression-level: 0
+      - name: 保存官方增量缓存
+        if: ${{ always() && steps.tools.outcome == 'success' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: 清理本轮独占现场
+        if: ${{ always() && steps.build.outputs.work != '' }}
+        env:
+          PRODUCT_WORK: ${{ steps.build.outputs.work }}
+        run: |
+          workspace="$GITHUB_WORKSPACE"
+          if [ "$RUNNER_OS" = Windows ]; then workspace="$(cygpath -u "$workspace")"; fi
+          [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
+          rm -rf "$PRODUCT_WORK"
+  linux:
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    # Debian 11提供glibc 2.31、GTK3和GStreamer 1.18，保留现有LinuxARM最低运行合同。
+    container: debian:bullseye
+    steps:
+      - name: 准备官方系统构建工具
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl git unzip build-essential pkg-config clang perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libjson-c-dev libssl-dev libcurl4-openssl-dev libusb-1.0-0-dev python3 xz-utils xvfb xauth
+          curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
+          sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none
+          printf '%s/.cargo/bin\n' "$HOME" >> "$GITHUB_PATH"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+      - name: 恢复官方增量缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+          fail-on-cache-miss: false
+      - name: 准备官方Rust与二维码源码
+        env:
+          PRODUCT_RUST: ${{ steps.tools.outputs.rust }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$PRODUCT_RUST" --profile minimal
+          mkdir -p target/cache/sources
+          node --input-type=module -e 'import {nativeSources} from "./scripts/config.mjs";for(const [name,value] of Object.entries(nativeSources))console.log([name,value.url,value.archive_root].join(" "))' > "$RUNNER_TEMP/native-sources.txt"
+          while read -r source url directory; do
+            case "$RUNNER_OS-$RUNNER_ARCH-$source" in *-zxing|Linux-ARM64-*|Windows-X64-sqlite) ;; *) continue ;; esac
+            if [ ! -d "target/cache/sources/$directory" ]; then
+              case "$url" in *.zip) archive="$RUNNER_TEMP/$source.zip" ;; *) archive="$RUNNER_TEMP/$source.tar.gz" ;; esac
+              curl --fail --location --proto '=https' --tlsv1.2 "$url" -o "$archive"
+              case "$archive" in *.zip) unzip -q "$archive" -d target/cache/sources ;; *) tar -xzf "$archive" -C target/cache/sources ;; esac
+            fi
+          done < "$RUNNER_TEMP/native-sources.txt"
+          printf 'CITIZENSDK_ZXING_SOURCE_DIR=%s/target/cache/sources/zxing-cpp-3.1.1\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方CMake
+        env:
+          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          mkdir -p target/cache/cmake
+          if [ ! -f target/cache/cmake/ready ]; then
+            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
+            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
+            touch target/cache/cmake/ready
           fi
-      - name: 启用 Windows MSVC 工具
-        if: matrix.platform == 'Windows'
+          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+      - name: 构建锁定静态宿主依赖
+        run: |
+          set -euo pipefail
+          source="$GITHUB_WORKSPACE/target/cache/sources"
+          prefix="$GITHUB_WORKSPACE/target/cache/native"
+          mkdir -p "$prefix/include" "$prefix/lib" "$RUNNER_TEMP/native"
+          if [ ! -f "$prefix/lib/libsqlite3.a" ]; then
+            cc -O2 -fPIC -DSQLITE_THREADSAFE=1 -c "$source/sqlite-amalgamation-3530400/sqlite3.c" -o "$RUNNER_TEMP/native/sqlite3.o"
+            ar rcs "$prefix/lib/libsqlite3.a" "$RUNNER_TEMP/native/sqlite3.o"
+            cp "$source/sqlite-amalgamation-3530400/"*.h "$prefix/include/"
+          fi
+          if [ ! -f "$prefix/lib/libcrypto.a" ]; then
+            cp -R "$source/openssl-3.5.8" "$RUNNER_TEMP/native/openssl"
+            (cd "$RUNNER_TEMP/native/openssl" && perl Configure linux-aarch64 no-shared no-module no-dso no-tests -fPIC --prefix="$prefix" --libdir=lib && make -j2 && make install_sw)
+          fi
+          if [ ! -f "$prefix/lib/libtss2-esys.a" ]; then
+            mkdir "$RUNNER_TEMP/native/tss"
+            (cd "$RUNNER_TEMP/native/tss" && CPPFLAGS="-I$prefix/include" LDFLAGS="-L$prefix/lib" PKG_CONFIG_PATH="$prefix/lib/pkgconfig" "$source/tpm2-tss-4.2.0/configure" --prefix="$prefix" --libdir="$prefix/lib" --disable-shared --enable-static --with-pic --with-crypto=ossl --disable-fapi --disable-policy --enable-esys --enable-util-io --enable-tcti-device --disable-tcti-mssim --disable-tcti-swtpm --disable-tcti-pcap --disable-tcti-null --disable-tcti-libtpms --disable-tcti-cmd --disable-tcti-spi-helper --disable-tcti-spi-ltt2go --disable-tcti-spidev --disable-tcti-spi-ftdi --disable-tcti-i2c-helper --disable-tcti-i2c-ftdi --disable-tcti-fuzzing --enable-nodl --disable-unit --disable-integration --disable-log-file --with-maxloglevel=none --with-sysusersdir=no --with-tmpfilesdir=no --disable-doxygen-doc --disable-doxygen-man --disable-doxygen-html && make -j2 && make install)
+          fi
+          printf 'CITIZENSDK_SQLITE_INCLUDE_DIR=%s/include\nCITIZENSDK_OPENSSL_INCLUDE_DIR=%s/include\nCITIZENSDK_TSS2_INCLUDE_DIR=%s/include\nCITIZENSDK_SQLITE_ARCHIVE=%s/lib/libsqlite3.a\nCITIZENSDK_CRYPTO_ARCHIVE=%s/lib/libcrypto.a\n' "$prefix" "$prefix" "$prefix" "$prefix" "$prefix" >> "$GITHUB_ENV"
+          for name in esys mu sys rc tcti-device; do key="$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')"; printf 'CITIZENSDK_TSS2_%s_ARCHIVE=%s/lib/libtss2-%s.a\n' "$key" "$prefix" "$name" >> "$GITHUB_ENV"; done
+      - name: 准备官方Flutter桌面宿主
+        env:
+          PRODUCT_FLUTTER: ${{ steps.tools.outputs.flutter }}
+        run: |
+          if [ ! -d target/cache/flutter/bin ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
+          printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 编译真实内部宿主并汇入累计SDK
+        id: build
+        env:
+          INTERNAL_TARGET: LinuxARM
+        run: |
+          set -euo pipefail
+          result="$(node scripts/build.mjs native "$INTERNAL_TARGET")"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          output="$(printf '%s' "$result" | jq -r .output)"
+          # Windows Node返回原生盘符，Bash仅在路径边界使用官方cygpath转换。
+          if [ "$RUNNER_OS" = Windows ]; then work="$(cygpath -u "$work")"; output="$(cygpath -u "$output")"; fi
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/native" "$RUNNER_TEMP/artifact"
+          cp -R "$output/." "$RUNNER_TEMP/native/"
+          tar -czf "$RUNNER_TEMP/artifact/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: 公民SDK·SDK·v${{ inputs.version }}·LinuxARM
+          path: ${{ runner.temp }}/artifact
+          if-no-files-found: error
+          compression-level: 0
+      - name: 保存官方增量缓存
+        if: ${{ always() && steps.tools.outcome == 'success' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: 清理本轮独占现场
+        if: ${{ always() && steps.build.outputs.work != '' }}
+        env:
+          PRODUCT_WORK: ${{ steps.build.outputs.work }}
+        run: |
+          workspace="$GITHUB_WORKSPACE"
+          if [ "$RUNNER_OS" = Windows ]; then workspace="$(cygpath -u "$workspace")"; fi
+          [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
+          rm -rf "$PRODUCT_WORK"
+  windows:
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+      - name: 恢复官方增量缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+          fail-on-cache-miss: false
+      - name: 准备官方Rust与二维码源码
+        env:
+          PRODUCT_RUST: ${{ steps.tools.outputs.rust }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$PRODUCT_RUST" --profile minimal
+          mkdir -p target/cache/sources
+          node --input-type=module -e 'import {nativeSources} from "./scripts/config.mjs";for(const [name,value] of Object.entries(nativeSources))console.log([name,value.url,value.archive_root].join(" "))' > "$RUNNER_TEMP/native-sources.txt"
+          while read -r source url directory; do
+            case "$RUNNER_OS-$RUNNER_ARCH-$source" in *-zxing|Linux-ARM64-*|Windows-X64-sqlite) ;; *) continue ;; esac
+            if [ ! -d "target/cache/sources/$directory" ]; then
+              case "$url" in *.zip) archive="$RUNNER_TEMP/$source.zip" ;; *) archive="$RUNNER_TEMP/$source.tar.gz" ;; esac
+              curl --fail --location --proto '=https' --tlsv1.2 "$url" -o "$archive"
+              case "$archive" in *.zip) unzip -q "$archive" -d target/cache/sources ;; *) tar -xzf "$archive" -C target/cache/sources ;; esac
+            fi
+          done < "$RUNNER_TEMP/native-sources.txt"
+          printf 'CITIZENSDK_ZXING_SOURCE_DIR=%s/target/cache/sources/zxing-cpp-3.1.1\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 准备官方CMake
+        env:
+          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          mkdir -p target/cache/cmake
+          if [ ! -f target/cache/cmake/ready ]; then
+            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
+            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
+            touch target/cache/cmake/ready
+          fi
+          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+      - name: 使用Runner官方MSVC开发环境
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $installation) { throw 'Windows 缺少 MSVC C++ 工具' }
-          Import-Module "$installation\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          $installation = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module "$installation/Common7/Tools/Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          foreach ($name in @('PATH','INCLUDE','LIB','LIBPATH','VCINSTALLDIR','VSINSTALLDIR','VCToolsInstallDir','WindowsSdkDir','WindowsSDKVersion')) {
-            $value = [Environment]::GetEnvironmentVariable($name)
-            if (-not $value -or $value.Contains("$([char]10)")) { throw "MSVC 环境无效：$name" }
-            "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-ChildItem Env: | ForEach-Object { if ($_.Name -in @('PATH','INCLUDE','LIB','LIBPATH','VCToolsInstallDir','VCINSTALLDIR','WindowsSdkDir','WindowsSDKVersion')) { "$($_.Name)=$($_.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 } }
+      - name: 构建锁定SQLite静态库
+        shell: pwsh
+        run: |
+          $prefix = "$env:GITHUB_WORKSPACE/target/cache/native"
+          New-Item -ItemType Directory -Force "$prefix/include","$prefix/lib" | Out-Null
+          if (!(Test-Path "$prefix/lib/sqlite3.lib")) {
+            & cl /nologo /c /O2 /MD /DSQLITE_THREADSAFE=1 "$env:GITHUB_WORKSPACE/target/cache/sources/sqlite-amalgamation-3530400/sqlite3.c" "/Fo$env:RUNNER_TEMP/sqlite3.obj"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & lib /nologo "/OUT:$prefix/lib/sqlite3.lib" "$env:RUNNER_TEMP/sqlite3.obj"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Copy-Item "$env:GITHUB_WORKSPACE/target/cache/sources/sqlite-amalgamation-3530400/*.h" "$prefix/include"
           }
-          foreach ($name in @('cl.exe','lib.exe','dumpbin.exe')) { Get-Command $name -ErrorAction Stop | Out-Null }
-      - name: 准备 Linux 与 Windows 静态原生依赖
-        if: matrix.platform == 'LinuxARM' || matrix.platform == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          result="$CITIZENSDK_RESOURCE_WORK_DIR/dependency-result.json"
-          if [[ "$SDK_PLATFORM" == Windows ]]; then result="$(cygpath -u "$result")"; fi
-          node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" prepare-native \
-            --scope citizensdk --platform "$SDK_PLATFORM" --mode release \
-            --sdk "$CITIZENSDK_SOURCE_ROOT" --work "$CITIZENSDK_RESOURCE_WORK_DIR/dependencies" \
-            --sources "$CITIZENSDK_RESOURCE_WORK_DIR/tools" \
-            --source-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION" > "$result"
-          node scripts/build.mjs release-dependency-env
-      - name: 编译本平台原生件
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$SDK_PLATFORM" == LinuxARM ]]; then
-            xvfb-run -a dbus-run-session -- node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
-          else
-            node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native "$SDK_TARGET"
-          fi
-      - name: Apple原生及Flutter绑定回归
-        if: matrix.platform == 'macOS'
+          "CITIZENSDK_SQLITE_INCLUDE_DIR=$prefix/include","CITIZENSDK_SQLITE_ARCHIVE=$prefix/lib/sqlite3.lib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: 准备官方Flutter桌面宿主
         env:
-          GH_TOKEN: ''
-          GITHUB_TOKEN: ''
-        shell: bash
-        run: node "$CITIZENSDK_SOURCE_ROOT/scripts/build.mjs" native apple-tests
-      - name: SDK Rust与全部Dart回归
-        if: matrix.platform == 'macOS'
-        shell: bash
-        run: node scripts/build.mjs ci-test
-      - name: 保存当前 Run 原生件
-        shell: bash
+          PRODUCT_FLUTTER: ${{ steps.tools.outputs.flutter }}
+        run: |
+          if [ ! -d target/cache/flutter/bin ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
+          printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 编译真实内部宿主并汇入累计SDK
+        id: build
+        env:
+          INTERNAL_TARGET: Windows
         run: |
           set -euo pipefail
-          output="$CITIZENSDK_NATIVE_OUTPUT_DIR"
-          if [[ "$SDK_PLATFORM" == Windows ]]; then output="$(cygpath -u "$output")"; fi
-          case "$SDK_PLATFORM" in
-            Android) paths=(android) ;;
-            macOS) paths=(apple) ;;
-            LinuxARM) paths=("linux/$SDK_PLATFORM" "dependencies/$SDK_PLATFORM.json") ;;
-            Windows) paths=(Windows dependencies/Windows.json) ;;
-            *) exit 1 ;;
-          esac
-          for path in "${paths[@]}"; do test -e "$output/$path"; done
-          archive="$RUNNER_TEMP/公民SDK·$SDK_PLATFORM·v$SOFTWARE_VERSION.tgz"
-          tar -czf "$archive" -C "$output" "${paths[@]}"
-          test -s "$archive"
-      - name: 保存本平台Cargo编译缓存
-        if: success()
-        continue-on-error: true
-        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
+          result="$(node scripts/build.mjs native "$INTERNAL_TARGET")"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          output="$(printf '%s' "$result" | jq -r .output)"
+          # Windows Node返回原生盘符，Bash仅在路径边界使用官方cygpath转换。
+          if [ "$RUNNER_OS" = Windows ]; then work="$(cygpath -u "$work")"; output="$(cygpath -u "$output")"; fi
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/native" "$RUNNER_TEMP/artifact"
+          cp -R "$output/." "$RUNNER_TEMP/native/"
+          tar -czf "$RUNNER_TEMP/artifact/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          path: ${{ runner.temp }}/citizensdk-release/cargo-target
-          key: citizensdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/公民SDK·${{ matrix.platform }}·v${{ inputs.version }}.tgz"
+          name: 公民SDK·SDK·v${{ inputs.version }}·Windows
+          path: ${{ runner.temp }}/artifact
           if-no-files-found: error
-          retention-days: 7
-      - name: 清理Android本轮构建目录
-        if: always() && matrix.platform == 'Android'
-        shell: bash
-        run: node scripts/build.mjs release-cleanup-android-work
-  native-linux:
-    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {platform: LinuxARM, target: LinuxARM, runner: ubuntu-24.04-arm, rust-targets: aarch64-unknown-linux-gnu}
-    runs-on: "${{ matrix.runner }}"
-    container:
-      image: debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9
-    timeout-minutes: 180
-    env:
-      GH_TOKEN: "${{ github.token }}"
-      CARGO_INCREMENTAL: '1'
-      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
-      SDK_PLATFORM: "${{ matrix.platform }}"
-      SDK_TARGET: "${{ matrix.target }}"
-    steps: *native_steps
-  assemble:
-    name: "公民SDK·SDK·v${{ inputs.version }}"
-    needs: [prepare, native, native-linux]
+          compression-level: 0
+      - name: 保存官方增量缓存
+        if: ${{ always() && steps.tools.outcome == 'success' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/gradle-home
+            target/cache/pub
+            target/cache/flutter
+            target/cache/sources
+            target/cache/native
+            target/cache/cmake
+            target/cache/gradle
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: 清理本轮独占现场
+        if: ${{ always() && steps.build.outputs.work != '' }}
+        env:
+          PRODUCT_WORK: ${{ steps.build.outputs.work }}
+        run: |
+          workspace="$GITHUB_WORKSPACE"
+          if [ "$RUNNER_OS" = Windows ]; then workspace="$(cygpath -u "$workspace")"; fi
+          [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
+          rm -rf "$PRODUCT_WORK"
+  complete:
+    needs: [android, apple, linux, windows]
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
-    timeout-minutes: 120
-    env:
-      SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: "${{ github.sha }}"
-          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          node-version: 25.2.1
+          node-version: ${{ steps.tools.outputs.node }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: "公民SDK·*·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/native-artifacts"
-          merge-multiple: false
-      - name: 汇总同一源码的四平台原生件并构造正式包
-        shell: bash
+          pattern: 公民SDK·SDK·v${{ inputs.version }}·*
+          path: ${{ runner.temp }}/previous
+      - name: 解包累计真实原生件
         run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/citizensdk-native"
-          for platform in Android macOS LinuxARM Windows; do
-            archive="$RUNNER_TEMP/native-artifacts/公民SDK·$platform·v$SOFTWARE_VERSION/公民SDK·$platform·v$SOFTWARE_VERSION.tgz"
-            test -s "$archive"
-            tar -xzf "$archive" -C "$RUNNER_TEMP/citizensdk-native"
-          done
-          mkdir -p "$RUNNER_TEMP/citizensdk-transfer/release" "$RUNNER_TEMP/citizensdk-transfer/candidate"
-          node scripts/build.mjs release-source assemble
-          node scripts/build.mjs release-build \
-            --source "$RUNNER_TEMP/citizensdk-source" \
-            --native "$RUNNER_TEMP/citizensdk-native" \
-            --output "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" \
-            --git-sha "$GITHUB_SHA" --software-version "$SOFTWARE_VERSION"
-          node scripts/build.mjs release-verify --verify "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" --expected-git-sha "$GITHUB_SHA"
-          test -s "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz"
-          tar -czf "$RUNNER_TEMP/citizensdk-transfer/candidate/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" -C "$RUNNER_TEMP/citizensdk-candidate" .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+          mkdir -p "$RUNNER_TEMP/native"
+          for target in Android Apple LinuxARM Windows; do tar -xzf "$RUNNER_TEMP/previous/公民SDK·SDK·v$SDK_VERSION·$target/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native"; done
+      - name: 编译并汇总完整SDK
+        id: build
+        run: |
+          result="$(node scripts/build.mjs package "$RUNNER_TEMP/native")"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          project="$(printf '%s' "$result" | jq -r .output)"
+          [[ "${work%/*}" = "$GITHUB_WORKSPACE/target/build" && "${work##*/}" =~ ^sdk-[A-Za-z0-9]+$ && "$project" = "$work/output" ]]
+          test "$(cd "$work" && pwd -P)" = "$work"
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          name="公民SDK·SDK·v$SDK_VERSION"
+          artifact="$RUNNER_TEMP/sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$artifact"
+          ditto -c -k --sequesterRsrc --keepParent "$project" "$artifact/$name.zip"
+          digest="$(shasum -a 256 "$artifact/$name.zip" | cut -d ' ' -f 1)"
+          jq -n --arg version "$SDK_VERSION" --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg file "$name.zip" --arg digest "$digest" \
+            '{product_id:"citizensdk",platform:"sdk",software_version:$version,git_commit_sha:$sha,producer_run_id:$run,producer_run_attempt:$attempt,assets:[{name:$file,sha256:$digest}]}' > "$artifact/$name.json"
+          (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
+          printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
+          printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: "公民SDK·SDK·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/citizensdk-transfer/"
+          name: 公民SDK·SDK·v${{ inputs.version }}
+          path: ${{ steps.build.outputs.path }}
           if-no-files-found: error
-          retention-days: 7
-  consume:
-    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
-    needs: [prepare, assemble]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {platform: Android, runner: ubuntu-24.04}
-          - {platform: macOS, runner: xcode-27}
-          - {platform: LinuxARM, runner: ubuntu-24.04-arm}
-          - {platform: Windows, runner: windows-2025}
-    runs-on: "${{ matrix.runner }}"
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: "公民SDK·SDK·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/citizensdk-transfer"
-      - name: 本平台复验同一正式候选
+          compression-level: 0
+          overwrite: true
+      - name: 生成并核对正式Release与Tag
         env:
-          SOFTWARE_VERSION: "${{ needs.prepare.outputs.version }}"
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+          SDK_ARTIFACT_DIRECTORY: ${{ steps.build.outputs.path }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/citizensdk-candidate"
-          tar -xzf "$RUNNER_TEMP/citizensdk-transfer/candidate/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" -C "$RUNNER_TEMP/citizensdk-candidate"
-          node scripts/build.mjs release-verify --verify "$RUNNER_TEMP/citizensdk-candidate" \
-            --archive "$RUNNER_TEMP/citizensdk-transfer/release/公民SDK·SDK·v$SOFTWARE_VERSION.tgz" \
-            --expected-git-sha "$GITHUB_SHA"
-  release:
-    name: "公民SDK·SDK·v${{ inputs.version }}"
-    needs: [prepare, native, native-linux, assemble, consume]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      actions: write
-    env:
-      GH_TOKEN: "${{ github.token }}"
-      RELEASE_TAG: "${{ needs.prepare.outputs.tag }}"
-      RELEASE_VERSION: "${{ needs.prepare.outputs.version }}"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: "公民SDK·SDK·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/citizensdk-transfer"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 创建并逐件回读唯一正式 SDK Release
-        shell: bash
-        run: node scripts/build.mjs release-github
-  cargo-retention:
-    continue-on-error: true
-    name: "公民SDK·${{ matrix.platform }}·v${{ inputs.version }}"
-    needs: [native, native-linux]
-    if: always() && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {platform: Android, cache-os: Linux, cache-arch: X64}
-          - {platform: macOS, cache-os: macOS, cache-arch: ARM64}
-          - {platform: LinuxARM, cache-os: Linux, cache-arch: ARM64}
-          - {platform: Windows, cache-os: Windows, cache-arch: X64}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: write
-    env:
-      GH_TOKEN: "${{ github.token }}"
-      SDK_PLATFORM: "${{ matrix.platform }}"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 每个平台只保留最新增量缓存
+          encoded="$(jq -rn --arg name "$SDK_NAME" '$name|@uri')"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-releases.json"
+          previous="$(jq '[.[][]|select(.tag_name==env.SDK_NAME)]' "$RUNNER_TEMP/sdk-releases.json")"
+          test "$(printf '%s' "$previous" | jq length)" -le 1
+          if [ "$(printf '%s' "$previous" | jq length)" -eq 1 ]; then
+            proof="$(printf '%s' "$previous" | jq '.[0].body|fromjson')"
+            old_run="$(printf '%s' "$proof" | jq -r .producer_run_id)"
+            old_attempt="$(printf '%s' "$proof" | jq -r .producer_run_attempt)"
+            old_sha="$(printf '%s' "$proof" | jq -r .git_commit_sha)"
+            printf '%s' "$proof" | jq -e '.product_id=="citizensdk" and .platform=="sdk" and .software_version==env.SDK_VERSION' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$old_sha" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .path==".github/workflows/sdk.yml"' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$old_sha" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+            gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          # GraphQL变量由gh参数传入，查询字符串必须保持原文。
+          # shellcheck disable=SC2016
+          ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$SDK_NAME" --jq '.data.repository.ref.target.oid // ""')"
+          test -z "$ref"
+          tag_created=false
+          rollback() {
+            release_status=$?
+            id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|select(.tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA)|select((.body|fromjson?|.producer_run_id)==(env.GITHUB_RUN_ID|tonumber))|.id')"
+            if [ -n "$id" ]; then gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes || printf '本次Release撤销未完成\n' >&2; fi
+            if [ "$tag_created" = true ]; then
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" --jq .object.sha | grep -Fxq "$GITHUB_SHA"; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$encoded" || printf '本次Tag撤销未完成\n' >&2
+              fi
+            fi
+            exit "$release_status"
+          }
+          trap rollback ERR
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$SDK_NAME" -f sha="$GITHUB_SHA" > "$RUNNER_TEMP/sdk-tag.json"
+          tag_created=true
+          jq -e '.object.sha==env.GITHUB_SHA' "$RUNNER_TEMP/sdk-tag.json" >/dev/null
+          # GitHub会规范化下载文件名；官方label保留准确的产品、平台和版本显示名。
+          files=()
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+          gh release create "$SDK_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
+          back="$RUNNER_TEMP/sdk-readback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$back"
+          gh release view "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/sdk-assets.json"
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do
+            label="$(basename "$file")"
+            remote="$(jq -er --arg label "$label" '[.assets[]|select(.label==$label and .state=="uploaded")]|if length==1 then .[0].name else error("附件标签不唯一") end' "$RUNNER_TEMP/sdk-assets.json")"
+            gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
+            cmp "$file" "$back/$label"
+          done
+          gh release edit "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
+          trap - ERR
+          # 新正式版本完整确认后才清理同一SDK命名空间的旧版本；失败明确保留重试。
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|.tag_name|select(startswith("公民SDK·SDK·v"))' > "$RUNNER_TEMP/sdk-old-tags.txt"
+          while IFS= read -r old; do
+            if [ "$old" != "$SDK_NAME" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || printf '旧版本清理未完成：%s\n' "$old" >&2; fi
+          done < "$RUNNER_TEMP/sdk-old-tags.txt"
+      - name: 清理本轮SDK编译现场
         continue-on-error: true
+        if: ${{ always() && steps.build.outputs.work != '' }}
         env:
-          CARGO_CACHE_KEY: citizensdk-cargo-v1-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          SDK_DEPS_CACHE_KEY: citizensdk-sdk-deps-v2-${{ matrix.cache-os }}-${{ matrix.cache-arch }}-${{ matrix.platform }}-rust-1.97.1-flutter-d3b14c876900e553bc736ca19295fc09e3853e8e-${{ hashFiles('**/Cargo.lock', 'pubspec.lock', 'android/**/*.gradle', 'android/**/*.gradle.kts') }}-run-${{ github.run_id }}-${{ github.run_attempt }}
-        shell: bash
-        run: node scripts/build.mjs release-cache-prune
-  run-retention:
-    name: "公民SDK·SDK·v${{ inputs.version }}"
-    needs: [prepare, native, native-linux, assemble, consume, release]
-    if: always() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: write
-    env:
-      GH_TOKEN: "${{ github.token }}"
-      SDK_FINAL_OUTCOME: "${{ needs.prepare.result == 'success' && needs.native.result == 'success' && needs.native-linux.result == 'success' && needs.assemble.result == 'success' && needs.consume.result == 'success' && needs.release.result == 'success' && 'success' || 'failure' }}"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 仅保留本工作流最新成功与失败Run
-        shell: bash
-        run: node scripts/build.mjs release-run-prune "$SDK_FINAL_OUTCOME"
+          SDK_WORK_DIRECTORY: ${{ steps.build.outputs.work }}
+        run: |
+          [[ "${SDK_WORK_DIRECTORY%/*}" = "$GITHUB_WORKSPACE/target/build" && "${SDK_WORK_DIRECTORY##*/}" =~ ^sdk-[A-Za-z0-9]+$ ]]
+          test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
+          rm -rf "$SDK_WORK_DIRECTORY"

@@ -9,29 +9,7 @@ if(NOT IS_ABSOLUTE "${CITIZENSDK_ZXING_SOURCE_DIR}" OR
   message(FATAL_ERROR "CITIZENSDK_ZXING_SOURCE_DIR must be the complete official ZXing-C++ 3.1.1 source")
 endif()
 
-# 固定官方完整 Release 的实际构建输入（core、docs、根 CMake 和辅助脚本）。
-# 仅版本字符串不能证明来源；在执行上游 CMake 之前逐文件验真，拒绝额外文件和链接。
-file(GLOB_RECURSE _citizensdk_zxing_entries LIST_DIRECTORIES true
-  RELATIVE "${CITIZENSDK_ZXING_SOURCE_DIR}"
-  "${CITIZENSDK_ZXING_SOURCE_DIR}/core/*"
-  "${CITIZENSDK_ZXING_SOURCE_DIR}/docs/*")
-list(APPEND _citizensdk_zxing_entries CMakeLists.txt zxing.cmake)
-list(SORT _citizensdk_zxing_entries)
-set(_citizensdk_zxing_manifest "")
-foreach(_citizensdk_entry IN LISTS _citizensdk_zxing_entries)
-  set(_citizensdk_file "${CITIZENSDK_ZXING_SOURCE_DIR}/${_citizensdk_entry}")
-  if(IS_SYMLINK "${_citizensdk_file}")
-    message(FATAL_ERROR "ZXing-C++ build input cannot contain symlinks")
-  endif()
-  if(NOT IS_DIRECTORY "${_citizensdk_file}")
-    file(SHA256 "${_citizensdk_file}" _citizensdk_digest)
-    string(APPEND _citizensdk_zxing_manifest "${_citizensdk_entry}:${_citizensdk_digest}\n")
-  endif()
-endforeach()
-string(SHA256 _citizensdk_zxing_digest "${_citizensdk_zxing_manifest}")
-if(NOT _citizensdk_zxing_digest STREQUAL "47e4950494ae7fef55307846ad47f2586b83a1d4cde381ec3c2ca0215015db3e")
-  message(FATAL_ERROR "ZXing-C++ build inputs differ from the pinned official 3.1.1 release")
-endif()
+# 来源由本产品工作流按官方版本获取，CMake只检查实际编译接口。
 file(READ "${CITIZENSDK_ZXING_SOURCE_DIR}/core/CMakeLists.txt" _citizensdk_zxing_core)
 if(NOT _citizensdk_zxing_core MATCHES "project \\(ZXing VERSION \"3\\.1\\.1\"\\)")
   message(FATAL_ERROR "CitizenSDK requires ZXing-C++ exactly 3.1.1")
@@ -63,7 +41,7 @@ add_library(citizensdk_qr_image STATIC citizensdk_qr_image.cc)
 add_library(CitizenSDK::QrImage ALIAS citizensdk_qr_image)
 target_compile_features(citizensdk_qr_image PUBLIC cxx_std_17)
 target_include_directories(citizensdk_qr_image PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
-# ZXing-C++ 是经摘要固定、只读使用的上游。把它的公开头标为系统头，避免
+# ZXing-C++ 是按官方版本准备、只读使用的上游。把它的公开头标为系统头，避免
 # CitizenSDK 的 -Werror 把上游 3.1.1 自身告警误判成包装层错误；本目标源码的
 # -Wall/-Wextra/-Wconversion 仍全部生效。
 target_include_directories(citizensdk_qr_image SYSTEM PRIVATE
