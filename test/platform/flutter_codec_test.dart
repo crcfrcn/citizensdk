@@ -1,12 +1,12 @@
 import 'dart:convert';
 
-import 'package:citizen_sdk/api/citizen_sdk_error.dart';
-import 'package:citizen_sdk/api/citizen_qr.dart';
-import 'package:citizen_sdk/models/citizen_signing.dart';
-import 'package:citizen_sdk/api/citizen_sdk_events.dart';
 import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/api/citizen_qr.dart';
+import 'package:citizen_sdk/api/citizen_sdk_error.dart';
+import 'package:citizen_sdk/api/citizen_sdk_events.dart';
 import 'package:citizen_sdk/models/citizen_capability.dart';
 import 'package:citizen_sdk/models/citizen_chain_state.dart';
+import 'package:citizen_sdk/models/citizen_signing.dart';
 import 'package:citizen_sdk/models/citizen_transaction.dart';
 import 'package:citizen_sdk/models/citizen_wallet.dart';
 import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
@@ -263,7 +263,7 @@ void main() {
       (v) => v[4] = 4,
       (v) => v[5] = 'legacy',
       (v) => v[3] = 'a' * 129,
-      (v) => v[6] = [[], false],
+      (v) => v[6] = [<dynamic>[], false],
       (v) => v[6] = [
         [id, id],
         true,

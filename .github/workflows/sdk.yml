@@ -31,13 +31,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
       - id: tools
         name: 读取本产品工具声明
         run: |
           node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
       - name: 恢复官方增量缓存
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
@@ -171,13 +177,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
       - id: tools
         name: 读取本产品工具声明
         run: |
           node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
       - name: 恢复官方增量缓存
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
@@ -220,14 +232,21 @@ jobs:
         env:
           PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
         run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
+            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
+            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
+            *) exit 1 ;;
+          esac
+          package="cmake-$PRODUCT_CMAKE-$machine.$format"
+          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
           mkdir -p target/cache/cmake
-          if [ ! -f target/cache/cmake/ready ]; then
+          if [ ! -x "$binary" ]; then
             curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
-            touch target/cache/cmake/ready
+            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
           fi
-          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+          test -x "$binary"
+          printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
       - name: 准备官方Flutter
         env:
           PRODUCT_FLUTTER: ${{ steps.tools.outputs.flutter }}
@@ -308,19 +327,25 @@ jobs:
           apt-get -o Acquire::https::CaInfo=/runner-ca.pem -o Acquire::Check-Valid-Until=false update
           DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CaInfo=/runner-ca.pem install -y ca-certificates curl git unzip build-essential pkg-config clang perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libjson-c-dev libssl-dev libcurl4-openssl-dev libusb-1.0-0-dev python3 xz-utils xvfb xauth
           curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
-          sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none
+          sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none --no-modify-path
           printf '%s/.cargo/bin\n' "$HOME" >> "$GITHUB_PATH"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
       - id: tools
         name: 读取本产品工具声明
         run: |
           node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
       - name: 恢复官方增量缓存
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
@@ -363,14 +388,21 @@ jobs:
         env:
           PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
         run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
+            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
+            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
+            *) exit 1 ;;
+          esac
+          package="cmake-$PRODUCT_CMAKE-$machine.$format"
+          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
           mkdir -p target/cache/cmake
-          if [ ! -f target/cache/cmake/ready ]; then
+          if [ ! -x "$binary" ]; then
             curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
-            touch target/cache/cmake/ready
+            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
           fi
-          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+          test -x "$binary"
+          printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
       - name: 构建锁定静态宿主依赖
         run: |
           set -euo pipefail
@@ -461,13 +493,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
       - id: tools
         name: 读取本产品工具声明
         run: |
           node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
       - name: 恢复官方增量缓存
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
@@ -510,20 +548,29 @@ jobs:
         env:
           PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
         run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in Linux-ARM64) package="cmake-$PRODUCT_CMAKE-linux-aarch64.tar.gz" ;; macOS-ARM64) package="cmake-$PRODUCT_CMAKE-macos-universal.tar.gz" ;; Windows-X64) package="cmake-$PRODUCT_CMAKE-windows-x86_64.zip" ;; *) exit 1 ;; esac
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
+            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
+            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
+            *) exit 1 ;;
+          esac
+          package="cmake-$PRODUCT_CMAKE-$machine.$format"
+          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
           mkdir -p target/cache/cmake
-          if [ ! -f target/cache/cmake/ready ]; then
+          if [ ! -x "$binary" ]; then
             curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -q "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
-            touch target/cache/cmake/ready
+            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
           fi
-          find "$GITHUB_WORKSPACE/target/cache/cmake" -type d -name bin >> "$GITHUB_PATH"
+          test -x "$binary"
+          printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
       - name: 使用Runner官方MSVC开发环境
         shell: pwsh
         run: |
           $installation = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           Import-Module "$installation/Common7/Tools/Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          $compilerBin = Split-Path (Get-Command cl.exe -CommandType Application).Source
+          "CITIZENSDK_MSVC_BIN=$compilerBin","CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$(Join-Path $compilerBin 'link.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Get-ChildItem Env: | ForEach-Object { if ($_.Name -in @('PATH','INCLUDE','LIB','LIBPATH','VCToolsInstallDir','VCINSTALLDIR','WindowsSdkDir','WindowsSDKVersion')) { "$($_.Name)=$($_.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 } }
       - name: 构建锁定SQLite静态库
         shell: pwsh
@@ -603,13 +650,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
       - id: tools
         name: 读取本产品工具声明
         run: |
           node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: 公民SDK·SDK·v${{ inputs.version }}·*

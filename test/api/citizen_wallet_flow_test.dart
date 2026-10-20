@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:citizen_sdk/citizen_sdk.dart';
+
 import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -374,4 +375,4 @@ List<Object?> _state({bool includeCold = false, int selected = 0, String walletN
   ],
   1, false, selected, <Object?>[],
 ];
-String _account(int byte) => '0x' + List.filled(32, byte.toRadixString(16).padLeft(2, '0')).join();
+String _account(int byte) => "0x${List.filled(32, byte.toRadixString(16).padLeft(2, '0')).join()}";

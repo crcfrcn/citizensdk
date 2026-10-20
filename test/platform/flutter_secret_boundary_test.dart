@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,4 +74,4 @@ void main() {
       expectedSessionId: 's', expectedRequestSequence: 1), throwsException);
   });
 }
-String _account(int byte) => '0x' + List.filled(32, byte.toRadixString(16).padLeft(2, '0')).join();
+String _account(int byte) => "0x${List.filled(32, byte.toRadixString(16).padLeft(2, '0')).join()}";

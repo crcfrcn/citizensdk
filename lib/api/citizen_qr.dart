@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../account_codec.dart';
 import 'citizen_sdk_error.dart';

@@ -20,8 +20,12 @@ final class GenericQrV1Signer {
 
     final review = await signing.reviewQrRequest(request.canonicalText).result;
     try {
-      if (!await confirm(review)) throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.cancelled, message: '调用方取消确认');
+      if (!await confirm(review)) {
+        throw const CitizenSdkException(
+          code: CitizenSdkErrorCode.cancelled,
+          message: '调用方取消确认',
+        );
+      }
       final signed = await signing.signQrRequest(review).result;
       if (signed.signRequest != request.canonicalText ||
           signed.requestId != request.requestId ||

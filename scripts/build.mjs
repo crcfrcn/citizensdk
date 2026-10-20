@@ -16,12 +16,17 @@ async function run(command,args,{cwd=root,env={},capture=false}={}){
  controller.signal.throwIfAborted();let batch=false;
  if(process.platform==='win32'&&/\.(?:bat|cmd)$/iu.test(command)){if([command,...args].some(value=>/["%!^&|<>\r\n]/u.test(value)))throw Error('Windows工具参数含Shell控制字符');args=['/d','/s','/c','\"'+[command,...args].map(value=>'\"'+value+'\"').join(' ')+'\"'];command=process.env.COMSPEC||'cmd.exe';batch=true;}
  const environment={...process.env,...env};delete environment.GH_TOKEN;delete environment.GITHUB_TOKEN;
+ // Git Bash会把自己的link.exe放到PATH前端；本产品始终使用官方MSVC目录和链接器。
+ if(process.platform==='win32')environment.MSBUILDDISABLENODEREUSE='1';
+ if(process.platform==='win32'&&process.env.CITIZENSDK_MSVC_BIN){const path=Object.entries(environment).find(([key])=>key.toLowerCase()==='path')?.[1]||'';for(const key of Object.keys(environment))if(key.toLowerCase()==='path')delete environment[key];environment.PATH=process.env.CITIZENSDK_MSVC_BIN+';'+path;}
+
  return new Promise((ok,fail)=>{
-  const child=spawn(command,args,{cwd,env:environment,windowsVerbatimArguments:batch,detached:process.platform!=='win32',stdio:['ignore',capture?'pipe':process.stderr,process.stderr]});let output='',error,timer;
-  const kill=signal=>{try{if(process.platform==='win32')spawn('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});else process.kill(-child.pid,signal);}catch{}};
+  const child=spawn(command,args,{cwd,env:environment,windowsVerbatimArguments:batch,detached:process.platform!=='win32',stdio:['ignore',capture?'pipe':process.stderr,process.stderr]});let output='',error,timer,stopping;
+  const kill=signal=>{try{if(process.platform==='win32'){stopping??=new Promise(resolve=>{const stop=spawn('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});stop.once('error',()=>resolve(false));stop.once('close',code=>resolve(code===0));});}else process.kill(-child.pid,signal);}catch{}};
   const stop=()=>{kill('SIGTERM');timer=setTimeout(()=>kill('SIGKILL'),2000);};controller.signal.addEventListener('abort',stop,{once:true});
   child.stdout?.on('data',bytes=>{output+=bytes;if(output.length>16*1024**2){error=Error('工具结果超限');stop();}});child.once('error',value=>{error=value;});
   child.once('close',async(code,signal)=>{controller.signal.removeEventListener('abort',stop);
+   if(stopping&&!await stopping){clearTimeout(timer);const failure=Error('Windows进程树退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}
    if(controller.signal.aborted&&process.platform!=='win32'){await new Promise(resolve=>setTimeout(resolve,2100));try{process.kill(-child.pid,0);const failure=Error('子进程退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}catch(value){if(value.code!=='ESRCH')return fail(value);}}
    clearTimeout(timer);if(process.platform!=='win32'&&child.pid){try{process.kill(-child.pid,0);const failure=Error('工具后代尚未退出，保留现场');failure.keepWork=true;return fail(failure);}catch(value){if(value.code!=='ESRCH')return fail(value);}}
    error||code!==0||signal||controller.signal.aborted?fail(error||Error(basename(command)+'执行失败')):ok(output.trim());

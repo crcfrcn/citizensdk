@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:ffi';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../account_codec.dart';
 import '../models/citizen_capability.dart';
 import '../models/citizen_chain_state.dart';
 import '../models/citizen_signing.dart';
 import '../models/citizen_transaction.dart';
 import '../models/citizen_wallet.dart';
-import '../account_codec.dart';
 import '../platform/citizen_sdk_flutter_codec.dart';
 import '../platform/citizen_sdk_flutter_sessions.dart';
 import '../platform/citizen_sdk_platform.dart';
@@ -18,8 +17,8 @@ import 'citizen_chain.dart';
 import 'citizen_qr.dart';
 import 'citizen_sdk_error.dart';
 import 'citizen_sdk_events.dart';
-import 'citizen_transactions.dart';
 import 'citizen_sdk_wallet.dart';
+import 'citizen_transactions.dart';
 
 /// CitizenSDK 的唯一 Dart/Flutter 公共门面。
 final class CitizenSdk {
@@ -434,11 +433,12 @@ final class _CitizenSdkWallet implements CitizenSdkWallet {
     fields: fields,
     decode: (value) {
       final profile = _codec.decodeWalletProfile(value[0]);
-      if (profile == null)
+      if (profile == null) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.decode,
           message: '钱包操作没有返回已提交的公开profile',
         );
+      }
       return profile;
     },
   );
@@ -458,10 +458,11 @@ final class _CitizenSdkWallet implements CitizenSdkWallet {
   );
   @override
   Future<CitizenWalletInputValidation> validatePassword(String password) async {
-    if (!_codec.walletInputWithinLimit(password))
+    if (!_codec.walletInputWithinLimit(password)) {
       return const CitizenWalletInputValidation(
         reason: CitizenWalletInputReason.inputTooLong,
       );
+    }
     return _codec.decodeWalletInputValidation(
       await _session.invoke('validateWalletPassword', fields: [password]),
     );
@@ -472,10 +473,11 @@ final class _CitizenSdkWallet implements CitizenSdkWallet {
     String mnemonic,
     CitizenWalletWordCount wordCount,
   ) async {
-    if (!_codec.walletInputWithinLimit(mnemonic))
+    if (!_codec.walletInputWithinLimit(mnemonic)) {
       return const CitizenWalletInputValidation(
         reason: CitizenWalletInputReason.inputTooLong,
       );
+    }
     return _codec.decodeWalletInputValidation(
       await _session.invoke(
         'validateWalletMnemonic',
@@ -533,11 +535,12 @@ final class _CitizenSdkWallet implements CitizenSdkWallet {
     String? ss58Address,
     String name = '',
   }) {
-    if ((accountId == null) == (ss58Address == null))
+    if ((accountId == null) == (ss58Address == null)) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.invalidArgument,
         message: 'accountId与ss58Address必须且只能提供一个',
       );
+    }
     return _state(
       accountId == null ? 'importColdAccountSs58' : 'importColdAccountId',
       [accountId ?? ss58Address!, name.trim()],
@@ -628,11 +631,12 @@ final class _CitizenSdkWallet implements CitizenSdkWallet {
     fields: [sessionId, response],
     decode: (value) {
       final result = _codec.decodeDefaultAccountChangeOutcome(value[0]);
-      if (result is! CitizenDefaultAccountChangeCompleted)
+      if (result is! CitizenDefaultAccountChangeCompleted) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.decode,
           message: '默认账户签名消费没有返回完成事实',
         );
+      }
       return result;
     },
   );
@@ -667,11 +671,12 @@ final class _CitizenSdkPreparedWallet implements CitizenSdkPreparedWallet {
   Future<void>? _releaseFuture;
 
   void _requireOpen() {
-    if (_closing || _released || _committed || _committing)
+    if (_closing || _released || _committed || _committing) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.invalidState,
         message: '创建准备资源已提交、正在使用或关闭',
       );
+    }
   }
 
   @override
@@ -695,11 +700,12 @@ final class _CitizenSdkPreparedWallet implements CitizenSdkPreparedWallet {
       fields: [_id],
       decode: (value) {
         final profile = _codec.decodeWalletProfile(value[0]);
-        if (profile == null)
+        if (profile == null) {
           throw const CitizenSdkException(
             code: CitizenSdkErrorCode.decode,
             message: '创建提交未返回profile',
           );
+        }
         return profile;
       },
     );
@@ -763,11 +769,12 @@ final class _CitizenSdkRecoveryPhrase implements CitizenSdkRecoveryPhrase {
   bool _released = false;
   @override
   Uint8List get bytes {
-    if (_released)
+    if (_released) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.invalidState,
         message: '备份显示资源已释放',
       );
+    }
     return _bytes.asUnmodifiableView();
   }
 
@@ -818,13 +825,14 @@ final class _CitizenSdkPrivateKey implements CitizenSdkPrivateKey {
   Future<void> get closed => _closed.future;
   @override
   Future<Uint8List> reveal() {
-    if (_closeRequested || _revealing != null)
+    if (_closeRequested || _revealing != null) {
       return Future<Uint8List>.error(
         const CitizenSdkException(
           code: CitizenSdkErrorCode.invalidState,
           message: '私钥资源只允许一次显式查看',
         ),
       );
+    }
     return _revealing = _reveal();
   }
 
@@ -832,16 +840,18 @@ final class _CitizenSdkPrivateKey implements CitizenSdkPrivateKey {
     final value = await _session.invoke('revealPrivateKey', fields: [_id]);
     final raw = value[0]! as Uint8List;
     try {
-      if (_closeRequested)
+      if (_closeRequested) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.cancelled,
           message: '私钥显示已取消',
         );
-      if (raw.length != 32)
+      }
+      if (raw.length != 32) {
         throw const CitizenSdkException(
           code: CitizenSdkErrorCode.decode,
           message: '私钥显示结果长度无效',
         );
+      }
       _bytes = Uint8List.fromList(raw);
       return _bytes!.asUnmodifiableView();
     } finally {
@@ -1090,16 +1100,18 @@ final class _CitizenWalletInspection implements CitizenWalletInspection {
     int index, [
     String? name,
   ]) {
-    if (_released || _releasing != null)
+    if (_released || _releasing != null) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.invalidState,
         message: '钱包检查资源正在释放或已释放',
       );
-    if (!state.diagnostics.any((record) => record.walletIndex == index))
+    }
+    if (!state.diagnostics.any((record) => record.walletIndex == index)) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.notFound,
         message: '检查快照中没有该异常钱包',
       );
+    }
     // 只交不透明资源号和目标索引；原记录、修订与授权由Core保有并重新核实。
     return _session.operation(
       method,
@@ -1381,8 +1393,9 @@ final class _CitizenQrCapture implements CitizenQrCapture {
     _events = _session.events.listen((event) {
       if (event is! CitizenSdkQrCaptureEvent ||
           event.resourceId != _id ||
-          _closed)
+          _closed) {
         return;
+      }
       if (event.preview != null) {
         _preview = event.preview!;
         _previews.add(_preview);
@@ -1444,11 +1457,12 @@ final class _CitizenQrCapture implements CitizenQrCapture {
 
   @override
   Future<void> resume() async {
-    if (_closingRequested)
+    if (_closingRequested) {
       throw const CitizenSdkException(
         code: CitizenSdkErrorCode.cancelled,
         message: '采集资源已关闭',
       );
+    }
     await _session.invoke('resumeQrCapture', fields: [_id]);
   }
 

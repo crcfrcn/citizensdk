@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -129,9 +128,12 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
 
   /// SDK资源不依赖页面存续；关闭期间拒绝迟到接管，原生session负责回收未交付资源。
   void registerResource(Future<void> Function() close) {
-    if (_closing || _closed) throw const CitizenSdkException(
-      code: CitizenSdkErrorCode.cancelled, message: 'SDK已关闭资源接纳',
-    );
+    if (_closing || _closed) {
+      throw const CitizenSdkException(
+        code: CitizenSdkErrorCode.cancelled,
+        message: 'SDK已关闭资源接纳',
+      );
+    }
     _ownedResources.add(close);
   }
   void unregisterResource(Future<void> Function() close) => _ownedResources.remove(close);
@@ -438,9 +440,12 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
       _ => null,
     };
     if (closedId != null && !_closedResourceAcks.remove(closedId)) {
-      if (_closedResourceEvents.length >= 256) throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.queueFull, message: '未接管的资源关闭事件超过上限',
-      );
+      if (_closedResourceEvents.length >= 256) {
+        throw const CitizenSdkException(
+          code: CitizenSdkErrorCode.queueFull,
+          message: '未接管的资源关闭事件超过上限',
+        );
+      }
       _closedResourceEvents.add(closedId);
     }
     if (event is CitizenSdkLifecycleChanged) {
@@ -560,14 +565,20 @@ final class CitizenSdkFlutterSession with WidgetsBindingObserver {
     } on CitizenSdkException catch (error) {
       // 精确请求已终结时的取消无副作用；其他失败不能伪装成原生排空成功。
       if (error.code != CitizenSdkErrorCode.invalidState &&
-          error.code != CitizenSdkErrorCode.notFound) rethrow;
+          error.code != CitizenSdkErrorCode.notFound) {
+        rethrow;
+      }
     }
   }
 
   Future<void> _cancelCredentials() async {
     final pending = List<_CitizenSdkPendingCredential>.of(_credentials.values);
-    for (final request in pending) request.revoke();
-    for (final request in pending) await _cancelCredential(request);
+    for (final request in pending) {
+      request.revoke();
+    }
+    for (final request in pending) {
+      await _cancelCredential(request);
+    }
     // 取消通知不代替提供者实际返回；关闭等待秘密副本的finally真正完成。
     for (final request in pending) {
       try { await request.finished; } on Object { /* 原始操作通过自己的结果报告失败。 */ }

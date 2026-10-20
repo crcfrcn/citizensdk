@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:typed_data';
 
 /// 公民身份上链确认(对齐 OP_SIGN_CITIZEN_IDENTITY)。
 const int kOpSignCitizenIdentity = 0x10;

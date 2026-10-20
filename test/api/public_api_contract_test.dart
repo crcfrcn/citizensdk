@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/account_codec.dart';
+import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
 import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
 import 'package:citizen_sdk/platform/flutter_citizen_sdk_platform.dart';
