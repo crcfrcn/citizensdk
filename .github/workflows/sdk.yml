@@ -54,9 +54,10 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-
           fail-on-cache-miss: false
       - name: 准备官方Rust与二维码源码
         env:
@@ -147,7 +148,7 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: 清理本轮独占现场
         if: ${{ always() && steps.build.outputs.work != '' }}
         env:
@@ -193,9 +194,10 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-
           fail-on-cache-miss: false
       - name: 准备官方Rust与二维码源码
         env:
@@ -275,7 +277,7 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: 清理本轮独占现场
         if: ${{ always() && steps.build.outputs.work != '' }}
         env:
@@ -335,9 +337,10 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-
           fail-on-cache-miss: false
       - name: 准备官方Rust与二维码源码
         env:
@@ -433,7 +436,7 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: 清理本轮独占现场
         if: ${{ always() && steps.build.outputs.work != '' }}
         env:
@@ -452,6 +455,8 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: 保持Git源码与原锁的LF字节
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
@@ -479,9 +484,10 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-
           fail-on-cache-miss: false
       - name: 准备官方Rust与二维码源码
         env:
@@ -576,7 +582,7 @@ jobs:
             target/cache/native
             target/cache/cmake
             target/cache/gradle
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'pubspec.lock', 'scripts/config.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('scripts/config.mjs') }}-${{ hashFiles('Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: 清理本轮独占现场
         if: ${{ always() && steps.build.outputs.work != '' }}
         env:
