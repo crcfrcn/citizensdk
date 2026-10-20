@@ -19,7 +19,7 @@ fn observe_error(error: &ContractError, operation: &'static str) {
         .find_map(|field| field.strip_prefix(name).and_then(|value| value.parse::<usize>().ok()))
         .unwrap_or(0);
     eprintln!(
-        "LIVE_FAILURE operation={operation} code={:?} stage={:?} storage_unavailable={} runtime_execution={} api_requirement={} rpc_rejected={} proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={}",
+        "LIVE_FAILURE operation={operation} code={:?} stage={:?} storage_unavailable={} runtime_execution={} api_requirement={} rpc_rejected={} proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={} network_no_connection={} network_request_too_large={} network_remote_couldnt_answer={} network_response_decode={} network_connection_shutdown={} network_timeout={} network_protocol_unavailable={} network_substream_closed={} network_substream_reset={} network_negotiation={} network_response_invalid_leb128={} network_response_too_large={}",
         error.code(), error.stage(),
         error.message().contains("Error trying to access the storage"),
         error.message().contains("Error during the execution of the runtime:"),
@@ -27,6 +27,12 @@ fn observe_error(error: &ContractError, operation: &'static str) {
         error.message().contains("RPC"),
         count("proof_network="), count("proof_invalid="), count("proof_missing="),
         count("storage_request="), count("child_storage_request="),
+        count("network_no_connection="), count("network_request_too_large="),
+        count("network_remote_couldnt_answer="), count("network_response_decode="),
+        count("network_connection_shutdown="), count("network_timeout="),
+        count("network_protocol_unavailable="), count("network_substream_closed="),
+        count("network_substream_reset="), count("network_negotiation="),
+        count("network_response_invalid_leb128="), count("network_response_too_large="),
     );
 }
 

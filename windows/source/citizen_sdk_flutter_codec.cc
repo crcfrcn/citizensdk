@@ -793,6 +793,9 @@ const char *method_name(Method method) noexcept {
   const auto index = static_cast<std::size_t>(method);
   return index < std::size(kMethods) ? kMethods[index] : "unsupported";
 }
+bool is_method_name(const std::string &name) noexcept {
+  return std::any_of(std::begin(kMethods), std::end(kMethods), [&](const char *candidate) { return name == candidate; });
+}
 bool valid_utf8(const std::string &text) noexcept { return inspect_utf8(text, nullptr); }
 
 std::unique_ptr<::flutter::MethodCall<::flutter::EncodableValue>> decode_method_call(
@@ -1494,10 +1497,8 @@ Value error_details(citizensdk_error_code_t code, const std::string &message,
                     std::optional<std::string> session, std::optional<int64_t> sequence,
                     const std::string &method, citizensdk_failure_stage_t stage) {
   if (stage == 0) stage = flutter_default_failure_stage(code);
-  bool known_method = false;
-  // 错误也遍历完整唯一方法表，不能按某个枚举位置截断后续QR/资源方法。
-  for (const auto *candidate : kMethods) known_method = known_method || method == candidate;
-  require(code >= 1 && code <= 22 && stage >= 1 && stage <= 8 && known_method &&
+  // 方法和错误详情共享完整唯一方法表，不接受未知操作进入已知详情合同。
+  require(code >= 1 && code <= 22 && stage >= 1 && stage <= 8 && is_method_name(method) &&
               (!sequence || *sequence > 0) && valid_utf8(message),
           CITIZENSDK_ERROR_INTEGRITY, "Invalid error envelope");
   if (session) (void)response(*session, 0, Value::list({}));

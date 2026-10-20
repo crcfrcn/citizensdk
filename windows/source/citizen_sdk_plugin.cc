@@ -172,6 +172,10 @@ std::unique_ptr<Bytes> encoded_error(citizensdk_error_code_t code, const char *m
                                     std::optional<int64_t> sequence = {},
                                     const std::string &method = "open",
                                     citizensdk_failure_stage_t stage = 0) {
+  // 未知方法没有合法的七字段详情，仍返回官方标准错误包；不回显未知方法文本。
+  if (!is_method_name(method)) {
+    return codec().EncodeErrorEnvelope(std::string("citizensdk.") + error_name(code), "CitizenSDK method request rejected", nullptr);
+  }
   const auto details = to_encodable_value(
       error_details(code, message, std::move(session), sequence, method, stage));
   return codec().EncodeErrorEnvelope(std::string("citizensdk.") + error_name(code), message, &details);

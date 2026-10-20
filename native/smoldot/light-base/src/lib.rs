@@ -3263,7 +3263,11 @@ fn nonce_block_hash(
 // 本SDK的nonce扩展只提取闭集错误分类，不输出证明、节点、账户或上游错误载荷。
 fn nonce_runtime_error(error: runtime_service::RuntimeCallError) -> String {
     use runtime_service::{RuntimeCallError, RuntimeCallInaccessibleError};
+    use network_service::CallProofRequestError as CallProofError;
+    use smoldot::network::service::{CallProofRequestError as WireProofError, RequestError as WireRequestError};
+    use smoldot::libp2p::connection::established::RequestError as StreamError;
     let mut counts = [0usize; 5];
+    let mut network = [0usize; 12];
     if let RuntimeCallError::Inaccessible(errors) = &error {
         for error in errors {
             let index = match error {
@@ -3274,9 +3278,29 @@ fn nonce_runtime_error(error: runtime_service::RuntimeCallError) -> String {
                 RuntimeCallInaccessibleError::ChildStorageRequest(_) => 4,
             };
             counts[index] += 1;
+            // 只展开已有网络错误枚举；不输出peer、请求、响应或证明字节。
+            if let RuntimeCallInaccessibleError::Network(error) = error {
+                let index = match error {
+                    CallProofError::NoConnection => 0,
+                    CallProofError::RequestTooLarge => 1,
+                    CallProofError::Request(WireProofError::RemoteCouldntAnswer) => 2,
+                    CallProofError::Request(WireProofError::Decode(_)) => 3,
+                    CallProofError::Request(WireProofError::Request(WireRequestError::ConnectionShutdown)) => 4,
+                    CallProofError::Request(WireProofError::Request(WireRequestError::Substream(error))) => match error {
+                        StreamError::Timeout => 5,
+                        StreamError::ProtocolNotAvailable => 6,
+                        StreamError::SubstreamClosed => 7,
+                        StreamError::SubstreamReset => 8,
+                        StreamError::NegotiationError(_) => 9,
+                        StreamError::ResponseInvalidLeb128 => 10,
+                        StreamError::ResponseTooLarge => 11,
+                    },
+                };
+                network[index] += 1;
+            }
         }
     }
-    format!("Failed to execute AccountNonceApi_account_nonce: {error}; proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={}", counts[0], counts[1], counts[2], counts[3], counts[4])
+    format!("Failed to execute AccountNonceApi_account_nonce: {error}; proof_network={} proof_invalid={} proof_missing={} storage_request={} child_storage_request={} network_no_connection={} network_request_too_large={} network_remote_couldnt_answer={} network_response_decode={} network_connection_shutdown={} network_timeout={} network_protocol_unavailable={} network_substream_closed={} network_substream_reset={} network_negotiation={} network_response_invalid_leb128={} network_response_too_large={}", counts[0], counts[1], counts[2], counts[3], counts[4], network[0], network[1], network[2], network[3], network[4], network[5], network[6], network[7], network[8], network[9], network[10], network[11])
 }
 
 /// AccountNonceApi v1在本链返回SCALE u32；拒绝截断、空值和多余字节。

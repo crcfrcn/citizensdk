@@ -786,6 +786,7 @@ void test_windows_value_types_and_limits() {
 }
 
 void test_envelopes_and_decimal() {
+  // v2错误详情第4项为阶段，第6项为消息；原有busy消息断言保持。
   using namespace citizen_sdk::flutter;
   assert(decimal_u128(parse_u128("0")) == "0");
   assert(decimal_u128(parse_u128("340282366920938463463374607431768211455")) ==
@@ -822,7 +823,7 @@ void test_envelopes_and_decimal() {
   assert(codec.DecodeAndProcessResponseEnvelope(error_wire->data(), error_wire->size(), &error));
   assert(error.errors == 1 && error.successes == 0 && error.not_implemented == 0 &&
          error.code == "busy" && error.message == "busy" &&
-         as_string(as_list(error.value)[4]) == "busy");
+         as_string(as_list(error.value)[6]) == "busy");
   auto event_value = to_encodable_value(event("s", 9, "lifecycleChanged",
       list({lifecycle(CITIZENSDK_LIFECYCLE_RUNNING)})));
   const auto event_wire = codec.EncodeSuccessEnvelope(&event_value);

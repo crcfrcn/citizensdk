@@ -4263,3 +4263,7 @@ Windows Flutter正常测试请求复用现行kProtocolVersion，open正常夹具
 
 nonce诊断在SDK已有chain_account_next_index_snapshot错误转换处附加五类固定计数：调用证明网络错误、无效证明、证明缺项、存储证明请求、子存储证明请求；实网测试仅输出这些计数和既有枚举，不输出原始证明、节点或错误载荷。Runtime调用次数、超时、API要求、证明验证和失败结果均不变。
 Windows事件输出元组复用semantic_tuple给出既有Integrity结果错误码；输入解码保持原规则。未知方法用合法三字段外壳和独立单调序号测试Unsupported，正常钱包查询使用getWalletState。detach以独立收口标记幂等，避免和订阅失效混淆；取消夹具显式延迟真实终态，原双调用和资源归还断言不变。Flutter测试根在Windows同样于本轮目录创建，夹具现有owner/no-reparse/私有子目录检查保持。
+
+调用证明的网络分类继续按现有嵌套枚举展开为12项固定计数：未连接、请求过大、远端无法回答、响应解码、连接关闭、超时、协议不支持、子流关闭、子流重置、协商错误、响应LEB128错误、响应过大。SDK仅转换错误分类，实网测试读取相同固定字段；不改变任何生产请求、重试、节点选择、证明验证、超时或失败断言，不输出上游错误载荷。
+
+Windows v2错误详情的消息固定在索引6，回读消息断言仍要求busy；不改七字段合同。直接Session序号合同测试先调用现有accept_request_sequence，经真实Core观察重复序号Conflict，回调抛错不退回序号，原冲突断言保持。未知方法使用官方StandardMethodCodec标准错误包且details=null；已知方法继续由唯一方法表及原七字段校验约束。未知输入不回显到方法详情，不把空回包当通过；插件回归仍要求一次非空标准回包和原Unsupported错误码，并额外检查空详情。

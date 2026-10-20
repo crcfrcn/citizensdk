@@ -197,6 +197,8 @@ enum class Method {
 };
 
 const char *method_name(Method method) noexcept;
+// 只查询唯一方法表；未知输入不得进入已知方法的错误详情。
+bool is_method_name(const std::string &name) noexcept;
 
 // Fields are copied from a validated fixed-position tuple. Signing payload and
 // payload bytes are public messages, never secret material. Unused fields

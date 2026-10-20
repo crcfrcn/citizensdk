@@ -1068,14 +1068,22 @@ int main() {
   int throwing_replies = 0;
   bool reply_threw = false;
   try {
+    // 与插件相同，序号先交真实Core接纳；回调抛错也不能回退已接纳序号。
+    duplicate->accept_request_sequence({duplicate_id, 4});
     duplicate->dispatch(request(csf::Method::get_capabilities, duplicate_id, 4),
                         [&](csf::Reply) { ++throwing_replies; throw std::runtime_error("synthetic reply"); });
   } catch (const std::runtime_error &) { reply_threw = true; }
   assert(reply_threw && throwing_replies == 1);
   csf::Reply repeated_sequence;
-  duplicate->dispatch(request(csf::Method::get_capabilities, duplicate_id, 4),
-                      [&](csf::Reply value) { repeated_sequence = std::move(value); });
+  try {
+    duplicate->accept_request_sequence({duplicate_id, 4});
+    duplicate->dispatch(request(csf::Method::get_capabilities, duplicate_id, 4),
+                        [&](csf::Reply value) { repeated_sequence = std::move(value); });
+  } catch (const csf::ContractFailure &error) {
+    repeated_sequence.error_code = error.code;
+  }
   assert(!repeated_sequence.success && repeated_sequence.error_code == CITIZENSDK_ERROR_CONFLICT);
+  duplicate->accept_request_sequence({duplicate_id, 5});
   duplicate->dispatch(request(csf::Method::get_capabilities, duplicate_id, 5),
                       [](csf::Reply value) { assert(value.success); });
   duplicate->detach();

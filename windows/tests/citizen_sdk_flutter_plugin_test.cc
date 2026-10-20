@@ -278,7 +278,9 @@ int main() {
     pump();
     assert(messenger.events.size() == after_cancel + 2);
     // 未知方法用合法外壳验证Unsupported；不能用订阅元组触发更早的参数错误。
-    exactly(messenger.call(csf::kMethodChannel, "unknown", request(session, 1)), false, "citizensdk.unsupported");
+    const auto unsupported = messenger.call(csf::kMethodChannel, "unknown", request(session, 1));
+    exactly(unsupported, false, "citizensdk.unsupported");
+    assert(std::holds_alternative<std::monostate>(unsupported->value));
     exactly(messenger.call(csf::kMethodChannel, "open", csf::Value::null()), false,
             "citizensdk.invalidArgument");
     // 两个生产 channel 均在官方解码器分配/递归前检查原始标准 wire。
