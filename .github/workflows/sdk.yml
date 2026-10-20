@@ -254,6 +254,8 @@ jobs:
           if [ ! -x target/cache/flutter/bin/flutter ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
           printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
       - name: 准备官方Flutter宿主和真实Rust、Dart回归
+        env:
+          CITIZENSDK_TRANSACTION_DIAGNOSTICS: '1'
         run: |
           "$FLUTTER_ROOT/bin/flutter" precache --ios --macos --android
           node --test test/build.test.mjs

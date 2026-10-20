@@ -1121,7 +1121,7 @@ int main() {
   main_queue.drain();
   worker_sessions->detach();
 
-  // 长期资源不得套用普通值的提前复制；原生终态到达后仍等平台线程领取。
+  // 长期资源即使入队失败也不得提前复制；原生终态到达后仍等平台线程领取。
   {
     citizen_sdk::flutter::test::FiniteScheduler resource_queue;
     const auto resource_native = std::make_shared<FakeTransport>();
@@ -1138,10 +1138,13 @@ int main() {
           assert(std::this_thread::get_id() == main_thread && value.success);
           ++resource_replies;
         });
+    resource_queue.fail_next();
     std::thread resource_thread([&] { resource_native->complete_deferred(); });
     resource_thread.join();
     assert(resource_replies == 0 && resource_native->copied_results == 0 &&
            resource_native->released_results == 0);
+    resources->dispatch(request(csf::Method::get_capabilities, resource_id, 2),
+                        [](csf::Reply value) { assert(value.success); });
     resource_queue.drain();
     assert(resource_replies == 1 && resource_native->copied_results == 1 &&
            resource_native->released_results == 1);

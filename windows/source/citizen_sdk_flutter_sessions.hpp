@@ -126,7 +126,7 @@ class CaptureResource final : public std::enable_shared_from_this<CaptureResourc
 class NativeTransport {
  public:
   using Observer = std::function<void(const citizensdk_event_t &)>;
-  // 完成回调只通知真实Core终态；普通结果先复制并归还，资源结果仍由平台线程领取。
+  // 完成回调通知真实Core终态；平台领取结果，只有入队失败的普通结果提前转为自有值。
   using Completion = std::function<void(citizensdk_request_id_t, std::function<Value()>)>;
   using ResourceObserver = std::function<void(std::string, Value)>;
   virtual ~NativeTransport() = default;

@@ -142,3 +142,33 @@ test('自动化终态后的删除失败明确返回清理错误，不重新派�
  await assert.rejects(automate({...api,read,dispatch:async()=>{posts++;return {workflow_run_id:2};},remove:async()=>{throw Error('GitHub HTTP 403');},report:event=>events.push(event),interval:0}),/SDK记录清理失败.*403/);
  assert.equal(posts,1);assert.ok(events.some(event=>event.event==='run'&&event.run.conclusion==='failure'));
 });
+
+// 瞬时传输失败只读同一Run，终态仍实际清理；不能靠再派发掩盖观察断线。
+test('瞬时Run与Job读取失败继续原Run且最终实际清理，不重复派发',async()=>{
+ const latest=runRow(2,'failure'),api=recordsFixture([runRow(1,'failure'),latest]);let posts=0,reads=0,jobs=0;const events=[];
+ const failures=[new TypeError('fetch failed'),...['408','429','500','502','503','504'].map(status=>Error('GitHub HTTP '+status))];
+ const read=async path=>{
+  if(path==='actions/runs/2'){
+   reads++;if(reads<=failures.length)throw failures[reads-1];
+   return reads===failures.length+1?{...latest,status:'in_progress',conclusion:null}:latest;
+  }
+  if(path.includes('/jobs?')){if(++jobs===1)throw new TypeError('fetch failed');return {jobs:[]};}
+  return api.read(path);
+ };
+ const result=await automate({...api,read,dispatch:async()=>{posts++;return {workflow_run_id:2};},report:event=>events.push(event),interval:0});
+ assert.equal(posts,1);assert.equal(result.runID,2);assert.equal(reads,failures.length+2);
+ assert.deepEqual(api.deleted,[1]);assert.equal(api.logs.has(1),false);assert.equal(api.artifacts.has(1),false);
+ assert.ok(events.some(event=>event.event==='run'&&event.run.status==='completed'));
+});
+test('Run与Job认证权限及非瞬时错误明确失败，不重派或误清理',async()=>{
+ for(const stage of ['run','jobs'])for(const error of [Error('GitHub HTTP 401'),Error('GitHub HTTP 403'),Error('GitHub HTTP 404'),new TypeError('合成结构错误')]){
+  let posts=0,reads=0;const latest=runRow(2,'failure'),api=recordsFixture([latest]);
+  const read=async path=>{
+   if(path==='actions/runs/2'){reads++;if(stage==='run')throw error;return latest;}
+   if(path.includes('/jobs?'))throw error;
+   return api.read(path);
+  };
+  await assert.rejects(automate({...api,read,dispatch:async()=>{posts++;return {workflow_run_id:2};},report:()=>{},interval:0}),value=>value===error);
+  assert.equal(posts,1);assert.equal(reads,1);assert.deepEqual(api.deleted,[]);
+ }
+});

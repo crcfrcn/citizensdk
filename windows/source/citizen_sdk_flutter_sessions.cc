@@ -1576,7 +1576,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
            Value::list({session->transport->capability_snapshot()}), expected);
   }
 
-  void post_drain(const std::shared_ptr<Session> &session) noexcept {
+  bool post_drain(const std::shared_ptr<Session> &session) noexcept {
     try {
       std::weak_ptr<State> weak = shared_from_this();
       std::weak_ptr<Session> target = session;
@@ -1585,8 +1585,9 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
           try { state->drain(value); } catch (...) {}
         }
       });
+      return true;
     } catch (...) {
-      // 已拥有的普通值或资源结果仍归Route；下次平台dispatch/drain继续，不保存借用指针。
+      return false;
     }
   }
 
@@ -1653,28 +1654,38 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
       resource = method == Method::review_qr_request || method == Method::inspect_wallets ||
           method == Method::prepare_wallet_creation || method == Method::prepare_transaction;
     }
-    if (invalid || is_detached()) {
+    if (invalid || is_detached()) projection = {};
+    {
+      std::lock_guard<std::mutex> guard(session->lock);
+      route->projection = std::move(projection);
+      route->completed = true;
+    }
+    if (post_drain(session) || resource) return;
+    {
+      std::lock_guard<std::mutex> guard(session->lock);
+      const auto found = session->routes.find(route->request.sequence);
+      // 调度器可能入队后抛错；平台已领取时不能再次复制或释放结果。
+      if (found == session->routes.end() || found->second != route || !route->completed ||
+          !route->projection) return;
+      route->completed = false;
+      projection = std::move(route->projection);
+    }
+    // 仅入队失败的普通结果转为自有值；正常入队和长期资源保持原平台领取语义。
+    try {
+      auto value = projection();
       projection = {};
-    } else if (projection && !resource) {
-      // 普通结果在原生回调内复制为自有Value并归还原生结果；入队失败也不延长原生借用。
-      // 复用原投影槽交付自有值，平台线程仍执行原校验、复合结果转换和唯一回复。
-      try {
-        auto value = projection();
-        projection = {};
-        projection = [value = std::move(value)]() mutable { return std::move(value); };
-      } catch (...) {
-        const auto error = std::current_exception();
-        projection = {};
-        try { projection = [error]() -> Value { std::rethrow_exception(error); }; }
-        catch (...) {} // 无法持有错误时沿原空投影路径失败关闭，不伪造成功。
-      }
+      projection = [value = std::move(value)]() mutable { return std::move(value); };
+    } catch (...) {
+      const auto error = std::current_exception();
+      projection = {};
+      try { projection = [error]() -> Value { std::rethrow_exception(error); }; }
+      catch (...) {} // 无法持有错误时沿原空投影路径失败关闭，不伪造成功。
     }
     {
       std::lock_guard<std::mutex> guard(session->lock);
       route->projection = std::move(projection);
       route->completed = true;
     }
-    post_drain(session);
   }
 
 
@@ -2029,7 +2040,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
       if (!route) break;
       if (route->completion_identity_invalid)
         route->ready = failure(CITIZENSDK_ERROR_INTEGRITY, "Core completion identity disagrees", route->request);
-      // 普通结果已是自有Value；资源结果仍在平台线程领取，裸result不得排入UI队列。
+      // 正常结果由平台线程领取；入队失败的普通结果消费同一投影槽中的自有值。
       if (route->projection && !is_detached()) {
         auto project = std::move(route->projection);
         try {

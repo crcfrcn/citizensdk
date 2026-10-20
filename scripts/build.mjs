@@ -88,9 +88,16 @@ export async function automate({token,fetchImpl=fetch,read=path=>request(token,p
  emit(report,{event:'started',repository,runID});
  let run;
  for(;;){
-  run=await read('actions/runs/'+runID);emit(report,{event:'run',run});
+  try{run=await read('actions/runs/'+runID);}
+  catch(error){
+   // 只重试同一Run的瞬时读取；认证、权限及其他错误仍沿原失败路径退出。
+   if(!(error instanceof TypeError&&error.message==='fetch failed')&&!/^GitHub HTTP (408|429|500|502|503|504)$/u.test(error.message))throw error;
+   line(report,'GitHub Run瞬时读取失败；继续观察原Run，不重复派发');
+   await new Promise(resolve=>setTimeout(resolve,interval));continue;
+  }
+  emit(report,{event:'run',run});
   try{emit(report,{event:'jobs',jobs:await read('actions/runs/'+runID+'/jobs?per_page=100&page=1')});}
-  catch{line(report,'GitHub Job读取失败；继续读取原Run的真实状态');}
+  catch(error){if(!(error instanceof TypeError&&error.message==='fetch failed')&&!/^GitHub HTTP (408|429|500|502|503|504)$/u.test(error.message))throw error;line(report,'GitHub Job瞬时读取失败；继续读取原Run的真实状态');}
   if(run.status==='completed')break;
   await new Promise(resolve=>setTimeout(resolve,interval));
  }
