@@ -1052,16 +1052,20 @@ int main() {
   duplicate->dispatch(open, [&](csf::Reply value) { duplicate_open = std::move(value); });
   const auto duplicate_id = text(items(duplicate_open.value)[1]);
   int duplicate_replies = 0;
+  // 此场景的全部请求连续交真实Core接纳，不能从序号4开始补接纳。
+  duplicate->accept_request_sequence({duplicate_id, 1});
   duplicate->dispatch(request(csf::Method::get_finalized_head, duplicate_id, 1),
                       [&](csf::Reply value) { assert(value.success); ++duplicate_replies; });
   assert(duplicate_replies == 1 && duplicate_native->copied_results == 1 &&
          duplicate_native->released_results == 2);
   duplicate_native->fail_copy = true;
   csf::Reply copy_failure;
+  duplicate->accept_request_sequence({duplicate_id, 2});
   duplicate->dispatch(request(csf::Method::rename_wallet, duplicate_id, 2),
                       [&](csf::Reply value) { copy_failure = std::move(value); });
   assert(!copy_failure.success && copy_failure.error_code == CITIZENSDK_ERROR_INTEGRITY);
   duplicate_native->fail_copy = false;
+  duplicate->accept_request_sequence({duplicate_id, 3});
   duplicate->dispatch(request(csf::Method::rename_wallet, duplicate_id, 3),
                       [&](csf::Reply value) { assert(value.success); ++duplicate_replies; });
   assert(duplicate_replies == 2); // 失败复制已释放进程级变更门，不留下 BUSY。

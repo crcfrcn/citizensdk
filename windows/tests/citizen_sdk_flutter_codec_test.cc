@@ -864,6 +864,7 @@ void test_finalized_execution_semantics() {
   }
 }
 Value profile_fixture() {
+  // 正常钱包资料按现行七字段合同补齐钱包名称；账户闭包负例仍由原断言覆盖。
   // Public AccountId/SS58 golden pair from citizenchain-wallet-derivation-v1;
   // no mnemonic, child seed or password is copied into this fixture.
   constexpr const char *id = "0x2afba9278e30ccf6a6ceb3a8b6e336b70068f045c666f2e7f4f9cc5f47db8972";
@@ -871,7 +872,7 @@ Value profile_fixture() {
   auto item = list({Value::integer(0), Value::string(id), Value::string(address),
       Value::string("主账户"), Value::string("0"), Value::boolean(true)});
   return list({Value::integer(0), Value::string("created"), Value::string("0"),
-      Value::string(id), Value::string(id), list({std::move(item)})});
+      Value::string(id), Value::string(id), list({std::move(item)}), Value::string("测试钱包")});
 }
 Value history_fixture() {
   const auto id = Value::string("0x00112233445566778899aabbccddeeff");

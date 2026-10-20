@@ -353,6 +353,8 @@ int main() {
     Messenger messenger;
     auto native = std::make_shared<csf::test::FakeTransport>();
     native->defer_profile = true;
+    // 本场景验证迟到终态：取消仅发请求，显式完成前不得退役旧资源。
+    native->complete_on_cancel = false;
     auto plugin = attach(messenger, native);
     const auto session = session_of(*messenger.call(csf::kMethodChannel, "open", open_request));
     const auto pending = messenger.call(csf::kMethodChannel, "getWalletState", request(session, 1));
