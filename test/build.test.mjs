@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,rmSync,existsSync,symlinkSync,readlinkSync} from 'node:fs';
 import {join} from 'node:path';
-import {root,claimCache,createNativeSourceView,createFlutterSourceView,verifyComplete,setVersion} from '../scripts/build.mjs';
+import {root,claimCache,createNativeSourceView,createFlutterSourceView,verifyComplete,setVersion,appleLibraries} from '../scripts/build.mjs';
 import {nextVersion,retainedRuns,sdkName,nativePaths} from '../scripts/config.mjs';
 function fixture(t){const base=join(root,'target/test');mkdirSync(base,{recursive:true});const work=mkdtempSync(join(base,'regression-'));t.after(()=>rmSync(work,{recursive:true,force:true}));return work;}
 test('SDK唯一平台与版本，失败不递增，只留最新成功和失败并保护活动任务',()=>{
@@ -21,4 +21,15 @@ test('发布SDK保留Apple标准内部链接，外部源码链接必须拒绝',t
  const work=fixture(t),source=join(work,'source'),frame='darwin/CitizenSDK.xcframework/macos-arm64/CitizenSDK.framework';mkdirSync(join(source,frame,'Versions/A/Headers'),{recursive:true});writeFileSync(join(source,frame,'Versions/A/Headers/citizensdk.h'),'public');symlinkSync('A',join(source,frame,'Versions/Current'));symlinkSync('Versions/Current/Headers',join(source,frame,'Headers'));
  const output=createFlutterSourceView(source,join(work,'project'));assert.equal(readlinkSync(join(output,frame,'Headers')),'Versions/Current/Headers');assert.equal(readFileSync(join(output,frame,'Headers/citizensdk.h'),'utf8'),'public');
  writeFileSync(join(work,'outside'),'outside');symlinkSync('../outside',join(source,'escaped'));assert.throws(()=>createFlutterSourceView(source,join(work,'rejected')),/链接越界/u);
+});
+
+// 模拟Cargo同时保留正式库和deps同名副本；真实链接输入只允许来自所属工具的最终输出。
+test('Apple静态链接只消费正式输出，同名缓存副本不构成冲突或替代来源',t=>{
+ const work=fixture(t),core=join(work,'release'),qr=join(work,'qr');
+ const primary=[join(core,'libcitizensdk.a'),join(qr,'libcitizensdk_qr_image.a'),join(qr,'zxing/core/libZXing.a')];
+ for(const [index,file]of primary.entries()){mkdirSync(join(file,'..'),{recursive:true});writeFileSync(file,'final-'+index);}
+ for(const [index,file]of [join(core,'deps/libcitizensdk.a'),join(qr,'other/libZXing.a')].entries()){mkdirSync(join(file,'..'),{recursive:true});writeFileSync(file,'internal-'+index);}
+ assert.deepEqual(appleLibraries(core,qr).map(file=>readFileSync(file,'utf8')),['final-0','final-1','final-2']);
+ rmSync(primary[0]);assert.throws(()=>appleLibraries(core,qr),{code:'ENOENT'});
+ writeFileSync(primary[0],'');assert.throws(()=>appleLibraries(core,qr),/缺失或为空/u);
 });

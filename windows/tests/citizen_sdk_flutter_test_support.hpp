@@ -456,7 +456,7 @@ class FakeTransport final : public csf::NativeTransport {
   ResourceObserver resource_observer;
   std::function<void(const csf::DecodedRequest &, csf::PrivateKeyResource::Completion)> private_handler;
   bool private_closed{true};
-  void observe_resources(ResourceObserver observer) override { resource_observer = std::move(observer); }
+  void observe_resources(ResourceObserver value) override { resource_observer = std::move(value); }
   void private_key(const csf::DecodedRequest &request, csf::PrivateKeyResource::Completion completion) override {
     if (!private_handler) throw csf::ContractFailure(CITIZENSDK_ERROR_INVALID_STATE, "Private resource fixture is not configured");
     private_handler(request, std::move(completion));

@@ -107,6 +107,12 @@ async function android(project,work,env,headers){
  await run('unzip',['-o',aar,'jni/arm64-v8a/libcitizensdk_jni.so','-d',join(work,'aar')],{env:androidEnv});copy(join(work,'aar/jni/arm64-v8a/libcitizensdk_jni.so'),join(output,'src/main/jniLibs/arm64-v8a/libcitizensdk_jni.so'));
  copy(join(work,'aar/jni/arm64-v8a/libcitizensdk_jni.so'),join(stage,'libcitizensdk_jni.so'));const dependencies=await run(join(bin,'llvm-readelf'),['--dynamic-table',join(stage,'libcitizensdk_jni.so')],{env:environment,capture:true});if(!/\(NEEDED\).*\[libcitizensdk\.so\]/u.test(dependencies)||/\(NEEDED\).*\[[^\]]*[\\/]/u.test(dependencies))throw Error('Android JNI装载依赖无效');await run('gradle',['--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),':testReleaseUnitTest'],{env:androidEnv});
 }
+// Cargo与现有CMake各自拥有准确输出；内部依赖目录的同名库不参与最终链接选择。
+export function appleLibraries(core,qr){
+ const libraries=[join(core,'libcitizensdk.a'),join(qr,'libcitizensdk_qr_image.a'),join(qr,'zxing/core/libZXing.a')];
+ for(const file of libraries){const info=lstatSync(file);if(!info.isFile()||!info.size)throw Error('Apple静态库缺失或为空：'+file);}
+ return libraries;
+}
 async function apple(project,work,env,headers,version){
  const frameworks=[];
  for(const [triple,sdk,target,identity,platform,minimum]of [
@@ -121,7 +127,7 @@ async function apple(project,work,env,headers,version){
   const plist=join(resources,'Info.plist');put(plist,`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>CitizenSDK</string><key>CFBundleIdentifier</key><string>org.citizen.sdk</string><key>CFBundleName</key><string>CitizenSDK</string><key>CFBundlePackageType</key><string>FMWK</string><key>CFBundleShortVersionString</key><string>${version}</string><key>CFBundleVersion</key><string>${version}</string><key>CFBundleSupportedPlatforms</key><array><string>${platform}</string></array><key>${mac?'LSMinimumSystemVersion':'MinimumOSVersion'}</key><string>${minimum}</string></dict></plist>`);
   if(mac){for(const [name,to]of [['Versions/Current','A'],['Headers','Versions/Current/Headers'],['Modules','Versions/Current/Modules'],['Resources','Versions/Current/Resources']])symlinkSync(to,join(framework,name));}
   const qr=join(slice,'qr');await run('cmake',['-S',join(project,'native/image'),'-B',qr,'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_SYSTEM_NAME='+(mac?'Darwin':'iOS'),'-DCMAKE_OSX_SYSROOT='+sdkPath,'-DCMAKE_OSX_ARCHITECTURES=arm64','-DCMAKE_OSX_DEPLOYMENT_TARGET='+minimum,'-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY','-DCITIZENSDK_ZXING_SOURCE_DIR='+process.env.CITIZENSDK_ZXING_SOURCE_DIR],{env:environment});await run('cmake',['--build',qr,'--config','Release','--parallel'],{env:environment});
-  const libraries=['libcitizensdk.a','libcitizensdk_qr_image.a','libZXing.a'].map(name=>{const rows=files(name==='libcitizensdk.a'?core:qr).filter(path=>basename(path)===name);if(rows.length!==1)throw Error('Apple静态闭包不唯一：'+name);return rows[0];});
+  const libraries=appleLibraries(core,qr);
   const swift=readdirSync(join(project,'darwin/source/core')).filter(name=>name.endsWith('.swift')).sort().map(name=>join(project,'darwin/source/core',name));
   const args=[...swift,'-parse-as-library','-swift-version','5','-warnings-as-errors','-strict-concurrency=complete','-O','-whole-module-optimization','-enable-library-evolution','-emit-library','-emit-module','-emit-module-path',join(modules,identity+'.swiftmodule'),'-emit-module-interface-path',join(modules,identity+'.swiftinterface'),'-module-name','CitizenSDK','-module-cache-path',join(slice,'modules'),'-sdk',sdkPath,'-target',target,'-import-underlying-module','-F',slice,'-I',headers,'-Xcc','-I'+join(content,'Headers'),...libraries.flatMap(path=>['-Xlinker','-force_load','-Xlinker',path]),'-Xlinker','-install_name','-Xlinker',mac?'@rpath/CitizenSDK.framework/Versions/A/CitizenSDK':'@rpath/CitizenSDK.framework/CitizenSDK','-framework','Security','-framework','LocalAuthentication','-lc++','-lsqlite3'];
   const probe=join(slice,'probe');await run('xcrun',['swiftc',...args,'-o',probe],{env:environment});const symbols=await verifySymbols(probe,project,environment,true);
@@ -134,12 +140,12 @@ async function apple(project,work,env,headers,version){
  await appleTests(project,work,env,headers);
 }
 async function appleTests(project,work,env,headers){
- const harness=join(work,'apple-tests'),core=join(env.CARGO_TARGET_DIR,'aarch64-apple-darwin/release/libcitizensdk.a'),qr=join(work,'aarch64-apple-darwin/qr');
+ const harness=join(work,'apple-tests'),core=join(env.CARGO_TARGET_DIR,'aarch64-apple-darwin/release'),qr=join(work,'aarch64-apple-darwin/qr');
  for(const name of ['citizensdk.h','citizensdk_types.h'])copy(join(project,'include',name),join(harness,'Sources/CitizenSDKC/include',name));copy(join(project,'native/image/citizensdk_qr_image.h'),join(harness,'Sources/CitizenSDKC/include/citizensdk_qr_image.h'));put(join(harness,'Sources/CitizenSDKC/harness.c'),'#include "citizensdk.h"\nint citizensdk_test_anchor(void){return 0;}\n');
  for(const file of files(join(project,'darwin/source/core')).filter(path=>path.endsWith('.swift')))put(join(harness,'Sources/CitizenSDK',basename(file)),'import CitizenSDKC\n'+readFileSync(file,'utf8'));
  put(join(harness,'Sources/CitizenSDK/CitizenSDKCExports.swift'),'@_exported import CitizenSDKC\n');copy(join(project,'darwin/source/flutter'),join(harness,'Sources/CitizenSDKFlutter'));copy(join(project,'darwin/tests/core'),join(harness,'Tests/CitizenSDKTests'));copy(join(project,'darwin/tests/flutter'),join(harness,'Tests/CitizenSDKFlutterTests'));
  const engine=join(process.env.FLUTTER_ROOT,'bin/cache/artifacts/engine'),artifacts=readdirSync(engine).filter(name=>/^darwin-.*-release$/u.test(name)).map(name=>join(engine,name,'FlutterMacOS.xcframework')).filter(existsSync);if(artifacts.length!==1)throw Error('官方Flutter macOS Release framework不唯一');copy(artifacts[0],join(harness,'Artifacts/FlutterMacOS.xcframework'));
- const libraries=[core,...['libcitizensdk_qr_image.a','libZXing.a'].map(name=>{const rows=files(qr).filter(path=>basename(path)===name);if(rows.length!==1)throw Error('Apple测试静态库不唯一');return rows[0];})];
+ const libraries=appleLibraries(core,qr);
  const flags=['-enable-testing','-warnings-as-errors','-strict-concurrency=complete','-I',headers,'-Xcc','-I'+join(harness,'Sources/CitizenSDKC/include')],link=libraries.flatMap(path=>['-Xlinker','-force_load','-Xlinker',path]);
  put(join(harness,'Package.swift'),`// swift-tools-version: 5.9
 import PackageDescription

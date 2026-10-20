@@ -4254,3 +4254,5 @@ Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两�
 ## 外部调用入口
 
 本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
+
+Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前目标release/libcitizensdk.a、二维码CMake根目录libcitizensdk_qr_image.a及zxing/core/libZXing.a。不递归搜索Cargo内部缓存或把同名中间件当最终件，正式库缺失、为空或真实链接失败仍失败；不删除缓存解决路径选择错误。Windows Flutter测试的整数断言直接读取Value已有int64_t类型，测试夹具观察回调沿用原成员，严格告警及失败阶段断言不变。

@@ -788,7 +788,7 @@ void test_envelopes_and_decimal() {
   const auto envelope = response("s", 7, list({Value::string("running")}));
   assert(as_list(envelope).size() == 4 && as_string(as_list(envelope)[1]) == "s");
   const auto failure = error_details(CITIZENSDK_ERROR_BUSY, "busy", "s", 7, "getStorage");
-  assert(as_list(failure).size() == 7 && as_integer(as_list(failure)[4]) ==
+  assert(as_list(failure).size() == 7 && std::get<int64_t>(as_list(failure)[4].data) ==
          CITIZENSDK_FAILURE_STAGE_ADMISSION &&
          as_string(as_list(failure)[5]) == "getStorage" &&
          as_string(as_list(failure)[6]) == "busy");
