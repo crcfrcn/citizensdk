@@ -6,7 +6,7 @@
 
 公开平台唯一为SDK。完整包包含Dart/Flutter接口、公开C/C++头、chain资源、Android AAR及Core/JNI双库、三个arm64切片的Apple XCFramework、LinuxARM和Windows安装布局及消费配置。各宿主先通过适用Rust/Dart、Android、Apple Core/Flutter XCTest、桌面Host/C/C++消费者与Flutter适配器回归，才汇入完整包；缺件不能发布。软件版本只写入本轮投影，不改源声明和原锁。
 
-`.github/workflows/sdk.yml` 使用各宿主的官方Runner；LinuxARM在官方Debian 11容器内保持glibc 2.31与GTK/GStreamer最低合同。按用户确认，内部传递Artifact允许使用“公民SDK·SDK·vX.Y.Z·内部目标”，最终完整Artifact、Tag、Release统一为“公民SDK·SDK·vX.Y.Z”，固定工作流为“公民SDK·SDK”。最终ZIP、JSON与SHA256三件资产逐件下载对拍，Tag必须指向本次SHA，正式Release不得为草稿或预发布。pub.dev上传仍未接入。
+`.github/workflows/sdk.yml` 使用各宿主的官方Runner；LinuxARM在官方Debian 11容器及Debian官方归档内保持glibc 2.31与GTK/GStreamer最低合同。按用户确认，内部传递Artifact允许使用“公民SDK·SDK·vX.Y.Z·内部目标”，最终完整Artifact、Tag、Release统一为“公民SDK·SDK·vX.Y.Z”，固定工作流为“公民SDK·SDK”。最终ZIP、JSON与SHA256三件资产逐件下载对拍，Tag必须指向本次SHA，正式Release不得为草稿或预发布。pub.dev上传仍未接入。
 
 控制台接入唯一归 `tata/citizensdk.mjs`：通过宿主先执行本仓构建单测和本接入回归，再派发、观察、取消或只恢复原Run。凭据仅由既有安全入口领取，不交给测试与编译。版本以最新成功Run为基线加0.0.1，失败不增加；活动Run不清理，完成后仅保留最新成功和失败。缓存领取不等待，缓存失败有界降级到本轮独占目录；Cargo按原锁自行获取缺失依赖。任务退出静止后清理本轮中间现场。
 
