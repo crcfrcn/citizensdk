@@ -2368,7 +2368,10 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
                         NonZero::<u32>::new(1).unwrap(),
                     )
                     .await
-                    .map_err(|_| "Metadata proof execution failed".to_owned());
+                    .map_err(|error| {
+                        span.runtime_error(&error);
+                        "Metadata proof execution failed".to_owned()
+                    });
                 span.finish(metadata.is_ok());
                 let metadata = metadata?;
                 let metadata =
@@ -3386,7 +3389,52 @@ impl<F: FnOnce()> Drop for RuntimeCleanup<F> {
     }
 }
 
-/// 定向诊断默认关闭，只接受源码固定阶段名与结果布尔值；不接收业务值或错误文本。
+// 只将现有错误枚举映射为源码固定类别，不格式化节点、证明或上游错误载荷。
+#[cfg(any(feature = "std", test))]
+fn runtime_error_categories(error: &runtime_service::RuntimeCallError) -> (&'static str, Vec<&'static str>) {
+    use runtime_service::{RuntimeCallError, RuntimeCallExecutionError, RuntimeCallInaccessibleError, RuntimeError};
+    use network_service::CallProofRequestError as CallProofError;
+    use smoldot::network::service::{CallProofRequestError as WireProofError, RequestError as WireRequestError};
+    use smoldot::libp2p::connection::established::RequestError as StreamError;
+    match error {
+        RuntimeCallError::InvalidRuntime(error) => ("invalid_runtime", vec![match error {
+            RuntimeError::CodeNotFound => "code_missing",
+            RuntimeError::InvalidHeapPages(_) => "invalid_heap_pages",
+            RuntimeError::Build(_) => "runtime_build",
+        }]),
+        RuntimeCallError::ApiVersionRequirementUnfulfilled => ("api_requirement", vec![]),
+        RuntimeCallError::Crash => ("service_crash", vec![]),
+        RuntimeCallError::Execution(error) => ("execution", vec![match error {
+            RuntimeCallExecutionError::Start(_) => "vm_start",
+            RuntimeCallExecutionError::Execution(_) => "vm_execution",
+            RuntimeCallExecutionError::ForbiddenHostFunction => "forbidden_host_function",
+        }]),
+        RuntimeCallError::Inaccessible(errors) => ("inaccessible", errors.iter().map(|error| match error {
+            RuntimeCallInaccessibleError::InvalidCallProof(_) => "invalid_call_proof",
+            RuntimeCallInaccessibleError::MissingProofEntry => "missing_proof_entry",
+            RuntimeCallInaccessibleError::StorageRequest(_) => "storage_request",
+            RuntimeCallInaccessibleError::ChildStorageRequest(_) => "child_storage_request",
+            RuntimeCallInaccessibleError::Network(error) => match error {
+                CallProofError::NoConnection => "network_no_connection",
+                CallProofError::RequestTooLarge => "network_request_too_large",
+                CallProofError::Request(WireProofError::RemoteCouldntAnswer) => "network_remote_couldnt_answer",
+                CallProofError::Request(WireProofError::Decode(_)) => "network_response_decode",
+                CallProofError::Request(WireProofError::Request(WireRequestError::ConnectionShutdown)) => "network_connection_shutdown",
+                CallProofError::Request(WireProofError::Request(WireRequestError::Substream(error))) => match error {
+                    StreamError::Timeout => "network_timeout",
+                    StreamError::ProtocolNotAvailable => "network_protocol_unavailable",
+                    StreamError::SubstreamClosed => "network_substream_closed",
+                    StreamError::SubstreamReset => "network_substream_reset",
+                    StreamError::NegotiationError(_) => "network_negotiation",
+                    StreamError::ResponseInvalidLeb128 => "network_response_invalid_leb128",
+                    StreamError::ResponseTooLarge => "network_response_too_large",
+                },
+            },
+        }).collect()),
+    }
+}
+
+/// 定向诊断默认关闭，只输出固定阶段、结果及错误枚举类别；不接收业务值或错误文本。
 /// no_std构建完全移除系统环境、时钟及输出，仍使用完全相同的Runtime读取逻辑。
 struct RuntimeDiagnosticSpan {
     #[cfg(feature = "std")]
@@ -3400,6 +3448,17 @@ impl RuntimeDiagnosticSpan {
             inner: (std::env::var_os("CITIZENSDK_TRANSACTION_DIAGNOSTICS").as_deref()
                 == Some(std::ffi::OsStr::new("1")))
             .then(|| (_stage, std::time::Instant::now())),
+        }
+    }
+
+    fn runtime_error(&self, _error: &runtime_service::RuntimeCallError) {
+        #[cfg(feature = "std")]
+        if let Some((stage, _)) = self.inner.as_ref() {
+            let (category, details) = runtime_error_categories(_error);
+            eprintln!(
+                "CITIZENSDK_TX_DIAG stage={stage} category={category} detail_count={} details={details:?}",
+                details.len()
+            );
         }
     }
 
@@ -3430,6 +3489,39 @@ impl Drop for RuntimeDiagnosticSpan {
 #[cfg(test)]
 mod runtime_query_tests {
     use super::*;
+
+    // 合成错误只验证闭集分类；不构造真实节点、证明或Runtime载荷。
+    #[test]
+    fn runtime_diagnostics_classify_errors_without_exposing_payloads() {
+        use runtime_service::{RuntimeCallError as Call, RuntimeCallExecutionError as Execution,
+            RuntimeCallInaccessibleError as Access, RuntimeError};
+        use network_service::{CallProofRequestError as Network, StorageProofRequestError as Storage,
+            ChildStorageProofRequestError as Child};
+        use smoldot::network::service::{CallProofRequestError as Wire, RequestError as Request};
+        use smoldot::libp2p::connection::established::RequestError as Stream;
+        assert_eq!(runtime_error_categories(&Call::InvalidRuntime(RuntimeError::CodeNotFound)),
+            ("invalid_runtime", vec!["code_missing"]));
+        assert_eq!(runtime_error_categories(&Call::ApiVersionRequirementUnfulfilled), ("api_requirement", vec![]));
+        assert_eq!(runtime_error_categories(&Call::Crash), ("service_crash", vec![]));
+        assert_eq!(runtime_error_categories(&Call::Execution(Execution::ForbiddenHostFunction)),
+            ("execution", vec!["forbidden_host_function"]));
+        assert_eq!(runtime_error_categories(&Call::Execution(Execution::Start(
+            smoldot::executor::host::StartErr::DataSizeOverflow))), ("execution", vec!["vm_start"]));
+        assert_eq!(runtime_error_categories(&Call::Inaccessible(vec![])), ("inaccessible", vec![]));
+        let error = Call::Inaccessible(vec![
+            Access::Network(Network::NoConnection), Access::Network(Network::RequestTooLarge),
+            Access::Network(Network::Request(Wire::RemoteCouldntAnswer)),
+            Access::Network(Network::Request(Wire::Request(Request::ConnectionShutdown))),
+            Access::Network(Network::Request(Wire::Request(Request::Substream(Stream::Timeout)))),
+            Access::MissingProofEntry, Access::MissingProofEntry,
+            Access::StorageRequest(Storage::NoConnection), Access::ChildStorageRequest(Child::NoConnection),
+        ]);
+        assert_eq!(runtime_error_categories(&error), ("inaccessible", vec![
+            "network_no_connection", "network_request_too_large", "network_remote_couldnt_answer",
+            "network_connection_shutdown", "network_timeout", "missing_proof_entry", "missing_proof_entry",
+            "storage_request", "child_storage_request",
+        ]));
+    }
 
     fn block(header: u8, best: bool) -> runtime_service::BlockNotification {
         runtime_service::BlockNotification {

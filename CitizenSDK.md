@@ -4263,3 +4263,5 @@ Windows正常入队保持原结果所有权，平台线程领取并释放；只�
 Apple现有Rust、Dart回归步骤仅设置CITIZENSDK_TRANSACTION_DIAGNOSTICS=1，启用现有固定阶段、耗时和结果诊断，不改变生产请求、证明、安全检查、超时或重试。产品观察循环遇到fetch failed或GitHub HTTP 408/429/500/502/503/504时按既有间隔继续只读同一Run，不重复派发；认证、权限及其他错误明确失败，原Run终态后仍执行原清理。
 
 配置文件仅保留配置数据及release/cleanup入口声明，执行函数唯一归既有scripts/build.mjs。自动化等待原Run真实结束后实际删除旧同类Run及其日志、Artifact，旧发布资产按既有producer_run_id回执归属删除，最新成功完整交付确认后才清理旧成功；活动任务保护，失败清理独立进行。清理失败明确报错，可单独调用同一cleanup入口，不重跑构建；Workflow只负责本次正式Release/Tag交付及回滚，旧历史没有第二套清理。
+
+Metadata_metadata的原runtime_call错误转换仅在既有诊断开关启用时，经RuntimeDiagnosticSpan输出固定RuntimeCallError类别、嵌套执行或证明/网络类别及条目数。分类只匹配枚举，不格式化上游错误、不输出节点/账户/块/证明/Runtime载荷；原Metadata proof execution failed返回、请求参数、证明验证、超时和清理保持不变。no_std不读取环境或输出诊断；同文件runtime_query_tests覆盖错误分类、空错误集和重复证明缺项，全部原断言保留。
