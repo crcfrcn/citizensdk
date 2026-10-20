@@ -4250,3 +4250,7 @@ Windows将Core宽字段投影为公开字节前先验原值边界，布尔标志
 插件及其子目录测试共同引用同一生成头根路径，不使用调用方子目录的CMAKE_CURRENT_BINARY_DIR重算位置。
 
 Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两个强制名称指向同一已声明Clang16原件，不安装其他编译器，也不改写Flutter源码或系统工具。
+
+## 外部调用入口
+
+本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
