@@ -4246,3 +4246,7 @@ Windows独立Host与消费者显式使用Ninja生成器及已交付的x64 MSVC�
 Windows Flutter绑定完整实现既有NativeTransport私钥资源接口：Core仍拥有私钥，PrivateKeyResource负责既有接收器、显式查看、真实关闭和敏感副本清空；资源仅归创建会话，未关闭不得报告排空。交易执行证明沿用SemanticExecution成功布尔事实核对，外内状态不一致必须拒绝。插件声明只投影到本轮CMake构建目录，源码不生成平行头文件；MSVC严格警告保持。
 
 Windows将Core宽字段投影为公开字节前先验原值边界，布尔标志先通过严格0/1解析；禁止通过强制转换掩盖损坏。
+
+插件及其子目录测试共同引用同一生成头根路径，不使用调用方子目录的CMAKE_CURRENT_BINARY_DIR重算位置。
+
+Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两个强制名称指向同一已声明Clang16原件，不安装其他编译器，也不改写Flutter源码或系统工具。

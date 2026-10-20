@@ -102,9 +102,10 @@ foreach(_kind Core Host)
 endforeach()
 
 # 唯一插件声明投影到本轮构建目录，供插件、测试与Flutter生成注册器共同消费。
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk")
+set(_citizensdk_flutter_public "${CMAKE_CURRENT_BINARY_DIR}/public")
+file(MAKE_DIRECTORY "${_citizensdk_flutter_public}/citizen_sdk")
 configure_file("${_citizensdk_windows_root}/headers/citizen_sdk_plugin.h"
-  "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk/citizen_sdk_plugin.h" COPYONLY)
+  "${_citizensdk_flutter_public}/citizen_sdk/citizen_sdk_plugin.h" COPYONLY)
 
 set(CITIZENSDK_FLUTTER_ADAPTER_SOURCES
   "${_citizensdk_windows_root}/source/citizen_sdk_plugin.cc"
@@ -120,7 +121,7 @@ function(citizensdk_configure_flutter_target target)
     WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00
     _HAS_EXCEPTIONS=1 FLUTTER_PLUGIN_IMPL
     CITIZENSDK_APPLICATION_ID="${CITIZENSDK_APPLICATION_ID}")
-  target_include_directories(${target} PUBLIC "${_citizensdk_windows_root}" "${CMAKE_CURRENT_BINARY_DIR}/public"
+  target_include_directories(${target} PUBLIC "${_citizensdk_windows_root}" "${_citizensdk_flutter_public}"
     PRIVATE "${_citizensdk_windows_root}/source")
   target_link_libraries(${target} PUBLIC flutter flutter_wrapper_plugin CitizenSDK::Host
     PRIVATE bcrypt user32 gdi32 comctl32 shell32 ole32)

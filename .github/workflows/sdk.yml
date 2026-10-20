@@ -329,6 +329,11 @@ jobs:
           curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
           sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none --no-modify-path
           printf 'CC=/usr/bin/clang-16\nCXX=/usr/bin/clang++-16\nLIBCLANG_PATH=/usr/lib/llvm-16/lib\n' >> "$GITHUB_ENV"
+          # Flutter官方后端固定调用clang/clang++；只在本轮PATH提供同一Clang16官方二进制。
+          mkdir "$RUNNER_TEMP/citizensdk-clang"
+          ln -s /usr/bin/clang-16 "$RUNNER_TEMP/citizensdk-clang/clang"
+          ln -s /usr/bin/clang++-16 "$RUNNER_TEMP/citizensdk-clang/clang++"
+          printf '%s/citizensdk-clang\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
           printf '%s/.cargo/bin\n' "$HOME" >> "$GITHUB_PATH"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
