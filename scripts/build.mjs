@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 只执行本仓真实测试、宿主编译和完整SDK目录装配；版本与GitHub交给工作流。
 import {spawn} from 'node:child_process';
-import {mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync,readlinkSync} from 'node:fs';
 import {join,dirname,resolve,basename,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tools,nativePaths,sdkName} from './config.mjs';
@@ -35,7 +35,12 @@ export function createFlutterSourceView(source,output){
  mkdirSync(output,{recursive:true});
  const excluded=new Set(['.git','target','build','.dart_tool','.gradle','node_modules','Pods','.DS_Store']);
  function visit(at){for(const name of readdirSync(at)){if(excluded.has(name))continue;const from=join(at,name),entry=relative(source,from),to=join(output,entry),info=lstatSync(from);
-  if(info.isDirectory()){mkdirSync(to,{recursive:true});visit(from);}else if(info.isFile()){copyFileSync(from,to);utimesSync(to,info.atime,info.mtime);}else throw Error('SDK源码输入禁止链接或特殊文件');
+  if(info.isDirectory()){mkdirSync(to,{recursive:true});visit(from);}else if(info.isFile()){copyFileSync(from,to);utimesSync(to,info.atime,info.mtime);}
+  else if(info.isSymbolicLink()){
+   // 发布SDK只允许Apple标准Framework的五个内部相对链接，禁止借包内路径访问外部文件。
+   const frame='darwin/CitizenSDK.xcframework/macos-arm64/CitizenSDK.framework/',path=entry.split(sep).join('/'),links={'Versions/Current':'A',Headers:'Versions/Current/Headers',Modules:'Versions/Current/Modules',Resources:'Versions/Current/Resources',CitizenSDK:'Versions/Current/CitizenSDK'};
+   const target=realpathSync(from);if(!path.startsWith(frame)||links[path.slice(frame.length)]!==readlinkSync(from)||!target.startsWith(join(source,frame,'Versions/A')+sep)&&target!==join(source,frame,'Versions/A'))throw Error('SDK源码链接越界');symlinkSync(readlinkSync(from),to,lstatSync(target).isDirectory()?'dir':'file');
+  }else throw Error('SDK源码输入禁止特殊文件');
  }}visit(source);
  // Flutter消费位置只装配一次，源码仍由本产品唯一入口所有。
  const from=join(output,'android/source/CitizenSdkPlugin.kt'),to=join(output,'android/src/main/kotlin/org/citizen/sdk/CitizenSdkPlugin.kt');

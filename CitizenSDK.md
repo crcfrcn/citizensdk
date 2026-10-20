@@ -4,7 +4,7 @@
 
 `scripts/build.mjs` 是独立最简入口，只负责真实测试、宿主编译和SDK目录装配。命令为 `test`、`native Android|Apple|LinuxARM|Windows`、`package <完整原生目录>`。`scripts/config.mjs` 仅保存本产品配置、工具/原生依赖来源、版本规则和Cargo路径映射。工具准备直接使用工作流中的官方命令；Cargo原锁不变；Pub原锁按本次明确确认仅补齐上游Flutter需要的ffi2.2.0传递锁项，其余既有锁项不变，不使用控制台依赖库存或自建全树复验。
 
-公开平台唯一为SDK。完整包包含Dart/Flutter接口、公开C/C++头、chain资源、Android AAR及Core/JNI双库、三个arm64切片的Apple XCFramework、LinuxARM和Windows安装布局及消费配置。Android Core与JNI使用准确SONAME/NEEDED，不把构建机绝对路径带入装载依赖；AGP按官方属性启用Release单测。各宿主先通过适用Rust/Dart、Android、Apple Core/Flutter XCTest、桌面Host/C/C++消费者与Flutter适配器回归，才汇入完整包；缺件不能发布。软件版本只写入本轮投影，不改源声明和原锁。
+公开平台唯一为SDK。完整包包含Dart/Flutter接口、公开C/C++头、chain资源、Android AAR及Core/JNI双库、三个arm64切片的Apple XCFramework、LinuxARM和Windows安装布局及消费配置。Android Core与JNI使用准确SONAME/NEEDED，不把构建机绝对路径带入装载依赖；AGP按官方属性启用Release单测。各宿主先通过适用Rust/Dart、Android、Apple Core/Flutter XCTest、桌面Host/C/C++消费者与Flutter适配器回归，才汇入完整包；缺件不能发布。已发布SDK的Apple标准Framework五个内部相对链接可在公开源码投影接口中保留，其他源码链接拒绝，不以禁止全部链接破坏已发布SDK的消费。软件版本只写入本轮投影，不改源声明和原锁。
 
 `.github/workflows/sdk.yml` 使用各宿主的官方Runner；LinuxARM在官方Debian 11容器及Debian官方归档内保持glibc 2.31与GTK/GStreamer最低合同。按用户确认，内部传递Artifact允许使用“公民SDK·SDK·vX.Y.Z·内部目标”，最终完整Artifact、Tag、Release统一为“公民SDK·SDK·vX.Y.Z”，固定工作流为“公民SDK·SDK”。最终ZIP、JSON与SHA256三件资产逐件下载对拍，Tag必须指向本次SHA，正式Release不得为草稿或预发布。pub.dev上传仍未接入。
 
