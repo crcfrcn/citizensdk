@@ -1113,12 +1113,41 @@ int main() {
   std::thread completion_thread([&] { worker_native->complete_deferred(); });
   completion_thread.join();
   assert(worker_replies == 0 && worker_native->released_results == 1);
+  assert(worker_native->copied_results == 1); // 原生结果已复制归还，UI入队失败只保留自有值。
   // 模拟一次 UI 入队分配失败；下次 dispatch 从 route 中保留的 owning copy 恢复。
   worker_sessions->dispatch(request(csf::Method::get_capabilities, worker_id, 2),
                             [](csf::Reply value) { assert(value.success); });
   assert(worker_replies == 1);
   main_queue.drain();
   worker_sessions->detach();
+
+  // 长期资源不得套用普通值的提前复制；原生终态到达后仍等平台线程领取。
+  {
+    citizen_sdk::flutter::test::FiniteScheduler resource_queue;
+    const auto resource_native = std::make_shared<FakeTransport>();
+    resource_native->defer_prepared = true;
+    const auto resources = csf::Sessions::create(
+        [](uint32_t) { return csf::OpenEnvironment{}; }, resource_queue.scheduler(),
+        [resource_native](const citizen_sdk::Config &) { return resource_native; });
+    csf::Reply resource_open;
+    resources->dispatch(open, [&](csf::Reply value) { resource_open = std::move(value); });
+    const auto resource_id = text(items(resource_open.value)[1]);
+    int resource_replies = 0;
+    resources->dispatch(request(csf::Method::prepare_wallet_creation, resource_id, 1),
+        [&](csf::Reply value) {
+          assert(std::this_thread::get_id() == main_thread && value.success);
+          ++resource_replies;
+        });
+    std::thread resource_thread([&] { resource_native->complete_deferred(); });
+    resource_thread.join();
+    assert(resource_replies == 0 && resource_native->copied_results == 0 &&
+           resource_native->released_results == 0);
+    resource_queue.drain();
+    assert(resource_replies == 1 && resource_native->copied_results == 1 &&
+           resource_native->released_results == 1);
+    resources->detach();
+    resource_queue.drain();
+  }
 
   // detach只能取消真实准备请求，终态之前不能放开进程变更门或释放transport。
   auto pending_wallet_native = std::make_shared<FakeTransport>();

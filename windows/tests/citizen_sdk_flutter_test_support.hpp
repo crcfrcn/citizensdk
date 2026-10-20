@@ -369,7 +369,7 @@ class FakeTransport final : public csf::NativeTransport {
   void send_completion(const Completion &completion, csf::Method method, citizensdk_request_id_t id) {
     // 每个合成终态独立拥有释放标记，不把裸Core句柄或已释放结果放入队列。
     auto lifetime = std::shared_ptr<void>(this, [this](void *) { ++released_results; });
-    completion(id, [this, method, lifetime] { return copy_result(method, 0); });
+    completion(id, [this, method, lifetime = std::move(lifetime)] { return copy_result(method, 0); });
   }
   std::function<csf::Value(csf::Method)> projection_handler;
   csf::Value copy_result(csf::Method method, citizensdk_result_handle_t) override {

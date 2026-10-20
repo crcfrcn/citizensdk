@@ -319,7 +319,7 @@ class HostTransport final : public NativeTransport, public std::enable_shared_fr
           try {
             auto owned = std::make_shared<detail::EventResultScope>(result);
             received.value = 0;
-            completion(id, [self, native_method, owned] {
+            completion(id, [self, native_method, owned = std::move(owned)] {
               return native_method == Method::review_qr_request
                   ? self->copy_review(owned) : self->copy_result(native_method, owned->value);
             });
@@ -1586,8 +1586,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         }
       });
     } catch (...) {
-      // Route::ready remains authoritative until the next UI dispatch/drain.
-      // No borrowed result or callback pointer is stored in this recovery path.
+      // 已拥有的普通值或资源结果仍归Route；下次平台dispatch/drain继续，不保存借用指针。
     }
   }
 
@@ -1638,16 +1637,41 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
 
   void receive_result(const std::shared_ptr<Session> &session, const std::shared_ptr<Route> &route,
                       citizensdk_request_id_t id, std::function<Value()> projection) noexcept {
+    bool invalid = false, resource = false;
     {
       std::lock_guard<std::mutex> guard(session->lock);
       if (route->terminal_seen) return;
       if (id == 0 || (route->native_id != 0 && route->native_id != id)) {
         route->completion_identity_invalid = true;
+        invalid = true;
       } else {
         route->native_id = id;
-        route->projection = std::move(projection);
       }
+      // 先独占终态，重复completion不能再次复制。资源结果仍由平台线程领取真实所有权。
       route->terminal_seen = true;
+      const auto method = route->native_method;
+      resource = method == Method::review_qr_request || method == Method::inspect_wallets ||
+          method == Method::prepare_wallet_creation || method == Method::prepare_transaction;
+    }
+    if (invalid || is_detached()) {
+      projection = {};
+    } else if (projection && !resource) {
+      // 普通结果在原生回调内复制为自有Value并归还原生结果；入队失败也不延长原生借用。
+      // 复用原投影槽交付自有值，平台线程仍执行原校验、复合结果转换和唯一回复。
+      try {
+        auto value = projection();
+        projection = {};
+        projection = [value = std::move(value)]() mutable { return std::move(value); };
+      } catch (...) {
+        const auto error = std::current_exception();
+        projection = {};
+        try { projection = [error]() -> Value { std::rethrow_exception(error); }; }
+        catch (...) {} // 无法持有错误时沿原空投影路径失败关闭，不伪造成功。
+      }
+    }
+    {
+      std::lock_guard<std::mutex> guard(session->lock);
+      route->projection = std::move(projection);
       route->completed = true;
     }
     post_drain(session);
@@ -2005,7 +2029,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
       if (!route) break;
       if (route->completion_identity_invalid)
         route->ready = failure(CITIZENSDK_ERROR_INTEGRITY, "Core completion identity disagrees", route->request);
-      // 先在平台线程领取真实结果，再释放借用期；不能把裸result排入UI队列。
+      // 普通结果已是自有Value；资源结果仍在平台线程领取，裸result不得排入UI队列。
       if (route->projection && !is_detached()) {
         auto project = std::move(route->projection);
         try {
