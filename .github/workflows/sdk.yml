@@ -325,9 +325,10 @@ jobs:
           printf '%s\n' 'deb https://archive.debian.org/debian bullseye main' 'deb https://archive.debian.org/debian-security bullseye-security main' > /etc/apt/sources.list
           rm -f /etc/apt/sources.list.d/debian.sources
           apt-get -o Acquire::https::CaInfo=/runner-ca.pem -o Acquire::Check-Valid-Until=false update
-          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CaInfo=/runner-ca.pem install -y ca-certificates curl git unzip build-essential pkg-config clang perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libjson-c-dev libssl-dev libcurl4-openssl-dev libusb-1.0-0-dev python3 xz-utils xvfb xauth
+          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CaInfo=/runner-ca.pem install -y ca-certificates curl git unzip build-essential pkg-config clang-16=1:16.0.6-15~deb11u2 llvm-16=1:16.0.6-15~deb11u2 libclang-16-dev=1:16.0.6-15~deb11u2 ninja-build jq zip dbus-x11 file procps perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libjson-c-dev libssl-dev libcurl4-openssl-dev libusb-1.0-0-dev python3 xz-utils xvfb xauth
           curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
           sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none --no-modify-path
+          printf 'CC=/usr/bin/clang-16\nCXX=/usr/bin/clang++-16\nLIBCLANG_PATH=/usr/lib/llvm-16/lib\n' >> "$GITHUB_ENV"
           printf '%s/.cargo/bin\n' "$HOME" >> "$GITHUB_PATH"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -757,7 +758,7 @@ jobs:
           # 新正式版本完整确认后才清理同一SDK命名空间的旧版本；失败明确保留重试。
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|.tag_name|select(startswith("公民SDK·SDK·v"))' > "$RUNNER_TEMP/sdk-old-tags.txt"
           while IFS= read -r old; do
-            if [ "$old" != "$SDK_NAME" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || printf '旧版本清理未完成：%s\n' "$old" >&2; fi
+            if [ "$old" != "$SDK_NAME" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; fi
           done < "$RUNNER_TEMP/sdk-old-tags.txt"
       - name: 清理本轮SDK编译现场
         continue-on-error: true

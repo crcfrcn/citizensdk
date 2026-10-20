@@ -4200,33 +4200,13 @@ GitHub接口使用普通参数和已授权令牌，返回本仓既有版本计�
 
 当前候选仍待运行验收；本轮只补准确业务回归，不追修新增通用自动化夹具，也不向控制台或其它产品添加跨仓准入。scripts/config.mjs及其公开配置合同保持；通过控制台保存推送仍要求本仓.github/tatalulu.yml。
 
-## Linux 与 Windows 原生安装验真修复
+## Linux与Windows原生交付
 
-Run 39044524886 的 `prepare`、Android、macOS 已成功。LinuxARM 的 Host 安装验真均报告缺少公开符号 `citizensdk_qr_image_decode_luminance`：二维码包装位于静态归档，Host 的精确版本脚本已列该符号，但 `--exclude-libs,ALL` 把归档符号隐藏。Linux Host 移除全归档隐藏，继续使用 `citizensdk_host.map` 的显式公开清单与 `local: *`，原有 ELF 导出闭集、动态依赖及 GLIBC 基线验真不放宽。
+LinuxARM保持GLIBC2.31基线，使用官方Debian11归档及同版Clang16。Host使用显式公开导出清单，二维码静态归档的公开API必须可供独立C/C++消费者链接；包内Core、Host、链资产及Flutter绑定共同交付。
 
-同一 Run 的 Windows 14 项 CTest 通过，安装验真在比较 Cargo 来源 `citizensdk.dll` 时拒绝来源硬链接。Cargo 来源 DLL 与导入库允许普通、非空、规范路径的硬链接，仍逐字节比对安装件；安装后的交付闭集继续禁止符号链接、硬链接、空文件和额外文件。失败诊断区分目录、普通文件、空文件和硬链接，指出具体路径。新版控制台的产品接入仅负责按钮、任务与 GitHub Run 观察；本仓 `sdk.yml` 继续完成四平台构建、正式候选复验及 Release。
+Windows关闭回归依照真实Core生命周期及Win32消息泵处理BUSY，在原有五秒期限内只重试准确BUSY，其他错误立即失败，最终要求Core/Host双句柄清零。窗口退休测试使用钱包模块隔离Core网络生命周期，完整链消费者仍独立覆盖；生产关闭门禁不变。MSVC编译与链接使用Runner官方开发环境，避免Git工具同名link.exe覆盖。
 
-Run 39056915501 已证实上一轮 Linux QR 导出和 Windows 来源硬链接门禁通过；新的 LinuxARM 失败是 Ubuntu 24.04 构建的 Core 要求 `GLIBC_2.32`，高于既定 2.31 基线，Windows 14 项 CTest 中 C++ Host 关闭回归把任意 BUSY 当成 Core 已销毁。Android、macOS、prepare、四平台 Cargo 缓存清理和 Run 记录清理成功；原生矩阵未全过，组包、消费复验、Release 均跳过。
-
-Linux 构建在同一 `sdk.yml` 内使用独立 `native-linux` Job，LinuxARM 使用摘要固定的官方 Debian 11 镜像。镜像先核对 GLIBC 2.31，以 2026-09-01 Debian 签名快照安装现有开发依赖，再使用本仓既有 CMake 3.31.6 平台归档、摘要及版本验收；Android、Apple、Windows 仍由原 `native` 矩阵构建。原生作业都必须成功，才允许组包、消费复验和 Release；缓存保留与末尾 Run 清理仍覆盖四平台。固定 GLIBC 2.31 及 ELF 动态依赖门禁保持不变。Windows 关闭回归改为依据 Host 当前真实 Core 状态核对 C++ 缓存句柄：BUSY 可发生在 Core 销毁前，最终成功关闭仍必须清零双句柄。以上候选须经下一次 GitHub 完整自动化验证，当前不宣称正式版已生成。
-
-Run 39059566293 在 `prepare` 被同文件旧回归拦住：新工作流的 `release`、`cargo-retention`、`run-retention` 已等待 `native` 与 `native-linux`，但测试仍只接受旧 `native` 列表。回归已同步成两组原生矩阵的准确依赖；Release 必须等待四平台、消费复验与增量缓存收敛，末尾 Run 清理仍独立验真。该 Run 未进入原生构建或生成正式资产。
-
-Run 39061587665 的 `prepare` 通过，但 2026-10-01 快照虽有签名索引，首次 CA/OpenSSL 包的实际归档地址在当时的 Linux 构建返回 404，因此 Linux 未开始 SDK 编译。仅替换为已核实文件地址可取的 2026-09-01 快照；此结果仍需下一次 GitHub 自动化验收。
-
-同一 Run 的 Windows API 合同测试在首次后台 BUSY 后，单次主线程消息泵与单次 `close()` 重试仍返回 BUSY。现有日志只有返回码 18，不能断言是 Core 生命周期、在途回调还是 Win32 窗口退休门禁；代码允许这些阶段各自返回 BUSY。夹具按已有 Host 请求测试的做法，只对准确 `CITIZENSDK_ERROR_BUSY` 在五秒内泵消息并重试，其它错误立即失败，超时时记录 Host/Core 查询回执及 Core 生命周期，最终仍要求 Core/Host 双句柄清零。生产关闭流程不改。
-
-同一 Run 的 Windows 安装来源校验已通过，14 项原生 CTest 仅 API 合同夹具失败：原“窗口退休”夹具使用默认全模块 Core，第二次关闭仍因 Core 生命周期返回 BUSY，不能把它当作仅窗口退休。该夹具改为钱包模块，保留真实 Win32 UI 调度与后台首次 BUSY、主线程重试及最终双句柄清零；完整链 C++ 消费者继续由独立测试覆盖。此改动不放宽生产关闭门禁。
-
-Run 39064623680 的 prepare 通过，2026-09-01 签名快照在 LinuxARM 完成 CA 与全部开发依赖安装，修复了上一轮实际包地址 404。LinuxARM 随后在 `release-source native` 的合并身份断言处报“GitHub 版本化源码身份无效”，未开始原生编译。该 Run 的 checkout 日志确认 HEAD 是本轮 `5aa76516feb2cc0b2a628f4073379991d658e080`；Android、Windows、macOS 的同一步通过。Linux 容器中 checkout 使用临时 HOME 写入 `safe.directory`，正式 Node 步骤使用 `/github/home`；这提示 Git HEAD 读取可能被安全目录检查拒绝，但原合并断言没有单独记录 Git 子进程回执，不能把推断冒充已证实的唯一原因。用户要求一有失败即终止，Run 已通过控制台取消，最终状态为 cancelled；其余平台的原生构建被取消，未形成正式版。
-
-Run 39065108840 在提交 `f78d8cfc846da233e7ede8d96abc82bdcebfcd6f` 上通过 prepare；LinuxARM 在版本化源码步骤报“GitHub checkout HEAD 读取失败”，说明工作根门禁已通过，但容器内 Git 子进程返回非零状态。原入口未记录 Git stderr，具体退出原因不可再从该 Run 追溯；`safe.directory` 单次参数未解决该问题。用户要求首个原生作业失败立即终止，本轮已通过控制台取消，GitHub 最终为 cancelled，其他平台原生构建没有终态，组包、消费复验与 Release 未执行。
-
-后续候选删除上述 Git 子进程读取实现：三处入口仍共用单一 HEAD 门禁，先要求准确 `GITHUB_WORKSPACE`，再用 Node 的 `lstat` 拒绝符号链接和非普通 `.git/HEAD`，只接受 checkout 按本轮 SHA 产生的 40 位小写 detached HEAD 文件，并与 `GITHUB_SHA` 精确比较。工作根、元数据、文件类型、内容格式和 SHA 各有独立失败回执。既有同文件测试补齐正常、越界、缺失、非普通文件、不可读、引用式 HEAD 与 SHA 不符；不改变其它 GitHub 身份条件、公开接口、产品声明、资源锁或 README。候选仍需完整 GitHub 自动化验收。
-
-本次候选在 `acquireArchive` 请求 `Accept-Encoding: identity`；若来源仍声明非 identity 编码，只跳过传输长度与解压正文长度的混合比较。锁定 SHA、非空正文、响应声明上限和实际正文上限照常强制核对；identity 响应仍核对正文与 `Content-Length` 一致。既有同文件回归覆盖 identity 长度不符、压缩传输长度不同但摘要正确、压缩正文摘要错误及实际正文超限。资源版本、URL 和锁定摘要均未改；README、产品声明和公开接口不受影响。修复尚需 GitHub 完整自动化验证。
-
-LinuxARM 保留摘要固定的 Debian 11、2026-09-01 签名 APT 快照和 GLIBC 2.31 门禁；锁定 ZXing-C++ 3.1.1 的 core 源码按上游 CMake 要求使用 C++20。该快照显式安装同版 Clang、LLVM、libclang 16，先检查 coroutine 与 `using enum`，再通过产品原有 `CXX` 环境入口交给同一本仓原生构建；不修改上游源码、ZXing 锁、运行库基线或 `-Werror`。Android 正式 AAR 与其原生 Release JVM 单测共用本轮 checkout `target` 内仅含 Core 的 staging；根 Flutter 绑定 Release 单测另用本轮 `target` 内独占双库 staging，从已验真的正式输出复制 Core/JNI 后再以同一 AAR 逐字节核对。两模块测试分开运行，原 Gradle 路径门禁和逐模块非空、零失败、零跳过的 JUnit XML 验收保持；首次 AAR 构建不增加测试组件。
+Android原生AAR及根Flutter绑定分别执行Release单测，使用本轮真实Core和JNI装配；原生件、完整SDK包和正式Release只在全部所属宿主测试及编译成功后生成。具体命令由scripts/build.mjs及sdk.yml唯一实现，执行证据归控制台唯一任务卡。
 
 ## 本地钱包目录与安全故障诊断
 
@@ -4252,3 +4232,11 @@ GitHub完整Rust回归显式使用--include-ignored，纳入既有四项受时�
 第二步构建约定：缓存原子领取，持有时使用固定源码投影和原文件时间戳，以复用Cargo实际产物；缓存占用立即使用本轮独占目录。仅补齐已授权的ffi2.2.0传递锁项，其他原锁项不变。控制台所属接入先经宿主执行本仓构建回归与本接入回归，再派发所属工作流。完整SDK含Rust/Dart、Android原生与Flutter、Apple Core/Flutter XCTest以及桌面Host和独立消费者回归。SDK内部传递Artifact已获准增加目标后缀，最终完整包/Release/Tag仍为产品·SDK·版本。
 
 严格Dart分析不降低检查级别；导入排序、语句括号、等价字符串插值及测试集合显式类型由产品源码维护，不在构建现场改写业务或屏蔽诊断。
+
+LinuxARM在Debian11官方归档使用既有Clang/LLVM/libclang16.0.6-15~deb11u2，编译工具入口显式交付同版CC/CXX/libclang；Flutter所需Ninja与工作流jq在同一系统准备阶段安装。完整Rust回归包含原有显式实网只读测试，不以默认ignored状态冒充完整通过。
+
+新正式版上传并回读后才删除旧正式版与对应Tag；旧版本清理失败必须使本轮失败，不能只打印告警后报告整体成功。
+
+Dart平台选择回归依据真实Abi.current验证LinuxARM准入，不把macOS的TargetPlatform覆盖当作真实Linux机器；未支持Linux架构与Fuchsia必须在进入任何通道之前拒绝。固定方法测试包含既有第94项readDiagnostics的零输入和多余字段拒绝。
+
+Windows独立Host与消费者显式使用Ninja生成器及已交付的x64 MSVC环境，不向NMake传递Visual Studio专用-A选项；Flutter消费者仍使用未修改的官方Flutter/Visual Studio工具闭包。

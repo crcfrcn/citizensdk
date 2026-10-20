@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:citizen_sdk/account_codec.dart';
@@ -12,6 +13,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Linux只开放真实ARM64 ABI；覆盖其他平台选择时不伪造Linux机器架构。
+  final supportedTargets = <TargetPlatform>[
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+    TargetPlatform.macOS,
+    if (Abi.current() == Abi.linuxArm64) TargetPlatform.linux,
+    TargetPlatform.windows,
+  ];
 
   test('公开账户地址投影与原生派生共用同一冻结测试向量', () {
     final golden = jsonDecode(
@@ -117,7 +126,7 @@ void main() {
     expect(CitizenSdkFlutterCodec.methods, isNot(contains('exportPrivateKey')));
   });
 
-  test('Android、iOS、macOS、Linux与Windows默认选择同一Flutter transport', () async {
+  test('已支持的平台与架构默认选择同一Flutter transport', () async {
     CitizenSdkPlatform.instance = null;
     const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
     const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
@@ -161,13 +170,7 @@ void main() {
           .setMockMethodCallHandler(events, null);
     });
 
-    for (final target in <TargetPlatform>[
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-      TargetPlatform.macOS,
-      TargetPlatform.linux,
-      TargetPlatform.windows,
-    ]) {
+    for (final target in supportedTargets) {
       debugDefaultTargetPlatformOverride = target;
       final sdk = await CitizenSdk.open();
       expect(sdk.lifecycle, CitizenSdkLifecycle.created);
@@ -175,11 +178,11 @@ void main() {
       expect(sdk.lifecycle, CitizenSdkLifecycle.disposed);
       await sdk.close();
     }
-    expect(nextSession, 5);
-    expect(closes, 5);
+    expect(nextSession, supportedTargets.length);
+    expect(closes, supportedTargets.length);
   });
 
-  test('Fuchsia未支持平台在进入任何channel前拒绝', () async {
+  test('未支持的平台和Linux架构在进入任何channel前拒绝', () async {
     CitizenSdkPlatform.instance = null;
     const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
     const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
@@ -203,21 +206,26 @@ void main() {
           .setMockMethodCallHandler(events, null);
     });
 
-    debugDefaultTargetPlatformOverride = TargetPlatform.fuchsia;
-    await expectLater(
-      CitizenSdk.open(),
-      throwsA(
-        isA<CitizenSdkException>().having(
-          (error) => error.code,
-          'code',
-          CitizenSdkErrorCode.unsupported,
+    for (final target in <TargetPlatform>[
+      TargetPlatform.fuchsia,
+      if (Abi.current() != Abi.linuxArm64) TargetPlatform.linux,
+    ]) {
+      debugDefaultTargetPlatformOverride = target;
+      await expectLater(
+        CitizenSdk.open(),
+        throwsA(
+          isA<CitizenSdkException>().having(
+            (error) => error.code,
+            'code',
+            CitizenSdkErrorCode.unsupported,
+          ),
         ),
-      ),
-    );
+      );
+    }
     expect(calls, 0);
   });
 
-  test('五种默认平台缺少原生插件时失败关闭且不替换transport', () async {
+  test('已支持默认平台缺少原生插件时失败关闭且不替换transport', () async {
     CitizenSdkPlatform.instance = null;
     const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
     const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
@@ -245,13 +253,7 @@ void main() {
           .setMockMethodCallHandler(events, null);
     });
 
-    for (final target in <TargetPlatform>[
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-      TargetPlatform.macOS,
-      TargetPlatform.linux,
-      TargetPlatform.windows,
-    ]) {
+    for (final target in supportedTargets) {
       debugDefaultTargetPlatformOverride = target;
       await expectLater(
         CitizenSdk.open(),
@@ -264,7 +266,7 @@ void main() {
         ),
       );
     }
-    expect(opens, 5);
+    expect(opens, supportedTargets.length);
     expect(CitizenSdkPlatform.instance, isNull);
   });
 }
