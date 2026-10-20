@@ -110,7 +110,7 @@ jobs:
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/sdk-runs.json"
           node --input-type=module - "$RUNNER_TEMP/sdk-runs.json" <<'NODE'
           import {readFileSync} from 'node:fs';
-          import {nextVersion,sdkName} from './scripts/config.mjs';
+          import {nextVersion,sdkName} from './scripts/build.mjs';
           const rows=JSON.parse(readFileSync(process.argv[2],'utf8')).flatMap(page=>page.workflow_runs);
           if(nextVersion(rows)!==process.env.SDK_VERSION)throw Error('候选版本已变化');
           sdkName(process.env.SDK_VERSION);
@@ -760,11 +760,6 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
           trap - ERR
-          # 新正式版本完整确认后才清理同一SDK命名空间的旧版本；失败明确保留重试。
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|.tag_name|select(startswith("公民SDK·SDK·v"))' > "$RUNNER_TEMP/sdk-old-tags.txt"
-          while IFS= read -r old; do
-            if [ "$old" != "$SDK_NAME" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; fi
-          done < "$RUNNER_TEMP/sdk-old-tags.txt"
       - name: 清理本轮SDK编译现场
         continue-on-error: true
         if: ${{ always() && steps.build.outputs.work != '' }}

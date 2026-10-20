@@ -3850,9 +3850,9 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。依赖由�
 
 ## CI 增量缓存
 
-CitizenSDK 正式自动化按操作系统、Runner架构、平台、Rust/Flutter固定版本和锁文件隔离增量缓存。Cargo target 使用独立键空间，每个支持平台只保留最新一份；Cargo registry/git、Pub hosted/git原件、Gradle modules/build cache/wrapper及固定Flutter engine仍走依赖缓存，不与Cargo target或Run记录共用清理规则。Cargo缓存清理只读取本仓 `main` 的本SDK target键，删除后回查保留数量；清理失败明确返回失败，不覆盖原生构建或Release Job的结论。
+CitizenSDK正式自动化按Runner系统、架构、锁定工具版本和原锁隔离官方增量缓存。缓存只加速，不与Run、日志和正式产物共用删除规则；缓存占用或恢复失败沿既有本轮独占目录继续，不删除其它任务缓存。
 
-同一`sdk.yml`依次完成本仓回归、四平台原生构建、正式包组装/复验、四平台消费复验和Release，最后执行Run记录清理。Run清理仅处理本仓`main`、准确`sdk.yml`的已完成Run，不按事件过滤，因此旧`push` Run也可进入候选；只保留符合“公民SDK·SDK·vX.Y.Z”名称的最新成功和最新失败各一条，旧名称已完成Run在新Run终态后清理，当前活动Run作为本轮候选并受保护。Run清理必须成功，且Tag/Release回执与源码SHA一致，整次GitHub Run才算正式成功。清理失败会让最终Run失败，但不会撤销已成功的构建或Release。Release资产、Tag和Cargo缓存不由Run记录清理删除。
+同一sdk.yml执行本仓回归、四宿主原生构建、完整SDK装配及正式Release/Tag交付。scripts/build.mjs等待准确原Run真正结束后，分页清理本仓main、sdk.yml及workflow_dispatch所属记录，保留最新成功和最新失败及活动任务；旧Run连同日志和Artifact实际删除，对应旧Release/Tag按已有生产回执归属删除。清理失败独立明确报错，支持同一本仓cleanup入口重试，不重跑构建，不改写GitHub原Run真实结论。
 
 ## Release 全量构建（第 7.4 步）
 
@@ -4154,18 +4154,6 @@ SDK在本仓独立拥有实现和测试，不依赖独立公民钱包的代码�
 
 GitHub 自动化仅由 `.github/workflows/sdk.yml` 启动，四宿主原生件通过当前 Run 的独立 Artifact 汇总；完整候选经本仓发布器验真并在四宿主复验后，才创建和回读正式 Tag、Release。控制台直接按钮只派发本仓SDK自动化，正式Tag/Release由该工作流回读确认。
 
-塔塔门禁从 `.github/tatagate/tatagate.json` 读取本仓静态登记，仅使用只读 Git 查询与文件读取核对正式 `main`、HTTPS origin、提交范围、脚本闭集和旧入口残留。它不创建现场、不取得工具、不启动产品步骤或测试进程。真实编译、测试与发布须按各自操作授权单独执行。
-
-本轮开发只做静态语法复核；未运行测试、门禁、构建、安装、发布、保存或推送。完整实际验收须在对应授权后按每一流程自身状态执行。
-
-## GitHub塔塔门禁与同类记录清理
-
-本仓保留自己的.github/tatagate门禁实现和合同。main的push只触发本仓.github/workflows/tatagate.yml，gate与cleanup在这一个文件内执行；检出准确GITHUB_SHA并验证本仓GitHub事件、main引用和HTTPS origin，门禁继续执行本仓现有检查。gate成功时删除本仓该门禁旧成功Run；gate失败时删除旧失败Run；另一类最近记录和活动Run保留。清理前重新验真Run、Attempt和结论，删除后回查；清理错误如实记录并由后续运行补清，不影响gate检查结论。塔塔控制台通过塔塔鹿鹿的一次生物识别保存、推送本仓，并按准确SHA与Run ID追踪独立门禁任务；门禁结果不影响已确认的推送。
-
-本仓 GitHub 门禁接受 actions/checkout 的准确 HTTPS origin（同一仓库地址有或没有 `.git` 后缀），仓库、事件、提交和工作流身份仍逐项校验。
-
-门禁清理接口只对 URL 的路径部分拒绝越界，允许 created 查询中的时间范围分隔符；同文件回归直接执行正式 HTTP 参数校验，覆盖时间范围和越界拒绝。
-
 ## 配置需求公开接口
 
 本仓 `scripts/config.mjs` 明确返回当前空配置需求。旧控制台的 `SERVICE_ACCOUNT_KEY` 没有本仓现行公开流程消费者，不能仅凭控制台旧登记认定为本产品要求；真实发布接口需要该能力时由本仓先声明。
@@ -4229,7 +4217,7 @@ readDiagnostics是第94项Flutter通道方法，零输入、只读，返回最�
 GitHub完整Rust回归显式使用--include-ignored，纳入既有四项受时间上限约束的实网只读验收；无钱包账户输入、不发送有效交易。真实网络不可用按原测试失败，不以忽略或零执行通过；其结果不等同于手机现场复现。
 
 
-第二步构建约定：缓存原子领取，持有时使用固定源码投影和原文件时间戳，以复用Cargo实际产物；缓存占用立即使用本轮独占目录。仅补齐已授权的ffi2.2.0传递锁项，其他原锁项不变。控制台所属接入先经宿主执行本仓构建回归与本接入回归，再派发所属工作流。完整SDK含Rust/Dart、Android原生与Flutter、Apple Core/Flutter XCTest以及桌面Host和独立消费者回归。SDK内部传递Artifact已获准增加目标后缀，最终完整包/Release/Tag仍为产品·SDK·版本。
+第二步构建约定：缓存原子领取，持有时使用固定源码投影和原文件时间戳，以复用Cargo实际产物；缓存占用立即使用本轮独占目录。仅补齐已授权的ffi2.2.0传递锁项，其他原锁项不变。控制台仅调用本仓声明入口，本仓执行构建回归并派发所属工作流。完整SDK含Rust/Dart、Android原生与Flutter、Apple Core/Flutter XCTest以及桌面Host和独立消费者回归。SDK内部传递Artifact已获准增加目标后缀，最终完整包/Release/Tag仍为产品·SDK·版本。
 
 严格Dart分析不降低检查级别；导入排序、语句括号、等价字符串插值及测试集合显式类型由产品源码维护，不在构建现场改写业务或屏蔽诊断。
 
@@ -4253,7 +4241,7 @@ Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两�
 
 ## 外部调用入口
 
-本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
+本仓scripts/config.mjs的describeAction只声明release/cleanup与SDK平台并引用scripts/build.mjs的执行函数。build.mjs拥有版本计算、派发、原Run跟踪及终态清理；独立执行和控制台调用使用同一实现。调用方仅交付已授权令牌与标准read/dispatch传输能力；cleanup返回一次性完成回执，不派发或虚构Run。
 
 Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前目标release/libcitizensdk.a、二维码CMake根目录libcitizensdk_qr_image.a及zxing/core/libZXing.a。不递归搜索Cargo内部缓存或把同名中间件当最终件，正式库缺失、为空或真实链接失败仍失败；不删除缓存解决路径选择错误。Windows Flutter测试的整数断言直接读取Value已有int64_t类型，测试夹具观察回调沿用原成员，严格告警及失败阶段断言不变。
 
@@ -4269,3 +4257,5 @@ Windows事件输出元组复用semantic_tuple给出既有Integrity结果错误�
 Windows v2错误详情的消息固定在索引6，回读消息断言仍要求busy；不改七字段合同。直接Session序号合同测试先调用现有accept_request_sequence，经真实Core观察重复序号Conflict，回调抛错不退回序号，原冲突断言保持。未知方法使用官方StandardMethodCodec标准错误包且details=null；已知方法继续由唯一方法表及原七字段校验约束。未知输入不回显到方法详情，不把空回包当通过；插件回归仍要求一次非空标准回包和原Unsupported错误码，并额外检查空详情。
 
 Windows正常profile夹具包含既有第七字段钱包名称，生产七字段校验和全部账户闭包负例保持。重复completion场景从首个请求开始连续调用真实Core序号接纳，复制失败及回调抛错仍消耗已接纳序号；重复序号Conflict断言不变。方法通道替换的迟到完成场景只关闭该夹具的取消即完成选项，保留取消后未退役、显式终态后退役且不二次回复的原断言；不改变生产取消或资源退休实现。
+
+配置文件仅保留配置数据及release/cleanup入口声明，执行函数唯一归既有scripts/build.mjs。自动化等待原Run真实结束后实际删除旧同类Run及其日志、Artifact，旧发布资产按既有producer_run_id回执归属删除，最新成功完整交付确认后才清理旧成功；活动任务保护，失败清理独立进行。清理失败明确报错，可单独调用同一cleanup入口，不重跑构建；Workflow只负责本次正式Release/Tag交付及回滚，旧历史没有第二套清理。

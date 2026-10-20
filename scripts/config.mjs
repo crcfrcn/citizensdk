@@ -12,13 +12,8 @@ export const manifest=Object.freeze({
 export function describeConfiguration(){return JSON.parse(JSON.stringify(manifest));}
 
 // SDK是唯一公开平台；其它名称仅为包内真实宿主编译目标。
-import {readFileSync} from 'node:fs';
 export const repository='crcfrcn/citizensdk';
 export const tools=Object.freeze({node:'25.2.1',rust:'1.97.1',flutter:'3.47.2',ndk:'28.2.13676358',gradle:'9.1.0',cmake:'3.31.6'});
-export function sdkName(version){if(typeof version!=='string'||version.length>64||!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version))throw Error('SDK版本无效');return '公民SDK·SDK·v'+version;}
-export function nextVersion(runs){const latest=[...runs].filter(run=>run.status==='completed'&&run.conclusion==='success').sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)||b.id-a.id)[0];if(!latest){const version=/^version: (\S+)$/mu.exec(readFileSync(new URL('../pubspec.yaml',import.meta.url),'utf8'))?.[1];sdkName(version);return version;}const prefix='公民SDK·SDK·v',version=latest.display_title?.startsWith(prefix)?latest.display_title.slice(prefix.length):'';sdkName(version);const parts=version.split('.');parts[2]=String(BigInt(parts[2])+1n);const next=parts.join('.');sdkName(next);return next;}
-export function retainedRuns(rows){const keep=new Set(),states=new Set();for(const run of [...rows].sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)||b.id-a.id)){if(run.status!=='completed'){keep.add(run.id);continue;}const state=run.conclusion==='success'?'success':'failed';if(!states.has(state)){states.add(state);keep.add(run.id);}}return keep;}
-
 // 原仓平面存储到Cargo要求路径的唯一映射；文件内容及原锁保持不变。
 export const nativePaths=Object.freeze({
  "native/smoldot/lib/src/chain/chain_information_build.rs": "native/smoldot/lib/src/chain/chain_information/build.rs",
@@ -126,13 +121,10 @@ export const nativeSources=Object.freeze({
 "zxing":{"version": "3.1.1", "url": "https://github.com/zxing-cpp/zxing-cpp/releases/download/v3.1.1/zxing-cpp-3.1.1.tar.gz", "archive_root": "zxing-cpp-3.1.1"}
 });
 
-// 本仓流程的公开入口声明；调用方只交付标准传输能力，不拥有产品规则或任务宿主。
-export async function describeAction({flow,platform}){
- if(flow!=='release'||platform!=='sdk')throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
- return {repository,launch:async({read,dispatch})=>{
-  const rows=[];
-  for(let page=1;;page++){const data=await read('actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100&page='+page);rows.push(...data.workflow_runs);if(data.workflow_runs.length<100)break;}
-  const receipt=await dispatch({workflow:'sdk.yml',ref:'main',inputs:{version:nextVersion(rows)}});
-  return {runID:receipt.workflow_run_id};
- }};
+
+// 这里只声明本仓执行入口；版本、网络、轮询及清理全部归既有build脚本。
+import {automate,cleanupRuns} from './build.mjs';
+export function describeAction({flow,platform}){
+ if(!['release','cleanup'].includes(flow)||platform!=='sdk')throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
+ return {repository,launch:flow==='cleanup'?cleanupRuns:automate};
 }
