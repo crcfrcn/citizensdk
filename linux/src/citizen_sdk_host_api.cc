@@ -225,6 +225,7 @@ void supervise_abandoned_host(
 }  // namespace
 }  // namespace citizen_sdk::linux
 
+// 全局C入口显式使用共用校验与异常映射。
 extern "C" {
 
 uint32_t citizensdk_host_abi_version(void) {
@@ -251,7 +252,7 @@ citizensdk_error_code_t citizensdk_host_create_with_modules(
   if (out_host == nullptr) return expose(CITIZENSDK_ERROR_INVALID_ARGUMENT);
   *out_host = 0;
   try {
-    require(config != nullptr && config->struct_size >= sizeof(*config) &&
+    citizen_sdk::require(config != nullptr && config->struct_size >= sizeof(*config) &&
                 config->abi_version == CITIZENSDK_HOST_ABI_VERSION &&
                 config->enable_wallet <= 1 &&
                 (config->enable_wallet != 0) ==
@@ -262,17 +263,17 @@ citizensdk_error_code_t citizensdk_host_create_with_modules(
             CITIZENSDK_ERROR_INVALID_ARGUMENT,
             "CitizenSDK Host configuration ABI is invalid");
     const auto module_code = citizensdk_validate_modules(modules);
-    require(module_code == CITIZENSDK_OK, module_code,
+    citizen_sdk::require(module_code == CITIZENSDK_OK, module_code,
             "CitizenSDK module selection is invalid");
     const std::string storage = required_utf8(
-        config->storage_root_utf8, input_limits::kMaximumPathBytes,
+        config->storage_root_utf8, citizen_sdk::input_limits::kMaximumPathBytes,
         "CitizenSDK storage root is invalid UTF-8");
     const std::string assets = (modules & CITIZENSDK_MODULE_CHAIN) != 0 ? required_utf8(
-        config->asset_root_utf8, input_limits::kMaximumPathBytes,
+        config->asset_root_utf8, citizen_sdk::input_limits::kMaximumPathBytes,
         "CitizenSDK asset root is invalid UTF-8") : std::string{};
     const std::string application_id =
-        input_limits::validate_application_id(config->application_id_utf8);
-    require(std::filesystem::path(storage).is_absolute() &&
+        citizen_sdk::input_limits::validate_application_id(config->application_id_utf8);
+    citizen_sdk::require(std::filesystem::path(storage).is_absolute() &&
                 ((modules & CITIZENSDK_MODULE_CHAIN) == 0 ||
                  std::filesystem::path(assets).is_absolute()),
             CITIZENSDK_ERROR_INVALID_ARGUMENT,
@@ -282,7 +283,7 @@ citizensdk_error_code_t citizensdk_host_create_with_modules(
         application_id, config->gtk_parent_window,
         modules);
     std::lock_guard<std::mutex> guard(registry_lock());
-    require(!host_identity_exhausted(), CITIZENSDK_ERROR_UNAVAILABLE,
+    citizen_sdk::require(!host_identity_exhausted(), CITIZENSDK_ERROR_UNAVAILABLE,
             "CitizenSDK Host identity space is exhausted");
     const citizensdk_host_handle_t handle = next_host();
     if (next_host() == std::numeric_limits<citizensdk_host_handle_t>::max()) {
@@ -292,13 +293,13 @@ citizensdk_error_code_t citizensdk_host_create_with_modules(
     }
     auto entry = std::make_shared<HostEntry>();
     entry->host = std::move(bridge);
-    require(registry().emplace(handle, std::move(entry)).second,
+    citizen_sdk::require(registry().emplace(handle, std::move(entry)).second,
             CITIZENSDK_ERROR_UNAVAILABLE,
             "CitizenSDK Host identity space is exhausted");
     *out_host = handle;
     last_error.clear();
     return CITIZENSDK_OK;
-  } catch (const HostError &error) {
+  } catch (const citizen_sdk::HostError &error) {
     set_error(error.what()); return error.code();
   } catch (...) {
     set_error("CitizenSDK Host creation failed");
@@ -372,7 +373,7 @@ citizensdk_error_code_t citizensdk_host_submit_request(
         });
     *out_request_id = state->request_id;
     return expose(code);
-  } catch (...) { return expose(map_exception()); }
+  } catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 
 citizensdk_error_code_t citizensdk_host_set_credential_provider(
@@ -381,7 +382,7 @@ citizensdk_error_code_t citizensdk_host_set_credential_provider(
   auto host = acquire_host(handle);
   if (!host) return expose(CITIZENSDK_ERROR_INVALID_HANDLE);
   try { return expose(host->set_credential_provider(provider)); }
-  catch (...) { return expose(map_exception()); }
+  catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 citizensdk_error_code_t citizensdk_host_respond_credential(
     citizensdk_host_handle_t handle, uint64_t host_operation_id,
@@ -390,7 +391,7 @@ citizensdk_error_code_t citizensdk_host_respond_credential(
   auto host = acquire_host(handle);
   if (!host) return expose(CITIZENSDK_ERROR_INVALID_HANDLE);
   try { return expose(host->respond_credential(host_operation_id, credential)); }
-  catch (...) { return expose(map_exception()); }
+  catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 citizensdk_error_code_t citizensdk_host_cancel_credential(
     citizensdk_host_handle_t handle, uint64_t host_operation_id) {
@@ -398,7 +399,7 @@ citizensdk_error_code_t citizensdk_host_cancel_credential(
   auto host = acquire_host(handle);
   if (!host) return expose(CITIZENSDK_ERROR_INVALID_HANDLE);
   try { return expose(host->cancel_credential(host_operation_id)); }
-  catch (...) { return expose(map_exception()); }
+  catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 
 citizensdk_error_code_t citizensdk_host_set_parent_window(
@@ -528,7 +529,7 @@ citizensdk_error_code_t citizensdk_host_open_qr_capture(citizensdk_host_handle_t
   auto host = acquire_host(handle);
   if (!host) return expose(CITIZENSDK_ERROR_INVALID_HANDLE);
   try { return expose(host->open_qr_capture(purpose, *callbacks, out_resource)); }
-  catch (...) { return expose(map_exception()); }
+  catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 citizensdk_error_code_t citizensdk_host_control_qr_capture(citizensdk_host_handle_t handle,
     uint64_t resource, uint64_t operation, uint32_t action, uint8_t enabled) {
@@ -536,7 +537,7 @@ citizensdk_error_code_t citizensdk_host_control_qr_capture(citizensdk_host_handl
   auto host = acquire_host(handle);
   if (!host) return expose(CITIZENSDK_ERROR_INVALID_HANDLE);
   try { return expose(host->control_qr_capture(resource, operation, action, enabled)); }
-  catch (...) { return expose(map_exception()); }
+  catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 citizensdk_error_code_t citizensdk_host_decode_qr_image(citizensdk_host_handle_t handle,
     citizensdk_bytes_view_t encoded, uint32_t purpose, uint8_t *buffer, uint64_t capacity, uint64_t *out_required) {
@@ -550,7 +551,7 @@ citizensdk_error_code_t citizensdk_host_decode_qr_image(citizensdk_host_handle_t
     if (buffer && !bytes.empty()) std::memcpy(buffer, bytes.data(), bytes.size());
     *out_required = static_cast<uint64_t>(bytes.size());
     return expose(CITIZENSDK_OK);
-  } catch (...) { return expose(map_exception()); }
+  } catch (...) { return expose(citizen_sdk::map_exception()); }
 }
 
 }  // extern "C"
