@@ -3401,6 +3401,12 @@ cleanup在原Run最后执行，按select、四宿主、complete、publish的真�
 
 四种SDK宿主缓存分别保留Linux-X64（Android）、macOS-ARM64（Apple）、Linux-ARM64、Windows-X64的最新一份；仅本轮同attempt新缓存已保存且大小有效时淘汰同宿主旧份。本轮未保存新缓存则保留原缓存，不混用系统与架构，也不清理其它ref或其它产品缓存。旧缓存删除前核对新旧身份，删除后按官方列表接口回查；失败明确报告。
 
+工具与编译缓存先恢复，再使用官方工具原有准备命令；有则复用、缺少才获取，不增加工具探测、版本预检、缺项扫描或检查脚本。工具版本仍由scripts/config.mjs既有声明提供，锁文件不变。原八处缓存路径列表保持，Rustup管理器/已安装目标工具链、Android组件及Linux APT包和索引保存在既有target/cache/native/tools内部，工具标准内部结构沿用官方布局；不缓存账号、令牌、签名材料或dpkg已安装状态数据库。
+
+缓存恢复错误直接传播，不将错误伪装成冷缓存；缓存保存只在恢复及Rust/原生源准备成功后运行，构建失败仍可保存已准备的依赖。缓存键移除整份config.mjs摘要，包含宿主、Rust/Flutter/NDK以及其余工具和原生源声明版本、原Cargo/Pub锁和Run/attempt快照后缀；恢复沿官方兼容前缀使用最新缓存，普通流程修改不再阻断复用。旧缓存目录列表不变，原编译、Flutter和依赖缓存仍可恢复。原生源目录缺失而准备新原件时仅使旧原生依赖库失效，移除同组件旧源码目录；不清空工具和Cargo编译缓存。Cargo、Gradle与原生构建继续执行原命令及真实测试，增量复用由所属工具处理，不能用缓存代替功能、安全或实网验收。
+
+四宿主的声明读取、缓存恢复、Node准备、Rust准备和缓存保存用GitHub官方YAML锚点共享一份步骤；CI明确交付原CARGO_TARGET_DIR与GRADLE_USER_HOME，使构建消费本作业已经恢复的缓存，本机调用方显式缓存输入继续沿既有接口处理。Linux恢复缓存后才准备系统包及Rust，APT沿官方缓存配置复用安装包和索引，保持HTTPS、CA及包签名验证，禁止主动升级已装包；新容器可能仍需从缓存包本地安装。Node保持setup-node本地工具缓存机制且check-latest:false，Rustup只准备声明工具链并禁止自更新；已安装工具链与目标标准库在原缓存范围内持续复用。Android由sdkmanager复用已安装组件，所需组件在SDK标准目录和原缓存范围之间恢复/保存；其它工具沿原目录缺失条件准备。本节不授权任何下载、流程运行、发布或远端删除。
+
 依据：[GitHub跨作业Artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[作业依赖与最小权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[Run删除接口](https://docs.github.com/en/rest/actions/workflow-runs)及[缓存删除接口](https://docs.github.com/en/rest/actions/cache)。同Run交付与成功/失败各留一条是本产品要求，并非官方规定的保留数量。
 
 ## 资源方法与错误边界

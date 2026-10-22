@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {root,claimCache,createFlutterSourceView,verifyComplete,setVersion,appleLibraries,verifyImageSymbols,flutterChecks,waitGroup} from '../scripts/build.mjs';
 import {nextVersion,retainedRuns,sdkName,cleanupRuns,cleanupCaches,automate,publicationSource,verifyPublication,cleanupPublications,consume} from '../scripts/build.mjs';
-import {describeAction} from '../scripts/config.mjs';
+import {describeAction,tools,nativeSources} from '../scripts/config.mjs';
 function fixture(t){const base=join(root,'target/test');mkdirSync(base,{recursive:true});const work=mkdtempSync(join(base,'regression-'));t.after(()=>rmSync(work,{recursive:true,force:true}));return work;}
 
 test('Unix收尾只读取准确进程组，无成员或已退出Z状态不被其他任务阻塞',async()=>{
@@ -325,6 +325,96 @@ test('工作流使用同Run完整Artifact并将写权限限定于发布和收尾
  assert.match(jobs.publish,/merge-multiple: true/u);assert.match(jobs.publish,/contents: write/u);assert.match(jobs.publish,/actions: read/u);assert.match(jobs.cleanup,/actions: write/u);
  assert.match(jobs.cleanup,/needs: \[select, android, apple, linux, windows, complete, publish\]/u);assert.match(jobs.cleanup,/always\(\)/u);
 });
+// 执行工作流原片段；工具请求用本轮合成代理记录，禁止访问真实网络或安装工具。
+function workflowEntry(anchor){
+ const text=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8'),start=text.indexOf('      - '+(anchor.startsWith('name: ')?anchor:'&'+anchor)+'\n');assert.ok(start>=0,anchor);
+ const next=text.indexOf('\n      - ',start+1);return text.slice(start,next<0?text.length:next);
+}
+function workflowRun(anchor){
+ const block=workflowEntry(anchor),match=/        run: \|\n((?:          [^\n]*\n?)+)/u.exec(block);assert.ok(match,anchor);
+ return match[1].split('\n').map(line=>line.slice(10)).join('\n');
+}
+function workflowToolFixture(t,{installed=false}={}){
+ const work=fixture(t),bin=join(work,'bin'),cargo=join(work,'cargo'),rust=join(work,'rustup'),temporary=join(work,'temp'),calls=join(work,'calls');
+ for(const path of [bin,join(cargo,'bin'),rust,temporary,join(work,'scripts'),join(work,'target/cache/rust'),join(work,'target/cache/native/lib'),join(work,'target/cache/native/include')])mkdirSync(path,{recursive:true});
+ for(const name of ['config.mjs','build.mjs'])writeFileSync(join(work,'scripts',name),readFileSync(join(root,'scripts',name)));
+ for(const value of Object.values(nativeSources))mkdirSync(join(work,'target/cache/sources',value.archive_root),{recursive:true});
+ writeFileSync(calls,'');writeFileSync(join(work,'target/cache/rust/keep'),'compiled');writeFileSync(join(work,'target/cache/native/lib/keep'),'native');writeFileSync(join(work,'target/cache/native/include/keep'),'headers');
+ // 子进程只看到本轮代理和绝对系统命令，不能误用宿主已安装的Rust或真实curl。
+ for(const name of ['sed','mkdir','cp','basename','tar','sh','tr','chmod','gzip']){
+  const command=['/usr/bin/'+name,'/bin/'+name].find(existsSync);assert.ok(command,name);
+  writeFileSync(join(bin,name),'#!/bin/sh\nexec "'+command+'" "$@"\n',{mode:0o700});
+ }
+ writeFileSync(join(bin,'node'),'#!/bin/sh\nexec "$SDK_NODE" "$@"\n',{mode:0o700});
+ const manager="#!/bin/sh\nprintf 'rustup %s\\n' \"$*\" >> \"$SDK_TOOL_CALLS\"\nif [ \"${SDK_RUST_EXIT:-0}\" != 0 ]; then exit \"$SDK_RUST_EXIT\"; fi\nchain=\"$RUSTUP_HOME/toolchains/$PRODUCT_RUST-fixture\"\nmkdir -p \"$chain/lib/rustlib/fixture/lib\"\nif [ ! -f \"$chain/keep\" ]; then printf 'fixture\\n' > \"$chain/keep\"; fi\n",installer=join(work,'installer.sh'),template=join(work,'manager.sh');
+ writeFileSync(template,manager,{mode:0o700});writeFileSync(installer,"#!/bin/sh\nprintf 'install-manager\\n' >> \"$SDK_TOOL_CALLS\"\nmkdir -p \"$CARGO_HOME/bin\"\nfor name in rustup cargo rustc rustdoc; do\n  cp \"$SDK_MANAGER_TEMPLATE\" \"$CARGO_HOME/bin/$name\"\n  chmod 700 \"$CARGO_HOME/bin/$name\"\ndone\n",{mode:0o700});writeFileSync(join(bin,'curl'),"#!/bin/sh\nout=''\nurl=''\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    -o) out=\"$2\"; shift 2 ;;\n    https://*) url=\"$1\"; shift ;;\n    *) shift ;;\n  esac\ndone\nprintf 'curl %s\\n' \"$url\" >> \"$SDK_TOOL_CALLS\"\ncase \"$url\" in\n  https://sh.rustup.rs) cp \"$SDK_INSTALLER\" \"$out\" ;;\n  *) cp \"$SDK_SOURCE_ARCHIVE\" \"$out\" ;;\nesac\n",{mode:0o700});
+ if(installed){
+  for(const name of ['rustup','cargo','rustc','rustdoc'])writeFileSync(join(cargo,'bin',name),manager,{mode:0o700});
+  mkdirSync(join(rust,'toolchains',tools.rust+'-fixture','lib'),{recursive:true});writeFileSync(join(rust,'toolchains',tools.rust+'-fixture','keep'),'installed');
+ }
+ const env={PATH:bin,SDK_NODE:process.execPath,CARGO_HOME:cargo,RUSTUP_HOME:rust,RUNNER_OS:'Linux',RUNNER_ARCH:'ARM64',GITHUB_WORKSPACE:work,RUNNER_TEMP:temporary,GITHUB_ENV:join(work,'environment'),GITHUB_PATH:join(work,'path'),GITHUB_OUTPUT:join(work,'output'),PRODUCT_RUST:tools.rust,SDK_TOOL_CALLS:calls,SDK_MANAGER_TEMPLATE:template,SDK_INSTALLER:installer};
+ const execute=anchor=>spawnSync('/bin/bash',['-euo','pipefail','-c',workflowRun(anchor)],{cwd:work,env,encoding:'utf8'});
+ return {work,cargo,rust,env,calls,execute};
+}
+test('声明读取不启动工具探测，流程正文变更不改变工具版本和缓存匹配输入',t=>{
+ const value=workflowToolFixture(t),read=()=>{
+  writeFileSync(value.env.GITHUB_OUTPUT,'');const result=value.execute('tools');assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+  return Object.fromEntries(readFileSync(value.env.GITHUB_OUTPUT,'utf8').trim().split('\n').map(line=>line.split('=')));
+ };
+ const before=read();for(const [name,version]of Object.entries(tools))assert.equal(before[name],version);
+ for(const [name,entry]of Object.entries(nativeSources))assert.equal(before[name.replaceAll('-','_')],entry.version);
+ writeFileSync(join(value.work,'scripts/config.mjs'),readFileSync(join(value.work,'scripts/config.mjs'),'utf8')+'\n// 合成流程说明变化，不改变声明。\n');
+ assert.deepEqual(read(),before);assert.equal(readFileSync(value.calls,'utf8'),'');
+ const restore=workflowEntry('cache'),save=workflowEntry('save'),paths=block=>/          path: \|\n((?:            [^\n]+\n)+)/u.exec(block)[1];
+ assert.equal(paths(restore),paths(save));assert.match(paths(restore),/target\/cache\/rust/u);assert.match(paths(restore),/target\/cache\/native/u);
+ const key=block=>/          key: ([^\n]+)/u.exec(block)[1];assert.equal(key(restore),key(save));assert.doesNotMatch(key(restore),/config\.mjs/u);
+ assert.match(restore,/timeout-minutes: 10/u);assert.doesNotMatch(restore,/continue-on-error/u);
+ assert.match(workflowEntry('node'),/check-latest: false/u);
+});
+test('已安装Rust与目标原件进入原缓存范围，复用时不调用下载器或改动编译缓存',t=>{
+ const value=workflowToolFixture(t,{installed:true}),result=value.execute('rust');assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+ const cached=join(value.work,'target/cache/native/tools/rustup/toolchains',tools.rust+'-fixture','keep');
+ assert.equal(readFileSync(cached,'utf8'),'installed');assert.equal(readFileSync(join(value.rust,'toolchains',tools.rust+'-fixture','keep'),'utf8'),'installed');
+ assert.equal(readFileSync(join(value.work,'target/cache/rust/keep'),'utf8'),'compiled');assert.equal(readFileSync(join(value.work,'target/cache/native/lib/keep'),'utf8'),'native');
+ assert.deepEqual(readFileSync(value.calls,'utf8').trim().split('\n'),['rustup toolchain install '+tools.rust+' --profile minimal --no-self-update']);
+ for(const path of ['target/cache/native/tools/rustup','target/cache/rust','target/cache/gradle-home'])assert.ok(readFileSync(value.env.GITHUB_ENV,'utf8').includes(path));
+});
+test('管理器缺少才准备，后续仅恢复已缓存工具，不重新调用下载器',t=>{
+ const value=workflowToolFixture(t),first=value.execute('rust');assert.ifError(first.error);assert.equal(first.status,0,first.stderr);
+ const initial=readFileSync(value.calls,'utf8');assert.equal(initial.split('curl https://sh.rustup.rs').length-1,1);assert.equal(initial.split('install-manager').length-1,1);
+ rmSync(join(value.cargo,'bin'),{recursive:true});const second=value.execute('rust');assert.ifError(second.error);assert.equal(second.status,0,second.stderr);
+ const repeated=readFileSync(value.calls,'utf8');assert.equal(repeated.split('curl https://sh.rustup.rs').length-1,1);assert.equal(repeated.split('install-manager').length-1,1);
+ const third=value.execute('rust');assert.ifError(third.error);assert.equal(third.status,0,third.stderr);
+ assert.equal(readFileSync(value.calls,'utf8').split('curl https://sh.rustup.rs').length-1,1);
+ assert.equal(readFileSync(value.calls,'utf8').split('rustup toolchain install ').length-1,3);assert.equal(readFileSync(join(value.work,'target/cache/rust/keep'),'utf8'),'compiled');
+});
+test('官方Rust命令失败原样返回，不尝试其它安装或清理编译缓存',t=>{
+ const value=workflowToolFixture(t,{installed:true});value.env.SDK_RUST_EXIT='23';const result=value.execute('rust');assert.ifError(result.error);assert.equal(result.status,23,result.stderr);
+ assert.equal(readFileSync(value.calls,'utf8').trim(),'rustup toolchain install '+tools.rust+' --profile minimal --no-self-update');assert.equal(readFileSync(join(value.work,'target/cache/rust/keep'),'utf8'),'compiled');
+});
+test('Android仅恢复没有安装的缓存组件，官方SDK命令及保存沿用同一组组件',t=>{
+ const value=workflowToolFixture(t),sdk=join(value.work,'android'),cache=join(value.work,'target/cache/native/tools/android'),manager=join(sdk,'cmdline-tools/latest/bin');
+ mkdirSync(manager,{recursive:true});writeFileSync(join(manager,'sdkmanager'),"#!/bin/sh\nprintf 'sdkmanager %s\\n' \"$*\" >> \"$SDK_TOOL_CALLS\"\nfor package in \"$@\"; do\n  component=\"$(printf '%s' \"$package\" | tr ';' '/')\"\n  mkdir -p \"$ANDROID_HOME/$component\"\n  if [ ! -f \"$ANDROID_HOME/$component/keep\" ]; then printf 'prepared' > \"$ANDROID_HOME/$component/keep\"; fi\ndone\n",{mode:0o700});
+ for(const component of ['ndk/'+tools.ndk,'cmake/'+tools.cmake]){mkdirSync(join(cache,component),{recursive:true});writeFileSync(join(cache,component,'keep'),'cached');}
+ for(const component of ['cmake/'+tools.cmake,'platforms/android-36']){mkdirSync(join(sdk,component),{recursive:true});writeFileSync(join(sdk,component,'keep'),'installed');}
+ mkdirSync(join(value.work,'target/cache/gradle/gradle-'+tools.gradle),{recursive:true});
+ Object.assign(value.env,{ANDROID_HOME:sdk,PRODUCT_NDK:tools.ndk,PRODUCT_CMAKE:tools.cmake,PRODUCT_GRADLE:tools.gradle});
+ const result=value.execute('name: 准备官方Android和Gradle');assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+ assert.equal(readFileSync(join(sdk,'ndk',tools.ndk,'keep'),'utf8'),'cached');assert.equal(readFileSync(join(sdk,'cmake',tools.cmake,'keep'),'utf8'),'installed');
+ const saved=value.execute('name: 保存已安装Android组件');assert.ifError(saved.error);assert.equal(saved.status,0,saved.stderr);
+ assert.equal(readFileSync(join(cache,'cmake',tools.cmake,'keep'),'utf8'),'installed');assert.equal(readFileSync(value.calls,'utf8').trim(),'sdkmanager ndk;'+tools.ndk+' cmake;'+tools.cmake+' platforms;android-36');
+});
+test('原生源码缺少时只刷新原生依赖，工具与Cargo缓存继续保留',t=>{
+ const value=workflowToolFixture(t,{installed:true}),entry=nativeSources.openssl,input=join(value.work,'archive',entry.archive_root),archive=join(value.work,'source.tgz');
+ mkdirSync(input,{recursive:true});writeFileSync(join(input,'fixture'),'source');const pack=spawnSync('tar',['-czf',archive,'-C',join(value.work,'archive'),entry.archive_root],{encoding:'utf8'});assert.ifError(pack.error);assert.equal(pack.status,0,pack.stderr);
+ rmSync(join(value.work,'target/cache/sources',entry.archive_root),{recursive:true});mkdirSync(join(value.work,'target/cache/sources/openssl-0.0.1'));
+ value.env.SDK_SOURCE_ARCHIVE=archive;const result=value.execute('rust');assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+ assert.equal(existsSync(join(value.work,'target/cache/native/lib')),false);assert.equal(existsSync(join(value.work,'target/cache/native/include')),false);assert.equal(existsSync(join(value.work,'target/cache/sources/openssl-0.0.1')),false);
+ assert.equal(readFileSync(join(value.work,'target/cache/rust/keep'),'utf8'),'compiled');assert.ok(existsSync(join(value.work,'target/cache/native/tools/bin/rustup')));
+ assert.equal(readFileSync(join(value.work,'target/cache/sources',entry.archive_root,'fixture'),'utf8'),'source');
+ assert.equal(readFileSync(value.calls,'utf8').split('curl '+entry.url).length-1,1);
+});
+
 test('汇总执行真实工作流解包片段，四宿主中文归档路径闭合，缺件和错版本必须失败',t=>{
  const work=fixture(t),version='1.2.3',targets=['Android','Apple','LinuxARM','Windows'],workflow=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8');
  const match=/- name: 解包累计真实原生件\n        run: \|\n((?:          [^\n]+\n)+)/u.exec(workflow);assert.ok(match);
