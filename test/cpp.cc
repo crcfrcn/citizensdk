@@ -250,6 +250,24 @@ int sensitive() {
 #include <cstring>
 #include <random>
 #include <map>
+#include <memory>
+#include <stdexcept>
+
+// 三处测试入口共用工作根读取；Windows副本由RAII释放，缺失或空值均失败。
+std::string work() {
+#if defined(_WIN32)
+  char *copy = nullptr;
+  const auto code = _dupenv_s(&copy, nullptr, "CITIZENSDK_TEST_WORK_DIR");
+  const std::unique_ptr<char, decltype(&std::free)> owned(copy, &std::free);
+  if (code != 0) throw std::runtime_error("CitizenSDK test work root read failed");
+  const char *value = owned.get();
+#else
+  const char *value = std::getenv("CITIZENSDK_TEST_WORK_DIR");
+#endif
+  if (value == nullptr || *value == '\0')
+    throw std::runtime_error("CitizenSDK test work root is required");
+  return value;
+}
 
 // 实际SQLite验证共享资源适配，不模拟任何生产文件安全/VFS结论。
 class Connection final {
@@ -286,7 +304,7 @@ citizensdk_error_code_t unfinished(void *context){
 }
 citizensdk_error_code_t forbidden(void*){assert(false);return 0;}
 int resource(){
-  const char *base=std::getenv("CITIZENSDK_TEST_WORK_DIR");assert(base&&*base);
+  const auto base=work();
   const auto directory=std::filesystem::u8path(base)/("cpp-"+std::to_string(std::random_device{}()));
   {citizen_sdk::Database<Connection,citizen_sdk::HostError> db(directory);ResourceTest test{db.config()};
    assert(!std::filesystem::exists(directory));assert(test.config.run(test.config.context,resource_job,&test)==0);
@@ -296,7 +314,7 @@ int resource(){
   std::filesystem::remove_all(directory);return 0;
 }
 int metadata(){
-  const auto base=std::getenv("CITIZENSDK_TEST_WORK_DIR");assert(base&&*base);
+  const auto base=work();
   const auto directory=std::filesystem::u8path(base)/("vault-"+std::to_string(std::random_device{}()));
   {
     citizen_sdk::Database<Connection,citizen_sdk::HostError> db(directory,true);auto config=db.config();citizen_sdk::VaultStore store(config);
@@ -328,7 +346,7 @@ int32_t fixture_unwrap(void*,uint64_t,citizensdk_host_wallet_key_ref_v1_t,citize
 #define CITIZENSDK_TEST_EXPORT __attribute__((visibility("default")))
 #endif
 extern "C" CITIZENSDK_TEST_EXPORT uint64_t citizensdk_test_open(uint32_t modules){
- try{auto fixture=std::make_unique<FfiFixture>();const char*base=std::getenv("CITIZENSDK_TEST_WORK_DIR");if(!base)return 0;
+ try{auto fixture=std::make_unique<FfiFixture>();const auto base=work();
  fixture->directory=std::filesystem::path(base)/("ffi-"+std::to_string(std::random_device{}()));
  citizensdk_stores_v1_t stores{};stores.struct_size=sizeof(stores);stores.abi_version=1;citizensdk_store_v1_t config{};
  if(modules&(CITIZENSDK_MODULE_WALLET|CITIZENSDK_MODULE_SIGNING)){

@@ -562,7 +562,8 @@ int main() {
   }
   assert(create_code == CITIZENSDK_OK);
   assert(host != 0);
-  assert(std::filesystem::is_directory(
+  // Host构造只组合资源；首次真实存储操作前不创建数据库目录。
+  assert(!std::filesystem::exists(
       temporary.path() / "state" / application_id / "citizensdk" / "v1" /
       "public"));
   assert(!std::filesystem::exists(
@@ -589,6 +590,11 @@ int main() {
   assert(citizensdk_host_create_sdk(host, &sdk) ==
          CITIZENSDK_ERROR_INTEGRITY);
   assert(sdk == 0);
+  // 链资产校验失败同样不得提前产生存储副作用。
+  assert(!std::filesystem::exists(
+      temporary.path() / "state" / application_id / "citizensdk" / "v1" / "public"));
+  assert(!std::filesystem::exists(
+      temporary.path() / "state" / application_id / "citizensdk" / "v1" / "secure"));
   uint64_t resource = 99;
   assert(citizensdk_host_open_qr_capture(host, 1, nullptr, &resource) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
   assert(resource == 0);

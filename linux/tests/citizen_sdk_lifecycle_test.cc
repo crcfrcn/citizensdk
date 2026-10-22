@@ -13,6 +13,9 @@
 #ifndef CITIZENSDK_LINUX_TEST_SOURCE_DIR
 #error "CITIZENSDK_LINUX_TEST_SOURCE_DIR must point at the Linux source root"
 #endif
+#ifndef CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR
+#error "CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR must point at generated public headers"
+#endif
 #ifdef NDEBUG
 #error "CitizenSDK Linux contract assertions must remain enabled"
 #endif
@@ -116,25 +119,23 @@ int main() {
   assert(multiple.begin_close()); multiple.commit_closed();
   assert(!multiple.begin_close());
 
-  const auto read = [](const char *relative) {
-    const std::string path = std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-                             relative;
+  const auto read = [](const std::string &path) {
     std::ifstream stream(path, std::ios::binary);
     assert(stream.good());
     return std::string((std::istreambuf_iterator<char>(stream)),
                        std::istreambuf_iterator<char>());
   };
-  const std::string host_api = read("/src/citizen_sdk_host_api.cc");
+  const std::string host_api = read(
+      std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) + "/src/citizen_sdk_host_api.cc");
   const std::string host_bridge =
-      read("/src/citizen_sdk_host_bridge.cc");
+      read(std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) + "/src/citizen_sdk_host_bridge.cc");
+  // 使用本轮公共头投影，不再读取平台根的旧头文件位置。
   const std::string cpp_api =
-      read("/citizen_sdk.hpp");
+      read(std::string(CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR) + "/citizen_sdk.hpp");
+  // 硬件回调共用唯一wallet_key转换器，不要求重复的索引校验实现。
   const auto wallet_index_guard =
       host_bridge.find("value.wallet_index == 0");
-  const auto secret_index_guard = host_bridge.find(
-      "value.wallet_index == 0", wallet_index_guard + 1);
-  assert(wallet_index_guard != std::string::npos &&
-         secret_index_guard != std::string::npos);
+  assert(wallet_index_guard != std::string::npos);
   assert(host_api.find("citizensdk_host_abandon") != std::string::npos);
   assert(host_api.find("citizensdk_stop(sdk") != std::string::npos);
   assert(host_api.find("std::min(delay * 2") != std::string::npos);
