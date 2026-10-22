@@ -4,10 +4,44 @@ import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,rmSync,existsSync,symlinkSync,readlinkSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {root,claimCache,createFlutterSourceView,verifyComplete,setVersion,appleLibraries,verifyImageSymbols,flutterChecks} from '../scripts/build.mjs';
+import {root,claimCache,createFlutterSourceView,verifyComplete,setVersion,appleLibraries,verifyImageSymbols,flutterChecks,waitGroup} from '../scripts/build.mjs';
 import {nextVersion,retainedRuns,sdkName,cleanupRuns,automate,publish,publicationSource,verifyPublication,cleanupPublications,consume} from '../scripts/build.mjs';
 import {describeAction} from '../scripts/config.mjs';
 function fixture(t){const base=join(root,'target/test');mkdirSync(base,{recursive:true});const work=mkdtempSync(join(base,'regression-'));t.after(()=>rmSync(work,{recursive:true,force:true}));return work;}
+
+test('Unix收尾只读取准确进程组，无成员或已退出Z状态不被其他任务阻塞',async()=>{
+ const env={LANG:'C'};
+ for(const stdout of ['1 Ss\n14567 R+\n','4567 Z\n',' 4567 Z+\r\n 4567 Zs\r\n 8 Ss\r\n']){
+  let reads=0;await waitGroup(4567,{env,inspect:(command,args,options)=>{
+   reads++;assert.equal(command,'ps');assert.deepEqual(args,['-A','-o','pgid=','-o','stat=']);assert.deepEqual(options,{env,encoding:'utf8',maxBuffer:16*1024**2});return {status:0,stdout};
+  },pause:async()=>assert.fail('已退出不能继续等待')});assert.equal(reads,1);
+ }
+});
+test('Unix活动后代必须按原间隔等待至消失，不能将其他进程组当作本轮成员',async()=>{
+ const snapshots=['4567 S+\n14567 R\n','4567 R\n','14567 R\n'],pauses=[];let reads=0;
+ await waitGroup(4567,{attempts:2,inspect:()=>({status:0,stdout:snapshots[reads++]}),pause:async ms=>pauses.push(ms)});
+ assert.equal(reads,3);assert.deepEqual(pauses,[100,100]);
+});
+test('Unix读取权限、解析或等待失败均保留现场，不把未知状态当退出',async()=>{
+ const denied=Object.assign(new Error('synthetic read denial'),{code:'EPERM'});
+ const cases=[
+  ()=>{throw denied;},()=>({error:denied,status:null,stdout:''}),()=>({status:1,stdout:'1 Ss\n'}),
+  ()=>({status:0,signal:'SIGTERM',stdout:'1 Ss\n'}),()=>({status:0,stdout:''}),
+  ()=>({status:0,stdout:'invalid'}),()=>({status:0,stdout:'4567 S extra\n'}),
+  ()=>({status:0,stdout:'9007199254740992 S\n'}),()=>({status:0,stdout:null}),
+ ];
+ for(const inspect of cases)await assert.rejects(waitGroup(4567,{inspect,pause:async()=>assert.fail('读取失败不能重试')}),error=>error.keepWork===true);
+ await assert.rejects(waitGroup(4567,{inspect:()=>{throw denied;}}),error=>error.keepWork===true&&error.cause===denied);
+ const interrupted=new Error('synthetic wait interruption');
+ await assert.rejects(waitGroup(4567,{inspect:()=>({status:0,stdout:'4567 S\n'}),pause:async()=>{throw interrupted;}}),error=>error.keepWork===true&&error.cause===interrupted);
+ for(const pid of [0,1,-1,NaN,2147483648])await assert.rejects(waitGroup(pid,{inspect:()=>assert.fail('非法组身份不能读取进程表')}),error=>error.keepWork===true);
+});
+test('Unix活动或未知成员超时仍失败，取消核对不增加原等待期限',async()=>{
+ for(const state of ['S','R+','?','Zunknown'])for(const attempts of [0,2]){
+  let reads=0;const pauses=[];await assert.rejects(waitGroup(4567,{attempts,inspect:()=>{reads++;return {status:0,stdout:'4567 '+state+'\n'};},pause:async ms=>pauses.push(ms)}),error=>error.keepWork===true);
+  assert.equal(reads,attempts+1);assert.deepEqual(pauses,Array(attempts).fill(100));
+ }
+});
 test('SDK唯一平台与版本，失败不递增，只留最新成功和失败并保护活动任务',()=>{
  const row=(id,version,conclusion,status='completed')=>({id,display_title:'公民SDK·SDK·v'+version,conclusion,status,created_at:new Date(id*1000).toISOString(),kind:'automation',artifact:{}});
  const rows=[row(1,'1.2.9','success'),row(2,'1.2.10','failure'),row(3,'1.2.10',null,'queued')];assert.equal(sdkName('1.2.10'),'公民SDK·SDK·v1.2.10');assert.equal(nextVersion(rows),'1.2.10');assert.deepEqual([...retainedRuns([row(0,'1.2.8','success'),...rows])].sort(),[1,2,3]);for(const value of ['1.0','01.0.0','1.0.0\n','1.0.0-beta'])assert.throws(()=>sdkName(value));

@@ -178,6 +178,26 @@ export function claimCache(work){
  catch{if(owned)rmdirSync(lock);return {cargo:join(work,'rust'),release(){}};}
 }
 const controller=new AbortController();
+// 只读核对本轮独立进程组；signal 0也受权限检查，不能用EPERM推断已经退出。
+export async function waitGroup(pid,{env={},attempts=50,inspect=spawnSync,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+ const unresolved=(reason,cause)=>Object.assign(new Error('工具后代退出尚未确认，保留现场：'+reason,{cause}),{keepWork:true});
+ if(!Number.isSafeInteger(pid)||pid<=1||pid>2147483647||!Number.isSafeInteger(attempts)||attempts<0||attempts>50)throw unresolved('进程组身份或等待边界无效');
+ for(let attempt=0;attempt<=attempts;attempt++){
+  let result;try{result=inspect('ps',['-A','-o','pgid=','-o','stat='],{env,encoding:'utf8',maxBuffer:16*1024**2});}catch(error){throw unresolved('进程表读取失败',error);}
+  if(result?.error||result?.status!==0||result?.signal||typeof result?.stdout!=='string'||result.stdout.length>16*1024**2)throw unresolved('进程表读取失败',result?.error);
+  const rows=result.stdout.trim().split(/\r?\n/u);let active=false;
+  if(!rows[0])throw unresolved('进程表为空');
+  for(const row of rows){
+   const match=/^\s*(\d+)\s+([A-Za-z?][A-Za-z0-9<>+_-]*)\s*$/u.exec(row),group=match?Number(match[1]):NaN;
+   if(!match||!Number.isSafeInteger(group)||group>2147483647)throw unresolved('进程表格式无效');
+   // Z已不能运行或写入；未知修饰符仍按活动成员处理，不能抢先清场。
+   if(group===pid&&!/^Z[<NLsl+]*$/u.test(match[2]))active=true;
+  }
+  if(!active)return;
+  if(attempt===attempts)throw unresolved('仍有活动或未知状态成员');
+  try{await pause(100);}catch(error){throw unresolved('等待被中断',error);}
+ }
+}
 async function run(command,args,{cwd=root,env={},capture=false,signal:taskSignal=controller.signal,trim=true}={}){
  taskSignal.throwIfAborted();let batch=false;
  if(process.platform==='win32'&&/\.(?:bat|cmd)$/iu.test(command)){if([command,...args].some(value=>/["%!^&|<>\r\n]/u.test(value)))throw Error('Windows工具参数含Shell控制字符');args=['/d','/s','/c','\"'+[command,...args].map(value=>'\"'+value+'\"').join(' ')+'\"'];command=process.env.COMSPEC||'cmd.exe';batch=true;}
@@ -193,20 +213,11 @@ async function run(command,args,{cwd=root,env={},capture=false,signal:taskSignal
   child.stdout?.on('data',bytes=>{output+=bytes;if(output.length>16*1024**2){error=Error('工具结果超限');stop();}});child.once('error',value=>{error=value;});
   child.once('close',async(code,signal)=>{taskSignal.removeEventListener('abort',stop);
    if(stopping&&!await stopping){clearTimeout(timer);const failure=Error('Windows进程树退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}
-   if(taskSignal.aborted&&process.platform!=='win32'){await new Promise(resolve=>setTimeout(resolve,2100));try{process.kill(-child.pid,0);const failure=Error('子进程退出尚未确认，保留现场');failure.keepWork=true;return fail(failure);}catch(value){if(value.code!=='ESRCH')return fail(value);}}
+   if(taskSignal.aborted&&process.platform!=='win32')await new Promise(resolve=>setTimeout(resolve,2100));
    clearTimeout(timer);
    if(process.platform!=='win32'&&child.pid){
-    // Flutter启动器可能先于短命后代返回；只等待本轮独立进程组，禁止抢先删除现场。
-    for(let attempt=0;attempt<=50;attempt++){
-     try{process.kill(-child.pid,0);}catch(value){if(value.code==='ESRCH')break;return fail(value);}
-     if(process.platform==='linux'){
-      // 容器PID1可能未回收已经退出的僵尸；Z状态不能再运行或写入，不作为活动工具。
-      const result=spawnSync('ps',['--sid',String(child.pid),'-o','stat='],{env:environment,encoding:'utf8'});
-      if(!result.error&&[0,1].includes(result.status)&&result.stdout.trim().split(/\s+/u).every(state=>!state||state.startsWith('Z')))break;
-     }
-     if(attempt===50){const failure=Error('工具后代尚未退出，保留现场');failure.keepWork=true;return fail(failure);}
-     await new Promise(resolve=>setTimeout(resolve,100));
-    }
+    // 正常收尾仍最多等50次100ms；取消保留原2100ms后只核对一次的上限。
+    try{await waitGroup(child.pid,{env:environment,attempts:taskSignal.aborted?0:50});}catch(value){return fail(value);}
    }
    error||code!==0||signal||taskSignal.aborted?fail(error||Error(basename(command)+'执行失败')):ok(trim?output.trim():output);
   });

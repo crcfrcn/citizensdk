@@ -3294,7 +3294,7 @@ Dart平台选择回归依据真实Abi.current验证LinuxARM准入，不把macOS�
 
 Windows独立Host与消费者显式使用Ninja生成器及已交付的x64 MSVC环境，不向NMake传递Visual Studio专用-A选项；Flutter消费者仍使用未修改的官方Flutter/Visual Studio工具闭包。
 
-完整Rust回归串行执行，包含全部显式实网只读用例，避免多个实网观察同时争用链状态；断言、超时和失败结果不改。Unix工具返回后有界等待本轮独立进程组退出，Linux容器仅将官方ps确认的Z状态认定为已退出；活动或未知状态仍保留现场并失败。
+完整Rust回归串行执行，包含全部显式实网只读用例，避免多个实网观察同时争用链状态；断言、超时和失败结果不改。Unix工具close后统一用系统ps只读取得PGID和状态，精确核对本轮独立进程组，不再以受信号权限约束的kill(pid,0)判断退出。无成员或仅剩已退出Z状态才完成；活动成员仍按原50次100ms等待，取消保留原TERM/KILL及2100ms后单次核对。读取失败、格式无效、未知状态或活动超时均失败并keepWork保留现场，不输出完整进程表、命令参数或环境。Windows原taskkill树处理保持。所属构建回归覆盖准确组隔离、短命后代退出序列、僵尸、读取/权限/解析失败和等待边界。
 
 Windows Flutter绑定完整实现既有NativeTransport私钥资源接口：Core仍拥有私钥，PrivateKeyResource负责既有接收器、显式查看、真实关闭和敏感副本清空；资源仅归创建会话，未关闭不得报告排空。交易执行证明沿用SemanticExecution成功布尔事实核对，外内状态不一致必须拒绝。插件声明只投影到本轮CMake构建目录，源码不生成平行头文件；MSVC严格警告保持。
 
