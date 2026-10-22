@@ -2,19 +2,19 @@
 
 ## 塔塔自动化与发布
 
-`scripts/build.mjs` 是独立最简入口，拥有真实测试、宿主构建、SDK目录装配以及自动化派发、观察和清理实现。命令为 `test`、`native Android|Apple|LinuxARM|Windows`、`package <完整原生目录>`。`scripts/config.mjs`仅保存本产品配置、工具及原生依赖来源与流程声明。工具准备直接使用工作流中的官方命令；目录归位保持Cargo与Pub原锁，不使用控制台依赖库存或自建全树复验。
+`scripts/build.mjs` 是独立最简入口，拥有真实测试、宿主构建及SDK目录装配实现。GitHub版本、发布和历史清理由既有sdk.yml实现。命令为 `test`、`native Android|Apple|LinuxARM|Windows`、`package <完整原生目录>`。`scripts/config.mjs`仅保存本产品配置、工具及原生依赖来源与流程声明。工具准备直接使用工作流中的官方命令；目录归位保持Cargo与Pub原锁，不使用控制台依赖库存或自建全树复验。
 
 公开平台唯一为SDK。完整包包含Dart/Flutter接口、公开C/C++头、chain资源、Android AAR及Core/JNI双库、三个arm64切片的Apple XCFramework、LinuxARM和Windows安装布局及消费配置。Android Core与JNI使用准确SONAME/NEEDED，不把构建机绝对路径带入装载依赖；AGP按官方属性启用Release单测。各宿主先通过适用Rust/Dart、Android、Apple Core/Flutter XCTest、桌面Host/C/C++消费者与Flutter适配器回归，才汇入完整包；缺件不能发布。已发布SDK的Apple标准Framework五个内部相对链接可在公开源码投影接口中保留，其他源码链接拒绝，不以禁止全部链接破坏已发布SDK的消费。软件版本只写入本轮投影，不改源声明和原锁。
 
-`.github/workflows/sdk.yml` 使用各宿主的官方Runner；LinuxARM在官方Debian 11容器及Debian官方归档内保持glibc 2.31与GTK/GStreamer最低合同。按用户确认，内部传递Artifact允许使用“公民SDK·SDK·vX.Y.Z·内部目标”，最终完整Artifact、Tag、Release统一为“公民SDK·SDK·vX.Y.Z”，固定工作流为“公民SDK·SDK”。最终ZIP、JSON与SHA256三件资产逐件下载对拍，Tag必须指向本次SHA，正式Release不得为草稿或预发布。pub.dev上传仍未接入。
+`.github/workflows/sdk.yml` 使用各宿主的官方Runner；LinuxARM在官方Debian 11容器及Debian官方归档内保持glibc 2.31与GTK/GStreamer最低合同。按用户确认，内部传递Artifact允许使用“公民SDK·SDK·vX.Y.Z·内部目标”，最终完整Artifact、Tag、Release统一为“公民SDK·SDK·vX.Y.Z”，固定工作流为“公民SDK·SDK”。最终ZIP、JSON与SHA256三件资产由同Run完整Artifact交付，发布前核对本地SHA256；Tag指向本次SHA，正式Release不是草稿或预发布。pub.dev上传仍未接入。
 
 产品对外声明以scripts/config.mjs和scripts/build.mjs为准，控制台只作为可选调度方交付已授权输入，不把外部适配文件路径登记为本产品接口。缓存只提供加速，版本与依赖选择仍归本仓真实声明。
 
-塔塔自动化验收核对准确Run/attempt/SHA、完整Artifact、准确Tag、非草稿非预发布Release及三件原始附件回读字节，并核对同类历史和宿主缓存收尾。任务与版本运行证据仅记唯一任务卡。
+塔塔自动化验收核对准确Run/attempt/SHA、完整Artifact、准确Tag、非草稿非预发布Release及三件原始附件，并核对同类历史和宿主缓存收尾。任务与版本运行证据仅记唯一任务卡。
 
 ## 当前构建与交付边界
 
-scripts/build.mjs拥有测试、宿主编译及目录装配；独立调用和控制台调度使用同一入口。工具版本、依赖来源归scripts/config.mjs、Cargo.lock、pubspec.lock和平台声明；缓存只加速同一真实工具，不替代声明或失败结果。任务独占现场位于target/test、target/build或target/work，工具退出后只清本轮现场。
+scripts/build.mjs拥有测试、宿主编译及目录装配；独立调用和控制台调度使用同一入口。编译脚本第1行约定：按官方要求或推荐采用最简单实现，只放编译构建代码和注释，不增加无关内容、复杂校验和阻断；工具依赖有就复用，没有才下载。工具版本、依赖来源归scripts/config.mjs、Cargo.lock、pubspec.lock和平台声明；缓存只加速同一真实工具，不替代声明或失败结果。任务独占现场位于target/test、target/build或target/work，工具退出后只清本轮现场。
 
 四个原生Job按同一提交生成Android、Apple、LinuxARM、Windows输入；完整Job汇总后装配源码和原生件。正式产物为唯一完整SDK ZIP、JSON回执和SHA256三件，实际生成和核验逻辑以sdk.yml为准。Pub上传未接入。本机开发验收与正式GitHub交付分别记录，开发通过不能代替全部宿主或硬件通过。
 
@@ -26,7 +26,6 @@ Linux与Windows的全局Host C入口以`citizen_sdk::`显式引用`include/input
 
 Host与Core构造只组合资源、复制和校验输入，不调用宿主存储回调；数据库在首次真实存储操作时打开，缺资产或未选择模块不能提前创建公开、私有数据库。原生测试读取本轮公共头投影，直接核对唯一校验与实际生命周期；共用C++测试只读取调用方指定的工作根，Windows使用官方`_dupenv_s`并以RAII释放副本，缺失、空值或读取失败均拒绝，不设置默认目录。
 
-版本只由具有完整SDK Artifact的最新成功自动化Run计算；失败和发布Run不递增。自动化、发布分别授权，活动Run及已发布来源不清理。准确执行结果只记录在唯一任务卡。
 
 ### Android源码与包身份
 
@@ -3014,7 +3013,7 @@ Pub、Flutter和Cargo使用产品自己声明的入口与锁文件。依赖由�
 
 ## 自动化缓存与完整产物
 
-同一sdk.yml的automation分支在Android、Apple、LinuxARM、Windows宿主执行原回归与原生构建，complete汇总完整SDK；publish分支只复用已成功自动化的准确Artifact，不重编或另加版本。公开流程与授权字段见文末“自动化与发布授权边界”。
+同一sdk.yml在Android、Apple、LinuxARM、Windows宿主执行原回归与原生构建，complete汇总完整SDK；publish作业复用同Run完整Artifact，不重编或另加版本。启动该流程包含正式发布和远端历史清理，需要对应授权。
 
 官方增量缓存按Runner系统、架构、原锁和工具声明复用；缓存只加速，不与Run、日志和正式产物共用删除规则。缓存被占用或无法恢复时使用本轮独占工作目录，不改变来源、锁或实际失败结果。
 
@@ -3168,7 +3167,7 @@ CitizenApp 已删除 `lib/rpc/**`、`smoldot/**`、`native/**`、通用 transact
 smoldot 构建接线；没有 legacy、adapter、fallback、双读、双写、双签或双节点。CitizenWallet、
 `citizensdk/smoldot/**` 与 CitizenChain Runtime 未修改。
 
-CitizenSDK是单一SDK整体包；唯一工作流为.github/workflows/sdk.yml，塔塔自动化和发布在同一文件内显式选择、分别授权。内部宿主不拆为独立产品流程。
+CitizenSDK是单一SDK整体包；唯一工作流为.github/workflows/sdk.yml，塔塔自动化、完整交付、正式发布及历史收尾在同一Run顺序执行，启动流程需要对应授权。内部宿主不拆为独立产品流程。
 
 ## 目录整合与平台输入
 
@@ -3306,7 +3305,6 @@ Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两�
 
 ## 外部调用入口
 
-本仓scripts/config.mjs的describeAction声明release、cleanup和SDK平台。release沿用调用方现有塔塔自动化流程标识，对应automate；cleanup复用本仓历史收尾。调用方交付已授权令牌及标准read/dispatch传输，独立执行与控制台调度共用build.mjs实现。
 
 Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前目标release/libcitizensdk.a、二维码CMake根目录libcitizensdk_qr_image.a及zxing/core/libZXing.a。不递归搜索Cargo内部缓存或把同名中间件当最终件，正式库缺失、为空或真实链接失败仍失败；不删除缓存解决路径选择错误。Windows Flutter测试的整数断言直接读取Value已有int64_t类型，测试夹具观察回调沿用原成员，严格告警及失败阶段断言不变。
 
@@ -3389,17 +3387,13 @@ Pub dry-run仅检查拟选择文件和元数据，不验证平台二进制存在
 
 ## 塔塔自动化与完整SDK交付
 
-唯一sdk.yml只接收冻结main SHA和候选版本，在同一Run完成四宿主测试编译、完整组包、真实消费验收、正式Release/Tag及历史清理。正式交付已并入塔塔自动化；开发、静态复核及保存推送不自动授予流程执行权限，含正式发布与远端删除的运行须明确授权。test、native、package、version、verify-publication和cleanup均为本仓内部命令，不另建编译或发布Run。
 
-构建与组包作业保持contents/read、actions/read；publish作业只取得contents/write与actions/read，cleanup作业取得contents/write与actions/write。同仓同SDK并发组不取消活动Run，已有活动Run时拒绝重复派发。客户端只派发一次并返回准确Run，观察中断不会阻塞GitHub收尾。失败历史仅核对仓库、工作流、main、事件、SHA、run_number与attempt归属，不要求旧失败标题具备成功交付版本。
 
-四份内部原生件按GitHub官方Artifact跨作业传递到汇总执行机，不下载到用户本机。解包路径以${SDK_VERSION}、${target}显式界定变量和中文中点边界；任一归档缺件或错版本仍失败。完整包实际消费验收通过后上传唯一完整Artifact，publish只按同Run明确Artifact ID下载原三件ZIP/JSON/sha256，不重编、不猜最新件、不改原字节。校验当前main、Run/attempt/版本、Artifact归属及完整性后创建草稿与准确SHA的Tag，上传后逐件下载比较原字节，再设为正式可见并回读。已有候选Release/Tag拒绝覆盖；失败收尾仅撤销归属准确的本轮草稿，已可见正式版保留并明确报错，不自动回滚。
+四份内部原生件按GitHub官方Artifact跨作业传递到汇总执行机，不下载到用户本机。解包路径以${SDK_VERSION}、${target}显式界定变量和中文中点边界；任一归档缺件或错版本仍失败。完整包实际消费验收通过后上传唯一完整Artifact，publish按同Run明确Artifact ID取得ZIP、JSON和sha256，在发布机执行sha256sum后使用官方接口创建本Run冻结SHA的Tag、上传草稿并转为正式版。本Run不受后续main提交影响；GitHub真实冲突或上传错误原样失败，不覆盖已有Tag，不另建回退发布实现。
 
-cleanup在原Run最后执行，按select、四宿主、complete、publish的真实前置结果选择本轮成功或失败候选；此时Run仍可能in_progress，不改写GitHub最终结论。正常收尾只替换同类历史：新成功删除旧成功并保留原最新失败；新失败删除旧失败并保留原最新成功与正式版。超时、取消等非成功终态归失败槽位，活动Run保护。原积压历史由同一规则补齐到最新成功、最新失败各一条，不设第二套迁移或分流程保留逻辑。成功或失败尚不存在时不伪造记录。
 
-新正式版三件附件、ZIP摘要、原完整Artifact、回执来源及Tag确认后才清理归属准确的旧Release/Tag。旧成功Run最后删除，删除前复核终态、SHA、attempt与run_number，删除后回查Run、日志及Artifact；删除或回查失败如实失败，不能报告收口完成。SDK业务、密码学、C ABI、TLS证书/主机名、实网证明和原测试门槛保持。
 
-四种SDK宿主缓存分别保留Linux-X64（Android）、macOS-ARM64（Apple）、Linux-ARM64、Windows-X64的最新一份；仅本轮同attempt新缓存已保存且大小有效时淘汰同宿主旧份。本轮未保存新缓存则保留原缓存，不混用系统与架构，也不清理其它ref或其它产品缓存。旧缓存删除前核对新旧身份，删除后按官方列表接口回查；失败明确报告。
+四种SDK宿主缓存分别保留Linux-X64（Android）、macOS-ARM64（Apple）、Linux-ARM64、Windows-X64在main上的最新一份，按官方缓存列表的创建时间和编号分组清理；本轮没有新缓存时仍保留已有最新缓存，不清理其他产品或ref。先收尾缓存与旧正式版，再删除同类旧Run；成功和失败各保留最新一条，活动Run不删除。
 
 工具与编译缓存先恢复，再使用官方工具原有准备命令；有则复用、缺少才获取，不增加工具探测、版本预检、缺项扫描或检查脚本。工具版本仍由scripts/config.mjs既有声明提供，锁文件不变。原八处缓存路径列表保持，Rustup管理器/已安装目标工具链、Android组件及Linux APT包和索引保存在既有target/cache/native/tools内部，工具标准内部结构沿用官方布局；不缓存账号、令牌、签名材料或dpkg已安装状态数据库。
 
@@ -3428,3 +3422,7 @@ Android官方证书验证组件的原Maven AAR/POM随同版SDK交付，Gradle只
 完整包消费的归档只解到独占现场，预检目录根、文件类型、长度及五项准确内部链接文本；输入先复制为快照再核验，取消信号沿消费者任务传递至解包子进程，未确认后代退出时保留现场。verifyConsumer复用同一完整性检查，另核对原锁、公开头及生成绑定，应用不另建全树源码/安装件校验清单。SDK自己的完整产物作业在上传前消费一次真实包，检查路径和版本接线；新增回归不以占位原生库代替成功验收。
 
 本机native入口复用调用方显式提供的CARGO_TARGET_DIR和GRADLE_USER_HOME；未提供时沿用SDK自己的原缓存位置，不改变工具或依赖版本，不增加下载逻辑或编译前置校验。CITIZENSDK_ZXING_SOURCE_DIR仍是既有公开编译输入，指向按nativeSources声明准备的完整源码；SDK编译仍由原入口执行。
+
+本产品scripts/config.mjs的describeAction仅返回repository、workflow、ref、inputs，或既有本地进程命令声明；不导入构建实现、不派发GitHub请求、不处理令牌、版本或历史。控制台使用统一数据接口直接派发并只读观察准确Run；产品GitHub业务归所属既有YAML。本次自动化Run名称使用运行编号，正式构建及产物保持版本名称。已有工具和依赖复用，缺少时才按原声明准备。
+
+公民SDK的GitHub版本、发布及历史清理由既有sdk.yml独立实现。配置仅声明sdk.yml/main和原样inputs；编译模块不访问GitHub、不校验运行环境身份或工具版本。版本在YAML按最近成功Run的完整SDK Artifact递增，没有成功记录时使用pubspec.yaml版本；Run名称使用运行编号。所有构建读取本Run的GITHUB_SHA，后续提交不阻断本Run。现有本地源码/产物装配、consume及输入安全边界保持。工具与依赖先复用已有缓存，缺少才按原声明准备。

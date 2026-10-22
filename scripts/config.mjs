@@ -23,13 +23,12 @@ export const nativeSources=Object.freeze({
 "zxing":{"version": "3.1.1", "url": "https://github.com/zxing-cpp/zxing-cpp/releases/download/v3.1.1/zxing-cpp-3.1.1.tar.gz", "archive_root": "zxing-cpp-3.1.1"}
 });
 
+// 本产品Workflow坐标声明。
+export const workflows=Object.freeze({"sdk":"sdk.yml"});
 
-// 这里只声明本仓执行入口；版本、派发和GitHub收尾全部归既有build脚本。
-import {automate,cleanupRuns} from './build.mjs';
-export function describeAction({flow,platform}){
- if(platform!=='sdk')throw Error('本产品尚未声明该平台：'+platform);
- // release沿用调用方既有塔塔自动化身份；完整交付由同一Run负责。
- if(flow==='release')return {repository,launch:automate};
- if(flow==='cleanup')return {repository,launch:cleanupRuns};
- throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
+// 只返回声明数据；派发与观察归通用调用方，版本及交付归本仓YAML。
+export function describeAction({flow,platform,inputs={}}){
+ const workflow=workflows[platform];
+ if(flow==='release'&&workflow)return {repository:"crcfrcn/citizensdk",workflow,ref:'main',inputs};
+ throw Error('本产品未声明该流程：'+flow+'·'+platform);
 }
