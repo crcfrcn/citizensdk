@@ -6,7 +6,7 @@
 #include "citizen_sdk_qr_camera.hpp"
 #include <functional>
 #include <memory>
-#include "citizen_sdk_host_record.hpp"
+#include "input.hpp"
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -215,19 +215,19 @@ void capture_image_contract() {
   put32(18, 4097);
   bool oversized = false;
   try { (void)citizen_sdk::linux::decode_qr_image_pixels({bmp.data(), bmp.size()}); }
-  catch (const citizen_sdk::linux::HostError &) { oversized = true; }
+  catch (const citizen_sdk::HostError &) { oversized = true; }
   assert(oversized);
 #else
   bool unavailable = false;
   try { (void)citizen_sdk::linux::decode_qr_image_pixels({bmp.data(), bmp.size()}); }
-  catch (const citizen_sdk::linux::HostError &error) { unavailable = error.code() == CITIZENSDK_ERROR_UNSUPPORTED; }
+  catch (const citizen_sdk::HostError &error) { unavailable = error.code() == CITIZENSDK_ERROR_UNSUPPORTED; }
   assert(unavailable);
 #endif
   for (const citizensdk_bytes_view_t invalid : {citizensdk_bytes_view_t{nullptr, 1}, citizensdk_bytes_view_t{bmp.data(), 0},
       citizensdk_bytes_view_t{bmp.data(), 16U * 1024U * 1024U + 1}}) {
     bool rejected = false;
     try { (void)citizen_sdk::linux::decode_qr_image_pixels(invalid); }
-    catch (const citizen_sdk::linux::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+    catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
     assert(rejected);
   }
 }
@@ -374,7 +374,7 @@ int main() {
 
   const std::string header_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/headers/citizensdk_host.h";
+      "/citizen_sdk/citizensdk_host.h";
   std::ifstream stream(header_path, std::ios::binary);
   assert(stream.good());
   const std::string header((std::istreambuf_iterator<char>(stream)),
@@ -425,7 +425,7 @@ int main() {
   const std::string cmake = read_source("/CMakeLists.txt");
   // GNU 扩展模式的 linux 宏不得改写 citizen_sdk::linux 命名空间。
   assert(cmake.find("set(CMAKE_CXX_EXTENSIONS OFF)") != std::string::npos);
-  const std::string gtk_parent = read_source("/source/citizen_sdk_host_bridge.cc");
+  const std::string gtk_parent = read_source("/src/citizen_sdk_host_bridge.cc");
   assert(gtk_parent.find(
              "static_cast<GObject *>(g_weak_ref_get(&impl_->weak))") !=
          std::string::npos);

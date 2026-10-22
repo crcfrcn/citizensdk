@@ -17,11 +17,14 @@
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
+#include "citizen_sdk_sqlite.hpp"
+#include "sqlite.hpp"
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include "citizensdk_types.h"
-#include "citizen_sdk_host_record.hpp"
+#include "input.hpp"
 
 namespace citizen_sdk::linux::test {
 
@@ -483,4 +486,14 @@ class TempDirectory final {
 
 }  // namespace citizen_sdk::linux::test
 
+// 测试只组装实际SQLite资源与Rust客户端，不重建私有仓储规则。
+namespace citizen_sdk::linux::test {
+class VaultFixture final : public citizen_sdk::VaultStore {
+  using Resource = citizen_sdk::Database<SQLiteStore,HostError>;
+  std::shared_ptr<Resource> resource_;
+  explicit VaultFixture(std::shared_ptr<Resource> resource):citizen_sdk::VaultStore(resource->config()),resource_(std::move(resource)){}
+ public:
+  explicit VaultFixture(const std::filesystem::path &directory):VaultFixture(std::make_shared<Resource>(directory,true)){}
+};
+}
 #endif

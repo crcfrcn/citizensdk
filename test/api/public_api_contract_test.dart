@@ -1,27 +1,14 @@
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:citizen_sdk/account_codec.dart';
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
-import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
-import 'package:citizen_sdk/platform/flutter_citizen_sdk_platform.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ss58/ss58.dart' show Address;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  // Linux只开放真实ARM64 ABI；覆盖其他平台选择时不伪造Linux机器架构。
-  final supportedTargets = <TargetPlatform>[
-    TargetPlatform.android,
-    TargetPlatform.iOS,
-    TargetPlatform.macOS,
-    if (Abi.current() == Abi.linuxArm64) TargetPlatform.linux,
-    TargetPlatform.windows,
-  ];
-
   test('公开账户地址投影与原生派生共用同一冻结测试向量', () {
     final golden = jsonDecode(
       File('test/wallet/citizenchain-wallet-derivation-v1.json')
@@ -40,32 +27,36 @@ void main() {
     }
   });
 
-  test('源码中不保留第二套 Dart 钱包、轻节点或交易实现', () {
-    for (final path in [
-      'lib/node',
-      'lib/wallet',
-      'lib/transaction',
-    ]) {
-      expect(Directory(path).existsSync(), isFalse, reason: path);
-    }
-    final platform = Directory('lib/platform').listSync().whereType<File>();
-    expect(
-      platform.where(
-        (file) => file.path.split('/').last.startsWith('preferences_'),
-      ),
-      isEmpty,
+  test('地址直接编解码保留公民前缀、长度、校验和及规范重编码边界', () {
+    final account = citizenAccountIdFromBytes(
+      List<int>.generate(32, (index) => index),
     );
-    final dart = Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'));
+    final address = citizenSs58FromAccountId(account);
     expect(
-      dart.any(
-        (file) =>
-            RegExp(r'class\s+CitizenSdkClient\b')
-                .hasMatch(file.readAsStringSync()),
-      ),
-      isFalse,
+      citizenPublicKeyFromSs58(address),
+      orderedEquals(citizenAccountIdBytes(account)),
+    );
+    final otherPrefix = Address(
+      prefix: 42,
+      pubkey: citizenAccountIdBytes(account),
+    ).encode();
+    expect(() => citizenPublicKeyFromSs58(otherPrefix), throwsFormatException);
+    final shortKey = Address(
+      prefix: citizenSs58Prefix,
+      pubkey: Uint8List.fromList([1]),
+    ).encode();
+    expect(() => citizenPublicKeyFromSs58(shortKey), throwsFormatException);
+    final corrupt =
+        address.substring(0, address.length - 1) +
+        (address.endsWith('1') ? '2' : '1');
+    expect(() => citizenPublicKeyFromSs58(corrupt), throwsA(isA<Exception>()));
+    expect(
+      () => citizenAccountIdFromBytes(List<int>.filled(31, 0)),
+      throwsArgumentError,
+    );
+    expect(
+      () => citizenAccountIdBytes(account.toUpperCase()),
+      throwsFormatException,
     );
   });
 
@@ -87,189 +78,6 @@ void main() {
     );
   });
 
-  test('Flutter五种平台注册共用channel、固定方法及无任意RPC/裸extrinsic闭集', () {
-    expect(FlutterCitizenSdkPlatform.methodChannelName, 'citizen/sdk/core/v2');
-    expect(FlutterCitizenSdkPlatform.eventChannelName, 'citizen/sdk/events/v2');
-    expect(CitizenSdkFlutterCodec.methods, hasLength(94));
-    expect(
-      CitizenSdkFlutterCodec.methods,
-      containsAll(<String>[
-        'prepareWalletCreation',
-        'openPrivateKey',
-        'importColdAccountCode',
-        'setActiveWallet',
-        'renameWallet',
-        'inspectWallets',
-        'releaseWalletInspection',
-        'repairHotWallet',
-        'renameDiagnosticWallet',
-        'deleteDiagnosticWallet',
-      ]),
-    );
-    for (final removed in [
-      'initializeWallet',
-      'createWallet',
-      'importColdAccountWithUi',
-      'viewAccountPrivateKey',
-      'qrScan',
-    ]) {
-      expect(CitizenSdkFlutterCodec.methods, isNot(contains(removed)));
-    }
-    expect(isA<CitizenWalletState>(), isNotNull);
-    expect(isA<CitizenWalletStateAccount>(), isNotNull);
-    expect(isA<CitizenQr>(), isNotNull);
-    expect(isA<CitizenQrDocument>(), isNotNull);
-    expect(isA<CitizenQrSigned>(), isNotNull);
-    expect(CitizenSdkFlutterCodec.methods, isNot(contains('rpc')));
-    expect(CitizenSdkFlutterCodec.methods, isNot(contains('submitExtrinsic')));
-    expect(CitizenSdkFlutterCodec.methods, isNot(contains('watchExtrinsic')));
-    expect(CitizenSdkFlutterCodec.methods, isNot(contains('exportPrivateKey')));
-  });
-
-  test('已支持的平台与架构默认选择同一Flutter transport', () async {
-    CitizenSdkPlatform.instance = null;
-    const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
-    const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
-    var nextSession = 0;
-    var closes = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(events, (_) async => null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(core, (call) async {
-          final arguments = call.arguments! as List<Object?>;
-          if (call.method == 'open') {
-            expect(arguments, const <Object?>[
-              2,
-              CitizenSdkModules.full,
-              false,
-            ]);
-            return <Object?>[
-              2,
-              'session-${++nextSession}',
-              0,
-              <Object?>['created', 1],
-            ];
-          }
-          if (call.method == 'close') {
-            closes++;
-            return <Object?>[
-              2,
-              arguments[1],
-              arguments[2],
-              <Object?>['disposed'],
-            ];
-          }
-          throw StateError('未预期 method：${call.method}');
-        });
-    addTearDown(() async {
-      debugDefaultTargetPlatformOverride = null;
-      CitizenSdkPlatform.instance = null;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(core, null);
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(events, null);
-    });
-
-    for (final target in supportedTargets) {
-      debugDefaultTargetPlatformOverride = target;
-      final sdk = await CitizenSdk.open();
-      expect(sdk.lifecycle, CitizenSdkLifecycle.created);
-      await sdk.close();
-      expect(sdk.lifecycle, CitizenSdkLifecycle.disposed);
-      await sdk.close();
-    }
-    expect(nextSession, supportedTargets.length);
-    expect(closes, supportedTargets.length);
-  });
-
-  test('未支持的平台和Linux架构在进入任何channel前拒绝', () async {
-    CitizenSdkPlatform.instance = null;
-    const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
-    const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
-    var calls = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(core, (_) async {
-          calls++;
-          throw StateError('未支持平台不应进入原生通道');
-        });
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(events, (_) async {
-          calls++;
-          throw StateError('未支持平台不应订阅原生事件');
-        });
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      CitizenSdkPlatform.instance = null;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(core, null);
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(events, null);
-    });
-
-    for (final target in <TargetPlatform>[
-      TargetPlatform.fuchsia,
-      if (Abi.current() != Abi.linuxArm64) TargetPlatform.linux,
-    ]) {
-      debugDefaultTargetPlatformOverride = target;
-      await expectLater(
-        CitizenSdk.open(),
-        throwsA(
-          isA<CitizenSdkException>().having(
-            (error) => error.code,
-            'code',
-            CitizenSdkErrorCode.unsupported,
-          ),
-        ),
-      );
-    }
-    expect(calls, 0);
-  });
-
-  test('已支持默认平台缺少原生插件时失败关闭且不替换transport', () async {
-    CitizenSdkPlatform.instance = null;
-    const core = MethodChannel(FlutterCitizenSdkPlatform.methodChannelName);
-    const events = MethodChannel(FlutterCitizenSdkPlatform.eventChannelName);
-    var opens = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(events, (_) async => null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(core, (call) async {
-          expect(call.method, 'open');
-          expect(call.arguments, const <Object?>[
-            2,
-            CitizenSdkModules.full,
-            false,
-          ]);
-          opens++;
-          // 所有已开放平台都走官方通道；缺少插件时不得伪造原生 session。
-          throw MissingPluginException('CitizenSDK plugin missing');
-        });
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      CitizenSdkPlatform.instance = null;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(core, null);
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(events, null);
-    });
-
-    for (final target in supportedTargets) {
-      debugDefaultTargetPlatformOverride = target;
-      await expectLater(
-        CitizenSdk.open(),
-        throwsA(
-          isA<CitizenSdkException>().having(
-            (error) => error.code,
-            'code',
-            CitizenSdkErrorCode.unsupported,
-          ),
-        ),
-      );
-    }
-    expect(opens, supportedTargets.length);
-    expect(CitizenSdkPlatform.instance, isNull);
-  });
 }
 
-String _account(int byte) =>
-    '0x${List<String>.filled(32, byte.toRadixString(16).padLeft(2, '0')).join()}';
+String _account(int byte)=>citizenAccountIdFromBytes(List<int>.filled(32,byte));

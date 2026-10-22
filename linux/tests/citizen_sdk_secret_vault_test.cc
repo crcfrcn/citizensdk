@@ -141,7 +141,7 @@ int main() {
   citizen_sdk::linux::test::TempDirectory temporary("secret-vault");
   const auto directory = temporary.path() / "state";
   {
-    SecureStore store(directory);
+    citizen_sdk::linux::test::VaultFixture store(directory);
     SecretVault vault(store);
     const auto availability = vault.availability();
     assert(availability == CITIZENSDK_HOST_VAULT_AVAILABLE ||
@@ -200,7 +200,7 @@ int main() {
 
   const std::string source_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/source/citizen_sdk_secret_vault.cc";
+      "/src/citizen_sdk_secret_vault.cc";
   std::ifstream stream(source_path, std::ios::binary);
   assert(stream.good());
   const std::string source((std::istreambuf_iterator<char>(stream)),
@@ -250,7 +250,7 @@ int main() {
 
   const std::string bridge_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/source/citizen_sdk_host_bridge.hpp";
+      "/src/citizen_sdk_host_bridge.hpp";
   std::ifstream bridge_stream(bridge_path, std::ios::binary);
   assert(bridge_stream.good());
   const std::string bridge((std::istreambuf_iterator<char>(bridge_stream)),

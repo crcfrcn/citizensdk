@@ -96,7 +96,7 @@ int main() {
 
   const std::string source_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/source/citizen_sdk_tpm2.cc";
+      "/src/citizen_sdk_tpm2.cc";
   std::ifstream stream(source_path, std::ios::binary);
   assert(stream.good());
   const std::string source((std::istreambuf_iterator<char>(stream)),
@@ -168,7 +168,7 @@ int main() {
 
   const std::string auth_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/source/citizen_sdk_user_auth.cc";
+      "/src/citizen_sdk_user_auth.cc";
   std::ifstream auth_stream(auth_path, std::ios::binary);
   assert(auth_stream.good());
   const std::string auth_source(

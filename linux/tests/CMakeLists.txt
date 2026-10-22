@@ -30,9 +30,7 @@ if(TARGET citizen_sdk_plugin)
   set(CITIZENSDK_LINUX_FLUTTER_CONTRACT_TESTS
     citizen_sdk_flutter_codec_test
     citizen_sdk_flutter_sessions_test
-    citizen_sdk_flutter_wallet_flow_test
     citizen_sdk_flutter_environment_test
-    citizen_sdk_flutter_plugin_test
     citizen_sdk_flutter_secret_boundary_test
   )
   add_library(citizensdk_linux_flutter_test_support STATIC
@@ -42,7 +40,7 @@ if(TARGET citizen_sdk_plugin)
   # 测试支持库复编正式插件源码，直接继承同一生成头目录，不复制插件头或另建路径。
   target_include_directories(citizensdk_linux_flutter_test_support PUBLIC
     "$<TARGET_PROPERTY:citizen_sdk_plugin,INTERFACE_INCLUDE_DIRECTORIES>"
-    "${CMAKE_CURRENT_LIST_DIR}/../source")
+    "${CMAKE_CURRENT_LIST_DIR}/../src")
   target_link_libraries(citizensdk_linux_flutter_test_support PUBLIC
     flutter CitizenSDK::Host Threads::Threads)
   target_compile_options(citizensdk_linux_flutter_test_support PRIVATE
@@ -61,26 +59,22 @@ if(TARGET citizen_sdk_plugin)
       TIMEOUT 30 LABELS "CitizenSDK;LinuxFlutter;Contract"
       ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
   endforeach()
+  # 只汇总正式插件和原测试目标，保留官方Flutter依赖，不构建消费App主程序。
+  add_custom_target(citizensdk_flutter_checks
+    DEPENDS citizen_sdk_plugin ${CITIZENSDK_LINUX_FLUTTER_CONTRACT_TESTS})
   return()
 endif()
 
 set(CITIZENSDK_LINUX_HOST_TEST_SOURCES
-  ../source/citizen_sdk_assets.cc
-  ../source/citizen_sdk_host_api.cc
-  ../source/citizen_sdk_host_bridge.cc
-  ../source/citizen_sdk_host_record.cc
-  ../source/citizen_sdk_input_limits.cc
-  ../source/citizen_sdk_lifecycle.cc
-  ../source/citizen_sdk_operation.cc
-  ../source/citizen_sdk_public_store.cc
-  ../source/citizen_sdk_record_key.cc
-  ../source/citizen_sdk_secure_store.cc
-  ../source/citizen_sdk_sensitive_buffer.cc
-  ../source/citizen_sdk_secret_vault.cc
-  ../source/citizen_sdk_sqlite.cc
-  ../source/citizen_sdk_tpm2.cc
-  ../source/citizen_sdk_user_auth.cc
-  ../source/citizen_sdk_qr_camera.cc
+  ../src/citizen_sdk_assets.cc
+  ../src/citizen_sdk_host_api.cc
+  ../src/citizen_sdk_host_bridge.cc
+  ../src/citizen_sdk_lifecycle.cc
+  ../src/citizen_sdk_secret_vault.cc
+  ../src/citizen_sdk_sqlite.cc
+  ../src/citizen_sdk_tpm2.cc
+  ../src/citizen_sdk_user_auth.cc
+  ../src/citizen_sdk_qr_camera.cc
 )
 
 add_library(citizensdk_linux_test_support STATIC
@@ -98,11 +92,11 @@ target_compile_definitions(citizensdk_linux_test_support PRIVATE
 target_include_directories(citizensdk_linux_test_support
   PUBLIC
     "${CMAKE_CURRENT_LIST_DIR}/.."
-    "${CMAKE_CURRENT_LIST_DIR}/../source"
+    "${CMAKE_CURRENT_LIST_DIR}/../src"
     "${PROJECT_BINARY_DIR}/public"
     "${CITIZENSDK_CORE_INCLUDE_DIR}"
-  PRIVATE
     "${CITIZENSDK_INTERNAL_INCLUDE_DIR}"
+  PRIVATE
     "${CITIZENSDK_SQLITE_INCLUDE_DIR}"
     "${CITIZENSDK_OPENSSL_INCLUDE_DIR}"
     "${CITIZENSDK_TSS2_INCLUDE_DIR}"
@@ -126,12 +120,8 @@ target_compile_options(citizensdk_linux_test_support PRIVATE
 set(CITIZENSDK_LINUX_CONTRACT_TESTS
   citizen_sdk_api_contract_test
   citizen_sdk_assets_test
-  citizen_sdk_host_operation_test
   citizen_sdk_lifecycle_test
-  citizen_sdk_public_store_test
-  citizen_sdk_record_key_test
-  citizen_sdk_secure_store_test
-  citizen_sdk_sensitive_buffer_test
+  sqlite
   citizen_sdk_secret_vault_test
   citizen_sdk_secret_boundary_test
   citizen_sdk_tpm2_test
@@ -170,7 +160,16 @@ foreach(test_name IN LISTS CITIZENSDK_LINUX_CONTRACT_TESTS)
 endforeach()
 
 set_tests_properties(
-  CitizenSDK.Linux.citizen_sdk_public_store_test
-  CitizenSDK.Linux.citizen_sdk_secure_store_test
+  CitizenSDK.Linux.sqlite
   PROPERTIES TIMEOUT 90
 )
+
+# 两平台运行同一份共同C++行为测试。
+add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../test/cpp.cc")
+target_compile_features(cpp PRIVATE cxx_std_17)
+target_link_libraries(cpp PRIVATE citizensdk_linux_test_support)
+target_compile_options(cpp PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+add_test(NAME CitizenSDK.Linux.cpp COMMAND cpp)
+
+target_include_directories(cpp PRIVATE "${CITIZENSDK_SQLITE_INCLUDE_DIR}" "${CITIZENSDK_OPENSSL_INCLUDE_DIR}")
+set_tests_properties(CitizenSDK.Linux.cpp PROPERTIES TIMEOUT 120 LABELS "CitizenSDK;LinuxHost;Contract" ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")

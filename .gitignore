@@ -10,14 +10,14 @@
 /darwin/.swiftpm/
 /darwin/Pods/
 /darwin/DerivedData/
-# Linux运行库只允许由Release候选从产品源码外产物目录注入；
+# Linux运行库仅由同版SDK产物注入交付视图；
 # 源码树永远不能保存 Core/Host ELF、CMake cache 或安装投影。
 /linux/lib/
 /linux/.cache/
 /linux/CMakeCache.txt
 /linux/CMakeFiles/
 /linux/cmake_install.cmake
-# Windows 运行件只在中央候选中注入；源码树不得保存 DLL/LIB/CMake/MSVC 状态。
+# Windows运行件仅注入交付视图；源码树不保存DLL/LIB/CMake/MSVC状态。
 /windows/bin/
 /windows/lib/
 /windows/.vs/
@@ -40,10 +40,6 @@
 
 target/
 *.sst
-
-# Local chain state
-
-# Frontend build artifacts
 
 # Python cache
 **/__pycache__/
@@ -87,15 +83,11 @@ target/
 # Android 系统错误报告可能包含设备与网络诊断信息，禁止进入仓库。
 /bugreport-*.zip
 
-# Android signing secrets
-
-# 注册局前端构建产物
-
 # Flutter IDE user state
 **/ios/Runner.xcworkspace/xcuserdata/
 **/ios/Runner.xcodeproj/xcuserdata/
 
-# CitizenApp native generated artifacts
+# Android Kotlin工具生成状态
 **/android/.kotlin/
 
 # 本机 AI 入口直接解析唯一规则；产品源码不跟踪本机链接。

@@ -12,7 +12,7 @@ import '../models/citizen_wallet.dart';
 import '../platform/citizen_sdk_flutter_codec.dart';
 import '../platform/citizen_sdk_flutter_sessions.dart';
 import '../platform/citizen_sdk_platform.dart';
-import '../platform/flutter_citizen_sdk_platform.dart';
+import '../platform/ffi.dart';
 import 'citizen_chain.dart';
 import 'citizen_qr.dart';
 import 'citizen_sdk_error.dart';
@@ -53,7 +53,7 @@ final class CitizenSdk {
   }
 
   static final CitizenSdkPlatform _defaultFlutterPlatform =
-      FlutterCitizenSdkPlatform();
+      FfiCitizenSdkPlatform();
 
   static CitizenSdkPlatform _defaultPlatform() {
     final supportedLinux = !kIsWeb &&

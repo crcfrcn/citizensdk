@@ -1,4 +1,4 @@
-// 使用真实 SecureStore 与生产 Vault 状态机；替身仅取代 TPM/交互，不冒充硬件验收。
+// 使用真实 VaultStore 与生产 Vault 状态机；替身仅取代 TPM/交互，不冒充硬件验收。
 #include <windows.h>
 #include <bcrypt.h>
 #include <algorithm>
@@ -46,8 +46,8 @@ VaultObject synthetic_object(const WalletKey &key) {
   public_blob[sizeof(header) + 2] = 1;
   public_blob[sizeof(header) + 3] = 0x80;
   public_blob.back() = 1;
-  return {cng_key_name(key), std::move(public_blob), Bytes{1, 2, 3, 4},
-      Bytes(key.generation.begin(), key.generation.end())};
+  VaultObject object;object.key_name=cng_key_name(key);object.public_blob=std::move(public_blob);
+  object.name=Bytes{1,2,3,4};object.auth_salt=Bytes(key.generation.begin(),key.generation.end());return object;
 }
 
 struct FakeSystem final {
@@ -155,7 +155,7 @@ int retire_child(int count, wchar_t **arguments) {
   if (!busy || !::SetEvent(blocked.get()) ||
       ::WaitForSingleObject(proceed.get(), 30000) != WAIT_OBJECT_0) return 3;
   try {
-    SecureStore store{std::filesystem::path(arguments[2])};
+    citizen_sdk::windows::test::VaultFixture store{std::filesystem::path(arguments[2])};
     FakeSystem system;
     auto services = system.services();
     bool deleted = false;
@@ -173,7 +173,7 @@ int retire_child(int count, wchar_t **arguments) {
   } catch (...) { return 4; }
 }
 
-void cross_process_retirement(SecureStore &store, const std::filesystem::path &directory) {
+void cross_process_retirement(VaultStore &store, const std::filesystem::path &directory) {
   WalletKey wallet{};
   expect(::BCryptGenRandom(nullptr, wallet.generation.data(),
       static_cast<ULONG>(wallet.generation.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0);
@@ -346,8 +346,8 @@ int wmain(int count, wchar_t **arguments) {
   headless_credential_contract();
   using namespace citizen_sdk::windows;
   citizen_sdk::windows::test::TempDirectory temporary("secret-vault");
-  SecureStore store(temporary.path() / "state");
-  SecureStore other_store(temporary.path() / "state");
+  citizen_sdk::windows::test::VaultFixture store(temporary.path() / "state");
+  citizen_sdk::windows::test::VaultFixture other_store(temporary.path() / "state");
   FakeSystem system;
   SecretVault vault(store, system.services());
   SecretVault other(other_store, system.services());

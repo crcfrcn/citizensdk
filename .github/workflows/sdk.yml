@@ -4,23 +4,69 @@ run-name: 公民SDK·SDK·v${{ inputs.version }}
 'on':
   workflow_dispatch:
     inputs:
+      action:
+        description: 独立授权的执行流程
+        required: true
+        type: choice
+        options: [automation, publish]
+      sha:
+        description: 已确认的main提交
+        required: true
+        type: string
+      source_run:
+        description: 发布来源自动化Run；自动化时留空
+        required: false
+        type: string
+      source_attempt:
+        description: 准确来源attempt
+        required: false
+        type: string
+      source_artifact:
+        description: 准确完整SDK Artifact ID
+        required: false
+        type: string
       version:
-        description: 从最新成功Run计算的候选版本
+        description: 自动化候选版本或准确发布来源版本
         required: true
         type: string
 concurrency:
   group: ${{ github.repository }}-sdk
   cancel-in-progress: false
 permissions:
-  contents: write
-  actions: write
+  contents: read
+  actions: read
 env:
+  SDK_ACTION: ${{ inputs.action }}
+  SOURCE_SHA: ${{ inputs.sha }}
+  SOURCE_RUN: ${{ inputs.source_run }}
+  SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
+  SOURCE_ARTIFACT: ${{ inputs.source_artifact }}
   SDK_VERSION: ${{ inputs.version }}
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'
 jobs:
-  android:
+  select:
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 核对明确流程和冻结源码
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" = refs/heads/main && "$GITHUB_SHA" = "$SOURCE_SHA" ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "${#SDK_VERSION}" -le 64 && "$SDK_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          case "$SDK_ACTION" in automation|publish) ;; *) exit 1 ;; esac
+      - name: 'CitizenSDK: automation'
+        if: inputs.action == 'automation'
+        run: test -z "$SOURCE_RUN$SOURCE_ATTEMPT$SOURCE_ARTIFACT"
+      - name: 'CitizenSDK: publish'
+        if: inputs.action == 'publish'
+        shell: bash
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[1-9][0-9]*$ && "$SOURCE_ATTEMPT" =~ ^[1-9][0-9]*$ && "$SOURCE_ARTIFACT" =~ ^[1-9][0-9]*$ ]]
+  android:
+    needs: select
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
@@ -107,14 +153,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/sdk-runs.json"
-          node --input-type=module - "$RUNNER_TEMP/sdk-runs.json" <<'NODE'
-          import {readFileSync} from 'node:fs';
-          import {nextVersion,sdkName} from './scripts/build.mjs';
-          const rows=JSON.parse(readFileSync(process.argv[2],'utf8')).flatMap(page=>page.workflow_runs);
-          if(nextVersion(rows)!==process.env.SDK_VERSION)throw Error('候选版本已变化');
-          sdkName(process.env.SDK_VERSION);
-          NODE
+          test "$(node scripts/build.mjs version)" = "$SDK_VERSION"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: 编译真实内部宿主并汇入累计SDK
         id: build
@@ -165,8 +204,9 @@ jobs:
           [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
           rm -rf "$PRODUCT_WORK"
   apple:
+    needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
     runs-on: xcode-27
     timeout-minutes: 240
     defaults:
@@ -257,7 +297,7 @@ jobs:
         env:
           CITIZENSDK_TRANSACTION_DIAGNOSTICS: '1'
         run: |
-          "$FLUTTER_ROOT/bin/flutter" precache --ios --macos
+          "$FLUTTER_ROOT/bin/flutter" precache --macos
           node --test test/build.test.mjs
           node scripts/build.mjs test
       - name: 编译真实内部宿主并汇入累计SDK
@@ -309,8 +349,9 @@ jobs:
           [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
           rm -rf "$PRODUCT_WORK"
   linux:
+    needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
@@ -327,10 +368,10 @@ jobs:
           printf '%s\n' 'deb https://archive.debian.org/debian bullseye main' 'deb https://archive.debian.org/debian-security bullseye-security main' > /etc/apt/sources.list
           rm -f /etc/apt/sources.list.d/debian.sources
           apt-get -o Acquire::https::CaInfo=/runner-ca.pem -o Acquire::Check-Valid-Until=false update
-          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CaInfo=/runner-ca.pem install -y ca-certificates curl git unzip build-essential pkg-config clang-16=1:16.0.6-15~deb11u2 llvm-16=1:16.0.6-15~deb11u2 libclang-16-dev=1:16.0.6-15~deb11u2 ninja-build jq zip dbus-x11 file procps perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libjson-c-dev libssl-dev libcurl4-openssl-dev libusb-1.0-0-dev python3 xz-utils xvfb xauth
+          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CaInfo=/runner-ca.pem install -y ca-certificates curl git unzip build-essential pkg-config clang-16=1:16.0.6-15~deb11u2 llvm-16=1:16.0.6-15~deb11u2 ninja-build jq zip dbus-x11 file procps perl libtool automake autoconf libglib2.0-dev libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 xz-utils xvfb xauth
           curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
           sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none --no-modify-path
-          printf 'CC=/usr/bin/clang-16\nCXX=/usr/bin/clang++-16\nLIBCLANG_PATH=/usr/lib/llvm-16/lib\n' >> "$GITHUB_ENV"
+          printf 'CC=/usr/bin/clang-16\nCXX=/usr/bin/clang++-16\n' >> "$GITHUB_ENV"
           # Flutter官方后端固定调用clang/clang++；只在本轮PATH提供同一Clang16官方二进制。
           mkdir "$RUNNER_TEMP/citizensdk-clang"
           ln -s /usr/bin/clang-16 "$RUNNER_TEMP/citizensdk-clang/clang"
@@ -424,7 +465,7 @@ jobs:
           fi
           if [ ! -f "$prefix/lib/libcrypto.a" ]; then
             cp -R "$source/openssl-3.5.8" "$RUNNER_TEMP/native/openssl"
-            (cd "$RUNNER_TEMP/native/openssl" && perl Configure linux-aarch64 no-shared no-module no-dso no-tests -fPIC --prefix="$prefix" --libdir=lib && make -j2 && make install_sw)
+            (cd "$RUNNER_TEMP/native/openssl" && perl Configure linux-aarch64 no-shared no-module no-dso no-tests no-apps -fPIC --prefix="$prefix" --libdir=lib && make -j2 && make install_sw)
           fi
           if [ ! -f "$prefix/lib/libtss2-esys.a" ]; then
             mkdir "$RUNNER_TEMP/native/tss"
@@ -487,8 +528,9 @@ jobs:
           [[ "$PRODUCT_WORK" = "$workspace"/target/build/sdk-* ]]
           rm -rf "$PRODUCT_WORK"
   windows:
+    needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
     runs-on: windows-2025
     timeout-minutes: 240
     defaults:
@@ -650,7 +692,7 @@ jobs:
   complete:
     needs: [android, apple, linux, windows]
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
     runs-on: xcode-27
     timeout-minutes: 240
     steps:
@@ -696,6 +738,7 @@ jobs:
           jq -n --arg version "$SDK_VERSION" --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg file "$name.zip" --arg digest "$digest" \
             '{product_id:"citizensdk",platform:"sdk",software_version:$version,git_commit_sha:$sha,producer_run_id:$run,producer_run_attempt:$attempt,assets:[{name:$file,sha256:$digest}]}' > "$artifact/$name.json"
           (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
+          CITIZENSDK_PACKAGE="$artifact" node scripts/build.mjs consume "$GITHUB_SHA" "$work/consumer" >/dev/null
           printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
           printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -705,63 +748,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           overwrite: true
-      - name: 生成并核对正式Release与Tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SDK_ARTIFACT_DIRECTORY: ${{ steps.build.outputs.path }}
-        run: |
-          set -euo pipefail
-          encoded="$(jq -rn --arg name "$SDK_NAME" '$name|@uri')"
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-releases.json"
-          previous="$(jq '[.[][]|select(.tag_name==env.SDK_NAME)]' "$RUNNER_TEMP/sdk-releases.json")"
-          test "$(printf '%s' "$previous" | jq length)" -le 1
-          if [ "$(printf '%s' "$previous" | jq length)" -eq 1 ]; then
-            proof="$(printf '%s' "$previous" | jq '.[0].body|fromjson')"
-            old_run="$(printf '%s' "$proof" | jq -r .producer_run_id)"
-            old_attempt="$(printf '%s' "$proof" | jq -r .producer_run_attempt)"
-            old_sha="$(printf '%s' "$proof" | jq -r .git_commit_sha)"
-            printf '%s' "$proof" | jq -e '.product_id=="citizensdk" and .platform=="sdk" and .software_version==env.SDK_VERSION' >/dev/null
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$old_sha" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .path==".github/workflows/sdk.yml"' >/dev/null
-            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$old_sha" '.object.type=="commit" and .object.sha==$sha' >/dev/null
-            gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
-          fi
-          # GraphQL变量由gh参数传入，查询字符串必须保持原文。
-          # shellcheck disable=SC2016
-          ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$SDK_NAME" --jq '.data.repository.ref.target.oid // ""')"
-          test -z "$ref"
-          tag_created=false
-          rollback() {
-            release_status=$?
-            id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|select(.tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA)|select((.body|fromjson?|.producer_run_id)==(env.GITHUB_RUN_ID|tonumber))|.id')"
-            if [ -n "$id" ]; then gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes || printf '本次Release撤销未完成\n' >&2; fi
-            if [ "$tag_created" = true ]; then
-              if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" --jq .object.sha | grep -Fxq "$GITHUB_SHA"; then
-                gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$encoded" || printf '本次Tag撤销未完成\n' >&2
-              fi
-            fi
-            exit "$release_status"
-          }
-          trap rollback ERR
-          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$SDK_NAME" -f sha="$GITHUB_SHA" > "$RUNNER_TEMP/sdk-tag.json"
-          tag_created=true
-          jq -e '.object.sha==env.GITHUB_SHA' "$RUNNER_TEMP/sdk-tag.json" >/dev/null
-          # GitHub会规范化下载文件名；官方label保留准确的产品、平台和版本显示名。
-          files=()
-          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
-          gh release create "$SDK_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
-          back="$RUNNER_TEMP/sdk-readback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          mkdir "$back"
-          gh release view "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/sdk-assets.json"
-          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do
-            label="$(basename "$file")"
-            remote="$(jq -er --arg label "$label" '[.assets[]|select(.label==$label and .state=="uploaded")]|if length==1 then .[0].name else error("附件标签不唯一") end' "$RUNNER_TEMP/sdk-assets.json")"
-            gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
-            cmp "$file" "$back/$label"
-          done
-          gh release edit "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
-          trap - ERR
       - name: 清理本轮SDK编译现场
         continue-on-error: true
         if: ${{ always() && steps.build.outputs.work != '' }}
@@ -771,3 +757,97 @@ jobs:
           [[ "${SDK_WORK_DIRECTORY%/*}" = "$GITHUB_WORKSPACE/target/build" && "${SDK_WORK_DIRECTORY##*/}" =~ ^sdk-[A-Za-z0-9]+$ ]]
           test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
           rm -rf "$SDK_WORK_DIRECTORY"
+  publish:
+    needs: select
+    if: github.ref == 'refs/heads/main' && inputs.action == 'publish'
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: bootstrap
+        name: 从同仓声明读取Node
+        shell: bash
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
+      - name: 发布前核对来源Run和Artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build.mjs source "$SOURCE_RUN" > "$RUNNER_TEMP/source.json"
+          jq -e --argjson run "$SOURCE_RUN" --argjson attempt "$SOURCE_ATTEMPT" --argjson artifact "$SOURCE_ARTIFACT" --arg sha "$SOURCE_SHA" --arg version "$SDK_VERSION" '.sourceRun==$run and .sourceAttempt==$attempt and .artifactID==$artifact and .sourceSha==$sha and .version==$version' "$RUNNER_TEMP/source.json" >/dev/null
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ inputs.source_artifact }}
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/publication
+      - name: 仅发布已验证原产物
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_ARTIFACT_DIRECTORY: ${{ runner.temp }}/publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="公民SDK·SDK·v$SDK_VERSION"
+          export SDK_NAME="$name"
+          notes="$RUNNER_TEMP/publication.json"
+          node scripts/build.mjs verify-publication "$SDK_ARTIFACT_DIRECTORY" > "$notes"
+          encoded="$(jq -rn --arg name "$name" '$name|@uri')"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          jq --arg name "$name" '[.[][]|select(.tag_name==$name)]' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/existing.json"
+          count="$(jq length "$RUNNER_TEMP/existing.json")"
+          [[ "$count" -le 1 ]]
+          draft=true
+          if [ "$count" -eq 1 ]; then
+            jq -e --slurpfile expected "$notes" '.[0].body|fromjson|.product_id==$expected[0].product_id and .platform==$expected[0].platform and .software_version==$expected[0].software_version and .git_commit_sha==$expected[0].git_commit_sha and .producer_run_id==$expected[0].producer_run_id and .producer_run_attempt==$expected[0].producer_run_attempt and .assets==$expected[0].assets' "$RUNNER_TEMP/existing.json" >/dev/null
+            old_run="$(jq -er '.[0].body|fromjson|.publication_run_id' "$RUNNER_TEMP/existing.json")"
+            old_attempt="$(jq -er '.[0].body|fromjson|.publication_run_attempt' "$RUNNER_TEMP/existing.json")"
+            [[ "$old_run" =~ ^[1-9][0-9]*$ && "$old_attempt" =~ ^[1-9][0-9]*$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$SOURCE_SHA" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .head_branch=="main" and .path==".github/workflows/sdk.yml" and .event=="workflow_dispatch"' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+            draft="$(jq -r '.[0].draft' "$RUNNER_TEMP/existing.json")"
+            if [ "$draft" = true ]; then
+              jq -e --arg name "$name" 'all(.[0].assets[]; .label==($name+".zip") or .label==($name+".json") or .label==($name+".sha256"))' "$RUNNER_TEMP/existing.json" >/dev/null
+              gh release edit "$name" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
+              files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+              gh release upload "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            fi
+          else
+            # 保留未确认状态供下一次明确授权核验；不自动回滚或删除正式发布。
+            ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$name" --jq '.data.repository.ref.target.oid // ""')"
+            test -z "$ref"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$name" -f sha="$SOURCE_SHA" > "$RUNNER_TEMP/tag.json"
+            jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' "$RUNNER_TEMP/tag.json" >/dev/null
+            files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+            gh release create "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_SHA" --title "$name" --notes-file "$notes" --draft
+          fi
+          back="$RUNNER_TEMP/readback"
+          mkdir "$back"
+          gh release view "$name" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/assets.json"
+          jq -e '.assets|length==3' "$RUNNER_TEMP/assets.json" >/dev/null
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do
+            label="$(basename "$file")"
+            remote="$(jq -er --arg label "$label" '[.assets[]|select(.label==$label and .state=="uploaded")]|if length==1 then .[0].name else error("SDK附件不唯一") end' "$RUNNER_TEMP/assets.json")"
+            gh release download "$name" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
+            cmp "$file" "$back/$label"
+          done
+          if [ "$draft" = true ]; then gh release edit "$name" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest; fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" > "$RUNNER_TEMP/published.json"
+          jq -e --arg name "$name" --arg sha "$SOURCE_SHA" '.draft==false and .prerelease==false and .published_at!=null and .name==$name and .tag_name==$name and .target_commitish==$sha and (.assets|length)==3' "$RUNNER_TEMP/published.json" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+          release_id="$(jq -er .id "$RUNNER_TEMP/published.json")"
+          node scripts/build.mjs cleanup-publications "$release_id"

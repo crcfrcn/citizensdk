@@ -41,6 +41,25 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_create_with_modules(
     const citizensdk_host_services_v1_t *host_services, uint32_t modules,
     citizensdk_handle_t *out_handle);
 
+/* 平台默认构造：公共/安全持久化直接使用Rust Store，仅由平台提供SQLite及设备金库。
+ * stores按modules提供所需资源，未选择的资源必须为空；原构造的自定义宿主合同保持。
+ * 构造仅复制配置，首次资源操作在已有请求工作线程进行。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_create_with_store(
+    const citizensdk_create_options_t *options, uint32_t modules,
+    const citizensdk_stores_v1_t *stores,
+    citizensdk_handle_t *out_handle);
+
+/* 同一实例只安装一次按值接收端；发送函数保有至detach或destroy完成。
+ * invoke只同步调用当前线程的job。job内部以原类型化异步API接纳的请求，其完成
+ * 结果只交本接收端；平台认证请求仍归原回调。状态通知按值同步投影到两端，
+ * 有结果句柄的流通知只归按值端。接纳、容量、取消和结果释放沿用原合同。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_attach(citizensdk_handle_t handle,citizensdk_value_callback_t callback,citizensdk_post_t post,int64_t port);
+/* 引擎卸载先撤销接收端，再取消其请求，并回收已交付给该接收端的结果。
+ * 消息成功入队不构成Dart接收确认；未完成请求仍等待真实终态。
+ * 不撤销平台认证回调，不提前释放正在认证的秘密或清除耐久交易事实。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_detach(citizensdk_handle_t handle);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_invoke(citizensdk_handle_t handle,citizensdk_call_t job,void *context);
+
 /* Stateless sr25519 verification: no instance, wallet, vault or chain. The
  * account is 32 bytes, signature exactly 64 bytes and message at most 16 MiB.
  * On OK out_valid is 0 or 1; malformed encodings return INVALID_ARGUMENT.

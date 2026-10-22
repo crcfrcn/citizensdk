@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:polkadart_keyring/polkadart_keyring.dart' show Keyring;
+import 'package:ss58/ss58.dart' show Address;
 
 /// 公民链 SS58 格式，逐字节对齐 citizenchain runtime。
 const int citizenSs58Prefix = 2027;
@@ -31,15 +31,16 @@ Uint8List citizenAccountIdBytes(String accountId) {
   ]);
 }
 
-String citizenSs58FromAccountId(String accountId) => Keyring().encodeAddress(
-  citizenAccountIdBytes(accountId),
-  citizenSs58Prefix,
-);
+// 直接使用同版上游SS58实现，规范地址与原冻结向量保持一致。
+String citizenSs58FromAccountId(String accountId) => Address(
+  prefix: citizenSs58Prefix,
+  pubkey: citizenAccountIdBytes(accountId),
+).encode();
 
 Uint8List citizenPublicKeyFromSs58(String address) {
-  final decoded = Uint8List.fromList(Keyring().decodeAddress(address));
+  final decoded = Uint8List.fromList(Address.decode(address).pubkey);
   if (decoded.length != 32 ||
-      Keyring().encodeAddress(decoded, citizenSs58Prefix) != address) {
+      Address(prefix: citizenSs58Prefix, pubkey: decoded).encode() != address) {
     throw const FormatException('地址不是规范的公民链 SS58 地址');
   }
   return decoded;

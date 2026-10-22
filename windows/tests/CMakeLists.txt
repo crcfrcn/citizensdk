@@ -23,8 +23,6 @@ if(TARGET citizen_sdk_plugin)
     citizen_sdk_flutter_codec_test
     citizen_sdk_flutter_environment_test
     citizen_sdk_flutter_sessions_test
-    citizen_sdk_flutter_wallet_flow_test
-    citizen_sdk_flutter_plugin_test
     citizen_sdk_flutter_secret_boundary_test)
   add_library(citizensdk_windows_flutter_test_support STATIC
     ${CITIZENSDK_FLUTTER_ADAPTER_SOURCES})
@@ -53,6 +51,9 @@ if(TARGET citizen_sdk_plugin)
       LABELS "CitizenSDK;WindowsFlutter;Contract"
       ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
   endforeach()
+  # 只汇总正式插件和原测试目标，保留官方Flutter依赖，不构建消费App主程序。
+  add_custom_target(citizensdk_flutter_checks
+    DEPENDS citizen_sdk_plugin ${CITIZENSDK_WINDOWS_FLUTTER_CONTRACT_TESTS})
   return()
 endif()
 
@@ -69,9 +70,9 @@ target_compile_definitions(citizensdk_windows_test_support PRIVATE
   CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}" CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1
   CITIZENSDK_HOST_TEST_DIAGNOSTICS=1)
 target_include_directories(citizensdk_windows_test_support PUBLIC
-  "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../source"
+  "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../src"
   "${PROJECT_BINARY_DIR}/public" "${CITIZENSDK_CORE_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}"
-  PRIVATE "${CITIZENSDK_INTERNAL_INCLUDE_DIR}")
+  "${CITIZENSDK_INTERNAL_INCLUDE_DIR}")
 target_compile_options(citizensdk_windows_test_support PRIVATE /W4 /permissive- /utf-8 /EHsc
   $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)
 target_link_libraries(citizensdk_windows_test_support PUBLIC CitizenSDK::Core CitizenSDK::QrImage
@@ -80,13 +81,9 @@ target_link_libraries(citizensdk_windows_test_support PUBLIC CitizenSDK::Core Ci
 set(CITIZENSDK_WINDOWS_CONTRACT_TESTS
   citizen_sdk_api_contract_test
   citizen_sdk_assets_test
-  citizen_sdk_host_operation_test
   citizen_sdk_lifecycle_test
   citizen_sdk_directory_test
-  citizen_sdk_public_store_test
-  citizen_sdk_record_key_test
-  citizen_sdk_secure_store_test
-  citizen_sdk_sensitive_buffer_test
+  sqlite
   citizen_sdk_secret_vault_test
   citizen_sdk_secret_boundary_test
   citizen_sdk_cng_test
@@ -108,3 +105,15 @@ foreach(test_name IN LISTS CITIZENSDK_WINDOWS_CONTRACT_TESTS)
     LABELS "CitizenSDK;WindowsHost;Contract"
     ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
 endforeach()
+
+# 两平台运行同一份共同C++行为测试。
+add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../test/cpp.cc")
+target_compile_features(cpp PRIVATE cxx_std_17)
+target_link_libraries(cpp PRIVATE citizensdk_windows_test_support)
+target_compile_options(cpp PRIVATE /UNDEBUG /W4 /WX)
+add_test(NAME CitizenSDK.Windows.cpp COMMAND cpp)
+
+target_include_directories(cpp PRIVATE "${CITIZENSDK_SQLITE_INCLUDE_DIR}" )
+set_tests_properties(CitizenSDK.Windows.cpp PROPERTIES TIMEOUT 120 LABELS "CitizenSDK;WindowsHost;Contract" ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
+
+add_custom_command(TARGET cpp POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CITIZENSDK_CORE_LIBRARY}" "$<TARGET_FILE_DIR:cpp>")

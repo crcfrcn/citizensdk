@@ -59,48 +59,18 @@ class CitizenSdkFlutterSessionsTest {
     }
 
     @Test
-    fun `verification projection needs no context session activity or event subscription`() {
-        // 独立验签也使用唯一v2通道；旧版本必须拒绝，不能用旧夹具恢复兼容入口。
-        val request = CitizenSdkFlutterCodec.decode("verifySignature",
-            listOf(2, "0x" + "11".repeat(32), ByteArray(64), byteArrayOf())) as CitizenSdkFlutterCodec.Request.VerifySignature
-        assertThrows(CitizenSdkFlutterCodec.ContractFailure::class.java) {
-            CitizenSdkFlutterCodec.decode("verifySignature",
-                listOf(1, "0x" + "11".repeat(32), ByteArray(64), byteArrayOf()))
-        }
-        var calls = 0
-        // 只替换密码学叶节点；生产使用同一静态分派，测试无需构造任何 Android 宿主。
-        repeat(2) {
-            val response = CitizenSdkFlutterSessions.verifySignature(request) { account, signature, payload ->
-                calls++
-                assertEquals(32, account.size)
-                assertEquals(64, signature.size)
-                assertTrue(payload.isEmpty())
-                false
-            }
-            assertEquals(listOf(2, false), response)
-        }
-        assertEquals(2, calls)
-        assertThrows(CitizenSdkException::class.java) {
-            CitizenSdkFlutterSessions.verifySignature(request) { _, _, _ ->
-                throw CitizenSdkException(CitizenSdkErrorCode.INTEGRITY, "fixture")
-            }
-        }
-    }
-
-    @Test
     fun envelopeSurvivesInvalidParametersAndNeverInspectsSecrets() {
         // 这里只验证平台外壳投影，序号重复/跳号/实例隔离由唯一Rust接纳测试验证。
-        val envelope = CitizenSdkFlutterCodec.envelope("getStorageKeysPaged", listOf(2, "synthetic", 1, Any()))
+        val envelope = CitizenSdkFlutterCodec.envelope("openPrivateKey", listOf(2, "synthetic", 1, Any()))
         assertEquals("synthetic", envelope?.sessionId)
         assertEquals(1L, envelope?.requestSequence)
         assertThrows(CitizenSdkFlutterCodec.ContractFailure::class.java) {
-            CitizenSdkFlutterCodec.decode("getStorageKeysPaged", listOf(2, "synthetic", 1, Any()))
+            CitizenSdkFlutterCodec.decode("openPrivateKey", listOf(2, "synthetic", 1, Any()))
         }
-        assertEquals(2L, CitizenSdkFlutterCodec.envelope("getSyncStatus", listOf(2, "synthetic", 2))?.requestSequence)
-        assertNull(CitizenSdkFlutterCodec.envelope("verifySignature", null))
+        assertEquals(2L, CitizenSdkFlutterCodec.envelope("close", listOf(2, "synthetic", 2))?.requestSequence)
         for (bad in listOf(listOf(1, "synthetic", 1), listOf(2, "synthetic", 0), listOf(2))) {
             assertThrows(CitizenSdkFlutterCodec.ContractFailure::class.java) {
-                CitizenSdkFlutterCodec.envelope("getSyncStatus", bad)
+                CitizenSdkFlutterCodec.envelope("close", bad)
             }
         }
     }

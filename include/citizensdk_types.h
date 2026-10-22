@@ -2,6 +2,7 @@
 #define CITIZENSDK_TYPES_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* 本头文件是CitizenSDK跨语言公共C ABI类型、常量、结构布局与所有权合同的唯一真源。 */
 
@@ -494,7 +495,38 @@ typedef struct citizensdk_host_secret_vault_v1 {
   citizensdk_host_vault_authorize_add_accounts_v1_t authorize_add_accounts;
 } citizensdk_host_secret_vault_v1_t;
 
-/* Vtable pointers are borrowed only during create_with_host and copied by SDK. */
+/* 同步SQLite资源接口。0=NULL,1=i64,2=UTF-8,3=BLOB；reserved必须为0。
+ * SQL与单元格仅借用于当前调用；回调不得保留指针、切换线程或提前返回。
+ * run持有数据库资源/平台锁和当前线程会话，恰好同步调用job一次；事务内固定同一连接。
+ * begin使用IMMEDIATE事务；end在COMMIT之前核验文件安全，提交后无可失败检查。
+ * query的max_bytes是单条上限，max_rows是扫描上限；逐条调用row且原样返回非零值。
+ * Rust在普通查询中另守总字节预算；内部扫描以22停止当前游标，不产生异步取消。
+ * job返回时若事务仍未结束，关闭/退休连接并拒绝后续job，禁止自动重开。
+ * context保持到成功destroy；SQL、schema、记录域和CAS策略由Rust拥有。 */
+typedef struct citizensdk_sql_value {
+  uint32_t kind; uint32_t reserved; int64_t integer; citizensdk_bytes_view_t bytes;
+} citizensdk_sql_value_t;
+typedef citizensdk_error_code_t (*citizensdk_store_job_t)(void *job_context);
+typedef citizensdk_error_code_t (*citizensdk_store_row_t)(void *row_context, const citizensdk_sql_value_t *values, uint64_t count);
+typedef struct citizensdk_store_v1 {
+  uint32_t struct_size; uint32_t abi_version; void *context;
+  citizensdk_error_code_t (*run)(void *, citizensdk_store_job_t, void *);
+  citizensdk_error_code_t (*execute)(void *, citizensdk_bytes_view_t, const citizensdk_sql_value_t *, uint64_t, uint64_t *);
+  citizensdk_error_code_t (*query)(void *, citizensdk_bytes_view_t, const citizensdk_sql_value_t *, uint64_t, uint64_t, uint64_t, citizensdk_store_row_t, void *);
+  citizensdk_error_code_t (*begin)(void *);
+  citizensdk_error_code_t (*end)(void *, uint8_t commit);
+  citizensdk_error_code_t (*wal)(void *);
+} citizensdk_store_v1_t;
+
+/* 同一次装配的公共/安全SQLite资源及设备金库；不保留另一套业务状态。 */
+typedef struct citizensdk_stores_v1 {
+ uint32_t struct_size; uint32_t abi_version;
+ const citizensdk_store_v1_t *public_store;
+ const citizensdk_store_v1_t *secure_store;
+ const citizensdk_host_secret_vault_v1_t *secret_vault;
+} citizensdk_stores_v1_t;
+
+/* Vtable pointers are borrowed during construction and copied by SDK. */
 typedef struct citizensdk_host_services_v1 {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -503,7 +535,7 @@ typedef struct citizensdk_host_services_v1 {
   const citizensdk_host_secret_vault_v1_t *secret_vault;
 } citizensdk_host_services_v1_t;
 
-/* 只读跨代际存在性，不改变原HostServices/SecureStore/Vault v1结构。
+/* 只读跨代际存在性，不改变原HostServices/VaultStore/Vault v1结构。
  * 输入按值传递，回调/context必须保有至SDK成功销毁；输出复用原BoolResult。 */
 typedef citizensdk_error_code_t (*citizensdk_host_has_account_secret_v1_t)(
     void *context, uint64_t host_operation_id, citizensdk_account_id_t account_id,
@@ -569,6 +601,15 @@ typedef struct citizensdk_event {
   uint64_t capability_revision;
 } citizensdk_event_t;
 
+/* 按值异步接收：event_type/sequence/request_id/result/capability_revision。
+ * 只复制整数，result仍归接收方释放；发送函数存活至detach或destroy完成。
+ * 不传栈指针、秘密或可变缓冲。 */
+/* 官方NativeApi.postCObject；C++按同版Dart SDK头组装一个五整数数组。
+ * event_type=0为接收端终态；关闭的port返回false，无isolate回调指针。 */
+struct _Dart_CObject;
+typedef bool (*citizensdk_post_t)(int64_t,struct _Dart_CObject*);
+typedef int8_t (*citizensdk_value_callback_t)(citizensdk_post_t,int64_t,uint32_t,uint64_t,uint64_t,uint64_t,uint64_t);
+typedef citizensdk_error_code_t (*citizensdk_call_t)(void*);
 typedef void (*citizensdk_event_callback_t)(void *context,
                                             const citizensdk_event_t *event);
 

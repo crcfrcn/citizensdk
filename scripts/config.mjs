@@ -14,104 +14,6 @@ export function describeConfiguration(){return JSON.parse(JSON.stringify(manifes
 // SDK是唯一公开平台；其它名称仅为包内真实宿主编译目标。
 export const repository='crcfrcn/citizensdk';
 export const tools=Object.freeze({node:'25.2.1',rust:'1.97.1',flutter:'3.47.2',ndk:'28.2.13676358',gradle:'9.1.0',cmake:'3.31.6'});
-// 原仓平面存储到Cargo要求路径的唯一映射；文件内容及原锁保持不变。
-export const nativePaths=Object.freeze({
- "native/smoldot/lib/src/chain/chain_information_build.rs": "native/smoldot/lib/src/chain/chain_information/build.rs",
- "native/smoldot/lib/src/database/finalized_serialize_defs.rs": "native/smoldot/lib/src/database/finalized_serialize/defs.rs",
- "native/smoldot/lib/src/executor/trie_root_calculator_tests.rs": "native/smoldot/lib/src/executor/trie_root_calculator/tests.rs",
- "native/smoldot/lib/src/identity_ss58.rs": "native/smoldot/lib/src/identity/ss58.rs",
- "native/smoldot/lib/src/libp2p/connection/single_stream_handshake_tests.rs": "native/smoldot/lib/src/libp2p/connection/single_stream_handshake/tests.rs",
- "native/smoldot/lib/src/network/kademlia_kbuckets.rs": "native/smoldot/lib/src/network/kademlia/kbuckets.rs",
- "native/smoldot/lib/src/transactions/light_pool_tests.rs": "native/smoldot/lib/src/transactions/light_pool/tests.rs",
- "native/smoldot/lib/src/transactions/pool_tests.rs": "native/smoldot/lib/src/transactions/pool/tests.rs",
- "native/smoldot/lib/src/trie/branch_search_tests.rs": "native/smoldot/lib/src/trie/branch_search/tests.rs",
- "native/smoldot/lib/src/trie/trie_structure_tests.rs": "native/smoldot/lib/src/trie/trie_structure/tests.rs",
- "native/smoldot/light-base/src/json_rpc_service_background.rs": "native/smoldot/light-base/src/json_rpc_service/background.rs",
- "native/smoldot/light-base/src/network_service_tasks.rs": "native/smoldot/light-base/src/network_service/tasks.rs",
- "native/engine/source/transaction_outcome.rs": "native/engine/src/transaction_outcome.rs",
- "native/engine/source/wallet_input_tests.rs": "native/engine/src/wallet_input_tests.rs",
- "native/engine/source/wallet_service_tests.rs": "native/engine/src/wallet_service_tests.rs",
- "native/engine/source/runtime_context.rs": "native/engine/src/runtime_context.rs",
- "native/engine/source/error.rs": "native/engine/src/error.rs",
- "native/engine/source/finalized_history_runtime.rs": "native/engine/src/finalized_history_runtime.rs",
- "native/engine/source/wallet_input.rs": "native/engine/src/wallet_input.rs",
- "native/engine/source/metadata.rs": "native/engine/src/metadata.rs",
- "native/engine/source/chain_monitor.rs": "native/engine/src/chain_monitor.rs",
- "native/engine/source/lib.rs": "native/engine/src/lib.rs",
- "native/engine/source/account_state.rs": "native/engine/src/account_state.rs",
- "native/engine/source/wallet_service.rs": "native/engine/src/wallet_service.rs",
- "native/engine/source/transaction_execution.rs": "native/engine/src/transaction_execution.rs",
- "native/engine/source/transaction_prepare.rs": "native/engine/src/transaction_prepare.rs",
- "native/engine/source/qr_review.rs": "native/engine/src/qr_review.rs",
- "native/engine/source/wallet_derivation.rs": "native/engine/src/wallet_derivation.rs",
- "native/engine/source/transaction_history.rs": "native/engine/src/transaction_history.rs",
- "native/engine/source/system_events.rs": "native/engine/src/system_events.rs",
- "native/engine/source/wallet_derivation_tests.rs": "native/engine/src/wallet_derivation_tests.rs",
- "native/engine/source/qr_review_tests.rs": "native/engine/src/qr_review_tests.rs",
- "native/engine/source/capabilities.rs": "native/engine/src/capabilities.rs",
- "native/engine/source/engine.rs": "native/engine/src/engine.rs",
- "native/engine/source/state_import.rs": "native/engine/src/state_import.rs",
- "native/ffi/source/host_codec_tests.rs": "native/ffi/src/host_codec_tests.rs",
- "native/ffi/source/qr_abi.rs": "native/ffi/src/qr_abi.rs",
- "native/ffi/source/runtime.rs": "native/ffi/src/runtime.rs",
- "native/ffi/source/chain_monitor_tests.rs": "native/ffi/src/chain_monitor_tests.rs",
- "native/ffi/source/transaction_abi.rs": "native/ffi/src/transaction_abi.rs",
- "native/ffi/source/events.rs": "native/ffi/src/events.rs",
- "native/ffi/source/host_codec.rs": "native/ffi/src/host_codec.rs",
- "native/ffi/source/error.rs": "native/ffi/src/error.rs",
- "native/ffi/source/wallet_abi_tests.rs": "native/ffi/src/wallet_abi_tests.rs",
- "native/ffi/source/chain_monitor.rs": "native/ffi/src/chain_monitor.rs",
- "native/ffi/source/wallet_abi.rs": "native/ffi/src/wallet_abi.rs",
- "native/ffi/source/lib.rs": "native/ffi/src/lib.rs",
- "native/ffi/source/host_providers.rs": "native/ffi/src/host_providers.rs",
- "native/ffi/source/ownership.rs": "native/ffi/src/ownership.rs",
- "native/ffi/source/handles.rs": "native/ffi/src/handles.rs",
- "native/ffi/source/composition_tests.rs": "native/ffi/src/composition_tests.rs",
- "native/ffi/source/composition.rs": "native/ffi/src/composition.rs",
- "native/ffi/source/requests.rs": "native/ffi/src/requests.rs",
- "native/ffi/source/assets.rs": "native/ffi/src/assets.rs",
- "native/ffi/source/abi.rs": "native/ffi/src/abi.rs",
- "native/ffi/source/capabilities.rs": "native/ffi/src/capabilities.rs",
- "native/qr/source/session.rs": "native/qr/src/session.rs",
- "native/qr/source/lib.rs": "native/qr/src/lib.rs",
- "native/qr/source/codec.rs": "native/qr/src/codec.rs",
- "native/contracts/source/transaction.rs": "native/contracts/src/transaction.rs",
- "native/contracts/source/chain.rs": "native/contracts/src/chain.rs",
- "native/contracts/source/error.rs": "native/contracts/src/error.rs",
- "native/contracts/source/lib.rs": "native/contracts/src/lib.rs",
- "native/contracts/source/signing.rs": "native/contracts/src/signing.rs",
- "native/contracts/source/wallet.rs": "native/contracts/src/wallet.rs",
- "native/contracts/source/account.rs": "native/contracts/src/account.rs",
- "native/contracts/source/transaction_prepare.rs": "native/contracts/src/transaction_prepare.rs",
- "native/contracts/source/chain_signer.rs": "native/contracts/src/chain_signer.rs",
- "native/contracts/source/secret_vault.rs": "native/contracts/src/secret_vault.rs",
- "native/contracts/source/transaction_build.rs": "native/contracts/src/transaction_build.rs",
- "native/contracts/source/capability.rs": "native/contracts/src/capability.rs",
- "native/contracts/source/store_wallet_profile.rs": "native/contracts/src/store/wallet_profile.rs",
- "native/contracts/source/store_encrypted_secret_blob.rs": "native/contracts/src/store/encrypted_secret_blob.rs",
- "native/contracts/source/store_chain_database.rs": "native/contracts/src/store/chain_database.rs",
- "native/contracts/source/store.rs": "native/contracts/src/store/mod.rs",
- "native/contracts/source/store_runtime_cache.rs": "native/contracts/src/store/runtime_cache.rs",
- "native/contracts/source/store_transaction_history.rs": "native/contracts/src/store/transaction_history.rs",
- "native/provider/source/client.rs": "native/provider/src/client.rs",
- "native/provider/source/legacy.rs": "native/provider/src/legacy.rs",
- "native/provider/source/account_nonce.rs": "native/provider/src/account_nonce.rs",
- "native/provider/source/lib.rs": "native/provider/src/lib.rs",
- "native/provider/source/bootstrap.rs": "native/provider/src/bootstrap.rs",
- "native/provider/source/bootstrap_tests.rs": "native/provider/src/bootstrap_tests.rs",
- "native/provider/source/verified_chain_client.rs": "native/provider/src/verified_chain_client.rs",
- "native/provider/tests/source_manifest_contract.rs": "native/smoldot/light-base/tests/source_manifest_contract.rs",
- "native/provider/tests/capability_boundary.rs": "native/smoldot/light-base/tests/capability_boundary.rs",
- "native/provider/tests/light_client_boundary.rs": "native/smoldot/lib/tests/light_client_boundary.rs",
- "native/provider/tests/network_sync_source_manifest.rs": "native/smoldot/lib/tests/network_sync_source_manifest.rs",
- "native/provider/tests/state_runtime_source_manifest.rs": "native/smoldot/lib/tests/state_runtime_source_manifest.rs",
- "native/provider/tests/consensus_source_manifest.rs": "native/smoldot/lib/tests/consensus_source_manifest.rs",
- "native/provider/tests/network_sync_boundary.rs": "native/smoldot/lib/tests/network_sync_boundary.rs",
- "native/provider/tests/state_runtime_boundary.rs": "native/smoldot/lib/tests/state_runtime_boundary.rs",
- "native/signer/source/sr25519.rs": "native/signer/src/sr25519.rs",
- "native/signer/source/lib.rs": "native/signer/src/lib.rs",
- "native/signer/source/chain_signer.rs": "native/signer/src/chain_signer.rs"
-});
 
 // C/C++宿主依赖沿用原来源版本，由工作流使用官方构建命令准备。
 export const nativeSources=Object.freeze({
@@ -123,8 +25,12 @@ export const nativeSources=Object.freeze({
 
 
 // 这里只声明本仓执行入口；版本、网络、轮询及清理全部归既有build脚本。
-import {automate,cleanupRuns} from './build.mjs';
-export function describeAction({flow,platform}){
- if(!['release','cleanup'].includes(flow)||platform!=='sdk')throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
- return {repository,launch:flow==='cleanup'?cleanupRuns:automate};
+import {automate,publish,cleanupRuns} from './build.mjs';
+export function describeAction({flow,platform,inputs={}}){
+ if(platform!=='sdk')throw Error('本产品尚未声明该平台：'+platform);
+ // release是调用方既有的塔塔自动化身份；publish才是独立发布动作。
+ if(flow==='release')return {repository,launch:automate};
+ if(flow==='publish')return {repository,launch:options=>publish({...options,sourceRun:inputs.sourceRun})};
+ if(flow==='cleanup')return {repository,launch:cleanupRuns};
+ throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
 }

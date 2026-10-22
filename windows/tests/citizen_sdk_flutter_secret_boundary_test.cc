@@ -1,52 +1,11 @@
-// 显式输入、备份和私钥查看可有受控字节；路径/应用身份/裸句柄不能来自Dart。
 #include <cassert>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <string>
-#include <vector>
 #include "citizen_sdk_flutter_codec.hpp"
-#include "citizen_sdk_flutter_test_support.hpp"
-#ifdef NDEBUG
-#error "CitizenSDK contract assertions must remain enabled"
-#endif
-namespace csf = citizen_sdk::flutter;
-int main() {
-  const auto decode = [](const char *method, csf::Value value) {
-    auto native = csf::test::fl(value);
-    return csf::decode_request(method, &native);
-  };
-  auto input = decode("importWallet", csf::test::list({csf::Value::integer(2), csf::Value::string("sdk"),
-      csf::Value::integer(1), csf::Value::string("synthetic"), csf::Value::string("password")}));
-  assert(input.mnemonic && input.password);
-  assert(input.mnemonic->value.size() == 9 && input.password->value.size() == 8);
-  assert(input.payload.empty()); // 不把输入复用成普通签名载荷或输出槽。
-  auto owned = *input.password;
-  input.password.reset();
-  assert(owned.value == csf::Value::Bytes({'p','a','s','s','w','o','r','d'}));
-  owned = csf::CredentialBytes(csf::Value::Bytes{});
-  assert(owned.value.empty());
-  csf::test::expect_failure([&] {
-    (void)decode("open", csf::test::list({csf::Value::integer(2), csf::Value::integer(63),
-        csf::Value::boolean(false), csf::Value::string("org.example.injected")}));
-  }, CITIZENSDK_ERROR_INVALID_ARGUMENT);
-  csf::test::expect_failure([&] {
-    (void)decode("revealPrivateKey", csf::test::list({csf::Value::integer(2), csf::Value::string("sdk"),
-        csf::Value::integer(2), csf::Value::integer(7)}));
-  }, CITIZENSDK_ERROR_INVALID_ARGUMENT);
-
-  // 下面只是源码额外门禁；上面实际生产解码和所有权断言才验证行为。
-  const std::filesystem::path root(CITIZENSDK_WINDOWS_TEST_SOURCE_DIR);
-  for (const auto *relative : {"headers/citizen_sdk_plugin.h", "source/citizen_sdk_plugin.cc",
-      "source/citizen_sdk_flutter_environment.hpp", "source/citizen_sdk_flutter_environment.cc",
-      "source/citizen_sdk_flutter_codec.hpp", "source/citizen_sdk_flutter_sessions.hpp"}) {
-    std::ifstream stream(root / relative, std::ios::binary);
-    assert(stream.good());
-    const std::string source((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    for (const auto *forbidden : {"dart_asset_root", "dart_storage_root", "dart_application_id",
-        "dart_hwnd", "dart_gtk_parent", "exportMnemonic", "exportPrivateKey", "prepared_wallet_handle",
-        "plaintext_dek", "citizen_sdk_secret_vault.hpp", "citizen_sdk_cng.hpp"})
-      assert(source.find(forbidden) == std::string::npos);
-  }
-  return 0;
+namespace csf=citizen_sdk::flutter;
+static csf::DecodedRequest decode(const char*name,csf::Value value){auto native=csf::to_encodable_value(value);return csf::decode_request(name,&native);}
+int main(){
+ for(auto value:{csf::Value::integer(1),csf::Value::bytes(std::vector<uint8_t>(32,7)),csf::Value::list({})}){
+ bool rejected=false;try{(void)decode("revealPrivateKey",csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(1),std::move(value)}));}catch(const csf::ContractFailure&e){rejected=e.code==CITIZENSDK_ERROR_INVALID_ARGUMENT;}assert(rejected);}
+ auto value=csf::Value::sensitive_bytes({1,2,3});value.clear_sensitive();assert(std::get<csf::Value::Bytes>(value.data)==csf::Value::Bytes(3,0));
+ const auto error=csf::error_details(CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED,"Cancelled","sdk",1,"openPrivateKey");const auto& fields=std::get<csf::Value::List>(error.data);assert(fields.size()==7&&std::get<int64_t>(fields[3].data)==10&&std::get<int64_t>(fields[4].data)==3);
+ return 0;
 }

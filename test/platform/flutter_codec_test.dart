@@ -261,7 +261,7 @@ void main() {
       (v) => v.add(1),
       (v) => v[4] = 0,
       (v) => v[4] = 4,
-      (v) => v[5] = 'legacy',
+      (v) => v[5] = 'invalid-value',
       (v) => v[3] = 'a' * 129,
       (v) => v[6] = [<dynamic>[], false],
       (v) => v[6] = [
@@ -593,7 +593,7 @@ void main() {
     );
   });
 
-  test('五平台 Flutter 的固定方法使用固定长度 tuple 且没有 Map 兼容旁路', () {
+  test('Dart公开方法使用固定List投影并拒绝Map旁路', () {
     const expectedMethods = <String>{
       'open',
       'start',

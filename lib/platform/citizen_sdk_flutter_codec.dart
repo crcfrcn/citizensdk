@@ -13,7 +13,7 @@ import '../models/citizen_signing.dart';
 import '../models/citizen_transaction.dart';
 import '../models/citizen_wallet.dart';
 
-/// Method/Event channel v2 的固定长度、固定位置 tuple 编码器。
+/// Dart接口的固定List投影；业务由FFI调用Rust，平台通道只传资源与UI。
 ///
 /// StandardMessageCodec会在绑定收到数据前折叠Map重复键，因此通道完全禁止Map，且不
 /// 提供兼容旁路。每一层 List 都校验精确长度、位置类型和枚举闭集；任何偏差均失败关闭。

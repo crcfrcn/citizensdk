@@ -24,7 +24,7 @@ void write(const std::filesystem::path &path, const std::string &value) {
 
 int main() {
   using citizen_sdk::linux::Assets;
-  using citizen_sdk::linux::HostError;
+  using citizen_sdk::HostError;
 
   citizen_sdk::linux::test::TempDirectory temporary("assets");
   const auto directory = temporary.path() / "chain";

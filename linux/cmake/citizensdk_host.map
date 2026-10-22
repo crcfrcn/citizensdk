@@ -1,5 +1,7 @@
 {
   global:
+    citizensdk_dart_api_major;
+    citizensdk_dart_emit;
     citizensdk_host_abi_version;
     citizensdk_host_config_size;
     citizensdk_host_create;

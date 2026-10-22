@@ -11,6 +11,9 @@
 #include <exception>
 #include <filesystem>
 #include <memory>
+#include "citizen_sdk_sqlite.hpp"
+#include "sqlite.hpp"
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include "citizen_sdk_directory.hpp"
@@ -161,4 +164,14 @@ class TempDirectory final {
   std::filesystem::path path_;
 };
 }  // namespace citizen_sdk::windows::test
+// 测试只组装实际SQLite资源与Rust客户端，不重建私有仓储规则。
+namespace citizen_sdk::windows::test {
+class VaultFixture final : public citizen_sdk::VaultStore {
+  using Resource = citizen_sdk::Database<SQLiteStore,HostError>;
+  std::shared_ptr<Resource> resource_;
+  explicit VaultFixture(std::shared_ptr<Resource> resource):citizen_sdk::VaultStore(resource->config()),resource_(std::move(resource)){}
+ public:
+  explicit VaultFixture(const std::filesystem::path &directory):VaultFixture(std::make_shared<Resource>(directory,true)){}
+};
+}
 #endif

@@ -28,7 +28,7 @@ int main() {
   assert(rejected_duplicate);
 
 
-  using citizen_sdk::windows::HostError;
+  using citizen_sdk::HostError;
   using citizen_sdk::windows::Lifecycle;
 
   Lifecycle lifecycle;
@@ -124,11 +124,11 @@ int main() {
     return std::string((std::istreambuf_iterator<char>(stream)),
                        std::istreambuf_iterator<char>());
   };
-  const std::string host_api = read("/source/citizen_sdk_host_api.cc");
+  const std::string host_api = read("/src/citizen_sdk_host_api.cc");
   const std::string host_bridge =
-      read("/source/citizen_sdk_host_bridge.cc");
+      read("/src/citizen_sdk_host_bridge.cc");
   const std::string cpp_api =
-      read("/headers/citizen_sdk.hpp");
+      read("/citizen_sdk.hpp");
   const auto wallet_index_guard =
       host_bridge.find("value.wallet_index == 0");
   const auto secret_index_guard = host_bridge.find(
@@ -208,9 +208,9 @@ int main() {
       host_bridge.find("services_retired_ = true", destroy_core);
   const auto retire_vault = host_bridge.find("vault_.reset()", retire_services);
   const auto retire_secure =
-      host_bridge.find("secure_store_->close()", retire_vault);
+      host_bridge.find("secure_database_->close()", retire_vault);
   const auto retire_public =
-      host_bridge.find("if (public_store_) public_store_->close()", retire_secure);
+      host_bridge.find("if (database_) database_->close()", retire_secure);
   assert(foreign_boundary != std::string::npos &&
          lifecycle_query != std::string::npos &&
          unsubscribe != std::string::npos &&

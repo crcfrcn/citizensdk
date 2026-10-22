@@ -23,3 +23,6 @@ EXPORTS
   citizensdk_host_open_qr_capture
   citizensdk_host_control_qr_capture
   citizensdk_host_decode_qr_image
+
+  citizensdk_dart_api_major
+  citizensdk_dart_emit
