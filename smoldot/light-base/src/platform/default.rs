@@ -220,7 +220,7 @@ impl PlatformRef for Arc<DefaultPlatform> {
 
     fn supports_connection_type(&self, connection_type: ConnectionType) -> bool {
         if self.wss_endpoint.is_some() {
-            return matches!(connection_type, ConnectionType::WebSocketDns { secure: true });
+            return matches!(connection_type, ConnectionType::WebSocketDns { secure: true, .. });
         }
         // 支持所有 TCP 和 WebSocket（含 WSS）连接类型。
         matches!(
@@ -561,8 +561,8 @@ mod tests {
         #[test]
         fn rejected_discovered_address_returns_permission_error_without_network() {
             let platform = DefaultPlatform::new_with_wss_endpoint("test".to_owned(), "1".to_owned(), Some(("node.invalid".to_owned(), 30333)));
-            assert!(platform.supports_connection_type(ConnectionType::WebSocketDns { secure: true }));
-            assert!(!platform.supports_connection_type(ConnectionType::WebSocketDns { secure: false }));
+            assert!(platform.supports_connection_type(ConnectionType::WebSocketDns { secure: true, remote_is_localhost: false }));
+            assert!(!platform.supports_connection_type(ConnectionType::WebSocketDns { secure: false, remote_is_localhost: false }));
             assert!(!platform.supports_connection_type(ConnectionType::TcpDns));
             smol::block_on(async {
                 let stream = platform.connect_stream(Address::WebSocketDns { hostname: "other.invalid", port: 30333, secure: true }).await;
