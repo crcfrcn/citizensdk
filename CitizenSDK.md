@@ -303,9 +303,9 @@ provider仅在单次运行实例内复用证明验证过的hash/高度上下文�
 
 每笔 `prepareTransaction` 只构造一次准确 best 块的 Runtime、metadata、nonce、签名消息与 extrinsic 模板；`executePreparedTransaction` 单次消费冻结结果，不重新查询 nonce 或重建交易。账户并发门、Engine 生命周期及代际、授权、冻结消息验签、广播前持久化与最终块执行证明继续生效。冷签同样持有原准备结果；取消后不能再次消费。外部并发造成的 nonce 冲突按真实提交结果处理，由用户新发起一笔才重新准备，禁止自动换 nonce 或重签。
 
-nonce使用同次Runtime订阅报告的准确best块：有非最终best时选该块，否则选最终根，均由既有`pin_pinned_block_runtime`取得Runtime、状态根与高度。最终根不再额外下载`:code`/`:heappages`后查编译缓存；账户状态仍必须经`AccountNonceApi_account_nonce` v1原有证明执行和严格u32解码。provider按同一结果核验账户、块哈希与高度，漂移明确失败，不重采样伪造一致。nonce不持久缓存或本地自增。正常与失败等待本订阅已报告引用释放，Future取消也调度同一清理；只使用原有容忍订阅失效的释放API。nonce与准确块Runtime上下文共用订阅引用清理；两者各自保留原有证明执行。
+nonce请求将调用者已验证的at_best hash/高度直接传入唯一typed入口，在同一Runtime订阅中先核对当前best。Runtime视图落后返回NotReady，换块、同高度异hash或同hash异高度返回Conflict；目标接纳后才经既有`pin_pinned_block_runtime`固定该块，并再次核对高度，不能改查另一块。最终根和非最终best共用同一证明执行路径，不额外下载`:code`/`:heappages`。账户状态仍经`AccountNonceApi_account_nonce` v1、原三次证明获取/每次五秒/并行一及严格u32解码；网络空证明不能降为就绪等待。闭集错误按类型映射，provider仍后验核验账户、块hash与高度，不用前后采样替代证明。nonce不持久缓存或本地自增；成功、接纳失败、pin失败与证明失败共用一次引用清理，Future取消沿原RAII释放。RuntimeService、P2P和交易池算法保持。
 
-nonce实网验收在既有provider合同测试中显式选择，以合成公有账户进行两轮新provider、每轮三次只读查询，输出耗时及身份/同块一致布尔值；不输出nonce、账户、块哈希或自由错误。无peer、超时、证明不可得、区块身份漂移不能作为成功，宿主结果不能代替移动正式包真机验收。
+nonce实网验收在既有provider合同测试中显式选择，以合成公有账户进行两轮新provider、每轮三次同块只读查询。目标取自同一同步快照并保持不变；每轮120秒总期限内仅对明确NotReady等待，Conflict和证明网络失败直接拒绝，不额外重试nonce证明请求。只输出固定阶段、耗时及身份/同块一致布尔值，不输出nonce、账户、块hash或自由错误。无peer、超时、证明不可得、区块身份漂移均不能作为成功，宿主结果不能代替移动正式包真机验收。现有唯一测试入口先按smoldot嵌套原锁执行扩展的真实块接纳/清理单元测试，再执行原有Rust与Dart全量回归；不增加独立工作流或替代入口。
 
 内嵌交易服务以登记上游 `f471baac1f0fa821569c42ebb14c4f8533ba77ad` 为基线，仅在 `smoldot/light-base/src/transactions_service.rs` 增加 best==finalized 验证支持；`smoldot/lib/src/transactions/light_pool.rs` 保持官方原件。服务保留当前最终块头及Runtime订阅固定引用，使用原验证函数，成功后才广播；当前最终根块的结果可进入池，旧根和已清理分叉的迟到结果丢弃。最终块更替时仅释放已脱离池的旧引用，池内块仍由原清理循环释放，订阅重建不复用旧上下文；Future开始前已释放的块重新选择，不能将其判为交易无效。官方无效清理、最终化与重组处理顺序保持，没有提前广播、特殊入块优先或诊断插入。
 

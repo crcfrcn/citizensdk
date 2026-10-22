@@ -187,7 +187,7 @@ fn live_nonce_queries_reuse_pinned_runtime_without_transaction_submission() {
                 let best = loop {
                     if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(3), provider.get_sync_status()).await {
                         if status.is_usable() && status.peer_count() > 0 && status.best().hash() == status.finalized().hash() {
-                            break provider.get_best_head().await.inspect_err(|error| observe_error(error, "nonce_best_head")).ok()?;
+                            break status.best();
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -196,7 +196,24 @@ fn live_nonce_queries_reuse_pinned_runtime_without_transaction_submission() {
                 let mut previous = None;
                 for sample in 0..3 {
                     let started = Instant::now();
-                    let nonce = provider.account_next_index(account_id, best).await.inspect_err(|error| observe_error(error, "nonce_read")).ok()?;
+                    // 同步可用不代表目标Runtime已经就绪；只等待明确NotReady，不重试证明失败。
+                    let mut waiting = false;
+                    let nonce = loop {
+                        match provider.account_next_index(account_id, best).await {
+                            Ok(nonce) => break nonce,
+                            Err(error) if error.code() == ContractErrorCode::NotReady => {
+                                if !waiting {
+                                    println!("NONCE_OBSERVATION session={session} sample={sample} stage=runtime_wait");
+                                    waiting = true;
+                                }
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                            }
+                            Err(error) => {
+                                observe_error(&error, "nonce_read");
+                                return None;
+                            }
+                        }
+                    };
                     let matches = nonce.account_id() == account_id && nonce.best_block() == best;
                     let stable = previous.is_none_or(|value| value == nonce.value());
                     previous = Some(nonce.value());

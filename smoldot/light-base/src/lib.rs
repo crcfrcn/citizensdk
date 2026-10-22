@@ -935,6 +935,28 @@ pub struct ChainAccountNonceSnapshot {
     pub nonce: u64,
 }
 
+/// nonce准确块接纳的闭集错误；网络证明失败保留原分类正文供provider处理。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ChainAccountNonceError {
+    InvalidArgument,
+    NotReady,
+    Conflict,
+    Integrity,
+    Runtime(String),
+}
+
+impl fmt::Display for ChainAccountNonceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidArgument => "Nonce account must contain 32 bytes",
+            Self::NotReady => "Requested nonce block runtime is not ready",
+            Self::Conflict => "Requested nonce block is not the runtime best block",
+            Self::Integrity => "Nonce runtime header or output is invalid",
+            Self::Runtime(message) => message,
+        })
+    }
+}
+
 /// 同一准确块的已验证Runtime版本与metadata；不重新采样当前头拼接结果。
 pub struct ChainRuntimeContextSnapshot {
     pub block_hash: [u8; 32],
@@ -2225,22 +2247,6 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
         }))
     }
 
-    /// 返回当前 best 块的账户 nonce；保留给现有 FFI 的兼容投影。
-    ///
-    /// 本入口刻意丢弃准确块身份。安全敏感调用方必须改用
-    /// [`Client::chain_account_next_index_snapshot`]。
-    pub fn chain_account_next_index(
-        &self,
-        chain_id: ChainId,
-        account_id: Vec<u8>,
-    ) -> Result<Pin<Box<dyn core::future::Future<Output = Result<u64, String>> + Send>>, String>
-    {
-        let snapshot = self.chain_account_next_index_snapshot(chain_id, account_id)?;
-        Ok(Box::pin(async move {
-            snapshot.await.map(|snapshot| snapshot.nonce)
-        }))
-    }
-
     /// 在调用方已验证的准确块上取得同一Runtime的版本和metadata。
     /// 当前订阅已经固定的最终根、非最终块直接复用Runtime；历史块必须按目标hash
     /// 验证header与代码存储证明。不会把另一次采样的当前头当成请求块。
@@ -2393,15 +2399,17 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
         }))
     }
 
-    /// 不经过 legacy JSON-RPC，返回 nonce 与同次 runtime call 固定的准确 best 块身份。
+    /// 只查询调用方指定的准确best；同一Runtime订阅核对后才发起证明请求。
     pub fn chain_account_next_index_snapshot(
         &self,
         chain_id: ChainId,
         account_id: Vec<u8>,
+        block_hash: [u8; 32],
+        block_number: u64,
     ) -> Result<
         Pin<
             Box<
-                dyn core::future::Future<Output = Result<ChainAccountNonceSnapshot, String>> + Send,
+                dyn core::future::Future<Output = Result<ChainAccountNonceSnapshot, ChainAccountNonceError>> + Send,
             >,
         >,
         String,
@@ -2410,16 +2418,24 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
         let platform = self.platform.clone();
 
         Ok(Box::pin(async move {
+            if account_id.len() != 32 {
+                return Err(ChainAccountNonceError::InvalidArgument);
+            }
             let subscribe_span = RuntimeDiagnosticSpan::start("nonce_subscribe");
             let subscribe_all = services
                 .runtime_service
                 .subscribe_all(16, NonZero::<usize>::new(32).unwrap())
                 .await;
             subscribe_span.finish(true);
-            let block_hash = nonce_block_hash(
+            let target_span = RuntimeDiagnosticSpan::start("nonce_target");
+            let target = nonce_target(
                 &subscribe_all.finalized_block_scale_encoded_header,
                 &subscribe_all.non_finalized_blocks_ancestry_order,
+                services.runtime_service.block_number_bytes(),
+                block_hash,
+                block_number,
             );
+            target_span.finish(target.is_ok());
             let subscription_id = subscribe_all.new_blocks.id();
             let (cleanup, cleanup_rx) = runtime_subscription_cleanup(
                 platform,
@@ -2428,57 +2444,57 @@ impl<TPlat: platform::PlatformRef, TChain> Client<TPlat, TChain> {
                 "nonce_cleanup",
             );
 
-            // subscribe_all已经固定最终块与已报告的非最终块Runtime。两种best状态
-            // 必须使用同一pin入口，不能再下载:code/:heappages后重新查编译缓存。
-            let pin_span = RuntimeDiagnosticSpan::start("nonce_pin_runtime");
-            let pinned = services
-                .runtime_service
-                .pin_pinned_block_runtime(subscription_id, block_hash)
-                .await;
-            pin_span.finish(pinned.is_ok());
-            let (pinned_runtime, block_state_trie_root_hash, block_number) = match pinned {
-                Ok(pinned) => pinned,
-                Err(error) => {
-                    drop(cleanup);
-                    let _ = cleanup_rx.await;
-                    return Err(format!("Failed to pin best block runtime: {error}"));
+            let result = async {
+                // 两种best状态均使用同一pin入口；目标不符时不能改查另一个块。
+                let (block_hash, block_number) = target?;
+                let pin_span = RuntimeDiagnosticSpan::start("nonce_pin_runtime");
+                let pinned = services
+                    .runtime_service
+                    .pin_pinned_block_runtime(subscription_id, block_hash)
+                    .await;
+                pin_span.finish(pinned.is_ok());
+                let (pinned_runtime, block_state_trie_root_hash, pinned_number) =
+                    pinned.map_err(|_| ChainAccountNonceError::NotReady)?;
+                if pinned_number != block_number {
+                    return Err(ChainAccountNonceError::Integrity);
                 }
-            };
 
-            // 保留调用账户用于结果身份绑定；传给 runtime 的字节来自同一份输入，不允许
-            // provider 在返回后重新拼接另一账户。
-            let requested_account_id = account_id.clone();
-            let call_span = RuntimeDiagnosticSpan::start("nonce_runtime_call");
-            let nonce_result = services
-                .runtime_service
-                .runtime_call(
-                    pinned_runtime,
-                    block_hash,
+                // 账户、块和状态根都来自本次已接纳请求及同一pin，证明执行保持原值。
+                let requested_account_id = account_id.clone();
+                let call_span = RuntimeDiagnosticSpan::start("nonce_runtime_call");
+                let nonce_result = services
+                    .runtime_service
+                    .runtime_call(
+                        pinned_runtime,
+                        block_hash,
+                        block_number,
+                        block_state_trie_root_hash,
+                        "AccountNonceApi_account_nonce".to_owned(),
+                        Some(("AccountNonceApi".to_owned(), 1..=1)),
+                        account_id,
+                        3,
+                        Duration::from_secs(5),
+                        NonZero::<u32>::new(1).unwrap(),
+                    )
+                    .await
+                    .map_err(|error| ChainAccountNonceError::Runtime(nonce_runtime_error(error)));
+                call_span.finish(nonce_result.is_ok());
+                let nonce_result = nonce_result?;
+                let decode_span = RuntimeDiagnosticSpan::start("nonce_decode");
+                let nonce = decode_account_nonce(&nonce_result.output);
+                decode_span.finish(nonce.is_ok());
+                Ok(ChainAccountNonceSnapshot {
+                    account_id: requested_account_id,
                     block_number,
-                    block_state_trie_root_hash,
-                    "AccountNonceApi_account_nonce".to_owned(),
-                    Some(("AccountNonceApi".to_owned(), 1..=1)),
-                    account_id,
-                    3,
-                    Duration::from_secs(5),
-                    NonZero::<u32>::new(1).unwrap(),
-                )
-                .await
-                .map_err(nonce_runtime_error);
-            call_span.finish(nonce_result.is_ok());
+                    block_hash,
+                    nonce: nonce.map_err(|_| ChainAccountNonceError::Integrity)?,
+                })
+            }
+            .await;
+            // 接纳失败、pin失败和证明失败均释放同一订阅；取消沿原RAII清理。
             drop(cleanup);
             let _ = cleanup_rx.await;
-
-            let nonce_result = nonce_result?;
-            let decode_span = RuntimeDiagnosticSpan::start("nonce_decode");
-            let nonce = decode_account_nonce(&nonce_result.output);
-            decode_span.finish(nonce.is_ok());
-            Ok(ChainAccountNonceSnapshot {
-                account_id: requested_account_id,
-                block_number,
-                block_hash,
-                nonce: nonce?,
-            })
+            result
         }))
     }
 
@@ -3252,15 +3268,26 @@ fn convert_runtime_version_snapshot(
     }
 }
 
-/// 同次订阅只有一个best；没有非最终best时，准确目标就是已固定的最终块。
-fn nonce_block_hash(
+/// 只接纳同次订阅的准确best；Runtime落后时未就绪，换块或高度冲突时拒绝。
+fn nonce_target(
     finalized_header: &[u8],
     blocks: &[runtime_service::BlockNotification],
-) -> [u8; 32] {
-    blocks.iter().find(|block| block.is_new_best).map_or_else(
-        || header::hash_from_scale_encoded_header(finalized_header),
-        |block| header::hash_from_scale_encoded_header(&block.scale_encoded_header),
-    )
+    number_bytes: usize,
+    block_hash: [u8; 32],
+    block_number: u64,
+) -> Result<([u8; 32], u64), ChainAccountNonceError> {
+    let encoded = blocks.iter().find(|block| block.is_new_best)
+        .map_or(finalized_header, |block| block.scale_encoded_header.as_slice());
+    let current_hash = header::hash_from_scale_encoded_header(encoded);
+    let current_number = header::decode(encoded, number_bytes)
+        .map_err(|_| ChainAccountNonceError::Integrity)?.number;
+    if current_hash == block_hash && current_number == block_number {
+        return Ok((block_hash, block_number));
+    }
+    if current_hash != block_hash && current_number < block_number {
+        return Err(ChainAccountNonceError::NotReady);
+    }
+    Err(ChainAccountNonceError::Conflict)
 }
 
 // 本SDK的nonce扩展只提取闭集错误分类，不输出证明、节点、账户或上游错误载荷。
@@ -3523,30 +3550,70 @@ mod runtime_query_tests {
         ]));
     }
 
-    fn block(header: u8, best: bool) -> runtime_service::BlockNotification {
+    fn encoded_header(number: u8, root: u8) -> Vec<u8> {
+        assert!(number < 64);
+        let mut encoded = vec![0; 32];
+        encoded.push(number << 2);
+        encoded.extend_from_slice(&[root; 32]);
+        encoded.extend_from_slice(&[0; 32]);
+        encoded.push(0);
+        encoded
+    }
+
+    fn block(number: u8, best: bool) -> runtime_service::BlockNotification {
         runtime_service::BlockNotification {
             is_new_best: best,
-            scale_encoded_header: vec![header],
+            scale_encoded_header: encoded_header(number, number),
             parent_hash: [0; 32],
             new_runtime: None,
         }
     }
 
     #[test]
-    fn finalized_best_and_non_finalized_best_use_the_reported_identity() {
-        let finalized = [1];
+    fn nonce_target_accepts_exact_finalized_and_non_finalized_best() {
+        let finalized = encoded_header(10, 10);
         let finalized_hash = header::hash_from_scale_encoded_header(&finalized);
-        assert_eq!(nonce_block_hash(&finalized, &[]), finalized_hash);
-        // 存在分叉不代表best在分叉上，必须继续选择最终根。
+        assert_eq!(nonce_target(&finalized, &[], 4, finalized_hash, 10), Ok((finalized_hash, 10)));
+        // 存在未成为best的分叉时，只能接纳指定的最终根。
         assert_eq!(
-            nonce_block_hash(&finalized, &[block(2, false)]),
-            finalized_hash
+            nonce_target(&finalized, &[block(11, false)], 4, finalized_hash, 10),
+            Ok((finalized_hash, 10))
         );
-        let blocks = [block(2, false), block(3, true), block(4, false)];
+        let blocks = [block(11, false), block(12, true), block(13, false)];
+        let hash = header::hash_from_scale_encoded_header(&blocks[1].scale_encoded_header);
         assert_eq!(
-            nonce_block_hash(&finalized, &blocks),
-            header::hash_from_scale_encoded_header(&[3])
+            nonce_target(&finalized, &blocks, 4, hash, 12),
+            Ok((hash, 12))
         );
+    }
+
+    #[test]
+    fn nonce_target_rejects_other_heads_forks_and_wrong_heights() {
+        let finalized = encoded_header(10, 10);
+        let best = block(12, true);
+        let best_hash = header::hash_from_scale_encoded_header(&best.scale_encoded_header);
+        let mut fork = block(12, false);
+        fork.scale_encoded_header = encoded_header(12, 99);
+        let fork_hash = header::hash_from_scale_encoded_header(&fork.scale_encoded_header);
+        let blocks = [best, fork];
+        // 同高度不同hash、已前进的head、同hash错高度都不能获得可执行目标。
+        for (hash, number) in [
+            (fork_hash, 12),
+            (header::hash_from_scale_encoded_header(&finalized), 10),
+            (best_hash, 13),
+        ] {
+            assert_eq!(nonce_target(&finalized, &blocks, 4, hash, number), Err(ChainAccountNonceError::Conflict));
+        }
+        // Runtime视图尚落后时明确未就绪；不能把自己的best改作请求目标。
+        assert_eq!(nonce_target(&finalized, &blocks, 4, [1; 32], 13), Err(ChainAccountNonceError::NotReady));
+        assert_eq!(nonce_target(&finalized, &blocks, 4, [1; 32], u64::MAX), Err(ChainAccountNonceError::NotReady));
+    }
+
+    #[test]
+    fn nonce_target_rejects_malformed_runtime_header() {
+        let encoded = [0; 3];
+        let hash = header::hash_from_scale_encoded_header(&encoded);
+        assert_eq!(nonce_target(&encoded, &[], 4, hash, 0), Err(ChainAccountNonceError::Integrity));
     }
 
     #[test]

@@ -1,13 +1,13 @@
 //! smoldot typed nonce 快照到 CitizenSDK `AccountNonceSource` 的安全适配。
 //!
-//! 本模块只接受一次 runtime call 返回的账户、nonce、best hash 与高度组合；禁止在调用
-//! 前后另采样 head 并据此推断中间 runtime call 的身份。
+//! 请求的best hash/高度直接传入同次Runtime订阅；仅接受该调用返回的账户与nonce。
+//! 禁止在调用前后另采样head拼接身份，也不把Runtime未就绪折叠成网络证明失败。
 
 use citizen_sdk_contracts::{
-    AccountId32, AccountNonce, AccountNonceSource, BlockFinality, ChainIdentity, ContractErrorCode,
+    AccountId32, AccountNonce, AccountNonceSource, BlockFinality, ChainIdentity, ContractError, ContractErrorCode,
     ContractFuture, ContractResult, VerifiedBlockRef,
 };
-use smoldot_light::ChainAccountNonceSnapshot;
+use smoldot_light::{ChainAccountNonceError, ChainAccountNonceSnapshot};
 
 use crate::client::{contract_error, provider_error, SmoldotVerifiedChainClient};
 
@@ -26,13 +26,27 @@ impl AccountNonceSource for SmoldotVerifiedChainClient {
                     .chain_account_next_index_snapshot(
                         running.chain_id,
                         account_id.as_bytes().to_vec(),
+                        at_best.hash().into_bytes(),
+                        at_best.number(),
                     )
                     .map_err(provider_error)?
             };
-            let snapshot = snapshot_future.await.map_err(provider_error)?;
+            let snapshot = snapshot_future.await.map_err(nonce_error)?;
             account_nonce_from_snapshot(account_id, at_best, snapshot)
         })
     }
+}
+
+// 接纳错误按类型映射；证明请求的原网络诊断保持，不解析自由错误文本。
+fn nonce_error(error: ChainAccountNonceError) -> ContractError {
+    let code = match &error {
+        ChainAccountNonceError::InvalidArgument => ContractErrorCode::InvalidArgument,
+        ChainAccountNonceError::NotReady => ContractErrorCode::NotReady,
+        ChainAccountNonceError::Conflict => ContractErrorCode::Conflict,
+        ChainAccountNonceError::Integrity => ContractErrorCode::Integrity,
+        ChainAccountNonceError::Runtime(_) => ContractErrorCode::Network,
+    };
+    contract_error(code, error.to_string())
 }
 
 fn require_best_request(at_best: VerifiedBlockRef) -> ContractResult<()> {
@@ -169,5 +183,21 @@ mod tests {
             };
             assert_eq!(nonce.value(), value);
         }
+    }
+
+    #[test]
+    fn nonce_admission_errors_keep_their_categories_and_network_diagnostics() {
+        for (error, code) in [
+            (ChainAccountNonceError::InvalidArgument, ContractErrorCode::InvalidArgument),
+            (ChainAccountNonceError::NotReady, ContractErrorCode::NotReady),
+            (ChainAccountNonceError::Conflict, ContractErrorCode::Conflict),
+            (ChainAccountNonceError::Integrity, ContractErrorCode::Integrity),
+        ] {
+            assert_eq!(nonce_error(error).code(), code);
+        }
+        let message = "proof_network=3 network_remote_couldnt_answer=3";
+        let error = nonce_error(ChainAccountNonceError::Runtime(message.into()));
+        assert_eq!(error.code(), ContractErrorCode::Network);
+        assert_eq!(error.message(), message);
     }
 }

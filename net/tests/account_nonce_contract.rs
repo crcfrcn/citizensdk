@@ -1,4 +1,5 @@
-//! smoldot `AccountNonceSource` 的生命周期、账户与单次快照边界。
+//! smoldot `AccountNonceSource` 的公开生命周期与准确best接纳边界。
+//! 块接纳与结果核验的行为回归分别由上游扩展和provider自身单元测试执行。
 
 use citizen_sdk_contracts::{
     AccountId32, AccountNonceSource, ContractErrorCode, FinalizedBlockRef, Hash32, VerifiedBlockRef,
@@ -61,31 +62,4 @@ fn nonce_reads_require_running_lifecycle_and_a_best_anchor() {
         "finalized anchor must not be relabelled as best",
     );
     assert_eq!(wrong_finality.code(), ContractErrorCode::InvalidArgument);
-}
-
-#[test]
-fn provider_consumes_one_identity_bearing_typed_nonce_snapshot() {
-    let source = include_str!("../src/account_nonce.rs");
-    assert_eq!(
-        source
-            .matches(".chain_account_next_index_snapshot(")
-            .count(),
-        1
-    );
-    assert!(!source.contains("get_best_head"));
-    assert!(!source.contains("chain_status_snapshot"));
-    assert!(source.contains("snapshot.account_id.as_slice() != account_id.as_bytes()"));
-    assert!(source.contains("if observed != at_best"));
-
-    let light_base = include_str!("../../smoldot/light-base/src/lib.rs");
-    assert_eq!(
-        light_base
-            .matches("pub fn chain_account_next_index_snapshot(")
-            .count(),
-        1
-    );
-    assert!(light_base.contains("Ok(ChainAccountNonceSnapshot {"));
-    assert!(light_base.contains("block_number,"));
-    assert!(light_base.contains("block_hash,"));
-    assert!(light_base.contains("snapshot.await.map(|snapshot| snapshot.nonce)"));
 }

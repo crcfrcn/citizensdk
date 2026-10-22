@@ -23,11 +23,15 @@ SDK自有边界测试位于`net/tests`，由该crate直接编译，并显式读�
 保留官方顺序，不添加提前广播或已入块优先的分支，也不插入诊断。
 空闲链验收必须证明无需新区块即可执行验证，源码摘要或离线通过不能代替真实验证。
 
-`light-base/src/lib.rs`的SDK typed nonce入口统一使用同次订阅的
-`pin_pinned_block_runtime`，best为最终根或非最终块时均复用准确块已有Runtime，
-不额外下载`:code`和`:heappages`。原`runtime_call`的API版本、状态证明和输出解码
-继续生效，返回的账户、块身份由provider严格核验。该入口的固定阶段耗时默认关闭；
-取消、失败和正常完成共用一次清理动作。RuntimeService和交易池算法均不因该优化改动。
+`light-base/src/lib.rs`的SDK唯一typed nonce入口接收请求账户及已验证best的hash/高度。
+同一Runtime订阅先核对目标身份，Runtime落后明确返回NotReady，换块或高度不符返回Conflict；
+只有准确目标接纳后才调用`pin_pinned_block_runtime`，固定结果的高度仍须再次核对。
+最终根和非最终best共用同一执行路径，不下载额外`:code`/`:heappages`或改查另一块。
+闭集`ChainAccountNonceError`由provider按类型映射，不解析错误正文；证明网络诊断保持。
+原`runtime_call`的API版本、状态证明、三次尝试和u32解码继续生效；返回账户/块仍由provider核验。
+取消、失败和正常完成共用一次清理，固定阶段诊断默认关闭。RuntimeService与交易池算法保持官方基线。
+扩展的块接纳、解码及清理回归归现有`runtime_query_tests`，由唯一产品测试入口按本目录原锁、
+std且不启用Wasmtime定向执行，随后执行原有全量回归。
 
 准确块Runtime上下文入口同样位于既有`light-base/src/lib.rs`：在同一次订阅中
 固定请求hash的Runtime，以同一对象读取版本并执行原Metadata API证明。订阅报告之外
