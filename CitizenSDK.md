@@ -18,6 +18,8 @@ scripts/build.mjs拥有测试、宿主编译及目录装配；独立调用和控
 
 四个原生Job按同一提交生成Android、Apple、LinuxARM、Windows输入；完整Job汇总后装配源码和原生件。正式产物为唯一完整SDK ZIP、JSON回执和SHA256三件，实际生成和核验逻辑以sdk.yml为准。Pub上传未接入。本机开发验收与正式GitHub交付分别记录，开发通过不能代替全部宿主或硬件通过。
 
+LinuxARM与Windows在原生CMake配置前，使用声明锁定的同版官方Flutter分别执行`precache --linux`和`flutter.bat precache --windows`，准备Dart SDK原生头与所选桌面平台缓存。Windows通过原生PowerShell调用并保留命令失败退出；缓存按官方工具正常复用，不强制重取或升级。图像包装继续强制校验`dart_native_api.h`，缺件不得跳过Dart接口或生成占位产物。
+
 版本只由具有完整SDK Artifact的最新成功自动化Run计算；失败和发布Run不递增。自动化、发布分别授权，活动Run及已发布来源不清理。准确执行结果只记录在唯一任务卡。
 
 ### Android源码与包身份

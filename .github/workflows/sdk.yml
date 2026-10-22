@@ -479,6 +479,8 @@ jobs:
         run: |
           if [ ! -d target/cache/flutter/bin ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
           printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          # 原生图像包装先需要同版Dart头；由官方Flutter准备Linux桌面缓存。
+          "$GITHUB_WORKSPACE/target/cache/flutter/bin/flutter" precache --linux
       - name: 编译真实内部宿主并汇入累计SDK
         id: build
         env:
@@ -641,6 +643,11 @@ jobs:
         run: |
           if [ ! -d target/cache/flutter/bin ]; then git clone --depth 1 --branch "$PRODUCT_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter; fi
           printf 'FLUTTER_ROOT=%s/target/cache/flutter\nPUB_CACHE=%s/target/cache/pub\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: 初始化官方Flutter桌面缓存
+        shell: pwsh
+        run: |
+          & "$env:FLUTTER_ROOT/bin/flutter.bat" precache --windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 编译真实内部宿主并汇入累计SDK
         id: build
         env:
