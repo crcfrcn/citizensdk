@@ -335,7 +335,7 @@ async function android(project,work,env,headers){
  const declaration=join(project,'android/build.gradle');if(!lstatSync(declaration).isFile()||lstatSync(declaration).size>65536)throw Error('SDK Android声明无效');
  const version=/implementation 'rustls:rustls-platform-verifier:([^']+)'/u.exec(readFileSync(join(project,'android/build.gradle'),'utf8'))?.[1];
  const verifier=metadata.packages.filter(value=>value.name==='rustls-platform-verifier-android'&&value.version===version);if(verifier.length!==1)throw Error('Android证书组件没有唯一原锁来源');
- const gradleHome=join(dirname(env.CARGO_TARGET_DIR),'gradle-home');mkdirSync(gradleHome,{recursive:true});const maven=join(dirname(verifier[0].manifest_path),'maven');copy(maven,join(project,'android/maven'));
+ const gradleHome=process.env.GRADLE_USER_HOME||join(dirname(env.CARGO_TARGET_DIR),'gradle-home');mkdirSync(gradleHome,{recursive:true});const maven=join(dirname(verifier[0].manifest_path),'maven');copy(maven,join(project,'android/maven'));
  for(const name of ['settings.gradle','build.gradle','native/build.gradle'])put(join(work,'gradle-project',name),`apply from: new File(System.getenv('CITIZENSDK_SOURCE_DIR'), 'android/${name}')\n`);
  const androidEnv={...environment,CITIZENSDK_WORK_DIR:work,CITIZENSDK_SOURCE_DIR:project,CITIZENSDK_ANDROID_BUILD_DIR:join(work,'gradle-output'),CITIZENSDK_ANDROID_CORE_DIR:stage,CITIZENSDK_INTERNAL_INCLUDE_DIR:headers,CITIZENSDK_FLUTTER_ROOT:process.env.FLUTTER_ROOT,GRADLE_USER_HOME:gradleHome};
  await run('gradle',['--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),':native:testReleaseUnitTest',':native:assembleRelease'],{env:androidEnv});
@@ -485,7 +485,7 @@ export async function build({target,test=false,version=process.env.SDK_VERSION||
  const base=join(root,'target',test?'test':'build');mkdirSync(base,{recursive:true});if(realpathSync(base)!==base)throw Error('任务目录经过链接');const work=mkdtempSync(join(base,'sdk-')),cache=claimCache(work);let complete=false,safe=true;
  try{
   if(cache.project)rmSync(cache.project,{recursive:true,force:true});
-  const project=createFlutterSourceView(root,cache.project||join(work,'project'),{flutter:false}),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
+  const project=createFlutterSourceView(root,cache.project||join(work,'project'),{flutter:false}),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
   if(test){
    // 上游扩展有独立workspace/原锁，定向执行真实块接纳与清理回归，不启用Wasmtime。
    await run('cargo',['test','--manifest-path','smoldot/Cargo.toml','-p','smoldot-light','--lib','--no-default-features','--features','std','--locked','runtime_query_tests','--','--test-threads=1'],{cwd:project,env});
