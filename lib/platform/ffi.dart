@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import '../api/citizen_sdk_error.dart';
+
 import 'package:flutter/services.dart' hide Size;
+
+import '../api/citizen_sdk_error.dart';
 import 'bind.dart' as c;
-import 'result.dart';
 import 'citizen_sdk_flutter_codec.dart';
 import 'citizen_sdk_platform.dart';
+import 'result.dart';
 
 /// 业务直接调用同一C ABI；平台消息只承担资源、认证、相机和必要UI。
 final class FfiCitizenSdkPlatform implements CitizenSdkPlatform {
@@ -53,7 +55,7 @@ final class _Session {
 
  String lifecycle()=>withMemory((p){final out=p.m.alloc<Uint32>(4);check(api.citizensdk_get_lifecycle(handle,out));return switch(out.value){1=>'created',2=>'importingState',3=>'starting',4=>'running',5=>'startFailed',6=>'stopped',7=>'disposed',_=>throw failure(9)};});
  void emit(String type,List<Object?> payload){if(!closed)send(type,payload,_event++);}
- String retain(String kind,int value){final key=id+'-'+(_next++).toString();resources[key]=_Resource(kind,value);return key;}
+ String retain(String kind,int value){final key='$id-${_next++}';resources[key]=_Resource(kind,value);return key;}
  _Resource resource(Object? id,String kind){final value=resources[id];if(value==null||value.kind!=kind)throw failure(7);return value;}
  // detach可以在VM尚未消费消息时回收结果；只把已被回收的释放视为幂等。
  void releaseEvent(int result){final code=api.citizensdk_result_release(result);if(code!=0&&code!=2)throw failure(code);}
@@ -65,7 +67,7 @@ final class _Session {
   if(closing){if(result!=0){final code=api.citizensdk_result_release(result);if(code!=0&&code!=2)throw failure(code);}return;}
   try{switch(type){case 3:emit('capabilitiesChanged',[withMemory((p)=>p.capabilities(handle))]);case 4:emit('lifecycleChanged',[lifecycle()]);case 5:emit('historyChanged',[]);case 7:emit('walletChanged',[]);case 6:final value=withMemory((p){final out=p.m.alloc<c.citizensdk_block_ref>(sizeOf<c.citizensdk_block_ref>());check(api.citizensdk_result_get_block_ref(result,out));return block(out.ref);});emit('finalizedBlockChanged',[value]);}}on CitizenSdkException catch(e){if(e.code!=CitizenSdkErrorCode.invalidHandle)rethrow;}finally{if(result!=0)releaseEvent(result);}
  }
- Future<void> drain()async{for(final id in List<int>.of(pending.keys)){final code=api.citizensdk_cancel_request(handle,id);if(code!=0&&code!=4&&code!=7)throw failure(code);}while(pending.isNotEmpty){await Future.wait(pending.values.map((v)=>v.done.future.then<void>((_){} ,onError:(Object _,StackTrace __){})));}}
+ Future<void> drain()async{for(final id in List<int>.of(pending.keys)){final code=api.citizensdk_cancel_request(handle,id);if(code!=0&&code!=4&&code!=7)throw failure(code);}while(pending.isNotEmpty){await Future.wait(pending.values.map((v)=>v.done.future.then<void>((_){} ,onError:(Object _,StackTrace _){})));}}
  void releaseResources(){for(final key in List<String>.of(resources.keys)){final r=resources[key]!;check(switch(r.kind){'preparedWallet'=>api.citizensdk_prepared_wallet_release(handle,r.value),'transaction'=>api.citizensdk_prepared_transaction_release(handle,r.value),_=>api.citizensdk_result_release(r.value)});resources.remove(key);}}
  Pointer<c.citizensdk_account_id> accounts(Memory m,Object? raw,int max){final list=raw! as List<Object?>;if(list.length>max)throw failure(1);final out=m.alloc<c.citizensdk_account_id>(32*list.length);for(var i=0;i<list.length;i++){final bytes=unhex(list[i],32);for(var j=0;j<32;j++){out[i].bytes[j]=bytes[j];}}return out;}
  Pointer<c.citizensdk_transaction_execution_id> executionId(Memory m,Object? raw){final data=unhex(raw,16);return m.bytes(data).cast<c.citizensdk_transaction_execution_id>();}
@@ -80,7 +82,7 @@ final class _Session {
    final p=Projection(api,m);final out=m.alloc<Uint64>(8);
    switch(method){
     case 'getCapabilities':return[p.capabilities(handle)];
-    case 'getGenesisHash':final bytes=m.alloc<Uint8>(32);check(api.citizensdk_get_genesis_hash(handle,bytes));return['0x'+bytes.asTypedList(32).map((b)=>b.toRadixString(16).padLeft(2,'0')).join()];
+    case 'getGenesisHash':final bytes=m.alloc<Uint8>(32);check(api.citizensdk_get_genesis_hash(handle,bytes));return['0x${bytes.asTypedList(32).map((b)=>b.toRadixString(16).padLeft(2,'0')).join()}'];
     case 'cancelOperation':final target=operations[u64(f[0])];if(target==null)return[false];final code=api.citizensdk_cancel_request(handle,target);if(code==4||code==7)return[false];check(code);return[true];
     case 'cancelSigning':final b=m.alloc<Uint8>(1);check(api.citizensdk_cancel_signing_session(handle,m.view(f[0],128),b));return[b.value==1];
     case 'copyRecoveryPhrase':return[m.copy((b,cap,n)=>api.citizensdk_prepared_wallet_copy_mnemonic(handle,resource(f[0],'preparedWallet').value,b,cap,n),1024)];

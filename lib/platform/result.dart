@@ -25,7 +25,7 @@ void check(int code){if(code!=0)throw failure(code);}
 int u64(Object? value){if(value is! String||!RegExp(r'^(0|[1-9][0-9]{0,19})$').hasMatch(value))throw failure(1);final n=BigInt.parse(value);if(n.bitLength>64)throw failure(1);return n.toSigned(64).toInt();}
 String decimal(int n)=>BigInt.from(n).toUnsigned(64).toString();
 Uint8List unhex(Object? raw,int length){if(raw is! String||raw.length!=2+length*2||!RegExp(r'^0x[0-9a-f]+$').hasMatch(raw))throw failure(1);return Uint8List.fromList(List<int>.generate(length,(i)=>int.parse(raw.substring(2+i*2,4+i*2),radix:16)));}
-String hex(Array<Uint8> bytes,int length)=>'0x'+List<String>.generate(length,(i)=>bytes[i].toRadixString(16).padLeft(2,'0')).join();
+String hex(Array<Uint8> bytes,int length)=>'0x${List<String>.generate(length,(i)=>bytes[i].toRadixString(16).padLeft(2,'0')).join()}';
 String u128(c.citizensdk_u128 value)=>((BigInt.from(value.high).toUnsigned(64)<<64)|BigInt.from(value.low).toUnsigned(64)).toString();
 List<Object?> block(c.citizensdk_block_ref value)=>[hex(value.hash,32),decimal(value.number),switch(value.finality){1=>'best',2=>'finalized',_=>throw failure(9)}];
 
