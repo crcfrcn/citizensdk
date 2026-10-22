@@ -10,7 +10,7 @@
 
 产品对外声明以scripts/config.mjs和scripts/build.mjs为准，控制台只作为可选调度方交付已授权输入，不把外部适配文件路径登记为本产品接口。缓存只提供加速，版本与依赖选择仍归本仓真实声明。
 
-塔塔自动化验收核对准确成功Run与完整Artifact；独立发布验收另核对来源Run/attempt/SHA、准确Tag、非草稿非预发布Release及三件原始附件的下载字节。任务与版本运行证据仅记唯一任务卡。
+塔塔自动化验收核对准确Run/attempt/SHA、完整Artifact、准确Tag、非草稿非预发布Release及三件原始附件回读字节，并核对同类历史和宿主缓存收尾。任务与版本运行证据仅记唯一任务卡。
 
 ## 当前构建与交付边界
 
@@ -3234,7 +3234,7 @@ SDK在本仓独立拥有实现和测试，不依赖独立公民钱包的代码�
 
 ## 四流程边界与静态验收（2026-10-10）
 
-GitHub塔塔自动化和发布只使用.github/workflows/sdk.yml的显式action；四宿主原生件在自动化Run中汇总为完整Artifact，独立发布Run只下载该原件并回读Release与Tag。自动化按钮不执行发布。
+GitHub塔塔自动化只使用.github/workflows/sdk.yml；四宿主原生件在同一Run中汇总为完整Artifact，经真实消费验收后生成正式Release/Tag并完成历史收尾。启动该完整流程须明确授权正式发布与远端清理。
 
 ## 配置需求公开接口
 
@@ -3306,7 +3306,7 @@ Flutter Linux官方后端固定使用clang/clang++名称；本轮PATH将这两�
 
 ## 外部调用入口
 
-本仓scripts/config.mjs的describeAction声明release、publish、cleanup和SDK平台。release是调用方现有塔塔自动化流程标识，对应automate；publish接收inputs.sourceRun，对应独立发布；cleanup只清理Run。调用方交付已授权令牌及标准read/dispatch传输，独立执行与控制台调度共用build.mjs实现。
+本仓scripts/config.mjs的describeAction声明release、cleanup和SDK平台。release沿用调用方现有塔塔自动化流程标识，对应automate；cleanup复用本仓历史收尾。调用方交付已授权令牌及标准read/dispatch传输，独立执行与控制台调度共用build.mjs实现。
 
 Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前目标release/libcitizensdk.a、二维码CMake根目录libcitizensdk_qr_image.a及zxing/core/libZXing.a。不递归搜索Cargo内部缓存或把同名中间件当最终件，正式库缺失、为空或真实链接失败仍失败；不删除缓存解决路径选择错误。Windows Flutter测试的整数断言直接读取Value已有int64_t类型，测试夹具观察回调沿用原成员，严格告警及失败阶段断言不变。
 
@@ -3320,9 +3320,9 @@ nonce与Metadata调用证明的网络失败在原RuntimeService失败分支复�
 
 Windows v2错误详情的消息固定在索引6，回读消息断言仍要求busy；不改七字段合同。直接Session序号合同测试先调用现有accept_request_sequence，经真实Core观察重复序号Conflict，回调抛错不退回序号，原冲突断言保持。未知方法使用官方StandardMethodCodec标准错误包且details=null；已知方法继续由唯一方法表及原七字段校验约束。未知输入不回显到方法详情，不把空回包当通过；插件回归仍要求一次非空标准回包和原Unsupported错误码，并额外检查空详情。
 
-Apple现有Rust、Dart回归步骤仅设置CITIZENSDK_TRANSACTION_DIAGNOSTICS=1，启用现有固定阶段、耗时和结果诊断，不改变生产请求、证明、安全检查、超时或重试。产品观察循环遇到fetch failed或GitHub HTTP 408/429/500/502/503/504时按既有间隔继续只读同一Run，不重复派发；认证、权限及其他错误明确失败，原Run终态后仍执行原清理。
+Apple现有Rust、Dart回归步骤仅设置CITIZENSDK_TRANSACTION_DIAGNOSTICS=1，启用现有固定阶段、耗时和结果诊断，不改变生产请求、证明、安全检查、超时或重试。产品仅派发一次并返回准确Run回执，观察归调度方，GitHub原Run末尾独立执行本仓收尾；无效或不确定派发回执如实失败，不重复派发。
 
-配置只保留数据和流程声明；版本计算、准确Run观察及清理唯一归scripts/build.mjs。cleanup不改动Release/Tag；旧发布资产只在独立发布完成并读回新正式版后按来源归属清理。失败明确报错，不重跑构建或重新派发。
+配置只保留数据和流程声明；版本计算、准确Run派发及GitHub收尾唯一归scripts/build.mjs。新正式版三件资产与Tag先读回确认，再按来源归属清理旧正式版；失败明确报错，不重跑构建或重新派发。
 
 Metadata_metadata的原runtime_call错误转换仅在既有诊断开关启用时，经RuntimeDiagnosticSpan输出固定RuntimeCallError类别、嵌套执行或证明/网络类别及条目数。分类只匹配枚举，不格式化上游错误、不输出节点/账户/块/证明/Runtime载荷；原Metadata proof execution failed返回、请求参数、证明验证、超时和清理保持不变。no_std不读取环境或输出诊断；同文件runtime_query_tests覆盖错误分类、空错误集和重复证明缺项，全部原断言保留。
 
@@ -3387,17 +3387,21 @@ Core公开入口148项，含新增attach/invoke/detach；4项存储私有入口�
 
 Pub dry-run仅检查拟选择文件和元数据，不验证平台二进制存在或运行；完整性由实际原生构建和package入口负责。固定依赖版本和单一技术文档是本产品的明确选择，不为消除Pub建议而放宽版本范围或新增占位变更日志。SDK有意保留原公开C接口的自定义宿主装配能力；它不是默认路径的运行时回退。
 
-## 自动化与发布授权边界
+## 塔塔自动化与完整SDK交付
 
-产品不设独立编译流程；test、native和package只是塔塔自动化的内部作业命令。塔塔自动化只在GitHub执行，发布在成功后另行授权，不以开发、保存、推送或只读检查授权代替。
+唯一sdk.yml只接收冻结main SHA和候选版本，在同一Run完成四宿主测试编译、完整组包、真实消费验收、正式Release/Tag及历史清理。正式交付已并入塔塔自动化；开发、静态复核及保存推送不自动授予流程执行权限，含正式发布与远端删除的运行须明确授权。test、native、package、version、verify-publication和cleanup均为本仓内部命令，不另建编译或发布Run。
 
-唯一sdk.yml通过workflow_dispatch显式选择action=automation或publish，冻结main SHA与版本。自动化只有contents/read和actions/read权限，只执行原回归、四宿主构建、完整组包和Artifact上传；contents/write只授予publish作业。调用方既有release流程身份表示塔塔自动化；独立publish入口要求inputs.sourceRun，不保留自动化后自动发布的实现。
+构建与组包作业保持contents/read、actions/read；publish作业只取得contents/write与actions/read，cleanup作业取得contents/write与actions/write。同仓同SDK并发组不取消活动Run，已有活动Run时拒绝重复派发。客户端只派发一次并返回准确Run，观察中断不会阻塞GitHub收尾。失败历史仅核对仓库、工作流、main、事件、SHA、run_number与attempt归属，不要求旧失败标题具备成功交付版本。
 
-发布前后均核对来源Run属于本仓sdk.yml/main/workflow_dispatch，完成且成功，attempt/SHA/版本不变，完整Artifact ID唯一、未过期且有GitHub完整性信息；来源SHA须为当前main。精确下载source_run和source_artifact，不从名称猜最新件。三件原文件只读校验：来源回执、ZIP摘要、JSON摘要与校验文件闭合；上传后逐件下载比较原字节，Tag指向同一SHA，Release必须正式可见。发布不重编、不改原件、不递增版本；不确定派发不重发，未知或已变化状态失败封闭，不自动删除正式发布作为回滚。
+四份内部原生件按GitHub官方Artifact跨作业传递到汇总执行机，不下载到用户本机。解包路径以${SDK_VERSION}、${target}显式界定变量和中文中点边界；任一归档缺件或错版本仍失败。完整包实际消费验收通过后上传唯一完整Artifact，publish只按同Run明确Artifact ID下载原三件ZIP/JSON/sha256，不重编、不猜最新件、不改原字节。校验当前main、Run/attempt/版本、Artifact归属及完整性后创建草稿与准确SHA的Tag，上传后逐件下载比较原字节，再设为正式可见并回读。已有候选Release/Tag拒绝覆盖；失败收尾仅撤销归属准确的本轮草稿，已可见正式版保留并明确报错，不自动回滚。
 
-自动化、发布和cleanup只清理本仓工作流Run，按两类流程各保留最新成功与失败，保护活动Run、未知流程及现存发布回执引用的生产/发布Run。活动发布期间保留所有成功自动化来源；删除前重新核对状态、attempt及归属。新正式版三件资产与Tag读回成功后，独立发布才删除归属明确且版本较旧的Release/Tag；不删除其它产品、较新版本或活动来源。清理失败如实失败，不改写原Run结论。
+cleanup在原Run最后执行，按select、四宿主、complete、publish的真实前置结果选择本轮成功或失败候选；此时Run仍可能in_progress，不改写GitHub最终结论。正常收尾只替换同类历史：新成功删除旧成功并保留原最新失败；新失败删除旧失败并保留原最新成功与正式版。超时、取消等非成功终态归失败槽位，活动Run保护。原积压历史由同一规则补齐到最新成功、最新失败各一条，不设第二套迁移或分流程保留逻辑。成功或失败尚不存在时不伪造记录。
 
-依据：[GitHub官方手动派发](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event)、[跨Run Artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data)及[作业级最小权限](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token)。本仓模式与目录组织是满足这些官方接口的实现选择，官方没有规定本产品的阶段数。
+新正式版三件附件、ZIP摘要、原完整Artifact、回执来源及Tag确认后才清理归属准确的旧Release/Tag。旧成功Run最后删除，删除前复核终态、SHA、attempt与run_number，删除后回查Run、日志及Artifact；删除或回查失败如实失败，不能报告收口完成。SDK业务、密码学、C ABI、TLS证书/主机名、实网证明和原测试门槛保持。
+
+四种SDK宿主缓存分别保留Linux-X64（Android）、macOS-ARM64（Apple）、Linux-ARM64、Windows-X64的最新一份；仅本轮同attempt新缓存已保存且大小有效时淘汰同宿主旧份。本轮未保存新缓存则保留原缓存，不混用系统与架构，也不清理其它ref或其它产品缓存。旧缓存删除前核对新旧身份，删除后按官方列表接口回查；失败明确报告。
+
+依据：[GitHub跨作业Artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[作业依赖与最小权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[Run删除接口](https://docs.github.com/en/rest/actions/workflow-runs)及[缓存删除接口](https://docs.github.com/en/rest/actions/cache)。同Run交付与成功/失败各留一条是本产品要求，并非官方规定的保留数量。
 
 ## 资源方法与错误边界
 

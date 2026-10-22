@@ -1,32 +1,15 @@
-# SDK唯一公开平台；四个内部宿主独立构建，内部传递包按用户确认增加目标后缀。
+# SDK唯一公开平台；四宿主内部传递原生件，完整组包后在同一Run正式交付。
 name: 公民SDK·SDK
 run-name: 公民SDK·SDK·v${{ inputs.version }}
 'on':
   workflow_dispatch:
     inputs:
-      action:
-        description: 独立授权的执行流程
-        required: true
-        type: choice
-        options: [automation, publish]
       sha:
         description: 已确认的main提交
         required: true
         type: string
-      source_run:
-        description: 发布来源自动化Run；自动化时留空
-        required: false
-        type: string
-      source_attempt:
-        description: 准确来源attempt
-        required: false
-        type: string
-      source_artifact:
-        description: 准确完整SDK Artifact ID
-        required: false
-        type: string
       version:
-        description: 自动化候选版本或准确发布来源版本
+        description: 本轮完整SDK候选版本
         required: true
         type: string
 concurrency:
@@ -36,11 +19,7 @@ permissions:
   contents: read
   actions: read
 env:
-  SDK_ACTION: ${{ inputs.action }}
   SOURCE_SHA: ${{ inputs.sha }}
-  SOURCE_RUN: ${{ inputs.source_run }}
-  SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
-  SOURCE_ARTIFACT: ${{ inputs.source_artifact }}
   SDK_VERSION: ${{ inputs.version }}
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'
 jobs:
@@ -48,25 +27,16 @@ jobs:
     name: 公民SDK·SDK·v${{ inputs.version }}
     runs-on: ubuntu-24.04
     steps:
-      - name: 核对明确流程和冻结源码
+      - name: 核对候选版本和冻结源码
         shell: bash
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" = refs/heads/main && "$GITHUB_SHA" = "$SOURCE_SHA" ]]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "${#SDK_VERSION}" -le 64 && "$SDK_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          case "$SDK_ACTION" in automation|publish) ;; *) exit 1 ;; esac
-      - name: 'CitizenSDK: automation'
-        if: inputs.action == 'automation'
-        run: test -z "$SOURCE_RUN$SOURCE_ATTEMPT$SOURCE_ARTIFACT"
-      - name: 'CitizenSDK: publish'
-        if: inputs.action == 'publish'
-        shell: bash
-        run: |
-          [[ "$SOURCE_RUN" =~ ^[1-9][0-9]*$ && "$SOURCE_ATTEMPT" =~ ^[1-9][0-9]*$ && "$SOURCE_ARTIFACT" =~ ^[1-9][0-9]*$ ]]
   android:
     needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
@@ -206,7 +176,7 @@ jobs:
   apple:
     needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
+    if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 240
     defaults:
@@ -351,7 +321,7 @@ jobs:
   linux:
     needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
@@ -532,7 +502,7 @@ jobs:
   windows:
     needs: select
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-2025
     timeout-minutes: 240
     defaults:
@@ -699,9 +669,11 @@ jobs:
   complete:
     needs: [android, apple, linux, windows]
     name: 公民SDK·SDK·v${{ inputs.version }}
-    if: github.ref == 'refs/heads/main' && inputs.action == 'automation'
+    if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 240
+    outputs:
+      artifact: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -727,7 +699,7 @@ jobs:
       - name: 解包累计真实原生件
         run: |
           mkdir -p "$RUNNER_TEMP/native"
-          for target in Android Apple LinuxARM Windows; do tar -xzf "$RUNNER_TEMP/previous/公民SDK·SDK·v$SDK_VERSION·$target/公民SDK·SDK·v$SDK_VERSION.tgz" -C "$RUNNER_TEMP/native"; done
+          for target in Android Apple LinuxARM Windows; do tar -xzf "${RUNNER_TEMP}/previous/公民SDK·SDK·v${SDK_VERSION}·${target}/公民SDK·SDK·v${SDK_VERSION}.tgz" -C "${RUNNER_TEMP}/native"; done
       - name: 编译并汇总完整SDK
         id: build
         run: |
@@ -747,8 +719,8 @@ jobs:
           (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
           CITIZENSDK_PACKAGE="$artifact" node scripts/build.mjs consume "$GITHUB_SHA" "$work/consumer" >/dev/null
           printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
-          printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 公民SDK·SDK·v${{ inputs.version }}
           path: ${{ steps.build.outputs.path }}
@@ -765,21 +737,24 @@ jobs:
           test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
           rm -rf "$SDK_WORK_DIRECTORY"
   publish:
-    needs: select
-    if: github.ref == 'refs/heads/main' && inputs.action == 'publish'
+    needs: complete
+    if: github.ref == 'refs/heads/main'
     name: 公民SDK·SDK·v${{ inputs.version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
       actions: read
+    env:
+      SDK_ARTIFACT: ${{ needs.complete.outputs.artifact }}
+      SDK_BUILD_RESULT: ${{ needs.complete.result }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - id: bootstrap
-        name: 从同仓声明读取Node
+        name: 从本产品声明读取Node版本
         shell: bash
         run: |
           node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
@@ -788,60 +763,31 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: ${{ steps.bootstrap.outputs.node }}
-      - name: 发布前核对来源Run和Artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/build.mjs source "$SOURCE_RUN" > "$RUNNER_TEMP/source.json"
-          jq -e --argjson run "$SOURCE_RUN" --argjson attempt "$SOURCE_ATTEMPT" --argjson artifact "$SOURCE_ARTIFACT" --arg sha "$SOURCE_SHA" --arg version "$SDK_VERSION" '.sourceRun==$run and .sourceAttempt==$attempt and .artifactID==$artifact and .sourceSha==$sha and .version==$version' "$RUNNER_TEMP/source.json" >/dev/null
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: ${{ inputs.source_artifact }}
-          run-id: ${{ inputs.source_run }}
-          github-token: ${{ github.token }}
+          artifact-ids: ${{ needs.complete.outputs.artifact }}
+          merge-multiple: true
           path: ${{ runner.temp }}/publication
-      - name: 仅发布已验证原产物
+      - name: 发布本轮已验收完整SDK并回读原件
         env:
           GH_TOKEN: ${{ github.token }}
           SDK_ARTIFACT_DIRECTORY: ${{ runner.temp }}/publication
         shell: bash
         run: |
           set -euo pipefail
-          name="公民SDK·SDK·v$SDK_VERSION"
-          export SDK_NAME="$name"
+          name="公民SDK·SDK·v${SDK_VERSION}"
           notes="$RUNNER_TEMP/publication.json"
           node scripts/build.mjs verify-publication "$SDK_ARTIFACT_DIRECTORY" > "$notes"
           encoded="$(jq -rn --arg name "$name" '$name|@uri')"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
-          jq --arg name "$name" '[.[][]|select(.tag_name==$name)]' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/existing.json"
-          count="$(jq length "$RUNNER_TEMP/existing.json")"
-          [[ "$count" -le 1 ]]
-          draft=true
-          if [ "$count" -eq 1 ]; then
-            jq -e --slurpfile expected "$notes" '.[0].body|fromjson|.product_id==$expected[0].product_id and .platform==$expected[0].platform and .software_version==$expected[0].software_version and .git_commit_sha==$expected[0].git_commit_sha and .producer_run_id==$expected[0].producer_run_id and .producer_run_attempt==$expected[0].producer_run_attempt and .assets==$expected[0].assets' "$RUNNER_TEMP/existing.json" >/dev/null
-            old_run="$(jq -er '.[0].body|fromjson|.publication_run_id' "$RUNNER_TEMP/existing.json")"
-            old_attempt="$(jq -er '.[0].body|fromjson|.publication_run_attempt' "$RUNNER_TEMP/existing.json")"
-            [[ "$old_run" =~ ^[1-9][0-9]*$ && "$old_attempt" =~ ^[1-9][0-9]*$ ]]
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$SOURCE_SHA" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .head_branch=="main" and .path==".github/workflows/sdk.yml" and .event=="workflow_dispatch"' >/dev/null
-            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' >/dev/null
-            draft="$(jq -r '.[0].draft' "$RUNNER_TEMP/existing.json")"
-            if [ "$draft" = true ]; then
-              jq -e --arg name "$name" 'all(.[0].assets[]; .label==($name+".zip") or .label==($name+".json") or .label==($name+".sha256"))' "$RUNNER_TEMP/existing.json" >/dev/null
-              gh release edit "$name" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
-              files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
-              gh release upload "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-            fi
-          else
-            # 保留未确认状态供下一次明确授权核验；不自动回滚或删除正式发布。
-            ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$name" --jq '.data.repository.ref.target.oid // ""')"
-            test -z "$ref"
-            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$name" -f sha="$SOURCE_SHA" > "$RUNNER_TEMP/tag.json"
-            jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' "$RUNNER_TEMP/tag.json" >/dev/null
-            files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
-            gh release create "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_SHA" --title "$name" --notes-file "$notes" --draft
-          fi
+          jq -e --arg name "$name" '[.[][]|select(.tag_name==$name)]|length==0' "$RUNNER_TEMP/releases.json" >/dev/null
+          ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$name" --jq '.data.repository.ref.target.oid // ""')"
+          test -z "$ref"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" | jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$name" -f sha="$SOURCE_SHA" > "$RUNNER_TEMP/tag.json"
+          jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' "$RUNNER_TEMP/tag.json" >/dev/null
+          files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+          gh release create "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_SHA" --title "$name" --notes-file "$notes" --draft
           back="$RUNNER_TEMP/readback"
           mkdir "$back"
           gh release view "$name" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/assets.json"
@@ -852,9 +798,37 @@ jobs:
             gh release download "$name" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
             cmp "$file" "$back/$label"
           done
-          if [ "$draft" = true ]; then gh release edit "$name" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest; fi
+          gh release edit "$name" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" > "$RUNNER_TEMP/published.json"
           jq -e --arg name "$name" --arg sha "$SOURCE_SHA" '.draft==false and .prerelease==false and .published_at!=null and .name==$name and .tag_name==$name and .target_commitish==$sha and (.assets|length)==3' "$RUNNER_TEMP/published.json" >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$SOURCE_SHA" '.object.type=="commit" and .object.sha==$sha' >/dev/null
-          release_id="$(jq -er .id "$RUNNER_TEMP/published.json")"
-          node scripts/build.mjs cleanup-publications "$release_id"
+  cleanup:
+    needs: [select, android, apple, linux, windows, complete, publish]
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: write
+    env:
+      SDK_RESULTS: '{"select":"${{ needs.select.result }}","android":"${{ needs.android.result }}","apple":"${{ needs.apple.result }}","linux":"${{ needs.linux.result }}","windows":"${{ needs.windows.result }}","complete":"${{ needs.complete.result }}","publish":"${{ needs.publish.result }}"}'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        shell: bash
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
+      - name: 按本轮结果替换同类历史并保留最新宿主缓存
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/build.mjs cleanup

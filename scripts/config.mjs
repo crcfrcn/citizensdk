@@ -24,13 +24,12 @@ export const nativeSources=Object.freeze({
 });
 
 
-// 这里只声明本仓执行入口；版本、网络、轮询及清理全部归既有build脚本。
-import {automate,publish,cleanupRuns} from './build.mjs';
-export function describeAction({flow,platform,inputs={}}){
+// 这里只声明本仓执行入口；版本、派发和GitHub收尾全部归既有build脚本。
+import {automate,cleanupRuns} from './build.mjs';
+export function describeAction({flow,platform}){
  if(platform!=='sdk')throw Error('本产品尚未声明该平台：'+platform);
- // release是调用方既有的塔塔自动化身份；publish才是独立发布动作。
+ // release沿用调用方既有塔塔自动化身份；完整交付由同一Run负责。
  if(flow==='release')return {repository,launch:automate};
- if(flow==='publish')return {repository,launch:options=>publish({...options,sourceRun:inputs.sourceRun})};
  if(flow==='cleanup')return {repository,launch:cleanupRuns};
  throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
 }
