@@ -20,7 +20,7 @@ scripts/build.mjs拥有测试、宿主编译及目录装配；独立调用和控
 
 LinuxARM与Windows在原生CMake配置前，使用声明锁定的同版官方Flutter分别执行`precache --linux`和`flutter.bat precache --windows`，准备Dart SDK原生头与所选桌面平台缓存。Windows通过原生PowerShell调用并保留命令失败退出；缓存按官方工具正常复用，不强制重取或升级。图像包装继续强制校验`dart_native_api.h`，缺件不得跳过Dart接口或生成占位产物。
 
-Linux与Windows的全局Host C入口以`citizen_sdk::`显式引用`include/input.hpp`中的共用输入校验、边界限制、HostError与异常映射。两端复用同一实现，保持公开C接口、校验条件及错误码。
+Linux与Windows的全局Host C入口以`citizen_sdk::`显式引用`include/input.hpp`中的共用输入校验、边界限制、HostError与异常映射。两端复用同一实现，保持公开C接口、校验条件及错误码。原生合同测试同样直接引用`citizen_sdk`共用类型，平台子命名空间只提供所属适配类型；测试与生产目标均保留严格编译要求及真实正常、失败和安全边界断言。
 
 版本只由具有完整SDK Artifact的最新成功自动化Run计算；失败和发布Run不递增。自动化、发布分别授权，活动Run及已发布来源不清理。准确执行结果只记录在唯一任务卡。
 

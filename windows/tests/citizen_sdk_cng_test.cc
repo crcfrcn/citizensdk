@@ -24,10 +24,10 @@ void expect(bool condition) {
   if (!condition) throw std::runtime_error("CitizenSDK isolated TPM contract failed");
 }
 
-SensitiveBuffer test_password() {
+citizen_sdk::SensitiveBuffer test_password() {
   // 公开合成输入，不是生产口令、账户材料或可恢复真实机密的夹具。
   constexpr uint8_t input[] = {'s', 'y', 'n', 't', 'h', 'e', 't', 'i', 'c', '-', 't', 'p', 'm'};
-  return SensitiveBuffer(input, sizeof(input));
+  return citizen_sdk::SensitiveBuffer(input, sizeof(input));
 }
 
 bool isolated_tpm_enabled() {
@@ -50,8 +50,8 @@ void require_authentication_failure(SECURITY_STATUS status) {
       !mapped.dictionary_attack_lockout);
 }
 
-void unauthorized_decrypt(NCRYPT_PROV_HANDLE provider, const VaultObject &object,
-                          const Bytes &wrapped, bool wrong_password) {
+void unauthorized_decrypt(NCRYPT_PROV_HANDLE provider, const citizen_sdk::VaultObject &object,
+                          const citizen_sdk::Bytes &wrapped, bool wrong_password) {
   NcryptHandle key;
   const std::wstring name(object.key_name.begin(), object.key_name.end());
   const SECURITY_STATUS opened = ::NCryptOpenKey(provider, &key.value, name.c_str(), 0,
@@ -71,7 +71,7 @@ void unauthorized_decrypt(NCRYPT_PROV_HANDLE provider, const VaultObject &object
       return;
     }
   }
-  SensitiveBuffer output(32);
+  citizen_sdk::SensitiveBuffer output(32);
   BCRYPT_OAEP_PADDING_INFO padding{BCRYPT_SHA256_ALGORITHM, nullptr, 0};
   DWORD written = 0;
   require_authentication_failure(::NCryptDecrypt(key.value,
@@ -96,14 +96,14 @@ int cold_process_child(int count, wchar_t **arguments) {
         std::all_of(name.begin() + 11, name.end(),
             [&](wchar_t value) { return hex_digit(value) >= 0; }) &&
         ciphertext.size() == 512 && (mode == L"no-pin" || mode == L"wrong-pin"));
-    Bytes wrapped(256);
+    citizen_sdk::Bytes wrapped(256);
     for (std::size_t index = 0; index < wrapped.size(); ++index) {
       const int high = hex_digit(ciphertext[index * 2]);
       const int low = hex_digit(ciphertext[index * 2 + 1]);
       expect(high >= 0 && low >= 0);
       wrapped[index] = static_cast<uint8_t>((high << 4) | low);
     }
-    VaultObject object;
+    citizen_sdk::VaultObject object;
     object.key_name.reserve(name.size());
     for (const wchar_t value : name) object.key_name.push_back(static_cast<char>(value));
     NcryptHandle provider;
@@ -116,7 +116,7 @@ int cold_process_child(int count, wchar_t **arguments) {
   } catch (...) { return 1; }
 }
 
-void cold_process_rejection(const VaultObject &object, const Bytes &wrapped,
+void cold_process_rejection(const citizen_sdk::VaultObject &object, const citizen_sdk::Bytes &wrapped,
                             bool wrong_password) {
   expect(isolated_tpm_enabled() && wrapped.size() == 256);
   std::array<wchar_t, 32768> executable{};
@@ -156,21 +156,21 @@ void cold_process_rejection(const VaultObject &object, const Bytes &wrapped,
 void isolated_tpm_contract() {
   Cng cng;
   expect(cng.availability() == CngAvailability::kAvailable);
-  WalletKey wallet{};
+  citizen_sdk::WalletKey wallet{};
   expect(::BCryptGenRandom(nullptr, wallet.generation.data(),
       static_cast<ULONG>(wallet.generation.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0);
-  std::optional<VaultObject> object;
+  std::optional<citizen_sdk::VaultObject> object;
   bool deleted = false;
   try {
-    SensitiveBuffer password = test_password();
+    citizen_sdk::SensitiveBuffer password = test_password();
     object = cng.create_key(wallet, password);
     expect(cng.validate_key(*object));
-    SensitiveBuffer input(32);
+    citizen_sdk::SensitiveBuffer input(32);
     expect(::BCryptGenRandom(nullptr, input.data(), 32, BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0);
-    const Bytes wrapped = cng.encrypt_dek(*object, input.data());
+    const citizen_sdk::Bytes wrapped = cng.encrypt_dek(*object, input.data());
     expect(wrapped.size() == 256);
     const auto positive = [&] {
-      SensitiveBuffer output(32);
+      citizen_sdk::SensitiveBuffer output(32);
       cng.decrypt_dek(*object, wrapped, password, output.data());
       expect(std::memcmp(output.data(), input.data(), 32) == 0);
     };
@@ -194,14 +194,14 @@ void isolated_tpm_contract() {
     positive();
     cold_process_rejection(*object, wrapped, true);
     positive();
-    const VaultObject recovered = cng.create_key(wallet, password);
+    const citizen_sdk::VaultObject recovered = cng.create_key(wallet, password);
     expect(recovered.key_name == object->key_name && recovered.public_blob == object->public_blob &&
         recovered.name == object->name && recovered.auth_salt == object->auth_salt);
-    VaultObject changed = *object;
+    citizen_sdk::VaultObject changed = *object;
     changed.name.back() ^= 1;
     bool rejected = false;
     try { (void)cng.validate_key(changed); }
-    catch (const HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+    catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
     expect(rejected);
     cng.delete_key(wallet, object);
     deleted = true;
@@ -253,13 +253,13 @@ int wmain(int count, wchar_t **arguments) {
     }
     bool rejected = false;
     try { validate_cng_key_properties(changed); }
-    catch (const HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
+    catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
     assert(rejected);
   }
 
   // 格式边界使用公开合成模数；这不是可用 RSA key，也不宣称执行过 TPM。
   const BCRYPT_RSAKEY_BLOB header{BCRYPT_RSAPUBLIC_MAGIC, 2048, 3, 256, 0, 0};
-  Bytes public_blob(sizeof(header) + 3 + 256, 0);
+  citizen_sdk::Bytes public_blob(sizeof(header) + 3 + 256, 0);
   std::memcpy(public_blob.data(), &header, sizeof(header));
   public_blob[sizeof(header)] = 1;
   public_blob[sizeof(header) + 2] = 1;
@@ -278,23 +278,23 @@ int wmain(int count, wchar_t **arguments) {
     }
     bool invalid = false;
     try { validate_cng_public_blob(changed); }
-    catch (const HostError &error) { invalid = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
+    catch (const citizen_sdk::HostError &error) { invalid = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
     assert(invalid);
   }
 
-  WalletKey wallet{};
+  citizen_sdk::WalletKey wallet{};
   wallet.generation[0] = 0x12;
   assert(cng_key_name(wallet) == "citizensdk.12000000000000000000000000000000");
   wallet.wallet_index = 1;
   bool rejected = false;
   try { (void)cng_key_name(wallet); }
-  catch (const HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
   assert(rejected);
   std::array<uint8_t, 32> output{};
   output.fill(0xa5);
   rejected = false;
-  try { Cng().decrypt_dek(VaultObject{}, Bytes{}, SensitiveBuffer{}, output.data()); }
-  catch (const HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+  try { Cng().decrypt_dek(citizen_sdk::VaultObject{}, citizen_sdk::Bytes{}, citizen_sdk::SensitiveBuffer{}, output.data()); }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
   assert(rejected && std::all_of(output.begin(), output.end(), [](uint8_t byte) { return byte == 0; }));
   if (isolated_tpm_enabled()) {
     try { isolated_tpm_contract(); }

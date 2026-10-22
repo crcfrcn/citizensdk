@@ -72,11 +72,11 @@ int main() {
          availability == TpmAvailability::kUnsupported ||
          availability == TpmAvailability::kUnavailable);
 
-  SensitiveBuffer empty_password;
+  citizen_sdk::SensitiveBuffer empty_password;
   bool empty_password_rejected = false;
   try {
     (void)Tpm2().create_key(empty_password);
-  } catch (const HostError &error) {
+  } catch (const citizen_sdk::HostError &error) {
     empty_password_rejected =
         error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
@@ -86,8 +86,8 @@ int main() {
   output.fill(0xa5);
   bool malformed_rejected = false;
   try {
-    Tpm2().decrypt_dek(VaultObject{}, Bytes{}, empty_password, output.data());
-  } catch (const HostError &error) {
+    Tpm2().decrypt_dek(citizen_sdk::VaultObject{}, citizen_sdk::Bytes{}, empty_password, output.data());
+  } catch (const citizen_sdk::HostError &error) {
     malformed_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(malformed_rejected);

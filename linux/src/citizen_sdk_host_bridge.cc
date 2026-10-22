@@ -133,12 +133,6 @@ std::array<uint8_t, 16> id16(citizensdk_host_id128_t value) {
   return result;
 }
 
-std::array<uint8_t, 32> hash32(citizensdk_host_hash32_t value) {
-  std::array<uint8_t, 32> result{};
-  std::copy(std::begin(value.bytes), std::end(value.bytes), result.begin());
-  return result;
-}
-
 WalletKey wallet_key(citizensdk_host_wallet_key_ref_v1_t value) {
   require(value.struct_size >= sizeof(value) && value.abi_version == 1 &&
               value.wallet_index == 0 && value.reserved == 0,

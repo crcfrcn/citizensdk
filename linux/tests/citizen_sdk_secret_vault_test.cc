@@ -150,20 +150,20 @@ int main() {
            availability == CITIZENSDK_HOST_VAULT_UNSUPPORTED ||
            availability == CITIZENSDK_HOST_VAULT_UNAVAILABLE);
 
-    WalletKey invalid{};
+    citizen_sdk::WalletKey invalid{};
     invalid.wallet_index = 1;
     std::array<uint8_t, 16> operation{};
     operation[0] = 1;
     bool wrong_wallet_rejected = false;
     try {
       vault.ensure_wallet_kek(1, invalid, operation);
-    } catch (const HostError &error) {
+    } catch (const citizen_sdk::HostError &error) {
       wrong_wallet_rejected =
           error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
     }
     assert(wrong_wallet_rejected);
 
-    WalletKey missing{};
+    citizen_sdk::WalletKey missing{};
     missing.generation[0] = 2;
     assert(!vault.has_wallet_kek(missing));
     std::array<uint8_t, 32> output{};
@@ -172,19 +172,19 @@ int main() {
     auto reject_wrap = [&] {
       bool rejected = false;
       try { (void)vault.wrap_dek(8, missing, operation, output.data()); }
-      catch (const HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+      catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
       assert(rejected);
     };
     reject_wrap();
     bool add_rejected = false;
     try { vault.authorize_add_accounts(10, missing, operation); }
-    catch (const HostError &error) { add_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+    catch (const citizen_sdk::HostError &error) { add_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
     assert(add_rejected && vault.idle());
     assert(!store.is_generation_active(missing));
     bool missing_rejected = false;
     try {
-      vault.unwrap_dek(9, missing, Bytes{1, 2}, output.data());
-    } catch (const HostError &error) {
+      vault.unwrap_dek(9, missing, citizen_sdk::Bytes{1, 2}, output.data());
+    } catch (const citizen_sdk::HostError &error) {
       missing_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED;
     }
     assert(missing_rejected);

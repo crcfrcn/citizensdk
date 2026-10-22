@@ -324,14 +324,14 @@ int main() {
         (void)camera::copy_qr_frame(invalid == 0 ? nullptr : rgba,
             invalid == 1 ? 3 : sizeof(rgba), invalid == 2 ? 0U : invalid == 3 ? 4097U : 1U,
             1, invalid == 4 ? 3 : invalid == 5 ? INT64_MIN : 4, false);
-      } catch (const camera::HostError &error) {
+      } catch (const citizen_sdk::HostError &error) {
         rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
       }
       assert(rejected);
     }
     bool missing_callbacks = false;
     try { camera::QrCamera invalid_camera({}, {}); }
-    catch (const camera::HostError &error) { missing_callbacks = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+    catch (const citizen_sdk::HostError &error) { missing_callbacks = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
     assert(missing_callbacks);
     camera::QrCamera stopped([](camera::QrFrame) {}, [](auto, auto) {});
     const auto unavailable = stopped.set_torch(true);

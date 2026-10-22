@@ -29,25 +29,25 @@ template <class Function>
 void fails(citizensdk_error_code_t expected, Function &&function) {
   bool rejected = false;
   try { function(); }
-  catch (const HostError &error) { rejected = error.code() == expected; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == expected; }
   assert(rejected);
 }
 
 AuthenticationResult authenticated() {
   constexpr uint8_t value[] = {'s', 'y', 'n', 't', 'h', 'e', 't', 'i', 'c'};
-  return {CITIZENSDK_OK, SensitiveBuffer(value, sizeof(value))};
+  return {CITIZENSDK_OK, citizen_sdk::SensitiveBuffer(value, sizeof(value))};
 }
 
-VaultObject synthetic_object(const WalletKey &key) {
+citizen_sdk::VaultObject synthetic_object(const citizen_sdk::WalletKey &key) {
   BCRYPT_RSAKEY_BLOB header{BCRYPT_RSAPUBLIC_MAGIC, 2048, 3, 256, 0, 0};
-  Bytes public_blob(sizeof(header) + 3 + 256, 0);
+  citizen_sdk::Bytes public_blob(sizeof(header) + 3 + 256, 0);
   std::memcpy(public_blob.data(), &header, sizeof(header));
   public_blob[sizeof(header)] = 1;
   public_blob[sizeof(header) + 2] = 1;
   public_blob[sizeof(header) + 3] = 0x80;
   public_blob.back() = 1;
-  VaultObject object;object.key_name=cng_key_name(key);object.public_blob=std::move(public_blob);
-  object.name=Bytes{1,2,3,4};object.auth_salt=Bytes(key.generation.begin(),key.generation.end());return object;
+  citizen_sdk::VaultObject object;object.key_name=cng_key_name(key);object.public_blob=std::move(public_blob);
+  object.name=citizen_sdk::Bytes{1,2,3,4};object.auth_salt=citizen_sdk::Bytes(key.generation.begin(),key.generation.end());return object;
 }
 
 struct FakeSystem final {
@@ -61,7 +61,7 @@ struct FakeSystem final {
   unsigned deleted{};
   unsigned decrypted{};
   unsigned prompted{};
-  std::map<std::string, VaultObject> keys;
+  std::map<std::string, citizen_sdk::VaultObject> keys;
   std::function<void()> on_create;
   std::function<void()> on_unlock;
   std::function<void()> on_decrypt;
@@ -70,7 +70,7 @@ struct FakeSystem final {
     return {
       [this] { return available; },
       [this] {
-        if (enumerate_fails) throw HostError(CITIZENSDK_ERROR_UNAVAILABLE, "合成系统枚举失败");
+        if (enumerate_fails) throw citizen_sdk::HostError(CITIZENSDK_ERROR_UNAVAILABLE, "合成系统枚举失败");
         std::vector<std::string> names;
         for (const auto &entry : keys) names.push_back(entry.first);
         return names;
@@ -94,7 +94,7 @@ struct FakeSystem final {
         return cancel ? AuthenticationResult{CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED, {}}
                       : authenticated();
       },
-      [this](const WalletKey &key, const SensitiveBuffer &password) {
+      [this](const citizen_sdk::WalletKey &key, const citizen_sdk::SensitiveBuffer &password) {
         assert(!password.empty());
         ++created;
         const auto object = synthetic_object(key);
@@ -102,24 +102,24 @@ struct FakeSystem final {
         if (on_create) on_create();
         return object;
       },
-      [this](const VaultObject &object) {
+      [this](const citizen_sdk::VaultObject &object) {
         return keys.count(object.key_name) == 1;
       },
-      [](const VaultObject &, const uint8_t *input) {
+      [](const citizen_sdk::VaultObject &, const uint8_t *input) {
         assert(input != nullptr);
-        return Bytes(256, 0x2a);
+        return citizen_sdk::Bytes(256, 0x2a);
       },
-      [this](const VaultObject &object, const Bytes &wrapped,
-              const SensitiveBuffer &password, uint8_t *output) {
+      [this](const citizen_sdk::VaultObject &object, const citizen_sdk::Bytes &wrapped,
+              const citizen_sdk::SensitiveBuffer &password, uint8_t *output) {
         assert(keys.count(object.key_name) == 1 && wrapped.size() == 256 && !password.empty());
         ++decrypted;
         std::fill_n(output, 32, 0x3c);
         if (on_decrypt) on_decrypt();
-        if (decrypt_fails) throw HostError(CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED, "synthetic failure");
+        if (decrypt_fails) throw citizen_sdk::HostError(CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED, "synthetic failure");
       },
-      [this](const WalletKey &key, const std::optional<VaultObject> &) {
+      [this](const citizen_sdk::WalletKey &key, const std::optional<citizen_sdk::VaultObject> &) {
         ++deleted;
-        if (delete_fails) throw HostError(CITIZENSDK_ERROR_UNAVAILABLE, "synthetic deletion failure");
+        if (delete_fails) throw citizen_sdk::HostError(CITIZENSDK_ERROR_UNAVAILABLE, "synthetic deletion failure");
         keys.erase(cng_key_name(key));
       }
     };
@@ -132,7 +132,7 @@ void expect(bool value) {
 
 int retire_child(int count, wchar_t **arguments) {
   if (count != 6) return 2;
-  WalletKey wallet{};
+  citizen_sdk::WalletKey wallet{};
   const std::wstring generation(arguments[3]);
   if (generation.size() != 32) return 2;
   for (std::size_t index = 0; index < 16; ++index) {
@@ -151,7 +151,7 @@ int retire_child(int count, wchar_t **arguments) {
   if (!blocked || !proceed) return 2;
   bool busy = false;
   try { GenerationLock denied(wallet, 0); }
-  catch (const HostError &error) { busy = error.code() == CITIZENSDK_ERROR_BUSY; }
+  catch (const citizen_sdk::HostError &error) { busy = error.code() == CITIZENSDK_ERROR_BUSY; }
   if (!busy || !::SetEvent(blocked.get()) ||
       ::WaitForSingleObject(proceed.get(), 30000) != WAIT_OBJECT_0) return 3;
   try {
@@ -159,7 +159,7 @@ int retire_child(int count, wchar_t **arguments) {
     FakeSystem system;
     auto services = system.services();
     bool deleted = false;
-    services.delete_key = [&](const WalletKey &key, const std::optional<VaultObject> &object) {
+    services.delete_key = [&](const citizen_sdk::WalletKey &key, const std::optional<citizen_sdk::VaultObject> &object) {
       // 进入物理删除时必须已经看到父进程写完的对象与本次退休墓碑。
       expect(object.has_value() && !store.is_generation_active(key));
       deleted = true;
@@ -173,8 +173,8 @@ int retire_child(int count, wchar_t **arguments) {
   } catch (...) { return 4; }
 }
 
-void cross_process_retirement(VaultStore &store, const std::filesystem::path &directory) {
-  WalletKey wallet{};
+void cross_process_retirement(citizen_sdk::VaultStore &store, const std::filesystem::path &directory) {
+  citizen_sdk::WalletKey wallet{};
   expect(::BCryptGenRandom(nullptr, wallet.generation.data(),
       static_cast<ULONG>(wallet.generation.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0);
   const std::string narrow_generation = cng_key_name(wallet).substr(11);
@@ -355,7 +355,7 @@ int wmain(int count, wchar_t **arguments) {
   operation[0] = 7;
   auto competing = operation;
   competing[0] = 8;
-  WalletKey wallet{};
+  citizen_sdk::WalletKey wallet{};
   wallet.generation[0] = 1;
   std::array<uint8_t, 32> output{};
   const auto zero = [&] {
@@ -379,7 +379,7 @@ int wmain(int count, wchar_t **arguments) {
   fails(CITIZENSDK_ERROR_UNAVAILABLE, [&] { (void)vault.has_any_wallet_key(0); });
   system.enumerate_fails = false;
   output.fill(0xa5);
-  fails(CITIZENSDK_ERROR_KEY_INVALIDATED, [&] { vault.unwrap_dek(1, wallet, Bytes(256), output.data()); });
+  fails(CITIZENSDK_ERROR_KEY_INVALIDATED, [&] { vault.unwrap_dek(1, wallet, citizen_sdk::Bytes(256), output.data()); });
   assert(zero() && vault.idle());
   fails(CITIZENSDK_ERROR_KEY_INVALIDATED, [&] { vault.wrap_dek(102, wallet, operation, output.data()); });
   assert(!store.is_generation_active(wallet) && system.created == 0);
@@ -407,7 +407,7 @@ int wmain(int count, wchar_t **arguments) {
   assert(system.created == 1);
 
   // 新追加操作复用原钥，不能触发创建认证或改变创建归属。
-  const Bytes wrapped = vault.wrap_dek(102, wallet, competing, output.data());
+  const citizen_sdk::Bytes wrapped = vault.wrap_dek(102, wallet, competing, output.data());
   assert(system.created == 1 && system.prompted == prompts);
   assert(wrapped.size() == 256);
   vault.unwrap_dek(2, wallet, wrapped, output.data());
@@ -491,7 +491,7 @@ int wmain(int count, wchar_t **arguments) {
   assert(system.keys.empty() && vault.idle() && other.idle());
   assert(!vault.has_any_wallet_key(0));
   const std::string unknown = "citizensdk." + std::string(32, 'f');
-  system.keys.emplace(unknown, VaultObject{});
+  system.keys.emplace(unknown, citizen_sdk::VaultObject{});
   fails(CITIZENSDK_ERROR_INTEGRITY, [&] { (void)vault.has_any_wallet_key(0); });
   system.keys.erase(unknown);
   auto first = wallet; first.generation[0] = 7;

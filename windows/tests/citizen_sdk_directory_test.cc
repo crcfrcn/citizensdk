@@ -22,16 +22,16 @@ using namespace citizen_sdk::windows;
 void rejects(const std::function<void()> &action, citizensdk_error_code_t expected) {
   bool rejected = false;
   try { action(); }
-  catch (const HostError &error) { rejected = error.code() == expected; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == expected; }
   assert(rejected);
 }
 
-Bytes security(HANDLE handle) {
+citizen_sdk::Bytes security(HANDLE handle) {
   PSECURITY_DESCRIPTOR descriptor = nullptr;
   assert(GetSecurityInfo(handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION |
       DACL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, nullptr, &descriptor) == ERROR_SUCCESS);
   const auto *bytes = static_cast<const uint8_t *>(descriptor);
-  Bytes result(bytes, bytes + GetSecurityDescriptorLength(descriptor));
+  citizen_sdk::Bytes result(bytes, bytes + GetSecurityDescriptorLength(descriptor));
   LocalFree(descriptor);
   return result;
 }
@@ -99,7 +99,7 @@ int main() {
     assert(written == input.size() && FlushFileBuffers(file.get()));
     directory.verify_file(file.get());
   }
-  assert((directory.read(u8"公开状态-公民-😀.bin", 5) == Bytes{0, 1, 2, 3, 255}));
+  assert((directory.read(u8"公开状态-公民-😀.bin", 5) == citizen_sdk::Bytes{0, 1, 2, 3, 255}));
   rejects([&] { (void)directory.read(u8"公开状态-公民-😀.bin", 4); }, CITIZENSDK_ERROR_INTEGRITY);
   assert(!directory.find(L"missing.bin"));
   for (const auto *name : {L"", L".", L"..", L"a/b", L"a\\b", L"x:stream", L"NUL",
