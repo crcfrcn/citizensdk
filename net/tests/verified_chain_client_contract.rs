@@ -51,6 +51,22 @@ fn require_err<T, E>(result: Result<T, E>, context: &str) -> E {
     }
 }
 
+// 四项实网验收共用国储会既有WSS地址和PeerID；不访问动态节点建议。
+fn live_config(name: &str) -> SmoldotProviderConfig {
+    let mut spec: serde_json::Value = require_ok(serde_json::from_str(CHAIN_SPEC), "chainspec");
+    spec["lightSyncState"] = require_ok(serde_json::from_str(include_str!("../../chain/light_sync_state.json")), "checkpoint");
+    let nodes: Vec<_> = spec["bootNodes"].as_array().expect("bootnodes").iter()
+        .filter_map(serde_json::Value::as_str)
+        .filter(|node| node.starts_with("/dns4/nrcgch.crcfrcn.com/tcp/30333/wss/p2p/"))
+        .map(str::to_owned).collect();
+    let [node] = nodes.as_slice() else { panic!("国储会既有WSS节点必须唯一"); };
+    let config = require_ok(require_ok(SmoldotProviderConfig::try_new(spec.to_string(), name, "2.4.0"), "config").with_bootnode(node), "selected bootnode");
+    // 固定目标是配置事实；连接及读取成功仍由原实网断言判定。
+    use std::io::Write as _;
+    let _ = writeln!(std::io::stderr().lock(), "LIVE_TARGET node=nrcgch.crcfrcn.com transport=wss peer_expected={}", node.rsplit("/p2p/").next().expect("peer"));
+    config
+}
+
 #[test]
 fn concrete_provider_implements_the_formal_chain_contract() {
     assert_verified_client::<SmoldotVerifiedChainClient>();
@@ -63,29 +79,14 @@ fn live_runtime_context_reuses_verified_exact_block() {
     use citizen_sdk_contracts::VerifiedBlockRef;
     use std::time::{Duration, Instant};
     for session in 0..2 {
-        let mut spec: serde_json::Value = require_ok(serde_json::from_str(CHAIN_SPEC), "chainspec");
-        spec["lightSyncState"] = require_ok(
-            serde_json::from_str(include_str!(
-                "../../chain/light_sync_state.json"
-            )),
-            "checkpoint",
-        );
-        let config = require_ok(
-            SmoldotProviderConfig::try_new(
-                spec.to_string(),
-                "CitizenSDK runtime observation",
-                "2.4.0",
-            ),
-            "config",
-        )
-        .with_bootstrap();
+        let config = live_config("CitizenSDK runtime observation");
         let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
         let result = require_ok(provider.drive(async {
             tokio::time::timeout(Duration::from_secs(120), async {
                 provider.start().await.inspect_err(|error| observe_error(error, "runtime_start")).ok()?;
                 let block = loop {
                     if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(3), provider.get_sync_status()).await {
-                        if status.is_usable() && status.peer_count() > 0 && status.best().hash() == status.finalized().hash() { break status.best(); }
+                        if status.is_usable() && status.peer_count() == 1 && status.best().hash() == status.finalized().hash() { break status.best(); }
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 };
@@ -164,29 +165,14 @@ fn live_nonce_queries_reuse_pinned_runtime_without_transaction_submission() {
     use std::time::{Duration, Instant};
 
     for session in 0..2 {
-        let mut spec: serde_json::Value = require_ok(serde_json::from_str(CHAIN_SPEC), "chainspec");
-        spec["lightSyncState"] = require_ok(
-            serde_json::from_str(include_str!(
-                "../../chain/light_sync_state.json"
-            )),
-            "light sync state",
-        );
-        let config = require_ok(
-            SmoldotProviderConfig::try_new(
-                spec.to_string(),
-                "CitizenSDK nonce observation",
-                "2.4.0",
-            ),
-            "config",
-        )
-        .with_bootstrap();
+        let config = live_config("CitizenSDK nonce observation");
         let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
         let result = require_ok(provider.drive(async {
             tokio::time::timeout(Duration::from_secs(120), async {
                 provider.start().await.inspect_err(|error| observe_error(error, "nonce_start")).ok()?;
                 let best = loop {
                     if let Ok(Ok(status)) = tokio::time::timeout(Duration::from_secs(3), provider.get_sync_status()).await {
-                        if status.is_usable() && status.peer_count() > 0 && status.best().hash() == status.finalized().hash() {
+                        if status.is_usable() && status.peer_count() == 1 && status.best().hash() == status.finalized().hash() {
                             break status.best();
                         }
                     }
@@ -321,7 +307,7 @@ fn nonce_without_proof_never_returns_a_cached_or_fabricated_value() {
     assert_eq!(stopped.code(), ContractErrorCode::NotReady);
 }
 
-/// 与手机相同 provider、随包信任资产及节点发现的只读实网验收。
+/// 使用正式provider与随包信任资产，只连接国储会的只读实网验收。
 /// 不提交交易；只输出公开高度和固定状态，不输出块哈希、账户或原始错误。
 /// 必须显式选择，离线回归不依赖实网；宿主观测不能冒充手机进程内部状态。
 #[test]
@@ -329,18 +315,7 @@ fn nonce_without_proof_never_returns_a_cached_or_fabricated_value() {
 fn live_chain_status_observation_without_transaction_submission() {
     use std::time::{Duration, Instant};
 
-    let mut spec: serde_json::Value = require_ok(serde_json::from_str(CHAIN_SPEC), "chainspec");
-    spec["lightSyncState"] = require_ok(
-        serde_json::from_str(include_str!(
-            "../../chain/light_sync_state.json"
-        )),
-        "light sync state",
-    );
-    let config = require_ok(
-        SmoldotProviderConfig::try_new(spec.to_string(), "CitizenSDK chain observation", "2.4.0"),
-        "config",
-    )
-    .with_bootstrap();
+    let config = live_config("CitizenSDK chain observation");
     let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
     let started = require_ok(
         provider
@@ -360,7 +335,7 @@ fn live_chain_status_observation_without_transaction_submission() {
                     println!("CHAIN_OBSERVATION elapsed_s={} best={} finalized={} equal={} peers={} syncing={} usable={}",
                         start.elapsed().as_secs(), status.best().number(), status.finalized().number(),
                         equal, status.peer_count(), status.is_syncing(), status.is_usable());
-                    if status.is_usable() && status.peer_count() > 0 {
+                    if status.is_usable() && status.peer_count() == 1 {
                         usable_samples += 1;
                         equal_samples += usize::from(equal);
                     }
@@ -403,18 +378,7 @@ fn live_idle_chain_rejects_inherent_without_a_new_block() {
     use futures::StreamExt;
     use std::time::Duration;
 
-    let mut spec: serde_json::Value = require_ok(serde_json::from_str(CHAIN_SPEC), "chainspec");
-    spec["lightSyncState"] = require_ok(
-        serde_json::from_str(include_str!(
-            "../../chain/light_sync_state.json"
-        )),
-        "light sync state",
-    );
-    let config = require_ok(
-        SmoldotProviderConfig::try_new(spec.to_string(), "CitizenSDK validation test", "2.4.0"),
-        "config",
-    )
-    .with_bootstrap();
+    let config = live_config("CitizenSDK validation test");
     let provider = require_ok(SmoldotVerifiedChainClient::new(config), "provider");
     let started = require_ok(
         provider
@@ -430,7 +394,7 @@ fn live_idle_chain_rejects_inherent_without_a_new_block() {
                     if let Ok(Ok(status)) = tokio::time::timeout(
                         Duration::from_secs(3), provider.get_sync_status()).await {
                         if status.is_usable()
-                            && status.peer_count() > 0
+                            && status.peer_count() == 1
                             && status.best().hash() == status.finalized().hash()
                         {
                             println!("IDLE_VALIDATION stage=ready best={} finalized={} peers={}",

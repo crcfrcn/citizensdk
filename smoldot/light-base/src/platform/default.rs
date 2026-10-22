@@ -63,6 +63,7 @@ pub struct DefaultPlatform {
     client_version: String,
     tasks_executor: Arc<smol::Executor<'static>>,
     shutdown_notify: event_listener::Event,
+    wss_endpoint: Option<(String, u16)>,
 }
 
 impl DefaultPlatform {
@@ -80,6 +81,15 @@ impl DefaultPlatform {
     /// Panics if it wasn't possible to spawn background threads.
     ///
     pub fn new(client_name: String, client_version: String) -> Arc<Self> {
+        Self::new_with_wss_endpoint(client_name, client_version, None)
+    }
+
+    /// 可选的实例级WSS连接限制；域名、端口及TLS验证在整个实例生命周期内保持。
+    pub fn new_with_wss_endpoint(
+        client_name: String,
+        client_version: String,
+        wss_endpoint: Option<(String, u16)>,
+    ) -> Arc<Self> {
         let tasks_executor = Arc::new(smol::Executor::new());
         let shutdown_notify = event_listener::Event::new();
 
@@ -106,6 +116,7 @@ impl DefaultPlatform {
             client_version,
             tasks_executor,
             shutdown_notify,
+            wss_endpoint,
         })
     }
 }
@@ -208,6 +219,9 @@ impl PlatformRef for Arc<DefaultPlatform> {
     }
 
     fn supports_connection_type(&self, connection_type: ConnectionType) -> bool {
+        if self.wss_endpoint.is_some() {
+            return matches!(connection_type, ConnectionType::WebSocketDns { secure: true });
+        }
         // 支持所有 TCP 和 WebSocket（含 WSS）连接类型。
         matches!(
             connection_type,
@@ -221,6 +235,7 @@ impl PlatformRef for Arc<DefaultPlatform> {
     }
 
     fn connect_stream(&self, multiaddr: Address) -> Self::StreamConnectFuture {
+        let allowed = allows_endpoint(self.wss_endpoint.as_ref(), &multiaddr);
         // 连接模式：TCP 直连 / WS（WebSocket 明文）/ WSS（WebSocket Secure）。
         enum ConnMode {
             Tcp,
@@ -274,6 +289,10 @@ impl PlatformRef for Arc<DefaultPlatform> {
             };
 
         let socket_future = async move {
+            // 在DNS和套接字创建前拒绝其他目标；发现的地址也经过同一检查。
+            if !allowed {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, "WSS endpoint not selected"));
+            }
             let tcp_socket = match tcp_socket_addr {
                 either::Left(socket_addr) => smol::net::TcpStream::connect(socket_addr).await,
                 either::Right((dns, port)) => smol::net::TcpStream::connect((&dns[..], port)).await,
@@ -361,6 +380,13 @@ impl Drop for DefaultPlatform {
     fn drop(&mut self) {
         self.shutdown_notify.notify(usize::MAX);
     }
+}
+
+fn allows_endpoint(endpoint: Option<&(String, u16)>, address: &Address<'_>) -> bool {
+    endpoint.is_none_or(|(selected_host, selected_port)| matches!(address,
+        Address::WebSocketDns { hostname, port, secure: true }
+            if hostname.eq_ignore_ascii_case(selected_host) && port == selected_port
+    ))
 }
 
 /// Implementation detail of [`DefaultPlatform`].
@@ -505,6 +531,49 @@ fn tls_server_name(hostname: String) -> io::Result<rustls::pki_types::ServerName
 mod tests {
     use super::{DefaultPlatform, PlatformRef as _, tls_connector, tls_server_name};
     use smoldot::libp2p::websocket;
+
+    // 与原Runtime回归由同一产品入口执行，验证真实连接边界而非源码字符串。
+    mod runtime_query_tests {
+        use super::super::*;
+
+        #[test]
+        fn selected_wss_endpoint_rejects_other_hosts_ports_and_transports() {
+            let endpoint = ("node.invalid".to_owned(), 30333);
+            for hostname in ["node.invalid", "NODE.INVALID"] {
+                assert!(allows_endpoint(Some(&endpoint), &Address::WebSocketDns { hostname, port: 30333, secure: true }));
+            }
+            for address in [
+                Address::WebSocketDns { hostname: "other.invalid", port: 30333, secure: true },
+                Address::WebSocketDns { hostname: "node.invalid.evil.invalid", port: 30333, secure: true },
+                Address::WebSocketDns { hostname: "node.invalid", port: 30334, secure: true },
+                Address::WebSocketDns { hostname: "node.invalid", port: 30333, secure: false },
+                Address::TcpDns { hostname: "node.invalid", port: 30333 },
+                Address::TcpIp { ip: IpAddr::V4([127, 0, 0, 1].into()), port: 30333 },
+                Address::TcpIp { ip: IpAddr::V6([0; 16].into()), port: 30333 },
+                Address::WebSocketIp { ip: IpAddr::V4([127, 0, 0, 1].into()), port: 30333 },
+                Address::WebSocketIp { ip: IpAddr::V6([0; 16].into()), port: 30333 },
+            ] {
+                assert!(!allows_endpoint(Some(&endpoint), &address));
+                assert!(allows_endpoint(None, &address));
+            }
+        }
+
+        #[test]
+        fn rejected_discovered_address_returns_permission_error_without_network() {
+            let platform = DefaultPlatform::new_with_wss_endpoint("test".to_owned(), "1".to_owned(), Some(("node.invalid".to_owned(), 30333)));
+            assert!(platform.supports_connection_type(ConnectionType::WebSocketDns { secure: true }));
+            assert!(!platform.supports_connection_type(ConnectionType::WebSocketDns { secure: false }));
+            assert!(!platform.supports_connection_type(ConnectionType::TcpDns));
+            smol::block_on(async {
+                let stream = platform.connect_stream(Address::WebSocketDns { hostname: "other.invalid", port: 30333, secure: true }).await;
+                let mut stream = std::pin::pin!(stream);
+                drop(platform.read_write_access(stream.as_mut()).expect("pending stream"));
+                platform.wait_read_write_again(stream.as_mut()).await;
+                let error = platform.read_write_access(stream.as_mut()).err().expect("rejected endpoint");
+                assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            });
+        }
+    }
 
     #[test]
     fn tasks_run_indefinitely() {

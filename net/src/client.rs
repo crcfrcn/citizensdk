@@ -60,6 +60,7 @@ pub struct SmoldotProviderConfig {
     pub(crate) system_version: String,
     pub(crate) request_timeout: Duration,
     pub(crate) bootstrap: bool,
+    endpoint: Option<(String, u16)>,
 }
 
 impl SmoldotProviderConfig {
@@ -106,14 +107,51 @@ impl SmoldotProviderConfig {
             system_version,
             request_timeout: DEFAULT_REQUEST_TIMEOUT,
             bootstrap: false,
+            endpoint: None,
         })
     }
 
     /// SDK 产品组合显式启用公民网非权威节点建议；裸 provider 不隐式访问额外服务。
     /// 只改变启动时的节点候选，不影响信任资产、验证语义或上游网络算法。
     pub fn with_bootstrap(mut self) -> Self {
-        self.bootstrap = true;
+        self.bootstrap = self.endpoint.is_none();
         self
+    }
+
+    /// 只连接随包清单中明确选择的WSS节点；保留其PeerID及所有链信任资产。
+    /// 限制在创建连接前生效，动态发现不能把本实例引向其他地址。
+    pub fn with_bootnode(mut self, node: &str) -> ContractResult<Self> {
+        let invalid = || contract_error(ContractErrorCode::InvalidArgument, "定向节点必须是既有清单中的WSS地址");
+        let mut spec: Value = serde_json::from_str(&self.chain_spec).map_err(|_| invalid())?;
+        let listed = spec.get("bootNodes").and_then(Value::as_array)
+            .is_some_and(|nodes| nodes.iter().any(|value| value.as_str() == Some(node)));
+        if !listed {
+            return Err(invalid());
+        }
+        let parts: Vec<_> = node.split('/').collect();
+        let ["", "dns4", hostname, "tcp", port, "wss", "p2p", peer] = parts.as_slice() else {
+            return Err(invalid());
+        };
+        let port: u16 = port.parse().map_err(|_| invalid())?;
+        if port == 0 || peer.is_empty() {
+            return Err(invalid());
+        }
+        let url = url::Url::parse(&format!("wss://{hostname}:{port}/")).map_err(|_| invalid())?;
+        if !url.username().is_empty() || url.password().is_some() || url.query().is_some()
+            || url.fragment().is_some() || url.path() != "/"
+            || url.port_or_known_default() != Some(port)
+            || !url.host_str().is_some_and(|host| host.eq_ignore_ascii_case(hostname))
+        {
+            return Err(invalid());
+        }
+        let Some(url::Host::Domain(hostname)) = url.host() else {
+            return Err(invalid());
+        };
+        self.endpoint = Some((hostname.to_owned(), port));
+        spec["bootNodes"] = serde_json::json!([node]);
+        self.chain_spec = serde_json::to_string(&spec).map_err(|_| invalid())?;
+        self.bootstrap = false;
+        Ok(self)
     }
 }
 
@@ -373,9 +411,10 @@ impl SmoldotVerifiedChainClient {
         } else {
             None
         };
-        let platform = DefaultPlatform::new(
+        let platform = DefaultPlatform::new_with_wss_endpoint(
             self.config.system_name.clone(),
             self.config.system_version.clone(),
+            self.config.endpoint.clone(),
         );
         let mut client = Client::new(platform);
         let max_pending_requests = NonZeroU32::new(MAX_PENDING_REQUESTS).ok_or_else(|| {
@@ -563,6 +602,49 @@ mod tests {
         "protocolId":"citizenchain",
         "genesis":{"stateRootHash":"0x00"}
     }"#;
+
+    #[test]
+    fn selected_bootnode_keeps_identity_and_cannot_reenable_bootstrap() {
+        let mut spec: Value = serde_json::from_str(include_str!("../../chain/chainspec.json")).expect("spec");
+        spec["lightSyncState"] = serde_json::from_str(include_str!("../../chain/light_sync_state.json")).expect("checkpoint");
+        let original = spec.clone();
+        let node = spec["bootNodes"][0].as_str().expect("bootnode").to_owned();
+        let selected = SmoldotProviderConfig::try_new(spec.to_string(), "test", "1")
+            .expect("config").with_bootstrap().with_bootnode(&node).expect("selected").with_bootstrap();
+        let projected: Value = serde_json::from_str(&selected.chain_spec).expect("projected");
+        spec["bootNodes"] = serde_json::json!([node]);
+        assert_eq!(projected, spec);
+        assert_eq!(projected["genesis"], original["genesis"]);
+        assert_eq!(projected["lightSyncState"], original["lightSyncState"]);
+        assert_eq!(selected.endpoint, Some(("nrcgch.crcfrcn.com".to_owned(), 30333)));
+        assert!(!selected.bootstrap);
+        assert_eq!(selected.clone().with_bootnode(&node).expect("repeat"), selected);
+    }
+
+    #[test]
+    fn selected_bootnode_rejects_unlisted_and_non_wss_addresses() {
+        let mut spec: Value = serde_json::from_str(VALID_SPEC).expect("spec");
+        let config = SmoldotProviderConfig::try_new(spec.to_string(), "test", "1").expect("config");
+        assert!(config.endpoint.is_none());
+        assert!(config.clone().with_bootstrap().bootstrap);
+        assert!(config.with_bootnode("/dns4/node.invalid/tcp/30333/wss/p2p/public").is_err());
+        for node in [
+            "/dns4/node.invalid/tcp/30333/ws/p2p/public",
+            "/dns4/node.invalid/tcp/0/wss/p2p/public",
+            "/dns4/node.invalid/tcp/65536/wss/p2p/public",
+            "/dns4/node.invalid/tcp/30333/wss/p2p/",
+            "/ip4/127.0.0.1/tcp/30333/wss/p2p/public",
+            "/dns4/node.invalid/tcp/30333/wss/p2p/public/extra",
+            "/dns4/user@node.invalid/tcp/30333/wss/p2p/public",
+            "/dns4/node.invalid?query/tcp/30333/wss/p2p/public",
+            "/dns4/node.invalid#fragment/tcp/30333/wss/p2p/public",
+        ] {
+            spec["bootNodes"] = serde_json::json!([node]);
+            let error = SmoldotProviderConfig::try_new(spec.to_string(), "test", "1")
+                .expect("config").with_bootnode(node).expect_err("invalid endpoint");
+            assert_eq!(error.code(), ContractErrorCode::InvalidArgument);
+        }
+    }
 
     #[test]
     fn config_fixes_chain_and_protocol_identity() {

@@ -41,6 +41,13 @@ std且不启用Wasmtime定向执行，随后执行原有全量回归。
 不覆盖原错误。原节点选择、三次尝试、每次五秒、并行一、验证及断开顺序保持；不新增请求。
 空证明协议未携带服务端内部原因，日志只能定位实际响应节点，不能替代节点端错误证据。
 
+`light-base/src/platform/default.rs`在官方PlatformRef连接边界增加不可变的实例级WSS
+域名/端口限制。默认构造沿同一实现传入None；provider定向配置传入明确地址，其他地址在DNS
+及套接字创建前返回PermissionDenied，动态发现也不能绕过。限制实例只声明WSS DNS连接能力，
+既有TLS证书、主机名及libp2p PeerID握手保持。所属内联runtime_query_tests覆盖地址/端口/
+传输拒绝及真实Stream错误传播，由原产品回归入口执行。此项为本产品定向验收策略，官方并未
+要求固定国储会；网络、同步、选点和证明算法仍使用同一实现。
+
 准确块Runtime上下文入口同样位于既有`light-base/src/lib.rs`：在同一次订阅中
 固定请求hash的Runtime，以同一对象读取版本并执行原Metadata API证明。订阅报告之外
 的历史块继续校验目标header hash/高度和代码存储证明，不用当前头替代；报告后pin失败
