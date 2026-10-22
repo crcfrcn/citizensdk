@@ -2248,6 +2248,13 @@ async fn run_background<TPlat: PlatformRef>(
                         mut operation,
                         call_proof_sender,
                     } => {
+                        // 受限诊断只记录本次实际对端；不改变原错误、重试或断开顺序。
+                        crate::runtime_proof_error(
+                            &call_proof_sender,
+                            &operation.function_name,
+                            operation.inaccessible_errors.len() + 1,
+                            &error,
+                        );
                         log!(
                             &background.platform,
                             Trace,

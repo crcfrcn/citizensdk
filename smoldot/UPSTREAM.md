@@ -33,6 +33,14 @@ SDK自有边界测试位于`net/tests`，由该crate直接编译，并显式读�
 扩展的块接纳、解码及清理回归归现有`runtime_query_tests`，由唯一产品测试入口按本目录原锁、
 std且不启用Wasmtime定向执行，随后执行原有全量回归。
 
+`light-base/src/runtime_service.rs`仅在已有调用证明网络失败分支接入受限诊断：复用
+`CITIZENSDK_TRANSACTION_DIAGNOSTICS=1`，记录实际公开PeerID、固定nonce/Metadata调用名、
+原三次尝试内的序号、闭集网络类别及时间。格式与分类归`light-base/src/lib.rs`，原
+`runtime_query_tests`覆盖两个合成对端、两种调用、全部十二类网络错误与开关/非法输入边界。
+诊断不接收账户、块、参数、Runtime、证明或原始错误正文；no_std不读取环境或输出，输出失败
+不覆盖原错误。原节点选择、三次尝试、每次五秒、并行一、验证及断开顺序保持；不新增请求。
+空证明协议未携带服务端内部原因，日志只能定位实际响应节点，不能替代节点端错误证据。
+
 准确块Runtime上下文入口同样位于既有`light-base/src/lib.rs`：在同一次订阅中
 固定请求hash的Runtime，以同一对象读取版本并执行原Metadata API证明。订阅报告之外
 的历史块继续校验目标header hash/高度和代码存储证明，不用当前头替代；报告后pin失败

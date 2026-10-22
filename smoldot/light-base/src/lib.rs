@@ -3420,9 +3420,6 @@ impl<F: FnOnce()> Drop for RuntimeCleanup<F> {
 #[cfg(any(feature = "std", test))]
 fn runtime_error_categories(error: &runtime_service::RuntimeCallError) -> (&'static str, Vec<&'static str>) {
     use runtime_service::{RuntimeCallError, RuntimeCallExecutionError, RuntimeCallInaccessibleError, RuntimeError};
-    use network_service::CallProofRequestError as CallProofError;
-    use smoldot::network::service::{CallProofRequestError as WireProofError, RequestError as WireRequestError};
-    use smoldot::libp2p::connection::established::RequestError as StreamError;
     match error {
         RuntimeCallError::InvalidRuntime(error) => ("invalid_runtime", vec![match error {
             RuntimeError::CodeNotFound => "code_missing",
@@ -3441,23 +3438,79 @@ fn runtime_error_categories(error: &runtime_service::RuntimeCallError) -> (&'sta
             RuntimeCallInaccessibleError::MissingProofEntry => "missing_proof_entry",
             RuntimeCallInaccessibleError::StorageRequest(_) => "storage_request",
             RuntimeCallInaccessibleError::ChildStorageRequest(_) => "child_storage_request",
-            RuntimeCallInaccessibleError::Network(error) => match error {
-                CallProofError::NoConnection => "network_no_connection",
-                CallProofError::RequestTooLarge => "network_request_too_large",
-                CallProofError::Request(WireProofError::RemoteCouldntAnswer) => "network_remote_couldnt_answer",
-                CallProofError::Request(WireProofError::Decode(_)) => "network_response_decode",
-                CallProofError::Request(WireProofError::Request(WireRequestError::ConnectionShutdown)) => "network_connection_shutdown",
-                CallProofError::Request(WireProofError::Request(WireRequestError::Substream(error))) => match error {
-                    StreamError::Timeout => "network_timeout",
-                    StreamError::ProtocolNotAvailable => "network_protocol_unavailable",
-                    StreamError::SubstreamClosed => "network_substream_closed",
-                    StreamError::SubstreamReset => "network_substream_reset",
-                    StreamError::NegotiationError(_) => "network_negotiation",
-                    StreamError::ResponseInvalidLeb128 => "network_response_invalid_leb128",
-                    StreamError::ResponseTooLarge => "network_response_too_large",
-                },
-            },
+            RuntimeCallInaccessibleError::Network(error) => runtime_proof_category(error),
         }).collect()),
+    }
+}
+
+// 两种诊断共用闭集分类，不能把上游错误正文带入日志。
+#[cfg(any(feature = "std", test))]
+fn runtime_proof_category(error: &network_service::CallProofRequestError) -> &'static str {
+    use network_service::CallProofRequestError as CallProofError;
+    use smoldot::network::service::{CallProofRequestError as WireProofError, RequestError as WireRequestError};
+    use smoldot::libp2p::connection::established::RequestError as StreamError;
+    match error {
+        CallProofError::NoConnection => "network_no_connection",
+        CallProofError::RequestTooLarge => "network_request_too_large",
+        CallProofError::Request(WireProofError::RemoteCouldntAnswer) => "network_remote_couldnt_answer",
+        CallProofError::Request(WireProofError::Decode(_)) => "network_response_decode",
+        CallProofError::Request(WireProofError::Request(WireRequestError::ConnectionShutdown)) => "network_connection_shutdown",
+        CallProofError::Request(WireProofError::Request(WireRequestError::Substream(error))) => match error {
+            StreamError::Timeout => "network_timeout",
+            StreamError::ProtocolNotAvailable => "network_protocol_unavailable",
+            StreamError::SubstreamClosed => "network_substream_closed",
+            StreamError::SubstreamReset => "network_substream_reset",
+            StreamError::NegotiationError(_) => "network_negotiation",
+            StreamError::ResponseInvalidLeb128 => "network_response_invalid_leb128",
+            StreamError::ResponseTooLarge => "network_response_too_large",
+        },
+    }
+}
+
+// 只接受两种固定调用及原三次尝试；类型化公开PeerID无法注入日志字段。
+#[cfg(any(feature = "std", test))]
+fn runtime_proof_diagnostic(
+    enabled: bool,
+    peer: &network_service::PeerId,
+    function: &str,
+    attempt: usize,
+    error: &network_service::CallProofRequestError,
+) -> Option<String> {
+    if !enabled || !(1..=3).contains(&attempt) {
+        return None;
+    }
+    let function = match function {
+        "AccountNonceApi_account_nonce" => "AccountNonceApi_account_nonce",
+        "Metadata_metadata" => "Metadata_metadata",
+        _ => return None,
+    };
+    Some(format!(
+        "CITIZENSDK_TX_DIAG stage=runtime_proof_request peer={peer} function={function} attempt={attempt} category={}",
+        runtime_proof_category(error),
+    ))
+}
+
+// 默认关闭；不接收账户、块、参数、Runtime或证明载荷，输出失败不覆盖原网络错误。
+fn runtime_proof_error(
+    _peer: &network_service::PeerId,
+    _function: &str,
+    _attempt: usize,
+    _error: &network_service::CallProofRequestError,
+) {
+    #[cfg(feature = "std")]
+    if let Some(record) = runtime_proof_diagnostic(
+        std::env::var_os("CITIZENSDK_TRANSACTION_DIAGNOSTICS").as_deref()
+            == Some(std::ffi::OsStr::new("1")),
+        _peer,
+        _function,
+        _attempt,
+        _error,
+    ) {
+        use std::io::Write as _;
+        let at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |value| value.as_millis());
+        let _ = writeln!(std::io::stderr().lock(), "{record} at_ms={at_ms}");
     }
 }
 
@@ -3516,6 +3569,57 @@ impl Drop for RuntimeDiagnosticSpan {
 #[cfg(test)]
 mod runtime_query_tests {
     use super::*;
+
+    #[test]
+    fn proof_diagnostic_identifies_each_peer_attempt_and_network_category() {
+        use network_service::CallProofRequestError as Network;
+        use smoldot::network::service::{CallProofRequestError as Wire, RequestError as Request};
+        use smoldot::libp2p::{peer_id::PublicKey, connection::{established::RequestError as Stream, multistream_select}};
+        let errors = [
+            (Network::NoConnection, "network_no_connection"),
+            (Network::RequestTooLarge, "network_request_too_large"),
+            (Network::Request(Wire::RemoteCouldntAnswer), "network_remote_couldnt_answer"),
+            (Network::Request(Wire::Decode(smoldot::network::codec::DecodeStorageCallProofResponseError::ProtobufDecode)), "network_response_decode"),
+            (Network::Request(Wire::Request(Request::ConnectionShutdown)), "network_connection_shutdown"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::Timeout))), "network_timeout"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::ProtocolNotAvailable))), "network_protocol_unavailable"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::SubstreamClosed))), "network_substream_closed"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::SubstreamReset))), "network_substream_reset"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::NegotiationError(multistream_select::Error::BadHandshake)))), "network_negotiation"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::ResponseInvalidLeb128))), "network_response_invalid_leb128"),
+            (Network::Request(Wire::Request(Request::Substream(Stream::ResponseTooLarge))), "network_response_too_large"),
+        ];
+        // 两个合成公钥区分同一对端重复尝试和不同对端；不读取真实节点或密钥。
+        for key in [7, 8] {
+            let peer = network_service::PeerId::from_public_key(&PublicKey::Ed25519([key; 32]));
+            for function in ["AccountNonceApi_account_nonce", "Metadata_metadata"] {
+                for attempt in 1..=3 {
+                    for (error, category) in &errors {
+                        assert_eq!(runtime_proof_diagnostic(true, &peer, function, attempt, error), Some(format!(
+                            "CITIZENSDK_TX_DIAG stage=runtime_proof_request peer={} function={function} attempt={attempt} category={category}",
+                            peer.to_base58(),
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn proof_diagnostic_rejects_disabled_unknown_calls_and_out_of_range_attempts() {
+        let peer = network_service::PeerId::from_public_key(
+            &smoldot::libp2p::peer_id::PublicKey::Ed25519([9; 32]),
+        );
+        let error = network_service::CallProofRequestError::NoConnection;
+        assert!(runtime_proof_diagnostic(false, &peer, "Metadata_metadata", 1, &error).is_none());
+        // 动态方法中的业务值和换行不能进入固定字段；序号超界也不扩大诊断输出。
+        for function in ["", "state_call", "Metadata_metadata\naccount=synthetic", "AccountNonceApi_account_nonce extra"] {
+            assert!(runtime_proof_diagnostic(true, &peer, function, 1, &error).is_none());
+        }
+        for attempt in [0, 4, usize::MAX] {
+            assert!(runtime_proof_diagnostic(true, &peer, "Metadata_metadata", attempt, &error).is_none());
+        }
+    }
 
     // 合成错误只验证闭集分类；不构造真实节点、证明或Runtime载荷。
     #[test]
