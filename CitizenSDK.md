@@ -3407,7 +3407,9 @@ cleanup在原Run最后执行，按select、四宿主、complete、publish的真�
 
 四宿主的声明读取、缓存恢复、Node准备、Rust准备和缓存保存用GitHub官方YAML锚点共享一份步骤；CI明确交付原CARGO_TARGET_DIR与GRADLE_USER_HOME，使构建消费本作业已经恢复的缓存，本机调用方显式缓存输入继续沿既有接口处理。Linux恢复缓存后才准备系统包及Rust，APT沿官方缓存配置复用安装包和索引，保持HTTPS、CA及包签名验证，禁止主动升级已装包；新容器可能仍需从缓存包本地安装。Node保持setup-node本地工具缓存机制且check-latest:false，Rustup只准备声明工具链并禁止自更新；已安装工具链与目标标准库在原缓存范围内持续复用。Android由sdkmanager复用已安装组件，所需组件在SDK标准目录和原缓存范围之间恢复/保存；其它工具沿原目录缺失条件准备。本节不授权任何下载、流程运行、发布或远端删除。
 
-依据：[GitHub跨作业Artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[作业依赖与最小权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[Run删除接口](https://docs.github.com/en/rest/actions/workflow-runs)及[缓存删除接口](https://docs.github.com/en/rest/actions/cache)。同Run交付与成功/失败各留一条是本产品要求，并非官方规定的保留数量。
+缓存行为回归执行真实工作流片段，使用最小私有环境及本轮命令代理；原生依赖失效清理所需rm同其它系统命令一样转发到绝对路径。Bash显式使用--noprofile --norc，不读取宿主profile或bashrc，也不继承BASH_ENV；Rust与curl仍由本轮合成代理处理，不访问真实网络或安装工具，原有成功、失败及缓存保留断言保持。
+
+依据：[GitHub跨作业Artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[作业依赖与最小权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[Run删除接口](https://docs.github.com/en/rest/actions/workflow-runs)、[缓存删除接口](https://docs.github.com/en/rest/actions/cache)及[Bash启动选项](https://www.gnu.org/software/bash/manual/html_node/Invoking-Bash.html)。同Run交付与成功/失败各留一条是本产品要求，并非官方规定的保留数量。
 
 ## 资源方法与错误边界
 

@@ -340,8 +340,8 @@ function workflowToolFixture(t,{installed=false}={}){
  for(const name of ['config.mjs','build.mjs'])writeFileSync(join(work,'scripts',name),readFileSync(join(root,'scripts',name)));
  for(const value of Object.values(nativeSources))mkdirSync(join(work,'target/cache/sources',value.archive_root),{recursive:true});
  writeFileSync(calls,'');writeFileSync(join(work,'target/cache/rust/keep'),'compiled');writeFileSync(join(work,'target/cache/native/lib/keep'),'native');writeFileSync(join(work,'target/cache/native/include/keep'),'headers');
- // 子进程只看到本轮代理和绝对系统命令，不能误用宿主已安装的Rust或真实curl。
- for(const name of ['sed','mkdir','cp','basename','tar','sh','tr','chmod','gzip']){
+ // 子进程只看到本轮代理和绝对系统命令（含原生缓存清理所需rm），不能误用宿主Rust、真实curl或启动文件。
+ for(const name of ['sed','mkdir','cp','basename','tar','sh','tr','chmod','gzip','rm']){
   const command=['/usr/bin/'+name,'/bin/'+name].find(existsSync);assert.ok(command,name);
   writeFileSync(join(bin,name),'#!/bin/sh\nexec "'+command+'" "$@"\n',{mode:0o700});
  }
@@ -353,7 +353,7 @@ function workflowToolFixture(t,{installed=false}={}){
   mkdirSync(join(rust,'toolchains',tools.rust+'-fixture','lib'),{recursive:true});writeFileSync(join(rust,'toolchains',tools.rust+'-fixture','keep'),'installed');
  }
  const env={PATH:bin,SDK_NODE:process.execPath,CARGO_HOME:cargo,RUSTUP_HOME:rust,RUNNER_OS:'Linux',RUNNER_ARCH:'ARM64',GITHUB_WORKSPACE:work,RUNNER_TEMP:temporary,GITHUB_ENV:join(work,'environment'),GITHUB_PATH:join(work,'path'),GITHUB_OUTPUT:join(work,'output'),PRODUCT_RUST:tools.rust,SDK_TOOL_CALLS:calls,SDK_MANAGER_TEMPLATE:template,SDK_INSTALLER:installer};
- const execute=anchor=>spawnSync('/bin/bash',['-euo','pipefail','-c',workflowRun(anchor)],{cwd:work,env,encoding:'utf8'});
+ const execute=anchor=>spawnSync('/bin/bash',['--noprofile','--norc','-euo','pipefail','-c',workflowRun(anchor)],{cwd:work,env,encoding:'utf8'});
  return {work,cargo,rust,env,calls,execute};
 }
 test('声明读取不启动工具探测，流程正文变更不改变工具版本和缓存匹配输入',t=>{
