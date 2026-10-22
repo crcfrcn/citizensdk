@@ -20,6 +20,8 @@ scripts/build.mjs拥有测试、宿主编译及目录装配；独立调用和控
 
 LinuxARM与Windows在原生CMake配置前，使用声明锁定的同版官方Flutter分别执行`precache --linux`和`flutter.bat precache --windows`，准备Dart SDK原生头与所选桌面平台缓存。Windows通过原生PowerShell调用并保留命令失败退出；缓存按官方工具正常复用，不强制重取或升级。图像包装继续强制校验`dart_native_api.h`，缺件不得跳过Dart接口或生成占位产物。
 
+Flutter桌面消费者经官方`--config-only`配置后，后续正式插件和合同测试使用该工程`CMakeCache.txt`记录的`CMAKE_COMMAND`与`CMAKE_CTEST_COMMAND`完整路径，沿用同一官方工具链。两项均须唯一、绝对且指向现存普通文件，校验完成后才启动；构建或测试失败直接传播，不回退PATH工具。Linux适配保留4096节点及原字节、深度预算；原始wire字节限制只由实际读取wire的Windows适配消费。
+
 Linux与Windows的全局Host C入口以`citizen_sdk::`显式引用`include/input.hpp`中的共用输入校验、边界限制、HostError与异常映射。两端复用同一实现，保持公开C接口、校验条件及错误码。原生合同测试同样直接引用`citizen_sdk`共用类型，平台子命名空间只提供所属适配类型；测试与生产目标均保留严格编译要求及真实正常、失败和安全边界断言。
 
 Host与Core构造只组合资源、复制和校验输入，不调用宿主存储回调；数据库在首次真实存储操作时打开，缺资产或未选择模块不能提前创建公开、私有数据库。原生测试读取本轮公共头投影，直接核对唯一校验与实际生命周期；共用C++测试只读取调用方指定的工作根，Windows使用官方`_dupenv_s`并以RAII释放副本，缺失、空值或读取失败均拒绝，不设置默认目录。

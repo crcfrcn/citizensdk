@@ -3,7 +3,7 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createReadStream,mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync,readlinkSync} from 'node:fs';
-import {join,dirname,resolve,basename,relative,sep} from 'node:path';
+import {join,dirname,resolve,basename,relative,sep,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {manifest as configuration,tools,repository} from './config.mjs';
 export function sdkName(version){if(typeof version!=='string'||version.length>64||!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version))throw Error('SDK版本无效');return '公民SDK·SDK·v'+version;}
@@ -359,6 +359,19 @@ async function desktop(project,work,env,headers,target){
  if(!windows){mkdirSync(join(work,'consumer-state'),{mode:0o700});}
  const consumer=join(work,'consumer');await run('cmake',['-S',join(project,platform,'tests'),'-B',consumer,...windows?['-G','Ninja']:[],'-DCITIZENSDK_CONSUMER_PREFIX='+output,'-DCITIZENSDK_CONSUMER_VERSION='+/^version: (\S+)$/mu.exec(readFileSync(join(project,'pubspec.yaml'),'utf8'))[1],'-DCITIZENSDK_PLATFORM='+target,'-DCITIZENSDK_TEST_WORK_DIR='+join(work,'consumer-state')],{env});await run('cmake',['--build',consumer,'--config','Release','--parallel'],{env});await run('ctest',['--test-dir',consumer,'-C','Release','--no-tests=error','--output-on-failure'],{env});await desktopFlutter(project,work,env,target,output);
 }
+// 同一Flutter工程沿用其官方配置工具；两条路径完整校验后才启动，禁止回退PATH。
+export async function flutterChecks(output,label,{env={},testEnv=env,runImpl=run}={}){
+ const cache=readFileSync(join(output,'CMakeCache.txt'),'utf8').split(/\r?\n/u);
+ const [cmake,ctest]=['CMAKE_COMMAND','CMAKE_CTEST_COMMAND'].map(name=>{
+  const rows=cache.filter(line=>line.startsWith(name+':')),prefix=name+':INTERNAL=';
+  if(rows.length!==1||!rows[0].startsWith(prefix))throw Error('Flutter工程工具记录无效：'+name);
+  const file=rows[0].slice(prefix.length);
+  if(!isAbsolute(file)||!existsSync(file)||!lstatSync(file).isFile())throw Error('Flutter工程工具路径无效：'+name);
+  return file;
+ });
+ await runImpl(cmake,['--build',output,'--config','Release','--target','citizensdk_flutter_checks','--parallel'],{env});
+ await runImpl(ctest,['--test-dir',output,'-C','Release','-L',label,'--no-tests=error','--output-on-failure'],{env:testEnv});
+}
 async function desktopFlutter(project,work,env,target,installed){
  const windows=target==='Windows',platform=windows?'windows':'linux',sdk=createFlutterSourceView(project,join(work,'flutter-sdk'));copy(installed,join(sdk,platform));
  const runner=join(work,'flutter-consumer'),flutter=join(process.env.FLUTTER_ROOT,'bin',windows?'flutter.bat':'flutter');
@@ -372,7 +385,7 @@ async function desktopFlutter(project,work,env,target,installed){
  writeFileSync(cmake,before.replace(marker,settings+marker).replace('set(APPLICATION_ID "org.citizen.citizensdk_consumer")','set(APPLICATION_ID "org.citizensdk.flutterconsumer")'));
  await run(flutter,['pub','get'],{cwd:runner,env});await run(flutter,['build',platform,'--release','--no-pub','--config-only',...windows?[]:['--target-platform=linux-arm64']],{cwd:runner,env});
  // 复用Flutter官方配置和assemble依赖，只构建正式插件及原合同测试，不编译消费App主程序。
- const output=join(runner,'build',platform,windows?'x64':'arm64',windows?'':'release');await run('cmake',['--build',output,'--config','Release','--target','citizensdk_flutter_checks','--parallel'],{env});await run('ctest',['--test-dir',output,'-C','Release','-L',windows?'WindowsFlutter':'LinuxFlutter','--no-tests=error','--output-on-failure'],{env:{...env,LD_LIBRARY_PATH:windows?undefined:join(sdk,'linux/lib/LinuxARM')+':'+join(runner,'linux/flutter/ephemeral')}});
+ const output=join(runner,'build',platform,windows?'x64':'arm64',windows?'':'release');await flutterChecks(output,windows?'WindowsFlutter':'LinuxFlutter',{env,testEnv:{...env,LD_LIBRARY_PATH:windows?undefined:join(sdk,'linux/lib/LinuxARM')+':'+join(runner,'linux/flutter/ephemeral')}});
 }
 export function setVersion(project,version){
  sdkName(version);const pub=join(project,'pubspec.yaml');writeFileSync(pub,readFileSync(pub,'utf8').replace(/^version: .+$/mu,'version: '+version));

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,rmSync,existsSync,symlinkSync,readlinkSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {root,claimCache,createFlutterSourceView,verifyComplete,setVersion,appleLibraries,verifyImageSymbols} from '../scripts/build.mjs';
+import {root,claimCache,createFlutterSourceView,verifyComplete,setVersion,appleLibraries,verifyImageSymbols,flutterChecks} from '../scripts/build.mjs';
 import {nextVersion,retainedRuns,sdkName,cleanupRuns,automate,publish,publicationSource,verifyPublication,cleanupPublications,consume} from '../scripts/build.mjs';
 import {describeAction} from '../scripts/config.mjs';
 function fixture(t){const base=join(root,'target/test');mkdirSync(base,{recursive:true});const work=mkdtempSync(join(base,'regression-'));t.after(()=>rmSync(work,{recursive:true,force:true}));return work;}
@@ -26,6 +26,34 @@ test('Flutter交付入口使用官方目录且同一包内只有一个插件类�
  const work=fixture(t),output=createFlutterSourceView(root,join(work,'package'));
  assert.equal(existsSync(join(output,'android/flutter/CitizenSdkPlugin.kt')),false);
  assert.ok(readFileSync(join(root,'android/flutter/CitizenSdkPlugin.kt')).equals(readFileSync(join(output,'android/src/main/kotlin/org/citizen/sdk/CitizenSdkPlugin.kt'))));
+});
+
+// 真实缓存解析与命令接续只替换进程执行，不启动合成工具或另建工具来源。
+test('Flutter两端接续工程记录的CMake和CTest，保留参数与各自环境',async t=>{
+ const work=fixture(t),tools=join(work,'Flutter tools'),cmake=join(tools,'cmake'),ctest=join(tools,'ctest');mkdirSync(tools);writeFileSync(cmake,'synthetic');writeFileSync(ctest,'synthetic');
+ writeFileSync(join(work,'CMakeCache.txt'),'# Flutter generated\r\nCMAKE_COMMAND:INTERNAL='+cmake+'\r\nCMAKE_CTEST_COMMAND:INTERNAL='+ctest+'\r\n');
+ const env={CITIZENSDK_TEST_WORK_DIR:work},testEnv={...env,LD_LIBRARY_PATH:work};
+ for(const label of ['LinuxFlutter','WindowsFlutter']){
+  const calls=[];await flutterChecks(work,label,{env,testEnv,runImpl:async(command,args,options)=>{calls.push({command,args,options});}});
+  assert.deepEqual(calls,[{command:cmake,args:['--build',work,'--config','Release','--target','citizensdk_flutter_checks','--parallel'],options:{env}},{command:ctest,args:['--test-dir',work,'-C','Release','-L',label,'--no-tests=error','--output-on-failure'],options:{env:testEnv}}]);
+ }
+});
+test('Flutter工程工具记录缺失、重复或路径无效时，在任何工具启动前失败',async t=>{
+ const work=fixture(t),cmake=join(work,'cmake'),ctest=join(work,'ctest'),cache=join(work,'CMakeCache.txt');writeFileSync(cmake,'synthetic');writeFileSync(ctest,'synthetic');
+ const valid='CMAKE_COMMAND:INTERNAL='+cmake+'\nCMAKE_CTEST_COMMAND:INTERNAL='+ctest+'\n';let calls=0;
+ const runImpl=async()=>{calls++;};
+ await assert.rejects(flutterChecks(work,'WindowsFlutter',{runImpl}),{code:'ENOENT'});
+ for(const text of ['',valid.replace(/^CMAKE_COMMAND[^\n]*\n/u,''),valid.replace(/CMAKE_CTEST_COMMAND[^\n]*\n/u,''),valid+'CMAKE_COMMAND:INTERNAL='+cmake+'\n',valid+'CMAKE_CTEST_COMMAND:FILEPATH='+ctest+'\n',valid.replace('CMAKE_COMMAND:INTERNAL=','CMAKE_COMMAND:FILEPATH='),valid.replace(cmake,''),valid.replace(cmake,'relative/cmake'),valid.replace(ctest,join(work,'missing')),valid.replace(ctest,work)]){
+  writeFileSync(cache,text);await assert.rejects(flutterChecks(work,'WindowsFlutter',{runImpl}),/Flutter工程工具/u);
+ }
+ assert.equal(calls,0);
+});
+test('Flutter构建或CTest真实失败直接传播，不重试或换回PATH工具',async t=>{
+ const work=fixture(t),cmake=join(work,'cmake'),ctest=join(work,'ctest');writeFileSync(cmake,'synthetic');writeFileSync(ctest,'synthetic');writeFileSync(join(work,'CMakeCache.txt'),'CMAKE_COMMAND:INTERNAL='+cmake+'\nCMAKE_CTEST_COMMAND:INTERNAL='+ctest+'\n');
+ for(const stage of [cmake,ctest]){
+  const calls=[],failure=Error('synthetic process failure');await assert.rejects(flutterChecks(work,'WindowsFlutter',{runImpl:async command=>{calls.push(command);if(command===stage)throw failure;}}),error=>error===failure);
+  assert.deepEqual(calls,stage===cmake?[cmake]:[cmake,ctest]);
+ }
 });
 test('缺少任一真实宿主不得冒充完整SDK',t=>{assert.throws(()=>verifyComplete(fixture(t)));});
 test('缓存被占用时立即回到本轮目录，不等待或删除其他任务的锁',t=>{const work=fixture(t),first=claimCache(work),second=claimCache(work);try{assert.equal(second.cargo,join(work,'rust'));second.release();}finally{first.release();}});

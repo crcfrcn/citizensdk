@@ -8,7 +8,7 @@
 
 namespace citizen_sdk::flutter {
 namespace {
-constexpr std::size_t kMaximumBytes=16*1024*1024,kMaximumRequestCopiedBytes=kMaximumBytes+4096,kMaximumRequestNodes=4096,kMaximumWireBytes=kMaximumRequestCopiedBytes+9*kMaximumRequestNodes+6;
+constexpr std::size_t kMaximumBytes=16*1024*1024,kMaximumRequestCopiedBytes=kMaximumBytes+4096,kMaximumRequestNodes=4096;
 constexpr int kLengthPreservingString=0x4353;
 const char *kMethods[]={"open","diagnose","close","readDiagnostics","openPrivateKey","revealPrivateKey","closePrivateKey","cancelOperation","respondCredential","cancelCredential","openQrCapture","closeQrCapture","pauseQrCapture","resumeQrCapture","setQrCaptureTorch","qrDecodeImage"};
 [[noreturn]] void fail(citizensdk_error_code_t code,const char *message){throw ContractFailure(code,message);}
@@ -283,7 +283,7 @@ Value from_fl_value(FlValue *value, bool sensitive) {
   // exponentially nested or irrelevant input before copying it. The byte
   // budget preserves a maximum 16 MiB signing payload plus its small fixed
   // tuple fields, while rejecting aggregate bulk values above that contract.
-  std::size_t remaining_nodes = 4096;
+  std::size_t remaining_nodes = kMaximumRequestNodes;
   std::size_t remaining_bytes = kMaximumRequestCopiedBytes;
   return from_fl(value, 0, remaining_nodes, remaining_bytes, sensitive);
 }
