@@ -3426,3 +3426,9 @@ Android官方证书验证组件的原Maven AAR/POM随同版SDK交付，Gradle只
 本产品scripts/config.mjs的describeAction仅返回repository、workflow、ref、inputs，或既有本地进程命令声明；不导入构建实现、不派发GitHub请求、不处理令牌、版本或历史。控制台使用统一数据接口直接派发并只读观察准确Run；产品GitHub业务归所属既有YAML。本次自动化Run名称使用运行编号，正式构建及产物保持版本名称。已有工具和依赖复用，缺少时才按原声明准备。
 
 公民SDK的GitHub版本、发布及历史清理由既有sdk.yml独立实现。配置仅声明sdk.yml/main和原样inputs；编译模块不访问GitHub、不校验运行环境身份或工具版本。版本在YAML按最近成功Run的完整SDK Artifact递增，没有成功记录时使用pubspec.yaml版本；Run名称使用运行编号。所有构建读取本Run的GITHUB_SHA，后续提交不阻断本Run。现有本地源码/产物装配、consume及输入安全边界保持。工具与依赖先复用已有缓存，缺少才按原声明准备。
+
+## 区块参数的C ABI结构头
+
+Dart的Memory.block统一用现有版本结构分配器填写citizensdk_block_ref的struct_size与abi_version，再写入准确hash、无符号64位高度及best或finalized；reserved保持为0。输入和输出区块均遵守include/citizensdk_types.h的同一合同，不能把清零但没有结构头的内存交给原生校验。
+
+带区块参数的存储单查、批量查询、键分页及Runtime API等调用复用同一封送入口，不逐方法复制结构初始化，也不放宽原生长度、版本或最终性校验。正常与非法输入路径的临时缓冲继续在释放前清零。现有FFI回归直接核对结构头、字段保真、64位高度边界、非法输入及缓冲擦除；该边界验收不能替代应用安装后的真实业务读取。

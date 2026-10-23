@@ -45,6 +45,42 @@ void main(){
  test('rejected input spends the unique sequence and cannot select a fallback route',()async{final id=await session(32);await expectLater(call(id,1,'qrParse',[123]),throwsA(isA<CitizenSdkException>()));final value=await call(id,2,'qrEncodeAccountId',['0x${'03'*32}']);expect(value[0],isA<String>());await expectLater(call(id,2,'getWalletState'),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.conflict)));await call(id,3,'close');});
  test('resources are owner scoped and close releases unclaimed result ownership',()async{final first=await session(1),second=await session(1);final inspection=await call(first,1,'inspectWallets');await expectLater(call(second,1,'releaseWalletInspection',[inspection[0]]),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.notFound)));await call(first,2,'close');await call(second,2,'close');});
  test('native input and output buffers are zero before every allocator release',(){final allocator=_Allocator();final m=Memory(allocator:allocator);try{final v=m.struct<c.citizensdk_wallet_input_validation_v1>(sizeOf<c.citizensdk_wallet_input_validation_v1>());check(api.citizensdk_validate_wallet_input(2,m.view('synthetic input'),12,v));expect(v.ref.reason,isNot(0));}finally{m.dispose();}expect(allocator.sizes,isEmpty);expect(allocator.wiped,greaterThan(1));});
+ // 直接检查交给C ABI的内存布局，防止仅修复结果投影而遗漏请求区块。
+ test('block inputs carry the versioned ABI header and preserve unsigned heights',(){
+  final hash='0x${List.generate(32,(i)=>i.toRadixString(16).padLeft(2,'0')).join()}';
+  for(final finality in ['best','finalized']){
+   for(final height in ['0','9223372036854775808','18446744073709551615']){
+    final allocator=_Allocator(),memory=Memory(allocator:allocator);
+    final input=<Object?>[hash,height,finality];
+    try{
+     final value=memory.block(input).ref;
+     expect(value.struct_size,sizeOf<c.citizensdk_block_ref>());
+     expect(value.abi_version,c.CITIZENSDK_ABI_VERSION);
+     expect(value.reserved,0);
+     expect(value.finality,finality=='best'?c.CITIZENSDK_FINALITY_BEST:c.CITIZENSDK_FINALITY_FINALIZED);
+     expect(block(value),input);
+    }finally{memory.dispose();}
+    expect(allocator.sizes,isEmpty);
+    expect(allocator.wiped,greaterThan(0));
+   }
+  }
+ });
+ test('invalid block inputs are rejected and partially filled buffers are wiped',(){
+  final hash='0x${'01'*32}';
+  for(final input in <Object?>[
+   null,<Object?>[],<Object?>[hash,'80'],
+   <Object?>['0x00','80','finalized'],
+   <Object?>[hash,'-1','finalized'],
+   <Object?>[hash,'18446744073709551616','finalized'],
+   <Object?>[hash,'80','unknown'],
+  ]){
+   final allocator=_Allocator(),memory=Memory(allocator:allocator);
+   try{
+    expect(()=>memory.block(input),throwsA(isA<CitizenSdkException>().having((error)=>error.code,'code',CitizenSdkErrorCode.invalidArgument)));
+   }finally{memory.dispose();}
+   expect(allocator.sizes,isEmpty);
+  }
+ });
  test('a closed native port cannot leave an unreachable owned result',()async{
   final handle=open(1);expect(handle,isNot(0));final port=ReceivePort();check(api.citizensdk_attach(handle,api.addresses.citizensdk_dart_emit,NativeApi.postCObject.cast(),port.sendPort.nativePort));port.close();
   final out=calloc<Uint64>();final job=NativeCallable<Int32 Function(Pointer<Void>)>.isolateLocal((Pointer<Void> _)=>api.citizensdk_get_wallet_state(handle,out),exceptionalReturn:20);

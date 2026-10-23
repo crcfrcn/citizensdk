@@ -16,7 +16,8 @@ final class Memory {
  if(value is String){data=Uint8List.fromList(utf8.encode(value));}else if(value is Uint8List){data=value;}else{throw failure(1);}
  try{if(data.length>maximum)throw failure(1);final p=alloc<c.citizensdk_bytes_view>(sizeOf<c.citizensdk_bytes_view>());p.ref.data=bytes(data);p.ref.len=data.length;return p.ref;}finally{if(value is String)data.fillRange(0,data.length,0);}}
  Pointer<c.citizensdk_account_id> account(Object? raw){final data=unhex(raw,32);final p=alloc<c.citizensdk_account_id>(32);for(var i=0;i<32;i++){p.ref.bytes[i]=data[i];}return p;}
- Pointer<c.citizensdk_block_ref> block(Object? raw){if(raw is! List<Object?>||raw.length!=3)throw failure(1);final p=alloc<c.citizensdk_block_ref>(sizeOf<c.citizensdk_block_ref>());final bytes=unhex(raw[0],32);for(var i=0;i<32;i++){p.ref.hash[i]=bytes[i];}p.ref.number=u64(raw[1]);p.ref.finality=switch(raw[2]){'best'=>1,'finalized'=>2,_=>throw failure(1)};return p;}
+ // 输入区块同输出区块一样携带C ABI结构头，不能把清零内存直接交给原生校验。
+ Pointer<c.citizensdk_block_ref> block(Object? raw){if(raw is! List<Object?>||raw.length!=3)throw failure(1);final p=struct<c.citizensdk_block_ref>(sizeOf<c.citizensdk_block_ref>());final bytes=unhex(raw[0],32);for(var i=0;i<32;i++){p.ref.hash[i]=bytes[i];}p.ref.number=u64(raw[1]);p.ref.finality=switch(raw[2]){'best'=>1,'finalized'=>2,_=>throw failure(1)};return p;}
  Uint8List copy(int Function(Pointer<Uint8>,int,Pointer<Uint64>) call,[int maximum=67108864]){final n=alloc<Uint64>(8);check(call(nullptr,0,n));final size=n.value;if(size<0||size>maximum)throw failure(9);final out=alloc<Uint8>(size);check(call(out,size,n));if(n.value!=size)throw failure(9);return Uint8List.fromList(out.asTypedList(size));}
  void dispose(){for(final (p,size) in _owned.reversed){p.asTypedList(size).fillRange(0,size,0);_allocator.free(p);}_owned.clear();}
 }
