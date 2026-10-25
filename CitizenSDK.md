@@ -1821,7 +1821,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 - Worker 环境变量：
   - `CHAIN_BOOTNODES`: 公开 bootnode multiaddr 列表，允许换行、逗号或分号分隔；不是密钥。
   - `BOOT_TTL_SECONDS`: 启动清单 HTTP 缓存秒数。
-  - `CHAIN_GENESIS_HASH`: 当前链 genesis hash。
+  - `CHAIN_GENESISHASH`: 当前链 genesis hash。
   - `CHAIN_STATE_ROOT`: 当前轻形态 chainspec genesis `stateRootHash`。
   - `RELAY_ENABLED`: 已签名交易受控广播开关，默认 `0`。
   - `RELAY_MAX_BYTES`: relay 接受的 signed extrinsic 最大字节数。
