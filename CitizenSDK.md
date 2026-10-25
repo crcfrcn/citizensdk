@@ -3432,3 +3432,5 @@ Android官方证书验证组件的原Maven AAR/POM随同版SDK交付，Gradle只
 Dart的Memory.block统一用现有版本结构分配器填写citizensdk_block_ref的struct_size与abi_version，再写入准确hash、无符号64位高度及best或finalized；reserved保持为0。输入和输出区块均遵守include/citizensdk_types.h的同一合同，不能把清零但没有结构头的内存交给原生校验。
 
 带区块参数的存储单查、批量查询、键分页及Runtime API等调用复用同一封送入口，不逐方法复制结构初始化，也不放宽原生长度、版本或最终性校验。正常与非法输入路径的临时缓冲继续在释放前清零。现有FFI回归直接核对结构头、字段保真、64位高度边界、非法输入及缓冲擦除；该边界验收不能替代应用安装后的真实业务读取。
+
+FFI绑定在持有准确session/method/request sequence的调用边界为完全未关联的本地异常补齐关联，保留原code、stage、message和堆栈；同步接纳和异步完成遵循同一规则。已有任意关联字段的异常保持原样，禁止覆盖外来或部分关联来冒充当前请求。会话层仍严格拒绝缺失、不匹配或过期关联，不把原notReady/network等错误统一丢失为decode；无会话的open/静态调用及未知会话不伪造请求身份。错误与关联值不增加日志出口，原序列消费、取消、关闭和敏感缓冲擦除合同保持。

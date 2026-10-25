@@ -226,6 +226,22 @@ void main() {
     await session.close();
   });
 
+  for (final correlation in ['missing', 'partial', 'sequence', 'method', 'valid']) {
+    test('错误关联$correlation不放宽安全校验，正确关联保留原错误', () async {
+      final platform = _SessionPlatform(errorCorrelation: correlation);
+      addTearDown(platform.dispose);
+      final session = await CitizenSdkFlutterSession.open(platform: platform);
+      await expectLater(session.invoke('getFinalizedHead'), throwsA(
+        isA<CitizenSdkException>()
+          .having((e) => e.code, '类别', correlation == 'valid'
+            ? CitizenSdkErrorCode.network : CitizenSdkErrorCode.decode)
+          .having((e) => e.stage, '阶段', correlation == 'valid'
+            ? CitizenSdkFailureStage.provider : CitizenSdkFailureStage.verification)
+          .having((e) => e.requestSequence, '序列', 1)));
+      await session.close();
+    });
+  }
+
   test('暂停的公共事件监听不能阻塞已经disposed的close', () async {
     final platform = _SessionPlatform();
     addTearDown(platform.dispose);
@@ -413,11 +429,13 @@ final class _SessionPlatform implements CitizenSdkPlatform {
     this.firstHeadGate,
     this.invalidOpenValue = false,
     this.mismatchedHeadError = false,
+    this.errorCorrelation,
   });
 
   final Completer<void>? firstHeadGate;
   final bool invalidOpenValue;
   final bool mismatchedHeadError;
+  final String? errorCorrelation;
   final StreamController<Object?> _events =
       StreamController<Object?>.broadcast();
   final List<int> requestSequences = <int>[];
@@ -456,6 +474,16 @@ final class _SessionPlatform implements CitizenSdkPlatform {
           sessionId: 'foreign-session',
           requestSequence: sequence,
         );
+      }
+      if (errorCorrelation != null) {
+        final mode = errorCorrelation!;
+        throw CitizenSdkException(code: CitizenSdkErrorCode.network,
+          stage: CitizenSdkFailureStage.provider, message: '合成原始错误',
+          method: mode == 'missing' || mode == 'partial' ? null
+            : mode == 'method' ? 'getBestHead' : method,
+          sessionId: mode == 'missing' ? null : 'session-a',
+          requestSequence: mode == 'missing' || mode == 'partial' ? null
+            : mode == 'sequence' ? sequence + 1 : sequence);
       }
     }
     return switch (method) {

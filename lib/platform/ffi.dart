@@ -35,14 +35,22 @@ final class FfiCitizenSdkPlatform implements CitizenSdkPlatform {
     if(args.length!=4||args[1] is! int)throw failure(1);return[2,m.copy((p,cap,n)=>_api.citizensdk_encode_signing_payload(args[1]! as int,m.view(args[2],4096),m.view(args[3]),p,cap,n),16777216)];
    }finally{m.dispose();}
   }
-  if(args.length<3||args[0]!=2||args[1] is! String||args[2] is! int)throw failure(1);final id=args[1]! as String,sequence=args[2]! as int;final session=_sessions[id];if(session==null)throw failure(7);if(session.closed)throw failure(3);final fields=args.sublist(3);
-  if(method=='cancelOperation'&&session.uiOperations.contains(u64(fields[0])))return _ui(method,args);
+  if(args.length<3||args[0]!=2||args[1] is! String||args[2] is! int)throw failure(1);final id=args[1]! as String,sequence=args[2]! as int;final session=_sessions[id];if(session==null)throw failure(7);final fields=args.sublist(3);
+  try {
+  if(session.closed)throw failure(3);
+  if(method=='cancelOperation'&&session.uiOperations.contains(u64(fields[0])))return await _ui(method,args);
   if(ui.contains(method)){
    if(method=='close'){session.closing=true;await session.drain();session.releaseResources();final value=await _ui(method,args);session.closed=true;session.port?.close();_sessions.remove(id);return value;}
    session.uiOperations.add(sequence);try{return await _ui(method,args);}finally{session.uiOperations.remove(sequence);}
   }
   check(_api.citizensdk_accept_request_sequence(session.handle,sequence));_codec.encodeRequest(method:method,sessionId:id,requestSequence:sequence,fields:fields);
   final value=await session.invoke(method,fields,sequence);_codec.validateResponseValue(method,value);return[2,id,sequence,value];
+  } on CitizenSdkException catch(error,stack) {
+   // 只有本绑定拥有准确请求且原异常完全未关联时才能投影；外来/部分关联保持原样拒绝。
+   if(error.method!=null||error.sessionId!=null||error.requestSequence!=null)rethrow;
+   Error.throwWithStackTrace(CitizenSdkException(code:error.code,stage:error.stage,message:error.message,
+    method:method,sessionId:id,requestSequence:sequence),stack);
+  }
  }
 }
 final class _Resource { _Resource(this.kind,this.value);final String kind;final int value;bool claimed=false; }
