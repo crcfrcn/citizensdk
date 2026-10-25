@@ -1,5 +1,7 @@
 # CitizenSDK 技术文档
 
+历史准确区块的存储批读通过设备内smoldot本地`state_queryStorageAt`一次提交去重后的键，复用原生多键存储证明查询；不请求服务端远程RPC，不逐键降级。provider先核对准确块的canonical关系，再核对返回块哈希、完整键集合、重复/未知响应和显式空值；输出恢复调用方键顺序及重复键。原键数/字节/超时上限保持，缺失结果不能冒充不存在。
+
 ## 塔塔自动化与发布
 
 `scripts/build.mjs` 是独立最简入口，拥有真实测试、宿主构建及SDK目录装配实现。GitHub版本、发布和历史清理由既有sdk.yml实现。命令为 `test`、`native Android|Apple|LinuxARM|Windows`、`package <完整原生目录>`。`scripts/config.mjs`仅保存本产品配置、工具及原生依赖来源与流程声明。工具准备直接使用工作流中的官方命令；目录归位保持Cargo与Pub原锁，不使用控制台依赖库存或自建全树复验。
@@ -1821,7 +1823,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 - Worker 环境变量：
   - `CHAIN_BOOTNODES`: 公开 bootnode multiaddr 列表，允许换行、逗号或分号分隔；不是密钥。
   - `BOOT_TTL_SECONDS`: 启动清单 HTTP 缓存秒数。
-  - `CHAIN_GENESISHASH`: 当前链 genesis hash。
+  - `CHAIN_GENESISHASH`: 当前链 genesis hash，与公民服务端当前配置声明一致。
   - `CHAIN_STATE_ROOT`: 当前轻形态 chainspec genesis `stateRootHash`。
   - `RELAY_ENABLED`: 已签名交易受控广播开关，默认 `0`。
   - `RELAY_MAX_BYTES`: relay 接受的 signed extrinsic 最大字节数。
@@ -3434,3 +3436,5 @@ Dart的Memory.block统一用现有版本结构分配器填写citizensdk_block_re
 带区块参数的存储单查、批量查询、键分页及Runtime API等调用复用同一封送入口，不逐方法复制结构初始化，也不放宽原生长度、版本或最终性校验。正常与非法输入路径的临时缓冲继续在释放前清零。现有FFI回归直接核对结构头、字段保真、64位高度边界、非法输入及缓冲擦除；该边界验收不能替代应用安装后的真实业务读取。
 
 FFI绑定在持有准确session/method/request sequence的调用边界为完全未关联的本地异常补齐关联，保留原code、stage、message和堆栈；同步接纳和异步完成遵循同一规则。已有任意关联字段的异常保持原样，禁止覆盖外来或部分关联来冒充当前请求。会话层仍严格拒绝缺失、不匹配或过期关联，不把原notReady/network等错误统一丢失为decode；无会话的open/静态调用及未知会话不伪造请求身份。错误与关联值不增加日志出口，原序列消费、取消、关闭和敏感缓冲擦除合同保持。
+
+历史准确块批读的拒绝回归同时覆盖缺失键、多余键、重复响应、错误块和坏十六进制；单键不存在必须由显式null表达。SDK既有严格分析要求测试import按字母排序，未放宽诊断级别。

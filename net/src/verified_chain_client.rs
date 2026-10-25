@@ -1017,11 +1017,29 @@ async fn storage_batch_exact_at(
     block: VerifiedBlockRef,
     keys: Vec<Vec<u8>>,
 ) -> ContractResult<Vec<Option<Vec<u8>>>> {
-    let mut values = Vec::with_capacity(keys.len());
-    for key in keys {
-        values.push(storage_at(running, block, key).await?);
+    // 设备内smoldot按准确块状态根验证多键证明；去重后发一次本地RPC，输出恢复原顺序。
+    let unique: std::collections::BTreeSet<_> = keys.iter().cloned().collect();
+    let encoded: Vec<_> = unique.iter().map(|key| format!("0x{}", hex::encode(key))).collect();
+    let result = running.rpc.request("state_queryStorageAt", json!([encoded, hash_hex(block.hash())])).await?;
+    parse_storage_batch_at(&result, block, &keys)
+}
+
+fn parse_storage_batch_at(value: &Value, block: VerifiedBlockRef, keys: &[Vec<u8>]) -> ContractResult<Vec<Option<Vec<u8>>>> {
+    let invalid = || contract_error(ContractErrorCode::Integrity, "smoldot准确块批读返回不完整或混入其他键/区块");
+    let sets = value.as_array().filter(|sets| sets.len() == 1).ok_or_else(invalid)?;
+    if sets[0]["block"].as_str() != Some(hash_hex(block.hash()).as_str()) { return Err(invalid()); }
+    let changes = sets[0]["changes"].as_array().ok_or_else(invalid)?;
+    let expected: std::collections::BTreeSet<_> = keys.iter().collect();
+    let mut rows = BTreeMap::new();
+    for change in changes {
+        let pair = change.as_array().filter(|pair| pair.len() == 2).ok_or_else(invalid)?;
+        let key = parse_hex_value(&pair[0], "storage batch key")?;
+        if !expected.contains(&key) || rows.contains_key(&key) { return Err(invalid()); }
+        let data = if pair[1].is_null() { None } else { Some(parse_hex_value(&pair[1], "storage batch value")?) };
+        rows.insert(key, data);
     }
-    Ok(values)
+    if rows.len() != expected.len() { return Err(invalid()); }
+    keys.iter().map(|key| rows.get(key).cloned().ok_or_else(invalid)).collect()
 }
 
 fn validate_storage_keys(keys: &[Vec<u8>]) -> ContractResult<()> {
@@ -2026,6 +2044,23 @@ mod tests {
                 .unwrap_or_else(|| panic!("unproven best block must fail"));
             assert_eq!(error.code(), ContractErrorCode::Conflict);
         }
+    }
+
+    #[test]
+    fn exact_storage_batch_restores_order_duplicates_and_explicit_absence() {
+        let block = VerifiedBlockRef::finalized(Hash32::from_bytes([0xab; 32]), 42);
+        let keys = vec![vec![1], vec![2], vec![1]];
+        let result = json!([{ "block": hash_hex(block.hash()), "changes": [["0x02", null], ["0x01", "0x"]] }]);
+        assert_eq!(parse_storage_batch_at(&result, block, &keys).unwrap(), vec![Some(vec![]), None, Some(vec![])]);
+        for bad in [
+            json!([]),
+            json!([{"block": hash_hex(block.hash()), "changes": []}]),
+            json!([{"block": hash_hex(block.hash()), "changes": [["0x01", null]]}]),
+            json!([{"block": hash_hex(block.hash()), "changes": [["0x01", null], ["0x01", null], ["0x02", null]]}]),
+            json!([{"block": hash_hex(block.hash()), "changes": [["0x01", null], ["0x02", null], ["0x03", null]]}]),
+            json!([{"block": format!("0x{}", "cd".repeat(32)), "changes": [["0x01", null], ["0x02", null]]}]),
+            json!([{"block": hash_hex(block.hash()), "changes": [["0x01", "invalid"], ["0x02", null]]}]),
+        ] { assert!(parse_storage_batch_at(&bad, block, &keys).is_err()); }
     }
 
     #[test]
