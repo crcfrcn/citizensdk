@@ -54,7 +54,7 @@ fn rejects_unknown_fields_at_every_wire_boundary() {
 #[test]
 fn rejects_wrong_identity_or_authority_even_with_valid_bootnodes() {
     for (pointer, bad) in [
-        ("/ok", Value::Bool(false)),
+        ("/is_ok", Value::Bool(false)),
         ("/schema", "other".into()),
         ("/chain/chain_id", "other".into()),
         ("/chain/protocol_id", "other".into()),

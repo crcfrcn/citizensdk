@@ -64,7 +64,7 @@ pub(crate) fn merge_bootnodes(chain_spec: &str, bytes: &[u8]) -> ContractResult<
     let root = object(
         &wire,
         &[
-            "ok",
+            "is_ok",
             "schema",
             "generated_at",
             "cache_ttl_seconds",
@@ -74,7 +74,7 @@ pub(crate) fn merge_bootnodes(chain_spec: &str, bytes: &[u8]) -> ContractResult<
             "security",
         ],
     )?;
-    if root["ok"] != true
+    if root["is_ok"] != true
         || root["schema"] != "citizensdk.chain.bootstrap"
         || root["generated_at"].as_u64().is_none()
         || root["cache_ttl_seconds"].as_u64().is_none()

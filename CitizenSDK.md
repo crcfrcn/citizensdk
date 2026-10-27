@@ -1782,106 +1782,24 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 - 禁止事项：CitizenApp 运行时不得全量扫描 49,593 条机构；行政区名称仍由行政区字典按 code join。
 - 必跑测试：`flutter test test/citizen/public/public_institution_bundle_loader_test.dart test/citizen/public/public_institution_dto_test.dart`
 
-##### P-API-CITIZENAPP-004：CitizenApp Chain Bootstrap Manifest
+##### P-API-CITIZENAPP-004：公开启动清单边界
 
-- 状态：当前（2026-08-02 已向唯一 production Worker 发布无版本 bootstrap，Version ID
-  `78f87b74-4f39-4fb5-a7e0-c9f7d9b4e81d`；Cloudflare 只治理链身份、bootnodes 和服务发现，
-  CitizenSDK checkpoint 只来自签名安装包；CitizenApp 不再实现轻节点或交易广播）
-- 类型：接口契约
-- 唯一真源：
-  - ADR：`../citizenwallet/CitizenWallet.md`
-  - Worker：`citizenserve/src/chain/bootstrap.ts`
-  - 路由：`citizenserve/src/routes.ts`
-  - App 服务发现：`citizenapp/lib/security/chain_bootstrap_api.dart`
-  - 轻节点与 checkpoint：`citizensdk/net/`、`citizensdk/chain/`
-- 详细文档：
-  - `../citizenwallet/CitizenWallet.md`
-  - `tasks/pending/gmb/公民链架构.md`
-- 生产者：
-  - Cloudflare Worker 内部业务路由 `GET /chain/bootstrap`；唯一生产部署 URL 为
-    `GET https://www.crcfrcn.com/api/chain/bootstrap`
-  - 部署环境变量 `CHAIN_*`
-- 消费者：
-  - CitizenSDK 唯一轻节点的公开 bootnode 配置
-  - CitizenApp 广场和聊天服务发现
-- HTTP API 字段：
-  - `GET /chain/bootstrap` 响应顶层字段：`ok`、`schema`、`generated_at`、`cache_ttl_seconds`、`chain`、`light_client`、`p2p`、`services`、`security`、`degradation`
-  - `schema`: 固定 `citizenapp.chain.bootstrap`；App 不接受旧版 schema
-  - `chain`: `chain_id`、`chain_name`、`chain_type`、`protocol_id`、`genesis_hash`、`state_root`、`ss58_format`、`token_symbol`、`token_decimals`
-  - `light_client`: `mode`、`truth_source`、`api_is_truth`、`bundled_assets_required`
-  - `light_client.mode`: 固定 `smoldot`
-  - `light_client.truth_source`: 固定 `p2p_finalized_storage`
-  - `light_client.api_is_truth`: 固定 `false`
-  - `light_client` 禁止包含任何 checkpoint、远端轻同步资产 URL 或摘要字段；信任锚只来自签名安装包
-  - `p2p`: `bootnodes`、`bootnodes_source`、`min_peer_count_hint`
-  - `services`: `square_base_url`、`chat_base_url`、`media_base_url`、`signed_extrinsic_relay`
-  - `services` 的三条同域 URL 必须保留请求所在的唯一生产部署前缀 `/api`；不得返回
-    不存在的站点根 `/square`、`/chat` 或 `/square/media`
-  - `services.signed_extrinsic_relay`: `enabled`、`path`；默认 `enabled=false/path=null`，仅当 Worker 显式配置 `RELAY_ENABLED=1` 且服务节点 RPC 已配置时返回 `enabled=true/path=/chain/extrinsics/relay`
-  - `security`: `exposes_rpc_url`、`rpc_proxy`、`exposes_private_key_material`、`validator_rpc_public`，全部固定 `false`
-  - `degradation`: `p2p_unavailable`、`chain_success_source`
-- Worker 环境变量：
-  - `CHAIN_BOOTNODES`: 公开 bootnode multiaddr 列表，允许换行、逗号或分号分隔；不是密钥。
-  - `BOOT_TTL_SECONDS`: 启动清单 HTTP 缓存秒数。
-  - `CHAIN_GENESISHASH`: 当前链 genesis hash，与公民服务端当前配置声明一致。
-  - `CHAIN_STATE_ROOT`: 当前轻形态 chainspec genesis `stateRootHash`。
-  - `RELAY_ENABLED`: 已签名交易受控广播开关，默认 `0`。
-  - `RELAY_MAX_BYTES`: relay 接受的 signed extrinsic 最大字节数。
-  - `RELAY_PER_MINUTE`: relay 每分钟按请求 IP hash 限流数量。
-  - `CHAIN_URL`: Access 保护的私有链 RPC HTTPS 地址，只放远端 Secret。
-  - `CHAIN_ID`、`CHAIN_SECRET`: Access 服务令牌，必须成套放入远端 Secret；缺失任一项时 relay 固定关闭。
-- 编码：HTTP JSON，字段统一 snake_case；时间统一毫秒时间戳；hash 字段为 hex；`bootnodes` 元素为 Substrate multiaddr 字符串。
-- 签名/验签规则：本接口不携带用户签名，不接受交易载荷；只声明受控广播 path 是否可用，广播协议见 `P-API-CITIZENAPP-005`。
-- 禁止兼容：不兼容 API-only 链连接方案；不得把本接口演化成通用 JSON-RPC fallback；
-  不保留已废弃的版本路径、版本化 schema 或双轨业务路由。
-- 禁止事项：
-  - 禁止响应中返回 `CHAIN_URL`、两项 `CHAIN_ID / CHAIN_SECRET`、Validator RPC、Archive RPC 或任何私密 RPC 完整 URL。
-  - 禁止 Cloudflare Worker 接触、保存或下发用户私钥、助记词、keystore、签名种子。
-  - 禁止把 `GET /chain/bootstrap` 的响应当作链上状态真源。
-  - 禁止把 `signed_extrinsic_relay.enabled=true` 解读为链上成功；该字段只表示可提交完整 signed extrinsic 到受控广播接口。
-  - 禁止把 `bootnodes` 连接失败直接判定为 DNS 故障；轻节点是否可用以 peer 和 best/finalized 推进为准。
-- 必跑测试：
-  - `npm --prefix citizenserve run typecheck`
-  - `npm --prefix citizenserve test -- chain_bootstrap.test.ts`
-  - 完整 Worker 测试：`npm --prefix citizenserve test`
-  - `flutter test test/security/chain_bootstrap_api_test.dart`
-  - `flutter analyze lib/security/chain_bootstrap_api.dart test/security/chain_bootstrap_api_test.dart`
-- 远端验收：唯一 production 必须验证当前 schema、`light_client` 精确四字段、无
-  checkpoint/RPC URL、三条 service URL 保留 `/api`、受保护无版本路由命中 401、旧
-  版本路径与 `/chain/rpc` 为 404；生产包不得残留 staging base URL Dart define。
+CitizenSDK只向`https://www.crcfrcn.com/api/chain/citizensdk/bootstrap`读取节点建议，由`net/src/bootstrap.rs`严格解析；生产者为CitizenServe的`chain/bootstrap.rs`与`cloudflare/chain.rs`。本节描述当前代码合同，不作为生产已部署的证明。
 
-##### P-API-CITIZENAPP-005：已退出 CitizenApp 的 Signed Extrinsic Relay
+- SDK顶层准确八字段：`is_ok`、`schema`、`generated_at`、`cache_ttl_seconds`、`chain`、`light_client`、`p2p`、`security`；`is_ok=true`，schema固定`citizensdk.chain.bootstrap`，未知字段或旧`ok`输入拒绝。
+- chain准确包含`chain_id`、`protocol_id`、`genesis_hash`、`state_root`、`ss58_format`、`token_symbol`、`token_decimals`；与随包链身份逐值核对。
+- light_client准确包含`mode=smoldot`、`truth_source=p2p_finalized_storage`、`api_is_truth=false`、`bundled_assets_required`；checkpoint和链同步资产只来自签名安装包，不接受远端替换字段、URL或摘要。
+- p2p准确包含`bootnodes`、`min_peer_count_hint`；security准确四字段`exposes_rpc_url`、`rpc_proxy`、`exposes_private_key_material`、`validator_rpc_public`，均为false。请求六秒、64 KiB上限及禁止重定向保持。
+- 清单仅生成当前实例内存bootNodes投影，不修改随包文件、持久数据库或链上状态。失败沿SDK原节点准备路径处理，不降级为Cloudflare RPC。
+- CitizenApp服务发现使用另一个`/api/chain/bootstrap`及`citizenapp.chain.bootstrap`结构，由`citizenapp/lib/network/chain_bootstrap_api.dart`消费；它含App服务发现字段，不能交给SDK解析器。其完整HTTP合同归CitizenServe技术文档。
+- Serve当前固定缓存TTL为300秒，bootnodes来自CHAIN_BOOTNODES，公开链身份来自既有声明；Access凭据、私有RPC及用户密钥不得进入响应。配置需求以Serve自身scripts/config.mjs和实际代码为准，不在SDK维护第二份旧变量清单。
+- 所属回归为`net/src/bootstrap_tests.rs`及`test/node/citizensdk_bootstrap_manifest.json`；跨端生产者回归为Serve的`test/chain_services_contract.rs`，App消费回归为`test/security/chain_bootstrap_api_test.dart`。通过控制台发起所属产品原测试入口；不保留已撤销的TypeScript测试或migrate:local指令。
 
-- 状态：CitizenServe 既有接口保留；2026-09-12 起 CitizenApp 不再消费，且没有 submit-only 兜底
-- 类型：接口契约
-- 唯一真源：
-  - Worker：`citizenserve/src/chain/extrinsic_relay.ts`
-  - D1 基线：`citizenserve/migrations/0001_square_core.sql`（交易广播审计结构已合并）
-- 详细文档：
-  - `../citizenwallet/CitizenWallet.md`
-  - `tasks/pending/gmb/公民链架构.md`
-- 生产者：Cloudflare Worker `POST /chain/extrinsics/relay`；CitizenApp 无生产者。
-- 消费者：
-  - CitizenChain 服务节点的 `author_submitExtrinsic`。
-  - D1 表 `chain_extrinsic_relays`。
-- HTTP API 字段：
-  - 请求：`signed_extrinsic_hex`，完整 signed extrinsic hex，必须以 `0x` 开头。
-  - 响应：`ok`、`schema=citizenapp.chain.extrinsic_relay`、`relay_id`、`relay_status=broadcast`、`deduplicated`、`tx_hash`、`accepted_at`、`chain_success_source=finalized_runtime_storage_or_events`。
-- 编码：HTTP JSON，字段统一 snake_case；`tx_hash` 为 32 字节 hex；Worker 不保存原始 extrinsic body，只保存 `extrinsic_sha256`。
-- 签名/验签规则：调用方必须自行完成交易签名；Worker 不接触私钥、不生成签名、不修改交易载荷，
-  只把完整 signed extrinsic 交给服务节点 RPC。CitizenApp 的交易构造、签名、提交和观察全部由
-  CitizenSDK 唯一轻节点完成，不调用本接口。
-- 禁止兼容：不得演化成通用 JSON-RPC proxy；不得新增兼容旧 RPC URL 下发字段。
-- 禁止事项：
-  - 禁止请求体携带 `private_key`、`mnemonic`、`seed`、`secret`、`keystore`、`password`、`recovery_phrase` 等密钥材料。
-  - 禁止响应中返回 `CHAIN_URL`、两项 `CHAIN_ID / CHAIN_SECRET`、Validator RPC、Archive RPC 或任何私密 RPC 完整 URL。
-  - 禁止把 relay 返回 `tx_hash` 当成链上成功；业务成功必须继续以 finalized runtime storage 或事件为准。
-  - 禁止 App 在交易本身已被判定为 invalid / bad proof / stale / future / payment 类错误时再走 relay 兜底。
-  - 禁止 CitizenApp 或 CitizenSDK 把本接口恢复为轻节点提交失败后的 fallback。
-- 必跑测试：
-  - `npm --prefix citizenserve run typecheck`
-  - `npm --prefix citizenserve test -- chain_bootstrap.test.ts chain_extrinsic_relay.test.ts`
-  - `npm --prefix citizenserve run migrate:local`
+##### P-API-CITIZENAPP-005：SDK不使用受控交易广播兜底
+
+CitizenSDK与CitizenApp的交易构造、签名、提交和观察沿SDK唯一轻节点；节点或交易错误不能转向Worker广播兜底。不得以服务端接收、广播或tx_hash代替finalized runtime storage或事件成功证明。
+
+Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/relay.rs`、`cloudflare/chain.rs`，持久结构归`cloudflare/schema.sql`的chain_relays，完整HTTP与配置合同归CitizenServe技术文档。SDK不作为该接口消费者，不另存旧路由、旧TypeScript文件、旧迁移表或另一份响应字段合同。跨端原回归归Serve的`test/chain_services_contract.rs`。
 
 ##### 聊天近场能力归属
 
