@@ -11,7 +11,7 @@ fn reference() -> SecretRef {
     )
 }
 #[test]
-fn wallet_revision_cas_preserves_records_and_rejects_revision_tampering() {
+fn wallet_revision_cas_preserves_records_and_rejects_envelope_tampering() {
     let db = db::Db::open();
     let store = SecureStore::new(db.clone());
     assert_eq!(
@@ -39,9 +39,15 @@ fn wallet_revision_cas_preserves_records_and_rejects_revision_tampering() {
         .code(),
         ContractErrorCode::Conflict
     );
+    let mut corrupt = citizen_sdk_store::codec::encode_wallet_state(&next).unwrap();
+    let last = corrupt.len() - 1;
+    corrupt[last] ^= 1;
     db.0.lock()
         .unwrap()
-        .execute("UPDATE wallet_profile SET revision=2", &[])
+        .execute(
+            "UPDATE wallet SET record_data=?",
+            &[citizen_sdk_store::sqlite::Value::Blob(corrupt)],
+        )
         .unwrap();
     assert_eq!(
         block_on(WalletProfileStore::load(&store))
@@ -230,19 +236,15 @@ fn corrupt_private_records_fail_without_reset_or_overwrite() {
     block_on(WalletProfileStore::load(&store)).unwrap();
     db.0.lock()
         .unwrap()
-        .execute(
-            "INSERT INTO encrypted_secret VALUES('corrupt',1,x'01')",
-            &[],
-        )
+        .execute("INSERT INTO secret VALUES('corrupt',x'01')", &[])
         .unwrap();
     assert!(block_on(store.has_account_secret(reference().account_id())).is_err());
     let rows =
         db.0.lock()
             .unwrap()
-            .query("SELECT revision,record FROM encrypted_secret", &[], 1, 1024)
+            .query("SELECT record_data FROM secret", &[], 1, 1024)
             .unwrap();
-    assert_eq!(rows[0].integer(0, 1, 1).unwrap(), 1);
-    assert_eq!(rows[0].bytes(1, 1).unwrap(), [1]);
+    assert_eq!(rows[0].bytes(0, 1).unwrap(), [1]);
 }
 #[test]
 fn secure_schema_literal_changes_are_rejected() {
@@ -272,7 +274,7 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
         })
         .unwrap();
     let bytes = codec::encode_encrypted_secret_blob_snapshot(reference(), &tomb).unwrap();
-    db.0.lock().unwrap().execute("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<65537) INSERT INTO encrypted_secret SELECT printf('%05d',x),1,? FROM n",&[Value::Blob(bytes)]).unwrap();
+    db.0.lock().unwrap().execute("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<65537) INSERT INTO secret SELECT printf('%05d',x),? FROM n",&[Value::Blob(bytes)]).unwrap();
     assert_eq!(
         block_on(store.has_account_secret(reference().account_id()))
             .unwrap_err()
@@ -281,7 +283,7 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
     );
     db.0.lock()
         .unwrap()
-        .execute("DELETE FROM encrypted_secret", &[])
+        .execute("DELETE FROM secret", &[])
         .unwrap();
     block_on(EncryptedSecretBlobStore::compare_and_swap(
         &store,
@@ -292,21 +294,57 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
     .unwrap();
     db.0.lock()
         .unwrap()
-        .execute("INSERT INTO encrypted_secret VALUES('bad',1,x'01')", &[])
+        .execute("INSERT INTO secret VALUES('bad',x'01')", &[])
         .unwrap();
     assert!(block_on(store.has_account_secret(reference().account_id())).unwrap());
     assert!(key::secret(reference()).starts_with("v1:7:1:"));
 }
 
 #[test]
-fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated(){
- use citizen_sdk_store::{key,sqlite::Value};
- for revision in [Value::Integer(-1),Value::Integer(0),Value::Text("invalid".into()),Value::Blob(vec![1])]{
-  let db=db::Db::open();let store=SecureStore::with_format(db.clone(),Format::Device);block_on(WalletProfileStore::load(&store)).unwrap();let record=vec![1];
-  db.0.lock().unwrap().execute("INSERT INTO encrypted_secret VALUES(?,?,?)",&[Value::Text(key::secret(reference())),revision.clone(),Value::Blob(record.clone())]).unwrap();
-  assert!(block_on(EncryptedSecretBlobStore::load(&store,reference())).is_err());assert!(block_on(EncryptedSecretBlobStore::compare_and_swap(&store,reference(),0,sealed())).is_err());
-  let rows=db.0.lock().unwrap().query("SELECT revision,record FROM encrypted_secret",&[],1,1024).unwrap();assert_eq!(rows[0].0,vec![revision,Value::Blob(record)]);
- }
- let first=SecureStore::new(db::Db::open());let second=SecureStore::new(db::Db::open());let next=WalletState::try_from_catalog_parts(1,None,vec![],vec![],1,None,None,vec![]).unwrap();block_on(WalletProfileStore::compare_and_swap(&first,0,next)).unwrap();assert_eq!(block_on(WalletProfileStore::load(&second)).unwrap(),WalletState::empty());
- let key=citizen_sdk_store::vault::Key{index:0,generation:reference().generation()};first.retire_generation(key,[1;16]).unwrap();assert!(second.ensure_generation(key,[1;16]).unwrap());
+fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated() {
+    use citizen_sdk_store::{key, sqlite::Value};
+    for record in [vec![0], vec![1, 2], vec![0xff; 80]] {
+        let db = db::Db::open();
+        let store = SecureStore::with_format(db.clone(), Format::Device);
+        block_on(WalletProfileStore::load(&store)).unwrap();
+        db.0.lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO secret VALUES(?,?)",
+                &[
+                    Value::Text(key::secret(reference())),
+                    Value::Blob(record.clone()),
+                ],
+            )
+            .unwrap();
+        assert!(block_on(EncryptedSecretBlobStore::load(&store, reference())).is_err());
+        assert!(block_on(EncryptedSecretBlobStore::compare_and_swap(
+            &store,
+            reference(),
+            0,
+            sealed()
+        ))
+        .is_err());
+        let rows =
+            db.0.lock()
+                .unwrap()
+                .query("SELECT record_data FROM secret", &[], 1, 1024)
+                .unwrap();
+        assert_eq!(rows[0].0, vec![Value::Blob(record)]);
+    }
+    let first = SecureStore::new(db::Db::open());
+    let second = SecureStore::new(db::Db::open());
+    let next = WalletState::try_from_catalog_parts(1, None, vec![], vec![], 1, None, None, vec![])
+        .unwrap();
+    block_on(WalletProfileStore::compare_and_swap(&first, 0, next)).unwrap();
+    assert_eq!(
+        block_on(WalletProfileStore::load(&second)).unwrap(),
+        WalletState::empty()
+    );
+    let key = citizen_sdk_store::vault::Key {
+        index: 0,
+        generation: reference().generation(),
+    };
+    first.retire_generation(key, [1; 16]).unwrap();
+    assert!(second.ensure_generation(key, [1; 16]).unwrap());
 }

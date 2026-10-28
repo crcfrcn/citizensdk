@@ -12,7 +12,7 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
 }
 
 pub fn block(hash: Hash32) -> String {
-    format!("block:{}", hex(hash.as_bytes()))
+    hex(hash.as_bytes())
 }
 
 pub fn execution(id: TransactionExecutionId) -> String {
@@ -48,7 +48,4 @@ pub fn secret(reference: citizen_sdk_contracts::SecretRef) -> String {
         hex(reference.owner().as_bytes()),
         hex(reference.account_id().as_bytes())
     )
-}
-pub fn generation(index: u32, generation: citizen_sdk_contracts::VaultGeneration) -> String {
-    format!("v1:{index}:{}", hex(generation.as_bytes()))
 }

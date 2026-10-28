@@ -335,6 +335,18 @@ fn encrypted_secret_presence_uses_complete_codec_and_preserves_outputs_on_failur
             )
             .is_err()
         );
+        let mut corrupt = bytes.clone();
+        // 修改封套原字节必须破坏冻结摘要；不依赖第二份SQL修订列。
+        let last = corrupt.len() - 1;
+        corrupt[last] ^= 1;
+        assert!(
+            citizen_sdk_store::codec::encrypted_secret_record_has_secret(
+                account,
+                snapshot.revision(),
+                &corrupt
+            )
+            .is_err()
+        );
     }
 }
 

@@ -8,21 +8,21 @@ use crate::{
 use citizen_sdk_contracts::*;
 use std::sync::Mutex;
 pub(crate) const DEVICE: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet_profile (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), revision INTEGER NOT NULL, record BLOB NOT NULL)",
-    "CREATE TABLE IF NOT EXISTS encrypted_secret (record_key TEXT PRIMARY KEY, revision INTEGER NOT NULL, record BLOB NOT NULL)",
-    "CREATE TABLE IF NOT EXISTS vault_generation (record_key TEXT PRIMARY KEY, wallet_index INTEGER NOT NULL, generation BLOB NOT NULL, state INTEGER NOT NULL, operation_id BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, key_state INTEGER NOT NULL, operation_id BLOB NOT NULL, PRIMARY KEY(wallet_index,key_generation))",
 ];
 pub(crate) const TPM: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet_profile (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 1048576))",
-    "CREATE TABLE IF NOT EXISTS encrypted_secret (record_key TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 65536))",
-    "CREATE TABLE IF NOT EXISTS vault_generation (record_key TEXT PRIMARY KEY, wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), generation BLOB NOT NULL CHECK(typeof(generation) = 'blob' AND length(generation) = 16), state INTEGER NOT NULL CHECK(typeof(state) = 'integer' AND state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16))",
-    "CREATE TABLE IF NOT EXISTS vault_object (record_key TEXT PRIMARY KEY, public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 1 AND 8192), private_blob BLOB NOT NULL CHECK(typeof(private_blob) = 'blob' AND length(private_blob) BETWEEN 1 AND 8192), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) = 34), auth_salt BLOB NOT NULL CHECK(typeof(auth_salt) = 'blob' AND length(auth_salt) = 16))",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 1048576))",
+    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 65536))",
+    "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), key_generation BLOB NOT NULL CHECK(typeof(key_generation) = 'blob' AND length(key_generation) = 16), key_state INTEGER NOT NULL CHECK(typeof(key_state) = 'integer' AND key_state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16), PRIMARY KEY(wallet_index,key_generation))",
+    "CREATE TABLE IF NOT EXISTS object (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 1 AND 8192), private_blob BLOB NOT NULL CHECK(typeof(private_blob) = 'blob' AND length(private_blob) BETWEEN 1 AND 8192), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) = 34), auth_salt BLOB NOT NULL CHECK(typeof(auth_salt) = 'blob' AND length(auth_salt) = 16), PRIMARY KEY(wallet_index,key_generation), FOREIGN KEY(wallet_index,key_generation) REFERENCES generation(wallet_index,key_generation))",
 ];
 pub(crate) const CNG: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet_profile (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 1048576))",
-    "CREATE TABLE IF NOT EXISTS encrypted_secret (record_key TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 65536))",
-    "CREATE TABLE IF NOT EXISTS vault_generation (record_key TEXT PRIMARY KEY, wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), generation BLOB NOT NULL CHECK(typeof(generation) = 'blob' AND length(generation) = 16), state INTEGER NOT NULL CHECK(typeof(state) = 'integer' AND state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16))",
-    "CREATE TABLE IF NOT EXISTS vault_object (record_key TEXT PRIMARY KEY, key_name TEXT NOT NULL CHECK(typeof(key_name) = 'text' AND length(key_name) = 43), public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 281 AND 288), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) BETWEEN 1 AND 1024), auth_salt BLOB NOT NULL CHECK(typeof(auth_salt) = 'blob' AND length(auth_salt) = 16))",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 1048576))",
+    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 65536))",
+    "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), key_generation BLOB NOT NULL CHECK(typeof(key_generation) = 'blob' AND length(key_generation) = 16), key_state INTEGER NOT NULL CHECK(typeof(key_state) = 'integer' AND key_state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16), PRIMARY KEY(wallet_index,key_generation))",
+    "CREATE TABLE IF NOT EXISTS object (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 281 AND 288), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) BETWEEN 1 AND 1024), PRIMARY KEY(wallet_index,key_generation), FOREIGN KEY(wallet_index,key_generation) REFERENCES generation(wallet_index,key_generation))",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,7 +100,7 @@ impl<D: Database> SecureStore<D> {
 }
 fn wallet(conn: &mut dyn Connection) -> ContractResult<WalletState> {
     let rows = conn.query(
-        "SELECT revision, record FROM wallet_profile WHERE wallet_index = 0",
+        "SELECT record_data FROM wallet WHERE wallet_index = 0",
         &[],
         1,
         1048576,
@@ -108,11 +108,7 @@ fn wallet(conn: &mut dyn Connection) -> ContractResult<WalletState> {
     let Some(row) = rows.first() else {
         return Ok(WalletState::empty());
     };
-    let revision = row.integer(0, 1, i64::MAX)? as u64;
-    let state = codec::decode_wallet_state(row.bytes(1, 1048576)?).map_err(decode_error)?;
-    if state.revision() != revision {
-        return Err(integrity("wallet revision differs from its record"));
-    }
+    let state = codec::decode_wallet_state(row.bytes(0, 1048576)?).map_err(decode_error)?;
     Ok(state)
 }
 fn encrypted(
@@ -120,7 +116,7 @@ fn encrypted(
     reference: SecretRef,
 ) -> ContractResult<EncryptedSecretBlobSnapshot> {
     let rows = conn.query(
-        "SELECT revision, record FROM encrypted_secret WHERE record_key = ?",
+        "SELECT record_data FROM secret WHERE record_key = ?",
         &[Value::Text(key::secret(reference))],
         1,
         65536,
@@ -128,12 +124,8 @@ fn encrypted(
     let Some(row) = rows.first() else {
         return Ok(EncryptedSecretBlobSnapshot::empty());
     };
-    let revision = row.integer(0, 1, i64::MAX)? as u64;
-    let state = codec::decode_encrypted_secret_blob_snapshot(reference, row.bytes(1, 65536)?)
+    let state = codec::decode_encrypted_secret_blob_snapshot(reference, row.bytes(0, 65536)?)
         .map_err(decode_error)?;
-    if state.revision() != revision {
-        return Err(integrity("encrypted secret revision differs"));
-    }
     Ok(state)
 }
 impl<D: Database> WalletProfileStore for SecureStore<D> {
@@ -156,10 +148,25 @@ impl<D: Database> WalletProfileStore for SecureStore<D> {
             if record.len() > 1048576 {
                 return Err(invalid("wallet record too large"));
             }
-            self.run(|conn|transaction_recover(conn,|conn|{
-   if wallet(conn)?.revision()!=expected{return Err(error(ContractErrorCode::Conflict,"wallet revision changed"));}
-   conn.execute("INSERT OR REPLACE INTO wallet_profile(wallet_index, revision, record) VALUES(0, ?, ?)",&[Value::Integer(next.revision() as i64),Value::Blob(record)])?;Ok(next)
-  },|conn,next|Ok(wallet(conn)?==*next)))
+            self.run(|conn| {
+                transaction_recover(
+                    conn,
+                    |conn| {
+                        if wallet(conn)?.revision() != expected {
+                            return Err(error(
+                                ContractErrorCode::Conflict,
+                                "wallet revision changed",
+                            ));
+                        }
+                        conn.execute(
+                            "INSERT OR REPLACE INTO wallet(wallet_index, record_data) VALUES(0, ?)",
+                            &[Value::Blob(record)],
+                        )?;
+                        Ok(next)
+                    },
+                    |conn, next| Ok(wallet(conn)? == *next),
+                )
+            })
         })
     }
 }
@@ -174,15 +181,35 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
         next: EncryptedSecretBlobState,
     ) -> ContractFuture<'_, EncryptedSecretBlobSnapshot> {
         Box::pin(async move {
-            self.run(|conn|{
-  let candidate=transaction_recover(conn,|conn|{let current=encrypted(conn,reference)?;
-   if current.revision()!=expected{return Err(error(ContractErrorCode::Conflict,"encrypted secret revision changed"));}
-   let candidate=current.try_advance(next)?;let record=codec::encode_encrypted_secret_blob_snapshot(reference,&candidate).map_err(decode_error)?;
-   conn.execute("INSERT OR REPLACE INTO encrypted_secret(record_key, revision, record) VALUES(?, ?, ?)",&[Value::Text(key::secret(reference)),Value::Integer(candidate.revision() as i64),Value::Blob(record)])?;Ok(candidate)
-  },|conn,next|Ok(encrypted(conn,reference)?==*next))?;
-  // 密文写入必须准确回读；不能把接纳或COMMIT回执当作完整候选状态。
-  if encrypted(conn,reference)?!=candidate{return Err(integrity("encrypted secret readback differs"));}Ok(candidate)
- })
+            self.run(|conn| {
+                let candidate = transaction_recover(
+                    conn,
+                    |conn| {
+                        let current = encrypted(conn, reference)?;
+                        if current.revision() != expected {
+                            return Err(error(
+                                ContractErrorCode::Conflict,
+                                "encrypted secret revision changed",
+                            ));
+                        }
+                        let candidate = current.try_advance(next)?;
+                        let record =
+                            codec::encode_encrypted_secret_blob_snapshot(reference, &candidate)
+                                .map_err(decode_error)?;
+                        conn.execute(
+                            "INSERT OR REPLACE INTO secret(record_key, record_data) VALUES(?, ?)",
+                            &[Value::Text(key::secret(reference)), Value::Blob(record)],
+                        )?;
+                        Ok(candidate)
+                    },
+                    |conn, next| Ok(encrypted(conn, reference)? == *next),
+                )?;
+                // 密文写入必须准确回读；不能把接纳或COMMIT回执当作完整候选状态。
+                if encrypted(conn, reference)? != candidate {
+                    return Err(integrity("encrypted secret readback differs"));
+                }
+                Ok(candidate)
+            })
         })
     }
     fn has_account_secret(&self, account: AccountId32) -> ContractFuture<'_, bool> {
@@ -191,7 +218,7 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
                 let mut present = false;
                 let mut count = 0;
                 conn.scan(
-                    "SELECT revision, record FROM encrypted_secret LIMIT 65537",
+                    "SELECT record_data FROM secret LIMIT 65537",
                     &[],
                     65537,
                     65536,
@@ -203,13 +230,12 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
                                 "secret scan limit exceeded",
                             ));
                         }
-                        let revision = row.integer(0, 1, i64::MAX)? as u64;
-                        present = codec::encrypted_secret_record_has_secret(
-                            account,
-                            revision,
-                            row.bytes(1, 65536)?,
-                        )
-                        .map_err(decode_error)?;
+                        // SQL只保存原封套；同一codec解码出属主与单向状态，不保存修订副本。
+                        let (reference, snapshot) =
+                            codec::decode_encrypted_secret_blob(row.bytes(0, 65536)?)
+                                .map_err(decode_error)?;
+                        present =
+                            reference.account_id() == account && snapshot.envelope().is_some();
                         Ok(present)
                     },
                 )?;

@@ -1,4 +1,4 @@
-//! 原public-state-v1.sqlite3格式；不升级或重建现有数据库。
+//! 当前公共数据库唯一结构；严格拒绝不匹配结构，不升级或重建真实数据库。
 use crate::{
     error::integrity,
     sqlite::{scalar, transaction, Connection, Value},
@@ -6,13 +6,13 @@ use crate::{
 use citizen_sdk_contracts::ContractResult;
 pub const VERSION: i64 = 2;
 pub const STATEMENTS: &[&str] = &[
-    "CREATE TABLE IF NOT EXISTS singleton_records (domain INTEGER PRIMARY KEY CHECK(domain = 1), revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0), record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 524288))",
-    "CREATE TABLE IF NOT EXISTS runtime_cache (record_key TEXT PRIMARY KEY, record BLOB NOT NULL CHECK(typeof(record) = 'blob' AND length(record) <= 8388608))",
-    "CREATE TABLE IF NOT EXISTS transaction_history_meta (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), revision INTEGER NOT NULL CHECK(revision > 0), record_count INTEGER NOT NULL CHECK(record_count BETWEEN 0 AND 4096), durable_weight INTEGER NOT NULL CHECK(durable_weight BETWEEN 0 AND 32505856), open_count INTEGER NOT NULL CHECK(open_count BETWEEN 0 AND record_count), open_weight INTEGER NOT NULL CHECK(open_weight BETWEEN 0 AND durable_weight))",
-    "CREATE TABLE IF NOT EXISTS transaction_history_records (execution_id TEXT PRIMARY KEY CHECK(length(execution_id) = 32 AND execution_id NOT GLOB '*[^0-9a-f]*'), created_at_millis INTEGER NOT NULL CHECK(created_at_millis >= 0), updated_at_millis INTEGER NOT NULL CHECK(updated_at_millis >= created_at_millis), durable_weight INTEGER NOT NULL CHECK(durable_weight BETWEEN 1 AND 32505856), retention_terminal INTEGER NOT NULL CHECK(retention_terminal IN (0,1)), chain_terminal INTEGER NOT NULL CHECK(chain_terminal IN (0,1) AND chain_terminal <= retention_terminal), record BLOB NOT NULL CHECK(length(record) BETWEEN 1 AND 33554432))",
-    "CREATE INDEX IF NOT EXISTS transaction_history_newest_idx ON transaction_history_records(created_at_millis DESC, execution_id DESC)",
-    "CREATE INDEX IF NOT EXISTS transaction_history_retention_idx ON transaction_history_records(retention_terminal, created_at_millis, execution_id)",
-    "CREATE INDEX IF NOT EXISTS transaction_history_reconcile_idx ON transaction_history_records(chain_terminal, created_at_millis, execution_id)",
+    "CREATE TABLE IF NOT EXISTS chain (row_id INTEGER PRIMARY KEY CHECK(row_id = 1), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 524288))",
+    "CREATE TABLE IF NOT EXISTS runtime (block_hash TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 8388608))",
+    "CREATE TABLE IF NOT EXISTS history (row_id INTEGER PRIMARY KEY CHECK(row_id = 1), state_rev INTEGER NOT NULL CHECK(state_rev > 0))",
+    "CREATE TABLE IF NOT EXISTS entry (execution_id TEXT PRIMARY KEY CHECK(length(execution_id) = 32 AND execution_id NOT GLOB '*[^0-9a-f]*'), created_at INTEGER NOT NULL CHECK(created_at >= 0), retention_terminal INTEGER NOT NULL CHECK(retention_terminal IN (0,1)), chain_terminal INTEGER NOT NULL CHECK(chain_terminal IN (0,1) AND chain_terminal <= retention_terminal), record_data BLOB NOT NULL CHECK(length(record_data) BETWEEN 1 AND 33554432))",
+    "CREATE INDEX IF NOT EXISTS entry_newest ON entry(created_at DESC, execution_id DESC)",
+    "CREATE INDEX IF NOT EXISTS entry_retention ON entry(retention_terminal, created_at, execution_id)",
+    "CREATE INDEX IF NOT EXISTS entry_reconcile ON entry(chain_terminal, created_at, execution_id)",
 ];
 
 fn canonical(value: &str) -> String {

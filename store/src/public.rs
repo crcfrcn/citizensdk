@@ -11,13 +11,13 @@ use citizen_sdk_contracts::{
     TransactionExecutionRecord, TransactionHistoryCursor, TransactionHistoryIndex,
     TransactionHistoryMutation, TransactionHistoryQueryKind, TransactionHistoryRecordBatch,
     TransactionHistoryRecordSnapshot, TransactionHistoryStore, MAX_PERSISTED_RUNTIME_CONTEXTS,
-    MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES, MAX_TRANSACTION_HISTORY_PAGE_SIZE,
-    MAX_TRANSACTION_HISTORY_RECORDS,
+    MAX_TRANSACTION_HISTORY_PAGE_SIZE, MAX_TRANSACTION_HISTORY_RECORDS,
 };
 use std::sync::Mutex;
 
 const HISTORY_BYTES: usize = 32 * 1024 * 1024;
-const RECORD_COLUMNS: &str = "execution_id, created_at_millis, updated_at_millis, durable_weight, retention_terminal, chain_terminal, record";
+const RECORD_COLUMNS: &str =
+    "execution_id, created_at, retention_terminal, chain_terminal, record_data";
 
 pub struct PublicStore<D: Database> {
     database: D,
@@ -68,7 +68,7 @@ fn integer(value: u64) -> ContractResult<Value> {
 
 fn chain_snapshot(connection: &mut dyn Connection) -> ContractResult<ChainDatabaseSnapshot> {
     let rows = connection.query(
-        "SELECT revision, record FROM singleton_records WHERE domain = ?",
+        "SELECT record_data FROM chain WHERE row_id = ?",
         &[Value::Integer(1)],
         1,
         524288,
@@ -76,12 +76,8 @@ fn chain_snapshot(connection: &mut dyn Connection) -> ContractResult<ChainDataba
     match rows.first() {
         None => Ok(ChainDatabaseSnapshot::new(0, None)),
         Some(row) => {
-            let revision = row.integer(0, 1, i64::MAX)? as u64;
-            let snapshot = codec::decode_chain_database_snapshot(row.bytes(1, 524288)?)
+            let snapshot = codec::decode_chain_database_snapshot(row.bytes(0, 524288)?)
                 .map_err(codec_error)?;
-            if snapshot.revision() != revision {
-                return Err(integrity("chain database revision differs from its record"));
-            }
             Ok(snapshot)
         }
     }
@@ -108,12 +104,25 @@ impl<D: Database> ChainDatabaseStore for PublicStore<D> {
             if encoded.len() > 524288 {
                 return Err(invalid("chain database record is too large"));
             }
-            self.run(|connection| transaction_recover(connection,|connection| {
-                if chain_snapshot(connection)?.revision()!=expected { return Err(error(ContractErrorCode::Conflict,"chain database revision changed")); }
-                connection.execute("INSERT OR REPLACE INTO singleton_records(domain, revision, record) VALUES(?, ?, ?)",
-                    &[Value::Integer(1),integer(next.revision())?,Value::Blob(encoded)])?;
-                Ok(next)
-            },|connection,next| Ok(chain_snapshot(connection)?==*next)))
+            self.run(|connection| {
+                transaction_recover(
+                    connection,
+                    |connection| {
+                        if chain_snapshot(connection)?.revision() != expected {
+                            return Err(error(
+                                ContractErrorCode::Conflict,
+                                "chain database revision changed",
+                            ));
+                        }
+                        connection.execute(
+                            "INSERT OR REPLACE INTO chain(row_id, record_data) VALUES(?, ?)",
+                            &[Value::Integer(1), Value::Blob(encoded)],
+                        )?;
+                        Ok(next)
+                    },
+                    |connection, next| Ok(chain_snapshot(connection)? == *next),
+                )
+            })
         })
     }
 }
@@ -123,7 +132,7 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
         Box::pin(async move {
             self.run(|connection| {
                 let rows = connection.query(
-                    "SELECT record FROM runtime_cache WHERE record_key = ?",
+                    "SELECT record_data FROM runtime WHERE block_hash = ?",
                     &[Value::Text(key::block(block))],
                     1,
                     8 * 1024 * 1024,
@@ -147,9 +156,9 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
                 return Err(invalid("runtime cache record is too large"));
             }
             self.run(|connection| transaction(connection,|connection| {
-                connection.execute("INSERT OR REPLACE INTO runtime_cache(record_key, record) VALUES(?, ?)",
+                connection.execute("INSERT OR REPLACE INTO runtime(block_hash, record_data) VALUES(?, ?)",
                     &[Value::Text(key::block(context.block().hash())),Value::Blob(record)])?;
-                connection.execute("DELETE FROM runtime_cache WHERE rowid NOT IN (SELECT rowid FROM runtime_cache ORDER BY rowid DESC LIMIT ?)",
+                connection.execute("DELETE FROM runtime WHERE rowid NOT IN (SELECT rowid FROM runtime ORDER BY rowid DESC LIMIT ?)",
                     &[Value::Integer(MAX_PERSISTED_RUNTIME_CONTEXTS as i64)])?;
                 Ok(())
             }))
@@ -160,7 +169,7 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
             self.run(|connection| {
                 transaction(connection, |connection| {
                     connection.execute(
-                        "DELETE FROM runtime_cache WHERE record_key = ?",
+                        "DELETE FROM runtime WHERE block_hash = ?",
                         &[Value::Text(key::block(block))],
                     )?;
                     Ok(())
@@ -171,33 +180,48 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
 }
 
 fn history_index(connection: &mut dyn Connection) -> ContractResult<TransactionHistoryIndex> {
-    let rows=connection.query("SELECT revision, record_count, durable_weight, open_count, open_weight FROM transaction_history_meta WHERE singleton = 1",&[],1,1024)?;
-    let Some(row) = rows.first() else {
-        return Ok(TransactionHistoryIndex::empty());
-    };
-    TransactionHistoryIndex::try_new(
-        row.integer(0, 1, i64::MAX)? as u64,
-        row.integer(1, 0, MAX_TRANSACTION_HISTORY_RECORDS as i64)? as usize,
-        row.integer(2, 0, MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES as i64)? as usize,
-        row.integer(3, 0, MAX_TRANSACTION_HISTORY_RECORDS as i64)? as usize,
-        row.integer(4, 0, MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES as i64)? as usize,
-    )
-    .map_err(|_| integrity("history index is inconsistent"))
+    let rows = connection.query(
+        "SELECT state_rev FROM history WHERE row_id = 1",
+        &[],
+        1,
+        1024,
+    )?;
+    let revision = rows
+        .first()
+        .map(|row| row.integer(0, 1, i64::MAX))
+        .transpose()?
+        .unwrap_or(0) as u64;
+    // 有界原始记录是统计唯一真源；元表只保存独立CAS修订，不存汇总副本。
+    let mut counts = [0usize; 4];
+    connection.scan(
+        &format!("SELECT {RECORD_COLUMNS} FROM entry"),
+        &[],
+        MAX_TRANSACTION_HISTORY_RECORDS + 1,
+        HISTORY_BYTES,
+        &mut |row| {
+            if counts[0] == MAX_TRANSACTION_HISTORY_RECORDS {
+                return Err(integrity("history count exceeds capacity"));
+            }
+            update_counts(&mut counts, &history_row(row)?, true)?;
+            Ok(false)
+        },
+    )?;
+    if revision == 0 && counts[0] != 0 {
+        return Err(integrity("history records have no revision"));
+    }
+    TransactionHistoryIndex::try_new(revision, counts[0], counts[1], counts[2], counts[3])
+        .map_err(|_| integrity("history index is inconsistent"))
 }
 
 fn history_row(row: &Row) -> ContractResult<TransactionExecutionRecord> {
     let id = key::parse_execution(row.text(0, 32)?)?;
     let created = row.integer(1, 0, i64::MAX)? as u64;
-    let updated = row.integer(2, 0, i64::MAX)? as u64;
-    let weight = row.integer(3, 1, MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES as i64)? as usize;
-    let retention = row.integer(4, 0, 1)? != 0;
-    let terminal = row.integer(5, 0, 1)? != 0;
-    let record = codec::decode_transaction_execution_record(row.bytes(6, HISTORY_BYTES)?)
+    let retention = row.integer(2, 0, 1)? != 0;
+    let terminal = row.integer(3, 0, 1)? != 0;
+    let record = codec::decode_transaction_execution_record(row.bytes(4, HISTORY_BYTES)?)
         .map_err(codec_error)?;
     if record.execution_id() != id
         || record.created_at_millis() != created
-        || record.updated_at_millis() != updated
-        || record.durable_weight_bytes() != weight
         || record.status().is_retention_terminal() != retention
         || record.status().is_chain_terminal() != terminal
     {
@@ -211,7 +235,7 @@ fn history_record(
     id: TransactionExecutionId,
 ) -> ContractResult<Option<TransactionExecutionRecord>> {
     let rows = connection.query(
-        &format!("SELECT {RECORD_COLUMNS} FROM transaction_history_records WHERE execution_id = ?"),
+        &format!("SELECT {RECORD_COLUMNS} FROM entry WHERE execution_id = ?"),
         &[Value::Text(key::execution(id))],
         1,
         HISTORY_BYTES,
@@ -283,7 +307,7 @@ fn recovery_matches(
 
 impl<D: Database> TransactionHistoryStore for PublicStore<D> {
     fn load_index(&self) -> ContractFuture<'_, TransactionHistoryIndex> {
-        Box::pin(async move { self.run(history_index) })
+        Box::pin(async move { self.run(|connection| transaction(connection, history_index)) })
     }
     fn load_record(
         &self,
@@ -321,13 +345,13 @@ impl<D: Database> TransactionHistoryStore for PublicStore<D> {
                     TransactionHistoryQueryKind::OldestRetentionTerminal => ("retention_terminal = 1",">","ASC"),
                     TransactionHistoryQueryKind::OldestReconcilable => ("chain_terminal = 0",">","ASC"),
                 };
-                let mut sql=format!("SELECT {RECORD_COLUMNS} FROM transaction_history_records WHERE {filter}");
+                let mut sql=format!("SELECT {RECORD_COLUMNS} FROM entry WHERE {filter}");
                 let mut values=Vec::new();
                 if let Some(cursor)=cursor {
-                    sql.push_str(&format!(" AND (created_at_millis {comparison} ? OR (created_at_millis = ? AND execution_id {comparison} ?))"));
+                    sql.push_str(&format!(" AND (created_at {comparison} ? OR (created_at = ? AND execution_id {comparison} ?))"));
                     values.extend([integer(cursor.created_at_millis())?,integer(cursor.created_at_millis())?,Value::Text(key::execution(cursor.execution_id()))]);
                 }
-                sql.push_str(&format!(" ORDER BY created_at_millis {order}, execution_id {order} LIMIT ?"));
+                sql.push_str(&format!(" ORDER BY created_at {order}, execution_id {order} LIMIT ?"));
                 values.push(Value::Integer(limit as i64+1));
                 let rows=connection.query(&sql,&values,limit+1,HISTORY_BYTES)?;
                 let more=rows.len()>limit;
@@ -359,22 +383,21 @@ impl<D: Database> TransactionHistoryStore for PublicStore<D> {
                         let current=history_record(connection,*id)?.ok_or_else(|| integrity("history delete target is missing"))?;
                         if !current.status().is_retention_terminal() { return Err(integrity("history mutation cannot delete an open execution")); }
                         update_counts(&mut counts,&current,false)?;
-                        connection.execute("DELETE FROM transaction_history_records WHERE execution_id = ?",&[Value::Text(key::execution(*id))])?;
+                        connection.execute("DELETE FROM entry WHERE execution_id = ?",&[Value::Text(key::execution(*id))])?;
                     }
                     for (record,encoded) in mutation.upserts().iter().zip(&encoded) {
                         if let Some(current)=history_record(connection,record.execution_id())? { update_counts(&mut counts,&current,false)?; }
                         update_counts(&mut counts,record,true)?;
                         let _=TransactionHistoryIndex::try_new(current.revision(),counts[0],counts[1],counts[2],counts[3])?;
-                        connection.execute("INSERT OR REPLACE INTO transaction_history_records(execution_id, created_at_millis, updated_at_millis, durable_weight, retention_terminal, chain_terminal, record) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                            &[Value::Text(key::execution(record.execution_id())),integer(record.created_at_millis())?,integer(record.updated_at_millis())?,
-                              integer(record.durable_weight_bytes() as u64)?,Value::Integer(i64::from(record.status().is_retention_terminal())),
+                        connection.execute("INSERT OR REPLACE INTO entry(execution_id, created_at, retention_terminal, chain_terminal, record_data) VALUES(?, ?, ?, ?, ?)",
+                            &[Value::Text(key::execution(record.execution_id())),integer(record.created_at_millis())?,Value::Integer(i64::from(record.status().is_retention_terminal())),
                               Value::Integer(i64::from(record.status().is_chain_terminal())),Value::Blob(encoded.clone())])?;
                     }
                     let next=mutation.next_index();
                     let computed=TransactionHistoryIndex::try_new(next.revision(),counts[0],counts[1],counts[2],counts[3])?;
                     if computed!=next { return Err(integrity("history mutation aggregate is inconsistent")); }
-                    connection.execute("INSERT OR REPLACE INTO transaction_history_meta(singleton, revision, record_count, durable_weight, open_count, open_weight) VALUES(1, ?, ?, ?, ?, ?)",
-                        &[integer(next.revision())?,integer(next.record_count() as u64)?,integer(next.durable_weight_bytes() as u64)?,integer(next.open_count() as u64)?,integer(next.open_weight_bytes() as u64)?])?;
+                    connection.execute("INSERT OR REPLACE INTO history(row_id, state_rev) VALUES(1, ?)",
+                        &[integer(next.revision())?])?;
                     Ok(next)
                 },|connection,_| transaction(connection,|connection| recovery_matches(connection,&mutation)))?;
                 if !mutation.deletes().is_empty() {

@@ -1373,7 +1373,7 @@ pub fn encrypted_secret_record_has_secret(
     Ok(secret_ref.account_id() == account_id && snapshot.envelope().is_some())
 }
 
-fn decode_encrypted_secret_blob(
+pub(crate) fn decode_encrypted_secret_blob(
     encoded: &[u8],
 ) -> Result<(SecretRef, EncryptedSecretBlobSnapshot), HostCodecError> {
     decode_typed(HostRecordDomain::EncryptedSecretBlob, encoded, |reader| {

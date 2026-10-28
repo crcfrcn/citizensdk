@@ -106,7 +106,7 @@ fn existing_schema_and_cshr_records_are_read_without_rewrite() {
         }
         conn.execute("PRAGMA user_version=2", &[]).unwrap();
         conn.execute(
-            "INSERT INTO singleton_records VALUES(1,7,?)",
+            "INSERT INTO chain VALUES(1,?)",
             &[Value::Blob(encoded.clone())],
         )
         .unwrap();
@@ -119,7 +119,7 @@ fn existing_schema_and_cshr_records_are_read_without_rewrite() {
     let rows =
         db.0.lock()
             .unwrap()
-            .query("SELECT record FROM singleton_records", &[], 1, 524288)
+            .query("SELECT record_data FROM chain", &[], 1, 524288)
             .unwrap();
     assert_eq!(rows[0].bytes(0, 524288).unwrap(), encoded);
 }
@@ -140,7 +140,7 @@ fn records_written_by_rust_are_readable_as_the_existing_cshr_sql_layout() {
         db.0.lock()
             .unwrap()
             .query(
-                "SELECT execution_id, record FROM transaction_history_records",
+                "SELECT execution_id, record_data FROM entry",
                 &[],
                 1,
                 33554432,
@@ -154,4 +154,64 @@ fn records_written_by_rust_are_readable_as_the_existing_cshr_sql_layout() {
         codec::decode_transaction_execution_record(rows[0].bytes(1, 33554432).unwrap()).unwrap(),
         record
     );
+}
+
+#[test]
+fn physical_tables_and_columns_are_exact_and_have_no_derived_keys() {
+    use citizen_sdk_store::{secure::Format, SecureStore};
+    for format in [
+        None,
+        Some(Format::Device),
+        Some(Format::Tpm),
+        Some(Format::Cng),
+    ] {
+        let db = db::Db::open();
+        let expected = if let Some(format) = format {
+            block_on(WalletProfileStore::load(&SecureStore::with_format(
+                db.clone(),
+                format,
+            )))
+            .unwrap();
+            if format == Format::Device {
+                vec!["generation", "secret", "wallet"]
+            } else {
+                vec!["generation", "object", "secret", "wallet"]
+            }
+        } else {
+            block_on(ChainDatabaseStore::load(&PublicStore::new(db.clone()))).unwrap();
+            vec!["chain", "entry", "history", "runtime"]
+        };
+        let mut conn = db.0.lock().unwrap();
+        let rows=conn.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' ORDER BY name",&[],4,1024).unwrap();
+        let names = rows
+            .iter()
+            .map(|r| r.text(0, 64).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names, expected);
+        for table in names {
+            let rows = conn
+                .query(&format!("PRAGMA table_info({table})"), &[], 16, 4096)
+                .unwrap();
+            for row in &rows {
+                let name = row.text(1, 64).unwrap();
+                let words = name.split('_').collect::<Vec<_>>();
+                assert_eq!(words.len(), 2, "{table}.{name}");
+                assert!(words
+                    .iter()
+                    .all(|word| !word.is_empty() && word.bytes().all(|b| b.is_ascii_lowercase())));
+            }
+            if table == "generation" {
+                assert_eq!(rows.len(), 4);
+            }
+            if table == "object" {
+                assert_eq!(rows.len(), if format == Some(Format::Cng) { 4 } else { 6 });
+            }
+            if matches!(table, "chain" | "wallet" | "secret" | "history") {
+                assert_eq!(rows.len(), 2);
+            }
+            if table == "entry" {
+                assert_eq!(rows.len(), 5);
+            }
+        }
+    }
 }

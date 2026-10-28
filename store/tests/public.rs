@@ -1,6 +1,9 @@
 mod db;
 use citizen_sdk_contracts::*;
-use citizen_sdk_store::{sqlite::Connection, PublicStore};
+use citizen_sdk_store::{
+    sqlite::{Connection, Value},
+    PublicStore,
+};
 use futures::executor::block_on;
 fn context(index: u8) -> RuntimeContext {
     RuntimeContext::try_new(
@@ -37,7 +40,7 @@ fn runtime_cache_prunes_promotes_and_rolls_back_failed_pruning() {
             .unwrap()
             .is_none()
     );
-    db.0.lock().unwrap().execute("CREATE TRIGGER prune_failure BEFORE DELETE ON runtime_cache BEGIN SELECT RAISE(ABORT,'fixture'); END",&[]).unwrap();
+    db.0.lock().unwrap().execute("CREATE TRIGGER prune_failure BEFORE DELETE ON runtime BEGIN SELECT RAISE(ABORT,'fixture'); END",&[]).unwrap();
     assert!(block_on(store.store(context(81))).is_err());
     assert!(
         block_on(RuntimeCacheStore::load(&store, context(81).block().hash()))
@@ -235,50 +238,29 @@ fn store_survives_process_exit_and_concurrent_writers() {
 
 #[test]
 fn malformed_revisions_and_extra_schema_are_rejected_without_overwrite() {
-    for literal in ["-1", "0", "1.5", "'broken'"] {
+    for corrupt in [vec![0], vec![1, 2], vec![0xff; 80]] {
         let db = db::Db::open();
         let store = PublicStore::new(db.clone());
         block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).unwrap();
-        let mut conn = db.0.lock().unwrap();
-        conn.execute("PRAGMA ignore_check_constraints=ON", &[])
-            .unwrap();
-        conn.execute(
-            &format!("UPDATE singleton_records SET revision={literal}"),
-            &[],
-        )
-        .unwrap();
-        let before = conn
-            .query(
-                "SELECT typeof(revision), quote(revision), hex(record) FROM singleton_records",
-                &[],
-                1,
-                1048576,
+        db.0.lock()
+            .unwrap()
+            .execute(
+                "UPDATE chain SET record_data=?",
+                &[Value::Blob(corrupt.clone())],
             )
             .unwrap();
-        drop(conn);
-        assert_eq!(
-            block_on(ChainDatabaseStore::load(&store))
-                .unwrap_err()
-                .code(),
-            ContractErrorCode::Storage
-        );
+        assert!(block_on(ChainDatabaseStore::load(&store)).is_err());
         assert!(block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).is_err());
-        assert_eq!(
+        let rows =
             db.0.lock()
                 .unwrap()
-                .query(
-                    "SELECT typeof(revision), quote(revision), hex(record) FROM singleton_records",
-                    &[],
-                    1,
-                    1048576
-                )
-                .unwrap(),
-            before
-        );
+                .query("SELECT record_data FROM chain", &[], 1, 1048576)
+                .unwrap();
+        assert_eq!(rows[0].bytes(0, 1048576).unwrap(), corrupt);
     }
     for sql in [
         "CREATE TABLE sqlitex_extra(value BLOB)",
-        "CREATE TRIGGER sqlitex_extra AFTER INSERT ON singleton_records BEGIN SELECT 1; END",
+        "CREATE TRIGGER sqlitex_extra AFTER INSERT ON chain BEGIN SELECT 1; END",
     ] {
         let db = db::Db::open();
         let store = PublicStore::new(db.clone());
@@ -447,7 +429,7 @@ fn schema_and_record_corruption_never_reset() {
     block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).unwrap();
     db.0.lock()
         .unwrap()
-        .execute("UPDATE singleton_records SET record=x'00'", &[])
+        .execute("UPDATE chain SET record_data=x'00'", &[])
         .unwrap();
     assert!(block_on(ChainDatabaseStore::load(&store)).is_err());
     assert!(block_on(ChainDatabaseStore::compare_and_swap(&store, 1, None)).is_err());

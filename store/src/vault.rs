@@ -31,7 +31,7 @@ struct Generation {
     operation: [u8; 16],
 }
 fn generation(conn: &mut dyn Connection, key: Key) -> ContractResult<Option<Generation>> {
-    let rows=conn.query("SELECT state, operation_id, wallet_index, generation FROM vault_generation WHERE record_key = ?",&[Value::Text(identity(key))],1,1024)?;
+    let rows=conn.query("SELECT key_state, operation_id, wallet_index, key_generation FROM generation WHERE wallet_index = ? AND key_generation = ?",&[Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec())],1,1024)?;
     let Some(row) = rows.first() else {
         return Ok(None);
     };
@@ -49,24 +49,17 @@ fn generation(conn: &mut dyn Connection, key: Key) -> ContractResult<Option<Gene
         operation,
     }))
 }
-fn identity(value: Key) -> String {
-    key::generation(value.index, value.generation)
-}
 fn owned(conn: &mut dyn Connection, key: Key, operation: [u8; 16]) -> ContractResult<bool> {
     Ok(generation(conn, key)?.is_some_and(|value| value.active && value.operation == operation))
 }
 fn key_row(row: &Row) -> ContractResult<Key> {
-    let index = row.integer(1, 0, u32::MAX as i64)? as u32;
+    let index = row.integer(0, 0, u32::MAX as i64)? as u32;
     let generation = VaultGeneration::from_bytes(
-        row.bytes(2, 16)?
+        row.bytes(1, 16)?
             .try_into()
             .map_err(|_| integrity("vault generation length differs"))?,
     );
-    let key = Key { index, generation };
-    if row.text(0, 64)? != identity(key) {
-        return Err(integrity("vault generation key differs"));
-    }
-    Ok(key)
+    Ok(Key { index, generation })
 }
 fn valid(format: Format, key: Key, value: &Object) -> bool {
     match format {
@@ -88,18 +81,26 @@ fn valid(format: Format, key: Key, value: &Object) -> bool {
     }
 }
 fn object(conn: &mut dyn Connection, format: Format, key: Key) -> ContractResult<Option<Object>> {
-    let sql=match format{Format::Tpm=>"SELECT public_blob, private_blob, object_name, auth_salt FROM vault_object WHERE record_key = ?",Format::Cng=>"SELECT key_name, public_blob, object_name, auth_salt FROM vault_object WHERE record_key = ?",Format::Device=>return Err(error(Code::Unsupported,"device vault has no SQL hardware object"))};
-    let rows = conn.query(sql, &[Value::Text(identity(key))], 1, 20000)?;
+    let sql=match format{Format::Tpm=>"SELECT public_blob, private_blob, object_name, auth_salt FROM object WHERE wallet_index = ? AND key_generation = ?",Format::Cng=>"SELECT public_blob, object_name FROM object WHERE wallet_index = ? AND key_generation = ?",Format::Device=>return Err(error(Code::Unsupported,"device vault has no SQL hardware object"))};
+    let rows = conn.query(
+        sql,
+        &[
+            Value::Integer(key.index.into()),
+            Value::Blob(key.generation.as_bytes().to_vec()),
+        ],
+        1,
+        20000,
+    )?;
     let Some(row) = rows.first() else {
         return Ok(None);
     };
     let value = if format == Format::Cng {
         Object {
-            key_name: row.text(0, 43)?.into(),
-            public: row.bytes(1, 288)?.to_vec(),
+            key_name: format!("citizensdk.{}", key::hex(key.generation.as_bytes())),
+            public: row.bytes(0, 288)?.to_vec(),
             private: vec![],
-            name: row.bytes(2, 1024)?.to_vec(),
-            salt: row.bytes(3, 16)?.to_vec(),
+            name: row.bytes(1, 1024)?.to_vec(),
+            salt: key.generation.as_bytes().to_vec(),
         }
     } else {
         Object {
@@ -119,7 +120,7 @@ impl<D: Database> SecureStore<D> {
     pub fn ensure_generation(&self, key: Key, operation: [u8; 16]) -> ContractResult<bool> {
         self.run(|conn|transaction_recover(conn,|conn|{
   if let Some(current)=generation(conn,key)?{return Ok(current.active&&current.operation==operation);}
-  conn.execute("INSERT INTO vault_generation(record_key, wallet_index, generation, state, operation_id) VALUES(?, ?, ?, ?, ?)",&[Value::Text(identity(key)),Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Integer(1),Value::Blob(operation.to_vec())])?;Ok(true)
+  conn.execute("INSERT INTO generation(wallet_index, key_generation, key_state, operation_id) VALUES(?, ?, ?, ?)",&[Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Integer(1),Value::Blob(operation.to_vec())])?;Ok(true)
  },|conn,value|Ok(*value&&owned(conn,key,operation)?)))
     }
     pub fn is_active(&self, key: Key) -> ContractResult<bool> {
@@ -130,22 +131,37 @@ impl<D: Database> SecureStore<D> {
     }
     pub fn retire_generation(&self, key: Key, operation: [u8; 16]) -> ContractResult<()> {
         self.run(|conn|transaction_recover(conn,|conn|{
-  conn.execute("INSERT OR REPLACE INTO vault_generation(record_key, wallet_index, generation, state, operation_id) VALUES(?, ?, ?, ?, ?)",&[Value::Text(identity(key)),Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Integer(2),Value::Blob(operation.to_vec())])?;Ok(())
+  conn.execute("INSERT INTO generation(wallet_index, key_generation, key_state, operation_id) VALUES(?, ?, ?, ?) ON CONFLICT(wallet_index,key_generation) DO UPDATE SET key_state=excluded.key_state,operation_id=excluded.operation_id",&[Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Integer(2),Value::Blob(operation.to_vec())])?;Ok(())
  },|conn,_|Ok(generation(conn,key)?.is_some_and(|g|!g.active&&g.operation==operation))))
     }
     pub fn generations(&self) -> ContractResult<Vec<Key>> {
-        self.run(|conn|{let mut values=vec![];
-  conn.scan("SELECT record_key, wallet_index, generation, state FROM vault_generation LIMIT 65537",&[],LIMIT+1,1024,&mut |row|{
-   if values.len()==LIMIT{return Err(error(Code::Unavailable,"vault generation scan limit exceeded"));}
-   row.integer(3,1,2)?;values.push(key_row(row)?);Ok(false)
-  })?;Ok(values)
- })
+        self.run(|conn| {
+            let mut values = vec![];
+            conn.scan(
+                "SELECT wallet_index, key_generation, key_state FROM generation LIMIT 65537",
+                &[],
+                LIMIT + 1,
+                1024,
+                &mut |row| {
+                    if values.len() == LIMIT {
+                        return Err(error(
+                            Code::Unavailable,
+                            "vault generation scan limit exceeded",
+                        ));
+                    }
+                    row.integer(2, 1, 2)?;
+                    values.push(key_row(row)?);
+                    Ok(false)
+                },
+            )?;
+            Ok(values)
+        })
     }
     pub fn has_object_key(&self, index: u32) -> ContractResult<bool> {
         self.run(|conn|{
   if self.format!=Format::Tpm{return Err(error(Code::Unsupported,"physical key enumeration belongs to the platform vault"));}
   let mut found=false;let mut count=0;
-  conn.scan("SELECT o.record_key, g.wallet_index, g.generation FROM vault_object o LEFT JOIN vault_generation g ON g.record_key = o.record_key LIMIT 65537",&[],LIMIT+1,1024,&mut |row|{
+  conn.scan("SELECT g.wallet_index, g.key_generation FROM object o LEFT JOIN generation g ON g.wallet_index = o.wallet_index AND g.key_generation = o.key_generation LIMIT 65537",&[],LIMIT+1,1024,&mut |row|{
    count+=1;if count>LIMIT{return Err(error(Code::Unavailable,"vault object scan limit exceeded"));}found=key_row(row)?.index==index;Ok(found)
   })?;Ok(found)
  })
@@ -160,8 +176,8 @@ impl<D: Database> SecureStore<D> {
         self.run(|conn|transaction_recover(conn,|conn|{
    if !owned(conn,key,operation)?{return Err(error(Code::KeyInvalidated,"vault generation is retired or belongs to another operation"));}
    if let Some(current)=object(conn,self.format,key)?{return if current==value {Ok(())}else{Err(error(Code::KeyInvalidated,"vault object was replaced"))};}
-   let (sql,fields)=if self.format==Format::Cng{("INSERT INTO vault_object(record_key, key_name, public_blob, object_name, auth_salt) VALUES(?, ?, ?, ?, ?)",vec![Value::Text(identity(key)),Value::Text(value.key_name.clone()),Value::Blob(value.public.clone()),Value::Blob(value.name.clone()),Value::Blob(value.salt.clone())])}
-   else{("INSERT INTO vault_object(record_key, public_blob, private_blob, object_name, auth_salt) VALUES(?, ?, ?, ?, ?)",vec![Value::Text(identity(key)),Value::Blob(value.public.clone()),Value::Blob(value.private.clone()),Value::Blob(value.name.clone()),Value::Blob(value.salt.clone())])};
+   let (sql,fields)=if self.format==Format::Cng{("INSERT INTO object(wallet_index, key_generation, public_blob, object_name) VALUES(?, ?, ?, ?)",vec![Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Blob(value.public.clone()),Value::Blob(value.name.clone())])}
+   else{("INSERT INTO object(wallet_index, key_generation, public_blob, private_blob, object_name, auth_salt) VALUES(?, ?, ?, ?, ?, ?)",vec![Value::Integer(key.index.into()),Value::Blob(key.generation.as_bytes().to_vec()),Value::Blob(value.public.clone()),Value::Blob(value.private.clone()),Value::Blob(value.name.clone()),Value::Blob(value.salt.clone())])};
    conn.execute(sql,&fields)?;Ok(())
   },|conn,_|Ok(owned(conn,key,operation)?&&object(conn,self.format,key)?.as_ref()==Some(&value))))
     }
@@ -179,8 +195,11 @@ impl<D: Database> SecureStore<D> {
                 conn,
                 |conn| {
                     conn.execute(
-                        "DELETE FROM vault_object WHERE record_key = ?",
-                        &[Value::Text(identity(key))],
+                        "DELETE FROM object WHERE wallet_index = ? AND key_generation = ?",
+                        &[
+                            Value::Integer(key.index.into()),
+                            Value::Blob(key.generation.as_bytes().to_vec()),
+                        ],
                     )?;
                     Ok(())
                 },

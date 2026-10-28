@@ -3356,3 +3356,10 @@ Dart的Memory.block统一用现有版本结构分配器填写citizensdk_block_re
 FFI绑定在持有准确session/method/request sequence的调用边界为完全未关联的本地异常补齐关联，保留原code、stage、message和堆栈；同步接纳和异步完成遵循同一规则。已有任意关联字段的异常保持原样，禁止覆盖外来或部分关联来冒充当前请求。会话层仍严格拒绝缺失、不匹配或过期关联，不把原notReady/network等错误统一丢失为decode；无会话的open/静态调用及未知会话不伪造请求身份。错误与关联值不增加日志出口，原序列消费、取消、关闭和敏感缓冲擦除合同保持。
 
 历史准确块批读的拒绝回归同时覆盖缺失键、多余键、重复响应、错误块和坏十六进制；单键不存在必须由显式null表达。SDK既有严格分析要求测试import按字母排序，未放宽诊断级别。
+
+
+存储物理合同唯一归Rust store：公共chain/runtime/history/entry四表共11列；设备wallet/secret/generation三表共8列；TPM四表共14列，CNG四表共12列。各平台表数量保持，物理表为单词、列为两段下划线名。平台只提供官方SQLite连接，不复制schema；旧结构严格拒绝，不普通读取迁移或清除。
+
+chain及wallet/secret的CAS修订直接取原校验封套，不保存SQL副本；history只存独立CAS修订，数量、重量和开放项汇总在原事务从有界entry计算。entry保留分页/恢复索引描述符，删除无查询用途的更新时间与重量副本。runtime按真实block_hash定址，不再添加block前缀。
+
+generation/object直接以wallet_index/key_generation自然复合键关联；代际退休更新保留父行和永久墓碑，未知提交回读仍核对完整候选。CNG硬件key_name/auth_salt由真实代际唯一确定，不重复存列；TPM随机盐、私有/公有blob及实际硬件对象名保留。SecretRef规范键、原C ABI/回调声明与codec字节保持，宿主独立修订校验仍保留；SQL扫描复用同一codec读取封套，不新增按偏移解析器或字段翻译层。

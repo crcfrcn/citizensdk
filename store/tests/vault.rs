@@ -140,3 +140,21 @@ fn independent_connections_admit_one_owner_and_keep_tombstone_after_reopen() {
     }
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn natural_generation_key_keeps_wallet_scope_and_retirement_independent() {
+    let store = SecureStore::new(db::Db::open());
+    let first = key();
+    let second = Key {
+        index: 1,
+        generation: first.generation,
+    };
+    assert!(store.ensure_generation(first, [1; 16]).unwrap());
+    assert!(store.ensure_generation(second, [2; 16]).unwrap());
+    assert!(store.generation_owned_by(first, [1; 16]).unwrap());
+    assert!(store.generation_owned_by(second, [2; 16]).unwrap());
+    store.retire_generation(first, [3; 16]).unwrap();
+    assert!(!store.is_active(first).unwrap());
+    assert!(store.is_active(second).unwrap());
+    assert_eq!(store.generations().unwrap().len(), 2);
+}
