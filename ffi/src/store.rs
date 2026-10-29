@@ -192,7 +192,38 @@ impl Database for Sqlite {
         let code = unsafe {
             self.0.run.unwrap()(self.0.context, run_job, (&mut work as *mut Work<'_>).cast())
         };
-        status(code)?;
+        if let Err(failure) = status(code) {
+            // 宿主返回码和阶段仍优先；只补传同码job已实际产生的固定诊断。
+            // 未知文本不回显，不改变SQL、事务、清理或成功/失败控制流。
+            if let Some(Err(inner)) = work.result.as_ref() {
+                if inner.code() == failure.code()
+                    && matches!(
+                        inner.message(),
+                        "public database schema version differs"
+                            | "public database object set differs"
+                            | "public database schema differs"
+                            | "public database auto-vacuum differs"
+                            | "public database durability setting differs"
+                            | "public database trusted-schema setting differs"
+                            | "embedded public schema is invalid"
+                            | "host record corruption digest does not match"
+                            | "host record belongs to a different typed store"
+                            | "persisted wallet identity is invalid"
+                            | "persisted cold identity is invalid"
+                            | "persisted wallet order is duplicated"
+                            | "persisted wallet state is invalid"
+                            | "persisted wallet profile is invalid"
+                    )
+                {
+                    return Err(citizen_sdk_contracts::ContractError::at_stage(
+                        failure.code(),
+                        failure.stage(),
+                        inner.message(),
+                    ));
+                }
+            }
+            return Err(failure);
+        }
         work.result
             .ok_or_else(|| integrity("SQLite job was not executed"))?
     }
@@ -637,6 +668,92 @@ mod tests {
                 )
             );
             assert!(calls <= 1);
+        }
+    }
+    #[test]
+    fn actual_fixed_job_failure_survives_host_code_without_changing_code_or_stage() {
+        let config = config();
+        let db = unsafe { Sqlite::new(&config) }.unwrap();
+        for reason in [
+            "public database schema version differs",
+            "public database object set differs",
+            "public database schema differs",
+            "public database auto-vacuum differs",
+            "public database durability setting differs",
+            "public database trusted-schema setting differs",
+            "embedded public schema is invalid",
+            "host record corruption digest does not match",
+            "host record belongs to a different typed store",
+            "persisted wallet identity is invalid",
+            "persisted cold identity is invalid",
+            "persisted wallet order is duplicated",
+            "persisted wallet state is invalid",
+            "persisted wallet profile is invalid",
+        ] {
+            let mut calls = 0;
+            let failure = db
+                .run(&mut |_| {
+                    calls += 1;
+                    Err(citizen_sdk_contracts::ContractError::at_stage(
+                        Code::Integrity,
+                        citizen_sdk_contracts::FailureStage::Persistence,
+                        reason,
+                    ))
+                })
+                .unwrap_err();
+            assert_eq!(calls, 1);
+            assert_eq!(failure.code(), Code::Integrity);
+            assert_eq!(failure.stage(), status(9).unwrap_err().stage());
+            assert_eq!(failure.message(), reason);
+        }
+    }
+    unsafe extern "C" fn reject_before_job(_: *mut c_void, _: Job, _: *mut c_void) -> i32 {
+        14
+    }
+    unsafe extern "C" fn reject_after_job(_: *mut c_void, job: Job, context: *mut c_void) -> i32 {
+        let _ = job(context);
+        14
+    }
+    #[test]
+    fn host_failure_before_job_or_with_different_code_keeps_original_priority() {
+        for (callback, expected_calls) in [
+            (
+                reject_before_job as unsafe extern "C" fn(*mut c_void, Job, *mut c_void) -> i32,
+                0,
+            ),
+            (reject_after_job, 1),
+        ] {
+            for job_failed in [false, true] {
+                let mut config = config();
+                config.run = Some(callback);
+                let db = unsafe { Sqlite::new(&config) }.unwrap();
+                let mut calls = 0;
+                let failure = db
+                    .run(&mut |_| {
+                        calls += 1;
+                        if job_failed {
+                            Err(integrity("public database schema differs"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .unwrap_err();
+                assert_eq!(calls, expected_calls);
+                assert_eq!(failure, status(14).unwrap_err());
+            }
+        }
+    }
+    #[test]
+    fn unknown_job_text_never_escapes_the_fixed_resource_failure() {
+        let config = config();
+        let db = unsafe { Sqlite::new(&config) }.unwrap();
+        for message in [
+            "synthetic-private-content",
+            "public database schema differs synthetic-private-content",
+        ] {
+            let failure = db.run(&mut |_| Err(integrity(message))).unwrap_err();
+            assert_eq!(failure, status(9).unwrap_err());
+            assert!(!failure.message().contains("synthetic-private-content"));
         }
     }
     #[test]

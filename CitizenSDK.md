@@ -1967,10 +1967,10 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   1. `plan: SubscriptionPlan`。
   2. `started_at: u64LE`。
   3. `last_charged_at: u64LE`。
-  4. `last_charged_price_fen: u128LE`。
+  4. `charge_fen: u128LE`。
   5. `paid_until: u64LE`。
   6. `subscription_status: SubscriptionStatus`。
-  7. `authorized_price_fen: u128LE`。
+  7. `price_fen: u128LE`。
   8. `suspend_reason: Option<SuspendReason>`。
 - 状态规则：
   - `Active` 必须有对应 `RenewalSchedule` 和 `RenewalIndex`；`current_timestamp < paid_until` 时权益有效。
@@ -3277,7 +3277,7 @@ store/src/*.rs、store/tests/*.rs、平台src及tests文件均不超过仓库相
 
 依据：[Rust C FFI边界](https://doc.rust-lang.org/nomicon/ffi.html)、[SQLite事务与隔离](https://www.sqlite.org/lang_transaction.html)、[Android SQLiteDatabase公开API](https://developer.android.com/reference/android/database/sqlite/SQLiteDatabase)、[JNI线程附着与JNIEnv生命周期](https://docs.oracle.com/en/java/javase/21/docs/specs/jni/invocation.html#attaching-to-the-vm)。另据[Android系统SQLite版本表](https://developer.android.com/reference/android/database/sqlite/package-summary)及[SQLite3.31设置引入说明](https://www.sqlite.org/releaselog/3_31_0.html)保留原Android支持范围。这些官方合同约束接口、事务和资源寿命；本仓的crate划分是满足这些约束的实现选择。
 
-安全仓储固定保留secure-state-v1.sqlite3、schema1及各端既有三表/TPM或CNG四表结构；平台原数据无需转换。钱包修订与密文信封须相符，密文CAS准确回读，generation永久退休且绑定唯一provisioning操作。硬件对象在Rust核对准确持久身份，认证与取消仍由原平台执行。Android/Apple保留原Keystore别名与Keychain tag。密文存在性最多逐条扫描65536项，不一次载入全部密文；query回调字节上限按每行执行，普通查询另在Rust约束总量。平台金库通过四个私有同步函数借用同一SQLite资源访问同一Rust Store，无新增全局实例/结果表，私有声明仅由本仓构建器生成，不进入公开头。
+安全仓储文件名secure-state-v1.sqlite3及schema1保持，当前三表/TPM或CNG四表的物理合同只归Rust store。版本号相同不代表旧DDL可直接使用；打开时核对实际对象和结构，旧结构严格拒绝，普通读取不转换或重建。真实现存数据的适配范围须按准确对象另行核实，不能据文件名、版本号或表数量认定无需转换。钱包修订与密文信封须相符，密文CAS准确回读，generation永久退休且绑定唯一provisioning操作。硬件对象在Rust核对准确持久身份，认证与取消仍由原平台执行。Android/Apple保留原Keystore别名与Keychain tag。密文存在性最多逐条扫描65536项，不一次载入全部密文；query回调字节上限按每行执行，普通查询另在Rust约束总量。平台金库通过四个私有同步函数借用同一SQLite资源访问同一Rust Store，无新增全局实例/结果表，私有声明仅由本仓构建器生成，不进入公开头。
 
 依据：[Android官方JNI建议](https://developer.android.com/ndk/guides/jni-tips)、[SQLite secure_delete](https://www.sqlite.org/pragma.html#pragma_secure_delete)。JNI在原请求线程内同步附着并完整释放局部引用和游标；安全库应用并回读secure_delete，文件保护与WAL/事务规则仍保留。
 
@@ -3363,3 +3363,5 @@ FFI绑定在持有准确session/method/request sequence的调用边界为完全�
 chain及wallet/secret的CAS修订直接取原校验封套，不保存SQL副本；history只存独立CAS修订，数量、重量和开放项汇总在原事务从有界entry计算。entry保留分页/恢复索引描述符，删除无查询用途的更新时间与重量副本。runtime按真实block_hash定址，不再添加block前缀。
 
 generation/object直接以wallet_index/key_generation自然复合键关联；代际退休更新保留父行和永久墓碑，未知提交回读仍核对完整候选。CNG硬件key_name/auth_salt由真实代际唯一确定，不重复存列；TPM随机盐、私有/公有blob及实际硬件对象名保留。SecretRef规范键、原C ABI/回调声明与codec字节保持，宿主独立修订校验仍保留；SQL扫描复用同一codec读取封套，不新增按偏移解析器或字段翻译层。
+
+SQLite资源run失败仍使用宿主原返回码及阶段；当同次job已经保存同码失败，且其原因完整命中SDK固定白名单时，只补传该真实失败原因。白名单区分数据库版本、对象集合、结构定义、耐久设置及记录摘要/类型/钱包状态；未知文本或附加内容继续返回原通用资源错误。宿主未执行job、job成功而宿主收尾失败或宿主返回码不同，均保持原失败优先级。此项仅补充失败诊断，不改变SQL、事务、清理、持久格式和钱包读写，不转换或重建现有数据。同文件回归覆盖真实job分支、原返回码/阶段、宿主失败优先级及未知文本不回显。
