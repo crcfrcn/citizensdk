@@ -1877,13 +1877,13 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
 - 类型：交易载荷格式
 - 唯一真源：
   - `../citizenwallet/CitizenWallet.md`
-  - `citizenchain/runtime/misc/square-post/`
-  - `citizenchain/runtime/misc/square-post/tests/fixtures/subscription_scale_vectors.json`
+  - `citizenchain/runtime/misc/square/`
+  - `citizenchain/runtime/misc/square/tests/subscription_scale_vectors.json`
 - 生产者：
   - `citizenapp/lib/my/membership/subscription_chain.dart`
   - `citizenchain/onchina/src/platform/`
 - 消费者：
-  - `citizenchain/runtime/misc/square-post/`
+  - `citizenchain/runtime/misc/square/`
   - `citizenserve/src/chain/subscription.ts`
   - `citizenwallet`（负责 SquarePost 0..6 的 Cold 载荷确认、一次签名和响应二维码展示）
 - pallet：`SquarePost`
@@ -2473,7 +2473,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - 禁止恢复独立快照 action、payload、解码和两步准备流程。
   - 禁止跳过 runtime 链上人口读取。
 - 必跑测试：
-  - `citizenchain/runtime/src/tests/cases.rs` 中 population snapshot 相关测试
+  - `citizenchain/runtime/tests/cases.rs` 中 population snapshot 相关测试
   - `citizenapp/test/proposal/runtime_upgrade/runtime_upgrade_service_test.dart`
 
 ##### P-TX-003：ResolutionIssuance.propose_issuance
@@ -2512,7 +2512,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - 禁止把发行金额显示口径和链端 `u128` 分单位混用
 - 必跑测试：
   - `citizenwallet/test/signer/payload_decoder_test.dart`
-  - `citizenchain/runtime/src/tests/cases.rs`
+  - `citizenchain/runtime/tests/cases.rs`
 
 ##### P-TX-005：MultisigTransfer proposal payloads
 
