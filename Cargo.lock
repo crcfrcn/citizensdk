@@ -397,101 +397,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "citizen-sdk-contracts"
-version = "1.0.0"
-dependencies = [
- "blake2",
- "bs58",
- "futures-core",
- "zeroize",
-]
-
-[[package]]
-name = "citizen-sdk-engine"
-version = "1.0.0"
-dependencies = [
- "bip39",
- "citizen-sdk-contracts",
- "citizen-sdk-qr",
- "citizen-signer",
- "futures",
- "getrandom 0.3.4",
- "hmac 0.12.1",
- "pbkdf2",
- "serde_json",
- "sha2 0.10.9",
- "subxt-core",
- "unicode-normalization",
- "unicode-segmentation",
- "zeroize",
-]
-
-[[package]]
-name = "citizen-sdk-ffi"
-version = "1.0.0"
+name = "citizensdk"
+version = "2.0.0"
 dependencies = [
  "aes",
  "aes-gcm",
+ "base64",
+ "bip39",
  "blake2",
  "blake2-rfc",
+ "bs58",
  "bytes",
- "citizen-sdk-contracts",
- "citizen-sdk-engine",
- "citizen-sdk-qr",
- "citizen-sdk-store",
- "citizen-signer",
  "futures",
  "futures-channel",
+ "futures-core",
  "futures-executor",
  "futures-util",
  "getrandom 0.3.4",
  "ghash",
  "hex",
+ "hmac 0.12.1",
  "http",
  "http-body-util",
  "hyper-rustls",
  "hyper-util",
  "jni",
  "parking_lot",
+ "pbkdf2",
  "rustls",
  "rustls-platform-verifier",
+ "schnorrkel",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "smoldot-light",
+ "subxt-core",
  "tokio",
+ "unicode-normalization",
+ "unicode-segmentation",
  "url",
- "zeroize",
-]
-
-[[package]]
-name = "citizen-sdk-qr"
-version = "1.0.0"
-dependencies = [
- "base64",
- "citizen-sdk-contracts",
- "futures-executor",
- "getrandom 0.3.4",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "citizen-sdk-store"
-version = "1.0.0"
-dependencies = [
- "citizen-sdk-contracts",
- "futures",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "citizen-signer"
-version = "1.0.0"
-dependencies = [
- "citizen-sdk-contracts",
- "schnorrkel",
  "zeroize",
 ]
 

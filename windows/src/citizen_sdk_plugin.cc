@@ -1,4 +1,4 @@
-#include "citizen_sdk/citizen_sdk_plugin.h"
+#include "citizen_sdk_plugin.h"
 
 #include <flutter/binary_messenger.h>
 #include <flutter/plugin_registrar_windows.h>
@@ -19,9 +19,9 @@
 #include <utility>
 #include <vector>
 
-#include "citizen_sdk_flutter_codec.hpp"
+#include "value.hpp"
 #include "citizen_sdk_flutter_environment.hpp"
-#include "citizen_sdk_flutter_sessions.hpp"
+#include "flutter.hpp"
 
 namespace citizen_sdk::flutter {
 namespace {
@@ -519,11 +519,12 @@ TextureRegistration create_texture_registration(::flutter::TextureRegistrar *reg
           [owner] { owner->detach(); }};
 }
 
-// 私有依赖注入仅替换原生环境/有限 transport；生产与测试走同一注册和消息实现。
+// 原生注册直接创建实际Host资源。
 // 不声明在安装头、不导出 C++ 符号，不构成宿主可获取秘密或原生 handle 的 API。
 std::unique_ptr<::flutter::Plugin> register_plugin(::flutter::BinaryMessenger *messenger,
-    HWND view, EnvironmentFactory environment_factory, TransportFactory transport_factory,
+    HWND view,
     ::flutter::TextureRegistrar *registrar = nullptr) {
+  EnvironmentFactory environment_factory;
   if (messenger == nullptr) throw ContractFailure(CITIZENSDK_ERROR_INVALID_ARGUMENT,
                                                  "CitizenSDK Flutter messenger is unavailable");
   const auto state = std::make_shared<PluginState>();
@@ -535,7 +536,7 @@ std::unique_ptr<::flutter::Plugin> register_plugin(::flutter::BinaryMessenger *m
   const auto queue = state->queue;
   state->textures = create_texture_registration(registrar);
   state->sessions = Sessions::create(std::move(environment_factory),
-      [queue](std::function<void()> action) { queue->post(std::move(action)); }, std::move(transport_factory), state->textures.open);
+      [queue](std::function<void()> action) { queue->post(std::move(action)); }, state->textures.open);
   const auto method = std::make_shared<HandlerToken>();
   method->state = state;
   method->registration = state->method_registration;
@@ -573,7 +574,7 @@ void CitizenSdkPluginRegisterWithRegistrar(FlutterDesktopPluginRegistrarRef regi
         ->GetRegistrar<::flutter::PluginRegistrarWindows>(registrar);
     auto *view = owner->GetView();
     owner->AddPlugin(citizen_sdk::flutter::register_plugin(owner->messenger(),
-        view == nullptr ? nullptr : view->GetNativeWindow(), {}, {}, owner->texture_registrar()));
+        view == nullptr ? nullptr : view->GetNativeWindow(), owner->texture_registrar()));
   } catch (...) {
     // C 注册入口绝不抛异常、记录环境/消息内容或构造半可用的降级插件。
   }

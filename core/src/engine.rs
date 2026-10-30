@@ -1,82 +1,118 @@
-use std::{
-    collections::HashMap,
-    future::Future,
-    pin::Pin,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use citizen_sdk_contracts::{
-    store::{
-        ChainDatabaseSnapshot, ChainDatabaseStore, EncryptedSecretBlobStore, RuntimeCacheStore,
-        TransactionHistoryIndex, TransactionHistoryStore, WalletProfileStore,
-        MAX_PERSISTED_RUNTIME_METADATA_BYTES,
-    },
-    AccountId32, AccountNonce, AccountNonceSource, CapabilityName, CapabilityReason,
-    CapabilitySnapshot, ChainSigner, ChainSyncStatus, ContractError, ContractErrorCode,
-    DefaultAccountChangeAuthorization, ExecutionConclusion, ExportedChainState,
-    ExtrinsicWatchEvent, FinalizedAccountBalance, FinalizedBlockRef, Hash32, Modules,
-    OpaqueTransactionCall, PreparedTransactionSummary, RuntimeContext, SecretBuffer, SecretVault,
-    SignedExtrinsic, SigningCompletion, SigningIntent, Sr25519PublicKey, Sr25519Signature,
-    StateImportReceipt, SubmittedExtrinsic, TransactionExecutionCompleted, TransactionExecutionId,
-    TransactionPreparationId, UnverifiedReason, VerifiedBlockBody, VerifiedBlockHeader,
-    VerifiedBlockRef, VerifiedChainClient, WalletProfile, WalletRecord, WalletSignMode,
-    WalletState,
-};
+use crate::types::store::ChainDatabaseSnapshot;
+use crate::types::store::ChainDatabaseStore;
+use crate::types::store::EncryptedSecretBlobStore;
+use crate::types::store::RuntimeCacheStore;
+use crate::types::store::TransactionHistoryIndex;
+use crate::types::store::TransactionHistoryStore;
+use crate::types::store::WalletProfileStore;
+use crate::types::store::MAX_PERSISTED_RUNTIME_METADATA_BYTES;
+use crate::types::AccountId32;
+use crate::types::AccountNonce;
+use crate::types::AccountNonceSource;
+use crate::types::CapabilityName;
+use crate::types::CapabilityReason;
+use crate::types::CapabilitySnapshot;
+
+use crate::types::ChainSyncStatus;
+use crate::types::ContractError;
+use crate::types::ContractErrorCode;
+use crate::types::DefaultAccountChangeAuthorization;
+use crate::types::ExecutionConclusion;
+use crate::types::ExportedChainState;
+use crate::types::ExtrinsicWatchEvent;
+use crate::types::FinalizedAccountBalance;
+use crate::types::FinalizedBlockRef;
+use crate::types::Hash32;
+use crate::types::Modules;
+use crate::types::OpaqueTransactionCall;
+use crate::types::PreparedTransactionSummary;
+use crate::types::RuntimeContext;
+use crate::types::SecretBuffer;
+use crate::types::SecretVault;
+use crate::types::SignedExtrinsic;
+use crate::types::SigningCompletion;
+use crate::types::SigningIntent;
+use crate::types::Sr25519PublicKey;
+use crate::types::Sr25519Signature;
+use crate::types::StateImportReceipt;
+use crate::types::SubmittedExtrinsic;
+use crate::types::TransactionExecutionCompleted;
+use crate::types::TransactionExecutionId;
+use crate::types::TransactionPreparationId;
+use crate::types::UnverifiedReason;
+use crate::types::VerifiedBlockBody;
+use crate::types::VerifiedBlockHeader;
+use crate::types::VerifiedBlockRef;
+use crate::types::VerifiedChainClient;
+use crate::types::WalletProfile;
+use crate::types::WalletRecord;
+use crate::types::WalletSignMode;
+use crate::types::WalletState;
 use zeroize::Zeroizing;
 
-use crate::{
-    capabilities::{CapabilityProbe, CapabilityTracker},
-    error::EngineError,
-    runtime_context::RuntimeContextCache,
-    state_import::{
-        validate_import_startup, validate_state_export, validate_state_import, EngineLifecycle,
-        StateImportPolicy, StateImportRejection,
-    },
-    wallet_derivation::{SystemWalletEntropy, WalletWordCount},
-    wallet_service::{
-        PreparedWalletCreation, SigningService, SystemWalletClock, WalletPrivateKeyView,
-        WalletService, WalletStateSnapshot,
-    },
-};
+use crate::capabilities::CapabilityProbe;
+use crate::capabilities::CapabilityTracker;
+use crate::error::EngineError;
+use crate::runtime_context::RuntimeContextCache;
+use crate::state_import::validate_import_startup;
+use crate::state_import::validate_state_export;
+use crate::state_import::validate_state_import;
+use crate::state_import::EngineLifecycle;
+use crate::state_import::StateImportPolicy;
+use crate::state_import::StateImportRejection;
+use crate::wallet_derivation::SystemWalletEntropy;
+use crate::wallet_derivation::WalletWordCount;
+use crate::wallet_service::PreparedWalletCreation;
+use crate::wallet_service::SigningService;
+use crate::wallet_service::SystemWalletClock;
+use crate::wallet_service::WalletPrivateKeyView;
+use crate::wallet_service::WalletService;
+use crate::wallet_service::WalletStateSnapshot;
 
 #[cfg(feature = "chain")]
-use crate::{
-    account_state::{AccountStateService, BestFeeSnapshot},
-    finalized_history_runtime::{FinalizedHistoryRunGuard, FinalizedHistoryRuntime},
-    system_events::SYSTEM_EVENTS_STORAGE_KEY,
-    transaction_execution::{persist_submit_and_verify_exact, TransactionExecutionCancellation},
-    transaction_history::TransactionHistoryService,
-    transaction_outcome::{verify_transaction_outcome, TransactionEvidence},
-    transaction_prepare::{
-        build_prepared_transaction, PreparedTransaction, PreparedTransactionRegistry,
-    },
-};
+use crate::account_state::AccountStateService;
+#[cfg(feature = "chain")]
+use crate::account_state::BestFeeSnapshot;
+#[cfg(feature = "chain")]
+use crate::finalized_history_runtime::FinalizedHistoryRunGuard;
+#[cfg(feature = "chain")]
+use crate::finalized_history_runtime::FinalizedHistoryRuntime;
+#[cfg(feature = "chain")]
+use crate::system_events::SYSTEM_EVENTS_STORAGE_KEY;
+#[cfg(feature = "chain")]
+use crate::transaction_execution::persist_submit_and_verify_exact;
+#[cfg(feature = "chain")]
+use crate::transaction_execution::TransactionExecutionCancellation;
+#[cfg(feature = "chain")]
+use crate::transaction_history::TransactionHistoryService;
+#[cfg(feature = "chain")]
+use crate::transaction_outcome::verify_transaction_outcome;
+#[cfg(feature = "chain")]
+use crate::transaction_outcome::TransactionEvidence;
+#[cfg(feature = "chain")]
+use crate::transaction_prepare::build_prepared_transaction;
+#[cfg(feature = "chain")]
+use crate::transaction_prepare::PreparedTransaction;
+#[cfg(feature = "chain")]
+use crate::transaction_prepare::PreparedTransactionRegistry;
 
 /// Engine async return type; the embedding layer chooses the executor.
 pub type EngineFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, EngineError>> + Send + 'a>>;
 
-/// Typed providers and stores available in one host composition.
-///
 /// 每个实例只组合实际启用的模块；链与钱包都可以缺席，绝不注入假 provider。
-/// 完整装配与单模块装配使用同一实现，模块选择和组件存在性共同约束能力快照。
-pub struct EngineComponents {
-    chain_client: Option<Arc<dyn VerifiedChainClient>>,
-    modules: Modules,
-    signer: Option<Arc<dyn ChainSigner>>,
-    secret_vault: Option<Arc<dyn SecretVault>>,
-    chain_database: Option<Arc<dyn ChainDatabaseStore>>,
-    runtime_cache: Option<Arc<dyn RuntimeCacheStore>>,
-    wallet_profiles: Option<Arc<dyn WalletProfileStore>>,
-    transaction_history: Option<Arc<dyn TransactionHistoryStore>>,
-    encrypted_secrets: Option<Arc<dyn EncryptedSecretBlobStore>>,
-    account_nonce_source: Option<Arc<dyn AccountNonceSource>>,
-}
-
-impl EngineComponents {
+/// 完整装配与单模块装配使用同一实现，模块选择和实际资源共同约束能力快照。
+impl CitizenEngine {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_client: Option<Arc<dyn VerifiedChainClient>>,
-        signer: Option<Arc<dyn ChainSigner>>,
+
         secret_vault: Option<Arc<dyn SecretVault>>,
         chain_database: Option<Arc<dyn ChainDatabaseStore>>,
         runtime_cache: Option<Arc<dyn RuntimeCacheStore>>,
@@ -87,7 +123,7 @@ impl EngineComponents {
         Self {
             chain_client,
             modules: Modules::full(),
-            signer,
+
             secret_vault,
             chain_database,
             runtime_cache,
@@ -95,6 +131,16 @@ impl EngineComponents {
             transaction_history,
             encrypted_secrets,
             account_nonce_source: None,
+
+            catalog_closed: AtomicBool::new(false),
+            runtime_contexts: Mutex::new(RuntimeContextCache::new()),
+            capabilities: Mutex::new(EngineCapabilityState::default()),
+            state: Arc::new(Mutex::new(EngineState::default())),
+            chain_monitor: Mutex::new(crate::chain_monitor::ChainMonitorState::default()),
+            #[cfg(feature = "chain")]
+            prepared_transactions: Mutex::new(PreparedTransactionRegistry::default()),
+            #[cfg(feature = "chain")]
+            transaction_executions: Mutex::new(HashMap::new()),
         }
     }
 
@@ -137,10 +183,6 @@ impl EngineComponents {
         self.chain_database.as_ref()
     }
 
-    pub(crate) fn signer(&self) -> Option<&Arc<dyn ChainSigner>> {
-        self.signer.as_ref()
-    }
-
     pub(crate) fn secret_vault(&self) -> Option<&Arc<dyn SecretVault>> {
         self.secret_vault.as_ref()
     }
@@ -167,8 +209,7 @@ impl EngineComponents {
     /// pending-before-broadcast 合同，不能因组件只装配了一部分而退回无历史旁路。
     /// nonce provider 只读取公开链状态，不属于秘密组件；纯链提交不能因此被误判为钱包。
     fn has_any_wallet_transaction_component(&self) -> bool {
-        self.signer.is_some()
-            || self.secret_vault.is_some()
+        self.secret_vault.is_some()
             || self.wallet_profiles.is_some()
             || self.encrypted_secrets.is_some()
     }
@@ -184,8 +225,7 @@ impl EngineComponents {
                 CapabilityName::LocalSigning => (
                     cfg!(feature = "signing"),
                     self.modules.contains(Modules::SIGNING),
-                    self.signer.is_some()
-                        && self.secret_vault.is_some()
+                    self.secret_vault.is_some()
                         && self.wallet_profiles.is_some()
                         && self.encrypted_secrets.is_some(),
                 ),
@@ -239,7 +279,16 @@ impl EngineComponents {
 
 /// Product-independent CitizenSDK Core Engine.
 pub struct CitizenEngine {
-    components: EngineComponents,
+    chain_client: Option<Arc<dyn VerifiedChainClient>>,
+    modules: Modules,
+
+    secret_vault: Option<Arc<dyn SecretVault>>,
+    chain_database: Option<Arc<dyn ChainDatabaseStore>>,
+    runtime_cache: Option<Arc<dyn RuntimeCacheStore>>,
+    wallet_profiles: Option<Arc<dyn WalletProfileStore>>,
+    transaction_history: Option<Arc<dyn TransactionHistoryStore>>,
+    encrypted_secrets: Option<Arc<dyn EncryptedSecretBlobStore>>,
+    account_nonce_source: Option<Arc<dyn AccountNonceSource>>,
     // 本地目录的销毁事实独立于链状态锁，链错误不能污染只读准入。
     catalog_closed: AtomicBool,
     runtime_contexts: Mutex<RuntimeContextCache>,
@@ -332,7 +381,7 @@ impl CitizenEngine {
         account_id: AccountId32,
         private_key_view_vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<Arc<InternalPrivateKeyView>, EngineError> {
-        if !cfg!(feature = "wallet") || !self.components.modules.contains(Modules::WALLET) {
+        if !cfg!(feature = "wallet") || !self.modules.contains(Modules::WALLET) {
             return Err(EngineError::contract(
                 ContractErrorCode::Unsupported,
                 "安全查看要求 wallet 模块",
@@ -340,7 +389,7 @@ impl CitizenEngine {
         }
         // FFI 只从本实例原 HostBridge 构造专属观察器金库；不是业务可注入的秘密 API。
         let service = self
-            .wallet_service_from_components()?
+            .wallet_service()?
             .with_private_key_view_vault(private_key_view_vault);
         let mut state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
         if !matches!(
@@ -366,28 +415,13 @@ impl CitizenEngine {
         }))
     }
 
-    pub fn new(components: EngineComponents) -> Self {
-        Self {
-            components,
-            catalog_closed: AtomicBool::new(false),
-            runtime_contexts: Mutex::new(RuntimeContextCache::new()),
-            capabilities: Mutex::new(EngineCapabilityState::default()),
-            state: Arc::new(Mutex::new(EngineState::default())),
-            chain_monitor: Mutex::new(crate::chain_monitor::ChainMonitorState::default()),
-            #[cfg(feature = "chain")]
-            prepared_transactions: Mutex::new(PreparedTransactionRegistry::default()),
-            #[cfg(feature = "chain")]
-            transaction_executions: Mutex::new(HashMap::new()),
-        }
-    }
-
     /// Atomically replace host/provider capability facts. Revision ownership
     /// remains inside the Engine so bindings cannot create divergent counters.
     pub fn update_capabilities(
         &self,
         mut probes: Vec<CapabilityProbe>,
     ) -> Result<CapabilitySnapshot, EngineError> {
-        self.components.enforce_component_presence(&mut probes);
+        self.enforce_component_presence(&mut probes);
         // 所有同时观察 lifecycle/capabilities 的路径统一按 state -> capabilities
         // 加锁，避免 stop/dispose 与宿主 probe 更新交错后发布过期的 Running 快照。
         let state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
@@ -403,19 +437,39 @@ impl CitizenEngine {
 
     /// 仅替换钱包相关事实；保留同一能力真源中的链/历史状态及生命周期门。
     /// 探测已在锁外完成，这里不调用仓储、金库或provider。
-    pub fn update_local_wallet_readiness(&self, updates: Vec<CapabilityProbe>) -> Result<CapabilitySnapshot, EngineError> {
+    pub fn update_local_wallet_readiness(
+        &self,
+        updates: Vec<CapabilityProbe>,
+    ) -> Result<CapabilitySnapshot, EngineError> {
         let state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
-        let mut capabilities = self.capabilities.lock().map_err(|_| EngineError::StatePoisoned)?;
-        let mut probes = capabilities.base_probes.clone().ok_or_else(|| EngineError::CapabilityUnavailable("capability state has not been established".into()))?;
+        let mut capabilities = self
+            .capabilities
+            .lock()
+            .map_err(|_| EngineError::StatePoisoned)?;
+        let mut probes = capabilities.base_probes.clone().ok_or_else(|| {
+            EngineError::CapabilityUnavailable("capability state has not been established".into())
+        })?;
         for update in updates {
-            if matches!(update.name, CapabilityName::WalletProfile | CapabilityName::HardwareVault | CapabilityName::UserAuthentication | CapabilityName::LocalSigning) {
-                let target = probes.iter_mut().find(|probe| probe.name == update.name)
-                    .ok_or_else(|| EngineError::CapabilityUnavailable("wallet capability is missing".into()))?;
+            if matches!(
+                update.name,
+                CapabilityName::WalletProfile
+                    | CapabilityName::HardwareVault
+                    | CapabilityName::UserAuthentication
+                    | CapabilityName::LocalSigning
+            ) {
+                let target = probes
+                    .iter_mut()
+                    .find(|probe| probe.name == update.name)
+                    .ok_or_else(|| {
+                        EngineError::CapabilityUnavailable("wallet capability is missing".into())
+                    })?;
                 *target = update;
             }
         }
-        self.components.enforce_component_presence(&mut probes);
-        let snapshot = capabilities.tracker.update(probes_for_lifecycle(probes.clone(), state.lifecycle))?;
+        self.enforce_component_presence(&mut probes);
+        let snapshot = capabilities
+            .tracker
+            .update(probes_for_lifecycle(probes.clone(), state.lifecycle))?;
         capabilities.base_probes = Some(probes);
         Ok(snapshot)
     }
@@ -444,7 +498,7 @@ impl CitizenEngine {
             })?;
         chain_read.runtime_ready = runtime_ready;
         chain_read.not_ready_reason = (!runtime_ready).then_some(CapabilityReason::ChainUnsynced);
-        self.components.enforce_component_presence(&mut probes);
+        self.enforce_component_presence(&mut probes);
         let snapshot = capabilities
             .tracker
             .update(probes_for_lifecycle(probes.clone(), state.lifecycle))?;
@@ -478,7 +532,7 @@ impl CitizenEngine {
     /// 静态链身份不依赖 Running 或同步就绪，但仍要求已编译、已选择 chain 模块，
     /// 且实例没有销毁；不能借此为未启用链功能的实例开放另一条链入口。
     pub fn genesis_hash(&self) -> Result<Hash32, EngineError> {
-        if !cfg!(feature = "chain") || !self.components.modules.contains(Modules::CHAIN) {
+        if !cfg!(feature = "chain") || !self.modules.contains(Modules::CHAIN) {
             return Err(EngineError::contract(
                 ContractErrorCode::Unsupported,
                 "genesis_hash requires the compiled and selected chain module",
@@ -488,7 +542,7 @@ impl CitizenEngine {
         if state.lifecycle == EngineLifecycle::Disposed {
             return Err(lifecycle_error("genesis_hash requires a live Engine"));
         }
-        Ok(citizen_sdk_contracts::ChainIdentity::citizenchain().genesis_hash())
+        Ok(crate::types::ChainIdentity::citizenchain().genesis_hash())
     }
 
     /// Read the provider's verified best head through the Engine capability
@@ -497,8 +551,7 @@ impl CitizenEngine {
     pub fn best_head(&self) -> EngineFuture<'_, VerifiedBlockRef> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_best_head()
                 .await
                 .map_err(EngineError::from)
@@ -509,8 +562,7 @@ impl CitizenEngine {
     pub fn finalized_head(&self) -> EngineFuture<'_, FinalizedBlockRef> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_finalized_head()
                 .await
                 .map_err(EngineError::from)
@@ -522,8 +574,7 @@ impl CitizenEngine {
     pub fn chain_sync_status(&self) -> EngineFuture<'_, ChainSyncStatus> {
         Box::pin(async move {
             self.require_running_capability_admission(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_sync_status()
                 .await
                 .map_err(EngineError::from)
@@ -534,8 +585,7 @@ impl CitizenEngine {
     pub fn finalized_block_at(&self, number: u64) -> EngineFuture<'_, FinalizedBlockRef> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_finalized_block_at(number)
                 .await
                 .map_err(EngineError::from)
@@ -550,8 +600,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, FinalizedBlockRef> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .resolve_finalized_block(hash, number)
                 .await
                 .map_err(EngineError::from)
@@ -565,8 +614,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, VerifiedBlockHeader> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_block_header_at(block)
                 .await
                 .map_err(EngineError::from)
@@ -577,8 +625,7 @@ impl CitizenEngine {
     pub fn block_body_at(&self, block: VerifiedBlockRef) -> EngineFuture<'_, VerifiedBlockBody> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_block_body_at(block)
                 .await
                 .map_err(EngineError::from)
@@ -593,8 +640,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, Option<Vec<u8>>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_storage_at(block, key)
                 .await
                 .map_err(EngineError::from)
@@ -610,8 +656,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, Vec<Option<Vec<u8>>>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_storage_batch_at(block, keys)
                 .await
                 .map_err(EngineError::from)
@@ -628,8 +673,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, Vec<Vec<u8>>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_storage_keys_paged(block, prefix, start_key, limit)
                 .await
                 .map_err(EngineError::from)
@@ -645,8 +689,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, Vec<u8>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .call_runtime_api(block, method, arguments)
                 .await
                 .map_err(EngineError::from)
@@ -662,8 +705,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, Option<Vec<u8>>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .get_finalized_storage_at(block, SYSTEM_EVENTS_STORAGE_KEY.to_vec())
                 .await
                 .map_err(EngineError::from)
@@ -679,10 +721,8 @@ impl CitizenEngine {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
             AccountStateService::new(
-                self.components.chain_client()?.as_ref(),
-                self.components
-                    .account_nonce_source()
-                    .map(|source| source.as_ref()),
+                self.chain_client()?.as_ref(),
+                self.account_nonce_source().map(|source| source.as_ref()),
             )
             .finalized_account_balance(account_id)
             .await
@@ -698,10 +738,8 @@ impl CitizenEngine {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
             AccountStateService::new(
-                self.components.chain_client()?.as_ref(),
-                self.components
-                    .account_nonce_source()
-                    .map(|source| source.as_ref()),
+                self.chain_client()?.as_ref(),
+                self.account_nonce_source().map(|source| source.as_ref()),
             )
             .finalized_account_balances(account_ids)
             .await
@@ -715,10 +753,8 @@ impl CitizenEngine {
             // 公开链 nonce 读取不接触私钥，不能要求交易构造或钱包模块。
             self.require_capabilities(&[CapabilityName::ChainRead])?;
             AccountStateService::new(
-                self.components.chain_client()?.as_ref(),
-                self.components
-                    .account_nonce_source()
-                    .map(|source| source.as_ref()),
+                self.chain_client()?.as_ref(),
+                self.account_nonce_source().map(|source| source.as_ref()),
             )
             .account_next_index(account_id)
             .await
@@ -759,8 +795,8 @@ impl CitizenEngine {
                 call,
                 generation,
                 preparation_id,
-                Arc::clone(self.components.chain_client()?),
-                Arc::clone(self.components.account_nonce_source().ok_or_else(|| {
+                Arc::clone(self.chain_client()?),
+                Arc::clone(self.account_nonce_source().ok_or_else(|| {
                     EngineError::CapabilityUnavailable("account_nonce_source_missing".to_owned())
                 })?),
             ))
@@ -890,7 +926,7 @@ impl CitizenEngine {
                     ));
                 }
                 let sign_mode = self.wallet_account_sign_mode(source).await?;
-                self.history_service_from_components()?
+                self.history_service()?
                     .preflight_execution_before_signing(
                         source,
                         prepared.call_data().len(),
@@ -1044,17 +1080,11 @@ impl CitizenEngine {
         let runtime = prepared.runtime_context().clone();
         let genesis_hash = prepared.identity().genesis_hash();
         let nonce = prepared.nonce().value();
-        let signer = self
-            .components
-            .signer()
-            .cloned()
-            .ok_or_else(|| component_missing("chain_signer"))?;
-        let build = prepared
-            .complete_with_signature(signer.as_ref(), signature)
-            .await?;
+
+        let build = prepared.complete_with_signature(signature)?;
         let result = persist_submit_and_verify_exact(
-            self.components.chain_client()?.as_ref(),
-            &self.history_service_from_components()?,
+            self.chain_client()?.as_ref(),
+            &self.history_service()?,
             execution_id,
             source,
             summary.call_data_hash(),
@@ -1080,10 +1110,8 @@ impl CitizenEngine {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
             AccountStateService::new(
-                self.components.chain_client()?.as_ref(),
-                self.components
-                    .account_nonce_source()
-                    .map(|source| source.as_ref()),
+                self.chain_client()?.as_ref(),
+                self.account_nonce_source().map(|source| source.as_ref()),
             )
             .best_fee_snapshot()
             .await
@@ -1191,7 +1219,7 @@ impl CitizenEngine {
         &self,
         account_id: AccountId32,
         name: String,
-    ) -> EngineFuture<'_, citizen_sdk_contracts::ColdWalletAccount> {
+    ) -> EngineFuture<'_, crate::types::ColdWalletAccount> {
         let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
         Box::pin(async move { service?.import_cold_account(account_id, &name).await })
     }
@@ -1200,7 +1228,7 @@ impl CitizenEngine {
         &self,
         ss58_address: String,
         name: String,
-    ) -> EngineFuture<'_, citizen_sdk_contracts::ColdWalletAccount> {
+    ) -> EngineFuture<'_, crate::types::ColdWalletAccount> {
         let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
         Box::pin(async move {
             service?
@@ -1228,7 +1256,7 @@ impl CitizenEngine {
         &self,
         account_id: AccountId32,
         name: String,
-    ) -> EngineFuture<'_, citizen_sdk_contracts::ColdWalletAccount> {
+    ) -> EngineFuture<'_, crate::types::ColdWalletAccount> {
         let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
         Box::pin(async move { service?.rename_cold_account(account_id, &name).await })
     }
@@ -1422,11 +1450,7 @@ impl CitizenEngine {
             ])?;
             // LocalSigning 可独立于钱包管理模块启用，但仍必须从同一 WalletState
             // 真源核对热/冷账户；不能调用要求 WalletProfile capability 的公开管理入口。
-            match self
-                .wallet_service_from_components()?
-                .account_sign_mode(account_id)
-                .await?
-            {
+            match self.wallet_service()?.account_sign_mode(account_id).await? {
                 Some(WalletSignMode::Hot) => {}
                 Some(WalletSignMode::Cold) => {
                     return Err(EngineError::Contract(ContractError::new(
@@ -1442,20 +1466,13 @@ impl CitizenEngine {
                 }
             }
             let service = SigningService::new(
-                self.components
-                    .signer()
-                    .cloned()
-                    .ok_or_else(|| component_missing("chain_signer"))?,
-                self.components
-                    .secret_vault()
+                self.secret_vault()
                     .cloned()
                     .ok_or_else(|| component_missing("secret_vault"))?,
-                self.components
-                    .wallet_profiles()
+                self.wallet_profiles()
                     .cloned()
                     .ok_or_else(|| component_missing("wallet_profile_store"))?,
-                self.components
-                    .encrypted_secrets()
+                self.encrypted_secrets()
                     .cloned()
                     .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?,
             );
@@ -1471,7 +1488,7 @@ impl CitizenEngine {
     pub fn sign_wallet_intent(&self, intent: SigningIntent) -> EngineFuture<'_, SigningCompletion> {
         Box::pin(async move {
             match self
-                .wallet_service_from_components()?
+                .wallet_service()?
                 .account_sign_mode(intent.account_id())
                 .await?
             {
@@ -1495,37 +1512,24 @@ impl CitizenEngine {
                 CapabilityName::UserAuthentication,
             ])?;
             let service = SigningService::new(
-                self.components
-                    .signer()
-                    .cloned()
-                    .ok_or_else(|| component_missing("chain_signer"))?,
-                self.components
-                    .secret_vault()
+                self.secret_vault()
                     .cloned()
                     .ok_or_else(|| component_missing("secret_vault"))?,
-                self.components
-                    .wallet_profiles()
+                self.wallet_profiles()
                     .cloned()
                     .ok_or_else(|| component_missing("wallet_profile_store"))?,
-                self.components
-                    .encrypted_secrets()
+                self.encrypted_secrets()
                     .cloned()
                     .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?,
             );
             let message = intent.signing_message()?;
             let signature = service.sign(intent.account_id(), message.clone()).await?;
-            let signer = self
-                .components
-                .signer()
-                .ok_or_else(|| component_missing("chain_signer"))?;
-            if !signer
-                .verify(
-                    Sr25519PublicKey::from_bytes(intent.account_id().into_bytes()),
-                    message,
-                    signature,
-                )
-                .await?
-            {
+
+            if !crate::sign::verify(
+                Sr25519PublicKey::from_bytes(intent.account_id().into_bytes()),
+                message,
+                signature,
+            )? {
                 return Err(EngineError::contract(
                     ContractErrorCode::Integrity,
                     "热钱包签名未通过原账户和冻结 transform 复核",
@@ -1586,13 +1590,12 @@ impl CitizenEngine {
     #[cfg(all(feature = "qr", feature = "chain"))]
     pub fn review_qr_sign_request(
         &self,
-        request: citizen_sdk_qr::SignRequest,
+        request: crate::qr::SignRequest,
     ) -> EngineFuture<'_, crate::QrReview> {
         Box::pin(async move {
             let lease = self.begin_qr_operation()?;
             let result =
-                crate::qr_review::review_request(self.components.chain_client()?.as_ref(), request)
-                    .await?;
+                crate::qr_review::review_request(self.chain_client()?.as_ref(), request).await?;
             lease.ensure_current()?;
             Ok(result)
         })
@@ -1613,7 +1616,7 @@ impl CitizenEngine {
                 CapabilityName::UserAuthentication,
             ])?;
             ensure_current()?;
-            let client = self.components.chain_client()?;
+            let client = self.chain_client()?;
             let current =
                 crate::qr_review::review_request(client.as_ref(), review.request().clone()).await?;
             if !review.matches(&current) {
@@ -1627,20 +1630,13 @@ impl CitizenEngine {
                 ensure_current()
             };
             let service = SigningService::new(
-                self.components
-                    .signer()
-                    .cloned()
-                    .ok_or_else(|| component_missing("chain_signer"))?,
-                self.components
-                    .secret_vault()
+                self.secret_vault()
                     .cloned()
                     .ok_or_else(|| component_missing("secret_vault"))?,
-                self.components
-                    .wallet_profiles()
+                self.wallet_profiles()
                     .cloned()
                     .ok_or_else(|| component_missing("wallet_profile_store"))?,
-                self.components
-                    .encrypted_secrets()
+                self.encrypted_secrets()
                     .cloned()
                     .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?,
             );
@@ -1658,11 +1654,8 @@ impl CitizenEngine {
                 )
                 .await?;
             guard()?;
-            let signer = self
-                .components
-                .signer()
-                .ok_or_else(|| component_missing("chain_signer"))?;
-            if !signer.verify(public_key, message, signature).await? {
+
+            if !crate::sign::verify(public_key, message, signature)? {
                 return Err(EngineError::contract(
                     ContractErrorCode::Integrity,
                     "二维码签名未通过原账户和已审阅载荷复核",
@@ -1684,11 +1677,7 @@ impl CitizenEngine {
 
     #[cfg(all(feature = "qr", feature = "chain"))]
     fn begin_qr_operation(&self) -> Result<EngineQrOperationLease, EngineError> {
-        if !self
-            .components
-            .modules
-            .contains(Modules::QR | Modules::CHAIN)
-        {
+        if !self.modules.contains(Modules::QR | Modules::CHAIN) {
             return Err(EngineError::contract(
                 ContractErrorCode::Unsupported,
                 "链调用审阅要求 qr 与 chain 模块",
@@ -1756,8 +1745,8 @@ impl CitizenEngine {
         &self,
         before_execution_id: Option<TransactionExecutionId>,
         limit: usize,
-    ) -> EngineFuture<'_, citizen_sdk_contracts::TransactionHistoryPage> {
-        let service = self.history_service_from_components();
+    ) -> EngineFuture<'_, crate::types::TransactionHistoryPage> {
+        let service = self.history_service();
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::History])?;
             service?.page(before_execution_id, limit).await
@@ -1775,9 +1764,7 @@ impl CitizenEngine {
         ]);
         Box::pin(async move {
             let (runtime, guard) = preparation?;
-            let signer = self.components.signer().ok_or_else(|| {
-                EngineError::CapabilityUnavailable("chain_signer_missing".to_owned())
-            })?;
+
             let (mut positions, mut rebroadcasted) = {
                 let monitor = self
                     .chain_monitor
@@ -1789,12 +1776,7 @@ impl CitizenEngine {
                 )
             };
             let state = runtime
-                .reconcile_generic_execution_batch(
-                    &mut positions,
-                    &mut rebroadcasted,
-                    signer.as_ref(),
-                    &guard,
-                )
+                .reconcile_generic_execution_batch(&mut positions, &mut rebroadcasted, &guard)
                 .await?;
             guard.ensure_current()?;
             let mut monitor = self
@@ -1822,26 +1804,21 @@ impl CitizenEngine {
                 CapabilityName::ChainRead,
                 CapabilityName::TransactionSubmit,
             ])?;
-            if self.components.has_any_wallet_transaction_component() {
+            if self.has_any_wallet_transaction_component() {
                 self.require_capabilities(&[CapabilityName::History])?;
-                let best = self.components.chain_client()?.get_best_head().await?;
-                let context = self
-                    .components
-                    .chain_client()?
-                    .get_runtime_context_at(best)
-                    .await?;
+                let best = self.chain_client()?.get_best_head().await?;
+                let context = self.chain_client()?.get_runtime_context_at(best).await?;
                 if context.block() != best {
                     return Err(EngineError::BlockContextMismatch(
                         "原始提交哈希使用的 Runtime context 不属于当前 best 块".to_owned(),
                     ));
                 }
                 let transaction_hash = crate::signed_extrinsic_hash(&context, &extrinsic)?;
-                self.history_service_from_components()?
+                self.history_service()?
                     .require_recorded_before_broadcast(transaction_hash)
                     .await?;
             }
-            self.components
-                .chain_client()?
+            self.chain_client()?
                 .submit_extrinsic(extrinsic)
                 .await
                 .map_err(EngineError::from)
@@ -1856,20 +1833,20 @@ impl CitizenEngine {
     pub fn watch_signed_extrinsic(
         &self,
         extrinsic: SignedExtrinsic,
-    ) -> Result<citizen_sdk_contracts::ContractStream<'_, ExtrinsicWatchEvent>, EngineError> {
+    ) -> Result<crate::types::ContractStream<'_, ExtrinsicWatchEvent>, EngineError> {
         self.require_capabilities(&[CapabilityName::ChainRead, CapabilityName::TransactionSubmit])?;
-        if self.components.has_any_wallet_transaction_component() {
+        if self.has_any_wallet_transaction_component() {
             return Err(EngineError::contract(
                 ContractErrorCode::InvalidState,
                 "组合钱包组件后禁止原始 submit-and-watch；钱包交易必须使用高层交易入口",
             ));
         }
-        Ok(self.components.chain_client()?.watch_extrinsic(extrinsic))
+        Ok(self.chain_client()?.watch_extrinsic(extrinsic))
     }
 
     /// Reserve the one-way transition into provider startup.
     pub fn begin_provider_start(&self) -> Result<(), EngineError> {
-        self.components.chain_client()?;
+        self.chain_client()?;
         let mut state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
         if state.lifecycle != EngineLifecycle::Created || state.export_in_progress {
             return Err(lifecycle_error(
@@ -1900,7 +1877,7 @@ impl CitizenEngine {
             });
         Box::pin(async move {
             let generation = generation?;
-            let identity = match self.components.chain_client()?.identity().await {
+            let identity = match self.chain_client()?.identity().await {
                 Ok(identity) => identity,
                 Err(error) => {
                     self.fail_start_if_current(generation)?;
@@ -1914,7 +1891,7 @@ impl CitizenEngine {
                     "provider identity changed away from CitizenChain during startup".to_owned(),
                 ));
             }
-            let finalized = match self.components.chain_client()?.get_finalized_head().await {
+            let finalized = match self.chain_client()?.get_finalized_head().await {
                 Ok(finalized) => finalized,
                 Err(error) => {
                     self.fail_start_if_current(generation)?;
@@ -2001,7 +1978,8 @@ impl CitizenEngine {
         }
         require_no_inflight_history_operations(&state, "engine dispose")?;
         state.lifecycle = EngineLifecycle::Disposed;
-        self.catalog_closed.store(true, std::sync::atomic::Ordering::Release);
+        self.catalog_closed
+            .store(true, std::sync::atomic::Ordering::Release);
         state.generation = next_generation(state.generation)?;
         state.export_in_progress = false;
         #[cfg(feature = "chain")]
@@ -2044,7 +2022,7 @@ impl CitizenEngine {
                     .complete(request, cached);
             }
 
-            if let Some(store) = self.components.runtime_cache() {
+            if let Some(store) = self.runtime_cache() {
                 let cached = store.load(block.hash()).await.map_err(EngineError::from)?;
                 // 持久 cache 是可重建的性能层。宿主若返回超出其合同容量的旧/异常记录，
                 // 不让它阻塞 provider 读取，也不在这里执行迁移或兼容逻辑。
@@ -2060,7 +2038,6 @@ impl CitizenEngine {
             }
 
             let context = self
-                .components
                 .chain_client()?
                 .get_runtime_context_at(block)
                 .await
@@ -2071,7 +2048,7 @@ impl CitizenEngine {
                 .map_err(|_| EngineError::StatePoisoned)?
                 .complete(request, context)?;
             if context.metadata().len() <= MAX_PERSISTED_RUNTIME_METADATA_BYTES {
-                if let Some(store) = self.components.runtime_cache() {
+                if let Some(store) = self.runtime_cache() {
                     store
                         .store(context.clone())
                         .await
@@ -2115,7 +2092,6 @@ impl CitizenEngine {
                 ));
             }
             let provider_finalized = match self
-                .components
                 .chain_client()?
                 .resolve_finalized_block(block.hash(), block.number())
                 .await
@@ -2153,7 +2129,6 @@ impl CitizenEngine {
             // 轻节点对该 finalized 块返回的 context；不允许持久 cache 重映射
             // Success/Failed 语义。
             let runtime_context = match self
-                .components
                 .chain_client()?
                 .get_finalized_runtime_context_at(provider_finalized)
                 .await
@@ -2168,7 +2143,6 @@ impl CitizenEngine {
                 }
             };
             let block_extrinsics = match self
-                .components
                 .chain_client()?
                 .get_finalized_block_extrinsics_at(provider_finalized)
                 .await
@@ -2183,7 +2157,6 @@ impl CitizenEngine {
                 }
             };
             let system_events = self
-                .components
                 .chain_client()?
                 .get_finalized_storage_at(provider_finalized, SYSTEM_EVENTS_STORAGE_KEY.to_vec())
                 .await
@@ -2209,7 +2182,7 @@ impl CitizenEngine {
         let preparation = self.prepare_state_import(&imported);
         Box::pin(async move {
             let (reservation, provisional_finalized) = preparation?;
-            let store = Arc::clone(self.components.chain_database().ok_or_else(|| {
+            let store = Arc::clone(self.chain_database().ok_or_else(|| {
                 EngineError::CapabilityUnavailable(
                     "chain database store is required for state import".to_owned(),
                 )
@@ -2226,7 +2199,7 @@ impl CitizenEngine {
     /// one-way post-provider failure semantics as an explicit import.
     pub fn restore_state_from_store(&self) -> EngineFuture<'_, Option<StateImportReceipt>> {
         Box::pin(async move {
-            let store = Arc::clone(self.components.chain_database().ok_or_else(|| {
+            let store = Arc::clone(self.chain_database().ok_or_else(|| {
                 EngineError::CapabilityUnavailable(
                     "chain database store is required for state restore".to_owned(),
                 )
@@ -2265,7 +2238,6 @@ impl CitizenEngine {
         validate_state_import(&policy, EngineLifecycle::Created, &imported)
             .map_err(state_rejection_error)?;
         let provider_identity = self
-            .components
             .chain_client()?
             .identity()
             .await
@@ -2281,7 +2253,6 @@ impl CitizenEngine {
         let expected = imported.finalized();
         reservation.mark_provider_invoked()?;
         let receipt = self
-            .components
             .chain_client()?
             .import_state(imported)
             .await
@@ -2324,7 +2295,7 @@ impl CitizenEngine {
     ) -> EngineFuture<'_, ExportedChainState> {
         let reservation = self.prepare_state_export();
         let store = if persist {
-            self.components.chain_database().map(Arc::clone)
+            self.chain_database().map(Arc::clone)
         } else {
             None
         };
@@ -2352,13 +2323,11 @@ impl CitizenEngine {
                 None
             };
             let before = self
-                .components
                 .chain_client()?
                 .get_finalized_head()
                 .await
                 .map_err(EngineError::from)?;
             let provider_identity = self
-                .components
                 .chain_client()?
                 .identity()
                 .await
@@ -2379,13 +2348,11 @@ impl CitizenEngine {
                 validate_import_startup(stored_finalized, before).map_err(state_rejection_error)?;
             }
             let exported = self
-                .components
                 .chain_client()?
                 .export_state()
                 .await
                 .map_err(EngineError::from)?;
             let after = self
-                .components
                 .chain_client()?
                 .get_finalized_head()
                 .await
@@ -2411,7 +2378,7 @@ impl CitizenEngine {
         &self,
         imported: &ExportedChainState,
     ) -> Result<(StateImportReservation, Option<FinalizedBlockRef>), EngineError> {
-        if self.components.chain_database().is_none() {
+        if self.chain_database().is_none() {
             return Err(EngineError::CapabilityUnavailable(
                 "chain database store is required for state import".to_owned(),
             ));
@@ -2458,29 +2425,20 @@ impl CitizenEngine {
         Ok(())
     }
 
-    fn wallet_service_from_components(&self) -> Result<WalletService, EngineError> {
-        let signer = self
-            .components
-            .signer()
-            .cloned()
-            .ok_or_else(|| component_missing("chain_signer"))?;
+    fn wallet_service(&self) -> Result<WalletService, EngineError> {
         let vault = self
-            .components
             .secret_vault()
             .cloned()
             .ok_or_else(|| component_missing("secret_vault"))?;
         let profiles = self
-            .components
             .wallet_profiles()
             .cloned()
             .ok_or_else(|| component_missing("wallet_profile_store"))?;
         let encrypted_secrets = self
-            .components
             .encrypted_secrets()
             .cloned()
             .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?;
         Ok(WalletService::new(
-            signer,
             vault,
             profiles,
             encrypted_secrets,
@@ -2492,13 +2450,22 @@ impl CitizenEngine {
     /// 目录读取只核对不可变模块及本实例销毁门；真实仓储错误由load原样返回。
     /// 不刷新能力、不探测金库或历史、不读取provider及其运行状态。
     fn local_wallet_read_service(&self) -> Result<WalletService, EngineError> {
-        if !cfg!(feature = "wallet") || !self.components.modules.contains(Modules::WALLET) {
-            return Err(EngineError::contract(ContractErrorCode::Unsupported, "wallet module is not selected"));
+        if !cfg!(feature = "wallet") || !self.modules.contains(Modules::WALLET) {
+            return Err(EngineError::contract(
+                ContractErrorCode::Unsupported,
+                "wallet module is not selected",
+            ));
         }
-        if self.catalog_closed.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(EngineError::contract(ContractErrorCode::InvalidState, "wallet catalog is closed"));
+        if self
+            .catalog_closed
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(EngineError::contract(
+                ContractErrorCode::InvalidState,
+                "wallet catalog is closed",
+            ));
         }
-        self.wallet_service_from_components()
+        self.wallet_service()
     }
 
     fn local_wallet_service(
@@ -2506,13 +2473,12 @@ impl CitizenEngine {
         required: &[CapabilityName],
     ) -> Result<WalletService, EngineError> {
         self.require_local_capabilities(required)?;
-        self.wallet_service_from_components()
+        self.wallet_service()
     }
 
     #[cfg(feature = "chain")]
-    fn history_service_from_components(&self) -> Result<TransactionHistoryService, EngineError> {
+    fn history_service(&self) -> Result<TransactionHistoryService, EngineError> {
         let store = self
-            .components
             .transaction_history()
             .cloned()
             .ok_or_else(|| component_missing("transaction_history_store"))?;
@@ -2529,10 +2495,8 @@ impl CitizenEngine {
     ) -> Result<(FinalizedHistoryRuntime, EngineHistoryOperationLease), EngineError> {
         self.require_capabilities(required)?;
         // 先解析全部组件，避免租约计数增加后因缺少 store 提前返回而泄漏。
-        let runtime = FinalizedHistoryRuntime::new(
-            Arc::clone(self.components.chain_client()?),
-            self.history_service_from_components()?,
-        );
+        let runtime =
+            FinalizedHistoryRuntime::new(Arc::clone(self.chain_client()?), self.history_service()?);
         let (generation, cancellation) = {
             let mut state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
             if state.lifecycle != EngineLifecycle::Running || state.history_paused {
@@ -3022,12 +2986,9 @@ impl CitizenEngine {
         &self,
         mutation: impl Future<Output = Result<T, EngineError>>,
     ) -> Result<T, EngineError> {
-        if !self
-            .components
-            .modules
-            .contains(Modules::CHAIN | Modules::HISTORY)
-            || self.components.chain_client.is_none()
-            || self.components.transaction_history.is_none()
+        if !self.modules.contains(Modules::CHAIN | Modules::HISTORY)
+            || self.chain_client.is_none()
+            || self.transaction_history.is_none()
         {
             return mutation.await;
         }
@@ -3120,10 +3081,7 @@ impl CitizenEngine {
                 CapabilityName::TransactionSubmit,
                 CapabilityName::TransactionVerify,
             ])?;
-            let (local, reconcilable) = self
-                .history_service_from_components()?
-                .open_batch(1)
-                .await?;
+            let (local, reconcilable) = self.history_service()?.open_batch(1).await?;
             guard.ensure_current()?;
             let has_reconcilable = !reconcilable.is_empty();
             let (mut positions, mut rebroadcasted, chain_revision, should_sync) = {
@@ -3144,21 +3102,14 @@ impl CitizenEngine {
             let history = if should_sync {
                 finalized_block = Some(
                     crate::finalized_history_runtime::cancellable_chain(
-                        self.components.chain_client()?.get_finalized_head(),
+                        self.chain_client()?.get_finalized_head(),
                         &guard,
                     )
                     .await??,
                 );
-                let signer = self.components.signer().ok_or_else(|| {
-                    EngineError::CapabilityUnavailable("chain_signer_missing".to_owned())
-                })?;
+
                 runtime
-                    .reconcile_generic_execution_batch(
-                        &mut positions,
-                        &mut rebroadcasted,
-                        signer.as_ref(),
-                        &guard,
-                    )
+                    .reconcile_generic_execution_batch(&mut positions, &mut rebroadcasted, &guard)
                     .await?
             } else {
                 local

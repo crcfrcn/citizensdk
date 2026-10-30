@@ -1,6 +1,4 @@
-import 'dart:typed_data';
-
-import 'citizen_account.dart';
+part of '../citizen_sdk.dart';
 
 enum CitizenWalletOrigin { created, imported }
 
@@ -47,16 +45,6 @@ final class CitizenWalletDiagnostic {
 }
 
 /// 同实例真实快照资源；动作由Core复核原记录，不使用宿主回传字段作为修复依据。
-abstract interface class CitizenWalletInspection {
-  CitizenWalletState get state;
-  CitizenSdkOperation<CitizenWalletState> repairHot(int walletIndex);
-  CitizenSdkOperation<CitizenWalletState> rename({
-    required int walletIndex,
-    required String name,
-  });
-  CitizenSdkOperation<CitizenWalletState> delete(int walletIndex);
-  Future<void> release();
-}
 
 /// Core唯一输入校验结果；枚举值与公开C合同一致，不包含界面文案。
 enum CitizenWalletInputReason {
@@ -115,24 +103,10 @@ final class CitizenSdkOperation<T> {
 }
 
 /// SDK拥有的创建准备资源；不含窗口，也不允许直接构造Core句柄。
-abstract interface class CitizenSdkPreparedWallet {
-  Future<CitizenSdkRecoveryPhrase> recoveryPhrase();
-  CitizenSdkOperation<CitizenWalletProfile> commit();
-  Future<void> release();
-}
 
 /// 原备份UI所需的受控UTF-8副本；显示关闭后释放，不写日志或明文持久存储。
-abstract interface class CitizenSdkRecoveryPhrase {
-  Uint8List get bytes;
-  Future<void> release();
-}
 
 /// 显式私钥查看资源。reveal只表示数据交付，closed才表示真实认证和回调排空。
-abstract interface class CitizenSdkPrivateKey {
-  Future<Uint8List> reveal();
-  Future<void> close();
-  Future<void> get closed;
-}
 
 /// 平台请求实际凭据的功能事实；宿主决定输入UI，SDK继续负责实际密钥操作。
 final class CitizenCredentialChallenge {

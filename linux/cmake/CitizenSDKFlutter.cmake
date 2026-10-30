@@ -74,8 +74,8 @@ endforeach()
 find_package(Threads REQUIRED)
 set(CITIZENSDK_FLUTTER_ADAPTER_SOURCES
   "${_citizensdk_linux_root}/src/citizen_sdk_plugin.cc"
-  "${_citizensdk_linux_root}/src/citizen_sdk_flutter_codec.cc"
-  "${_citizensdk_linux_root}/src/citizen_sdk_flutter_sessions.cc"
+  "${_citizensdk_linux_root}/../core/cpp/value.cc"
+  "${_citizensdk_linux_root}/../core/cpp/flutter.cc"
   "${_citizensdk_linux_root}/src/citizen_sdk_flutter_environment.cc"
 )
 add_library(citizen_sdk_plugin SHARED ${CITIZENSDK_FLUTTER_ADAPTER_SOURCES})
@@ -86,12 +86,12 @@ target_compile_features(citizen_sdk_plugin PRIVATE cxx_std_17)
 target_compile_definitions(citizen_sdk_plugin PRIVATE FLUTTER_PLUGIN_IMPL)
 # 插件声明从唯一源码投影到构建目录，公共安装头仍由同版导入目标提供。
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk")
-configure_file("${_citizensdk_linux_root}/citizen_sdk/citizen_sdk_plugin.h"
+configure_file("${_citizensdk_linux_root}/src/citizen_sdk_plugin.h"
   "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk/citizen_sdk_plugin.h" COPYONLY)
 target_include_directories(citizen_sdk_plugin
   # Flutter generated registrant 编译时也包含插件声明，必须传播构建目录中的唯一投影。
   PUBLIC "${_citizensdk_linux_root}" "${CMAKE_CURRENT_BINARY_DIR}/public"
-  PRIVATE "${_citizensdk_linux_root}/src"
+  PRIVATE "${_citizensdk_linux_root}/src" "${_citizensdk_linux_root}/../core/cpp"
 )
 target_link_libraries(citizen_sdk_plugin PRIVATE
   flutter CitizenSDK::Host Threads::Threads)

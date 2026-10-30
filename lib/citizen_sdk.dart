@@ -1,16 +1,29 @@
-// ignore: unnecessary_library_name -- 保留正式 Hosted Package 的稳定库标识。
+// ignore: unnecessary_library_name -- 正式包唯一库标识。
 library citizen_sdk;
 
-export 'api/citizen_chain.dart';
-export 'api/citizen_qr.dart';
-export 'api/citizen_sdk.dart';
-export 'api/citizen_sdk_error.dart';
-export 'api/citizen_sdk_events.dart';
-export 'api/citizen_sdk_wallet.dart';
-export 'api/citizen_transactions.dart';
-export 'models/citizen_account.dart';
-export 'models/citizen_capability.dart';
-export 'models/citizen_chain_state.dart';
-export 'models/citizen_signing.dart';
-export 'models/citizen_transaction.dart';
-export 'models/citizen_wallet.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:isolate';
+import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart' hide Size;
+import 'package:flutter/widgets.dart' hide Size;
+import 'account_codec.dart';
+import 'platform/bind.dart' as c;
+export 'account_codec.dart';
+
+part 'api/citizen_sdk.dart';
+part 'api/citizen_chain.dart';
+part 'api/citizen_sdk_wallet.dart';
+part 'api/citizen_transactions.dart';
+part 'api/citizen_qr.dart';
+part 'api/citizen_sdk_error.dart';
+part 'api/citizen_sdk_events.dart';
+part 'models/citizen_account.dart';
+part 'models/citizen_capability.dart';
+part 'models/citizen_chain_state.dart';
+part 'models/citizen_signing.dart';
+part 'models/citizen_transaction.dart';
+part 'models/citizen_wallet.dart';
+part 'platform/memory.dart';

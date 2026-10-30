@@ -117,7 +117,7 @@ internal final class CitizenSDKPrivateKeyReceiver: @unchecked Sendable {
 /// 无窗口私钥资源。阶段通知不结束请求；close必须等待实际认证及Core回调排空。
 @MainActor
 public final class CitizenSDKPrivateKey {
-    private let native: CitizenSDKNative
+    private let owner: CitizenSDKCore
     private let receiver = CitizenSDKPrivateKeyReceiver()
     private let secretID: UInt64
     private let core: CitizenSDKOperation<Void>
@@ -129,11 +129,11 @@ public final class CitizenSDKPrivateKey {
     private var security: CitizenSDKScreenSecurity?
     private let ended: @Sendable (CitizenSDKPrivateKey) -> Void
 
-    internal init(native: CitizenSDKNative, accountID: Data,
+    internal init(owner: CitizenSDKCore, accountID: Data,
                   ended: @escaping @Sendable (CitizenSDKPrivateKey) -> Void) throws {
-        self.native = native
+        self.owner = owner
         self.ended = ended
-        (secretID, core) = try native.openPrivateKeyView(accountID: accountID, buffer: receiver)
+        (secretID, core) = try owner.openPrivateKeyView(accountID: accountID, buffer: receiver)
         receiver.bind(secretID)
         receiver.listen { [weak self] code in
             // Core借用回调不执行用户续体或反调Core。
@@ -146,7 +146,7 @@ public final class CitizenSDKPrivateKey {
         security = CitizenSDKScreenSecurity { [weak self] change in
             guard let self else { return }
             if change == .inactive, let id = self.receiver.authenticationID,
-               self.native.isPrivateKeyAuthenticationActive(id) { return }
+               self.owner.isPrivateKeyAuthenticationActive(id) { return }
             self.requestClose()
         }
     }
@@ -157,7 +157,7 @@ public final class CitizenSDKPrivateKey {
         guard !ending, stage == 1 else { throw CitizenSDKError(.invalidState, "private key is not ready or already revealed") }
         stage = 2
         do {
-            try native.revealPrivateKeyView(secretID)
+            try owner.revealPrivateKeyView(secretID)
             try await revealed.value()
             guard !ending, security?.allowsDelivery == true else {
                 requestClose()
@@ -183,11 +183,11 @@ public final class CitizenSDKPrivateKey {
     public func close() async throws {
         ending = true
         receiver.clear()
-        if let operationID = receiver.authenticationID { native.cancelPrivateKeyAuthentication(operationID) }
+        if let operationID = receiver.authenticationID { owner.cancelPrivateKeyAuthentication(operationID) }
         while !completed {
             do {
-                try native.cancelPrivateKeyView(secretID)
-                try native.finishPrivateKeyView(secretID)
+                try owner.cancelPrivateKeyView(secretID)
+                try owner.finishPrivateKeyView(secretID)
                 break
             } catch {
                 // 控制失败不伪造终态，保留所有权直到真实请求结束；不丢弃授权Future。

@@ -135,7 +135,7 @@ int main() {
     std::promise<void> requested;
   } provider{&auth};
   citizensdk_credential_provider_v1_t callbacks{
-      sizeof(citizensdk_credential_provider_v1_t), 1, &provider,
+      sizeof(citizensdk_credential_provider_v1_t), CITIZENSDK_ABI_VERSION, &provider,
       +[](void *context, const citizensdk_credential_challenge_v1_t *request) {
         auto &provider = *static_cast<Provider *>(context);
         provider.operation = request->host_operation_id;

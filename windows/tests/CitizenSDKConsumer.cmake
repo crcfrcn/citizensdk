@@ -147,7 +147,7 @@ endforeach()
 enable_testing()
 add_executable(citizen_sdk_c_consumer citizen_sdk_c_consumer.c)
 set_target_properties(citizen_sdk_c_consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
-add_executable(citizen_sdk_cpp_consumer citizen_sdk_cpp_consumer.cc)
+add_executable(citizen_sdk_cpp_consumer "${CMAKE_CURRENT_LIST_DIR}/../../core/tests/cpp/consumer.cc")
 set_target_properties(citizen_sdk_cpp_consumer PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 set(_runtime_dir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
 # 单一复制目标避免两个并行链接任务同时改写 DLL；复制后逐字节比较，不依赖 PATH。

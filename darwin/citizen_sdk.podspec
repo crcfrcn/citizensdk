@@ -3,7 +3,7 @@ raise "Missing CitizenSDK framework: #{framework_path}" unless Dir.exist?(File.j
 
 Pod::Spec.new do |spec|
   spec.name             = 'citizen_sdk'
-  spec.version          = '1.0.0'
+  spec.version          = '2.0.0'
   spec.summary          = 'CitizenChain verified light client, wallet, signing, and transaction SDK.'
   spec.description      = <<-DESC
 CitizenSDK projects one Rust Core and one stable C ABI through a native Swift
@@ -16,7 +16,7 @@ API and a secret-free Flutter adapter for iOS and macOS.
   spec.ios.deployment_target = '16.0'
   spec.osx.deployment_target = '13.0'
   spec.swift_version    = '5.9'
-  spec.source_files     = 'citizen_sdk/*.swift'
+  spec.source_files     = 'flutter/*.swift'
   spec.vendored_frameworks = framework_path
   spec.frameworks = 'AVFoundation', 'CoreVideo'
   spec.ios.dependency 'Flutter'

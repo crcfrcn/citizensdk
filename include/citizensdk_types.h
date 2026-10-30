@@ -9,7 +9,7 @@
 /* Public numeric constants use direct typed literals so C, C++ and Swift all
  * consume the same exported ABI names without platform-specific projections. */
 
-#define CITIZENSDK_ABI_VERSION 1U
+#define CITIZENSDK_ABI_VERSION 2U
 #define CITIZENSDK_CAPABILITY_COUNT 10U
 
 /* Immutable instance module selection. Transactions and history require chain.
@@ -260,16 +260,6 @@ typedef struct citizensdk_mutable_bytes_view {
   uint64_t len;
 } citizensdk_mutable_bytes_view_t;
 
-typedef uint32_t citizensdk_host_record_domain_t;
-#define CITIZENSDK_HOST_RECORD_CHAIN_DATABASE 1U
-#define CITIZENSDK_HOST_RECORD_RUNTIME_CACHE 2U
-#define CITIZENSDK_HOST_RECORD_WALLET_PROFILE 3U
-#define CITIZENSDK_HOST_RECORD_TRANSACTION_HISTORY 4U
-#define CITIZENSDK_HOST_RECORD_ENCRYPTED_SECRET_BLOB 5U
-
-typedef uint32_t citizensdk_host_secret_kind_t;
-#define CITIZENSDK_HOST_SECRET_ACCOUNT_MINI_SECRET 1U
-
 typedef uint32_t citizensdk_host_vault_availability_t;
 #define CITIZENSDK_HOST_VAULT_AVAILABLE 1U
 #define CITIZENSDK_HOST_VAULT_NO_STRONG_USER_AUTHENTICATION 2U
@@ -279,23 +269,9 @@ typedef uint32_t citizensdk_host_vault_availability_t;
 typedef uint32_t citizensdk_host_bytes_kind_t;
 #define CITIZENSDK_HOST_BYTES_WRAPPED_DEK 1U
 
-typedef struct citizensdk_host_hash32 {
-  uint8_t bytes[32];
-} citizensdk_host_hash32_t;
-
 typedef struct citizensdk_host_id128 {
   uint8_t bytes[16];
 } citizensdk_host_id128_t;
-
-typedef struct citizensdk_host_secret_ref_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  uint32_t wallet_index;
-  citizensdk_host_secret_kind_t kind;
-  citizensdk_host_id128_t generation;
-  citizensdk_host_id128_t owner;
-  citizensdk_host_hash32_t account_id;
-} citizensdk_host_secret_ref_v1_t;
 
 typedef struct citizensdk_host_wallet_key_ref_v1 {
   uint32_t struct_size;
@@ -304,18 +280,6 @@ typedef struct citizensdk_host_wallet_key_ref_v1 {
   uint32_t reserved;
   citizensdk_host_id128_t generation;
 } citizensdk_host_wallet_key_ref_v1_t;
-
-typedef struct citizensdk_host_record_result_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  uint64_t host_operation_id;
-  citizensdk_error_code_t error_code;
-  citizensdk_host_record_domain_t domain;
-  uint8_t present;
-  uint8_t reserved[7];
-  uint64_t revision;
-  citizensdk_bytes_view_t record;
-} citizensdk_host_record_result_v1_t;
 
 typedef struct citizensdk_host_status_result_v1 {
   uint32_t struct_size;
@@ -352,8 +316,6 @@ typedef struct citizensdk_host_bytes_result_v1 {
   citizensdk_bytes_view_t bytes;
 } citizensdk_host_bytes_result_v1_t;
 
-typedef void (*citizensdk_host_record_completion_v1_t)(
-    void *sdk_context, const citizensdk_host_record_result_v1_t *result);
 typedef void (*citizensdk_host_status_completion_v1_t)(
     void *sdk_context, const citizensdk_host_status_result_v1_t *result);
 typedef void (*citizensdk_host_bool_completion_v1_t)(
@@ -363,80 +325,6 @@ typedef void (*citizensdk_host_vault_availability_completion_v1_t)(
     const citizensdk_host_vault_availability_result_v1_t *result);
 typedef void (*citizensdk_host_bytes_completion_v1_t)(
     void *sdk_context, const citizensdk_host_bytes_result_v1_t *result);
-
-typedef citizensdk_error_code_t (*citizensdk_host_chain_database_load_v1_t)(
-    void *host_context, uint64_t host_operation_id, void *sdk_context,
-    citizensdk_host_record_completion_v1_t completion);
-typedef citizensdk_error_code_t
-    (*citizensdk_host_chain_database_compare_and_swap_v1_t)(
-        void *host_context, uint64_t host_operation_id,
-        uint64_t expected_revision, uint8_t present,
-        citizensdk_bytes_view_t candidate_record, void *sdk_context,
-        citizensdk_host_record_completion_v1_t completion);
-typedef citizensdk_error_code_t (*citizensdk_host_runtime_cache_load_v1_t)(
-    void *host_context, uint64_t host_operation_id,
-    citizensdk_host_hash32_t block_hash, void *sdk_context,
-    citizensdk_host_record_completion_v1_t completion);
-typedef citizensdk_error_code_t (*citizensdk_host_runtime_cache_store_v1_t)(
-    void *host_context, uint64_t host_operation_id,
-    citizensdk_host_hash32_t block_hash,
-    citizensdk_bytes_view_t candidate_record, void *sdk_context,
-    citizensdk_host_status_completion_v1_t completion);
-typedef citizensdk_error_code_t (*citizensdk_host_runtime_cache_delete_v1_t)(
-    void *host_context, uint64_t host_operation_id,
-    citizensdk_host_hash32_t block_hash, void *sdk_context,
-    citizensdk_host_status_completion_v1_t completion);
-typedef citizensdk_error_code_t (*citizensdk_host_transaction_history_query_v1_t)(
-    void *host_context, uint64_t host_operation_id,
-    citizensdk_bytes_view_t query, void *sdk_context,
-    citizensdk_host_record_completion_v1_t completion);
-typedef citizensdk_error_code_t
-    (*citizensdk_host_transaction_history_mutate_v1_t)(
-        void *host_context, uint64_t host_operation_id,
-        uint64_t expected_revision, citizensdk_bytes_view_t candidate_record,
-        void *sdk_context, citizensdk_host_record_completion_v1_t completion);
-
-typedef struct citizensdk_host_public_store_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  void *context;
-  citizensdk_host_chain_database_load_v1_t chain_database_load;
-  citizensdk_host_chain_database_compare_and_swap_v1_t
-      chain_database_compare_and_swap;
-  citizensdk_host_runtime_cache_load_v1_t runtime_cache_load;
-  citizensdk_host_runtime_cache_store_v1_t runtime_cache_store;
-  citizensdk_host_runtime_cache_delete_v1_t runtime_cache_delete;
-  citizensdk_host_transaction_history_query_v1_t transaction_history_query;
-  citizensdk_host_transaction_history_mutate_v1_t transaction_history_mutate;
-} citizensdk_host_public_store_v1_t;
-
-typedef citizensdk_host_chain_database_load_v1_t
-    citizensdk_host_wallet_profile_load_v1_t;
-typedef citizensdk_host_transaction_history_mutate_v1_t
-    citizensdk_host_wallet_profile_compare_and_swap_v1_t;
-typedef citizensdk_error_code_t
-    (*citizensdk_host_encrypted_secret_blob_load_v1_t)(
-        void *host_context, uint64_t host_operation_id,
-        citizensdk_host_secret_ref_v1_t secret_ref, void *sdk_context,
-        citizensdk_host_record_completion_v1_t completion);
-typedef citizensdk_error_code_t
-    (*citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_t)(
-        void *host_context, uint64_t host_operation_id,
-        citizensdk_host_secret_ref_v1_t secret_ref,
-        uint64_t expected_revision, citizensdk_bytes_view_t candidate_record,
-        void *sdk_context, citizensdk_host_record_completion_v1_t completion);
-
-typedef struct citizensdk_host_secure_store_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  void *context;
-  citizensdk_host_wallet_profile_load_v1_t wallet_profile_load;
-  citizensdk_host_wallet_profile_compare_and_swap_v1_t
-      wallet_profile_compare_and_swap;
-  citizensdk_host_encrypted_secret_blob_load_v1_t encrypted_secret_blob_load;
-  citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_t
-      encrypted_secret_blob_compare_and_swap;
-} citizensdk_host_secure_store_v1_t;
 
 typedef citizensdk_error_code_t (*citizensdk_host_vault_availability_v1_t)(
     void *host_context, uint64_t host_operation_id, void *sdk_context,
@@ -482,6 +370,9 @@ typedef citizensdk_error_code_t (*citizensdk_host_vault_authorize_add_accounts_v
     citizensdk_host_id128_t provisioning_operation_id, void *sdk_context,
     citizensdk_host_status_completion_v1_t completion);
 
+typedef citizensdk_error_code_t (*citizensdk_host_vault_has_any_wallet_key_v1_t)(
+    void *context, uint64_t host_operation_id, uint32_t wallet_index,
+    void *sdk_context, citizensdk_host_bool_completion_v1_t completion);
 typedef struct citizensdk_host_secret_vault_v1 {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -493,6 +384,7 @@ typedef struct citizensdk_host_secret_vault_v1 {
   citizensdk_host_vault_unwrap_dek_v1_t unwrap_dek;
   citizensdk_host_vault_retire_wallet_kek_v1_t retire_wallet_kek;
   citizensdk_host_vault_authorize_add_accounts_v1_t authorize_add_accounts;
+  citizensdk_host_vault_has_any_wallet_key_v1_t has_any_wallet_key;
 } citizensdk_host_secret_vault_v1_t;
 
 /* 同步SQLite资源接口。0=NULL,1=i64,2=UTF-8,3=BLOB；reserved必须为0。
@@ -526,30 +418,7 @@ typedef struct citizensdk_stores_v1 {
  const citizensdk_host_secret_vault_v1_t *secret_vault;
 } citizensdk_stores_v1_t;
 
-/* Vtable pointers are borrowed during construction and copied by SDK. */
-typedef struct citizensdk_host_services_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  const citizensdk_host_public_store_v1_t *public_store;
-  const citizensdk_host_secure_store_v1_t *secure_store;
-  const citizensdk_host_secret_vault_v1_t *secret_vault;
-} citizensdk_host_services_v1_t;
 
-/* 只读跨代际存在性，不改变原HostServices/VaultStore/Vault v1结构。
- * 输入按值传递，回调/context必须保有至SDK成功销毁；输出复用原BoolResult。 */
-typedef citizensdk_error_code_t (*citizensdk_host_has_account_secret_v1_t)(
-    void *context, uint64_t host_operation_id, citizensdk_account_id_t account_id,
-    void *sdk_context, citizensdk_host_bool_completion_v1_t completion);
-typedef citizensdk_error_code_t (*citizensdk_host_has_any_wallet_key_v1_t)(
-    void *context, uint64_t host_operation_id, uint32_t wallet_index,
-    void *sdk_context, citizensdk_host_bool_completion_v1_t completion);
-typedef struct citizensdk_host_secret_presence_v1 {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  void *context;
-  citizensdk_host_has_account_secret_v1_t has_account_secret;
-  citizensdk_host_has_any_wallet_key_v1_t has_any_wallet_key;
-} citizensdk_host_secret_presence_v1_t;
 
 
 typedef struct citizensdk_create_options {

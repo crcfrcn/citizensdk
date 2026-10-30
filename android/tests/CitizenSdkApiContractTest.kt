@@ -7,7 +7,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.lang.reflect.Modifier
-import org.citizen.sdk.internal.CitizenSdkNative
+import org.citizen.sdk.internal.Bindings
 
 class CitizenSdkApiContractTest {
 
@@ -27,42 +27,11 @@ class CitizenSdkApiContractTest {
         }
     }
 
-    @Test
-    fun walletCleanupFlagUsesStrictBooleanWireAndRetainsInitializationChecks() {
-        // 仅构造无账户、无秘密的JNI结果；实际调用生产解码器，不镜像钱包算法。
-        fun encoded(initialization: Int, cleanup: Int): ByteArray =
-            ByteBuffer.allocate(51).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                .putInt(1).putInt(0).putInt(0).putInt(21).putInt(0)
-                .putLong(0).putLong(1).put(0).putInt(0)
-                .putInt(initialization).put(cleanup.toByte()).put(0).putInt(0).array()
-        for ((initialization, cleanup) in listOf(0 to 0, 2 to 0, 2 to 1)) {
-            val decoded = org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(encoded(initialization, cleanup))
-            assertEquals(null, decoded.error)
-            val state = (decoded.result as org.citizen.sdk.internal.CitizenSdkNativeResult.WalletState).value
-            assertEquals(initialization, state.initializationState)
-            assertEquals(cleanup == 1, state.cleanupPending)
-            assertTrue(state.accounts.isEmpty() && state.diagnostics.isEmpty())
-        }
-        // 无钱包不得带待清理事实；Ready不得缺账户/诊断，未知状态和布尔值仍拒绝。
-        for ((initialization, cleanup) in listOf(0 to 1, 1 to 0, 3 to 0, -1 to 0, 2 to 2, 2 to 255)) {
-            assertEquals(CitizenSdkErrorCode.INTEGRITY, assertThrows(CitizenSdkException::class.java) {
-                org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(encoded(initialization, cleanup))
-            }.code)
-        }
-        val valid = encoded(2, 1)
-        for (size in listOf(45, 46, 50)) {
-            assertEquals(CitizenSdkErrorCode.INTEGRITY, assertThrows(CitizenSdkException::class.java) {
-                org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(valid.copyOf(size))
-            }.code)
-        }
-        assertEquals(CitizenSdkErrorCode.INTEGRITY, assertThrows(CitizenSdkException::class.java) {
-            org.citizen.sdk.internal.CitizenSdkNativeCodec.decode(valid + byteArrayOf(0))
-        }.code)
-    }
+
 
     @Test
     fun `static JNI entries keep the exact single registration names`() {
-        val type = CitizenSdkNative::class.java
+        val type = Bindings::class.java
         val expected = listOf("validateModules", "verifySignature", "completeVaultStatus")
         val names = type.declaredMethods.map { it.name }
         for (name in expected) {
@@ -87,7 +56,7 @@ class CitizenSdkApiContractTest {
         assertNotNull(Class.forName(
             "org.rustls.platformverifier.CertificateVerifier", false, javaClass.classLoader,
         ))
-        val create = CitizenSdkNative::class.java.getDeclaredMethod(
+        val create = Bindings::class.java.getDeclaredMethod(
             "nativeCreate",
             android.content.Context::class.java,
             org.citizen.sdk.internal.CitizenSdkHostServices::class.java,
@@ -100,8 +69,8 @@ class CitizenSdkApiContractTest {
 
     @Test
     fun qrReviewAndCaptureExposeDataResourcesWithoutSdkWindows() {
-        assertEquals(CitizenSdkOperation::class.java, CitizenSigning::class.java.getMethod("reviewQrRequest", String::class.java).returnType)
-        assertEquals(CitizenSdkOperation::class.java, CitizenSigning::class.java.getMethod("signQrRequest", CitizenQrReview::class.java).returnType)
+        assertEquals(CitizenSdkOperation::class.java, CitizenSdk::class.java.getMethod("reviewQrRequest", String::class.java).returnType)
+        assertEquals(CitizenSdkOperation::class.java, CitizenSdk::class.java.getMethod("signQrRequest", CitizenQrReview::class.java).returnType)
         assertEquals(CitizenQrDocument::class.java, CitizenSdk::class.java.getMethod("qrParse", String::class.java).returnType)
         for (removed in listOf("qrScan", "viewAccountPrivateKey", "initializeWallet", "qrSigningInput", "qrCreateSignResponse", "qrEncodeImage")) {
             assertTrue(CitizenSdk::class.java.methods.none { it.name == removed })
@@ -191,16 +160,17 @@ class CitizenSdkApiContractTest {
     }
 
     @Test
-    fun `wallet and signing are independent modules with one public signing facade`() {
+    fun `wallet and signing are independent modules with one direct Sdk signing entry`() {
         assertEquals(listOf(1, 2, 4, 8, 16), listOf(CitizenSdkModules.WALLET,
             CitizenSdkModules.SIGNING, CitizenSdkModules.CHAIN, CitizenSdkModules.TRANSACTIONS,
             CitizenSdkModules.HISTORY))
         assertEquals(63, CitizenSdkModules.FULL)
         assertEquals(0, CitizenSdkModules.WALLET and CitizenSdkModules.SIGNING)
         val names = CitizenSdk::class.java.methods.map { it.name }
-        assertTrue("getSigning" in names)
+        assertTrue("getSigning" !in names)
+        assertTrue("sign" in names && "beginSigning" in names)
         assertTrue("signWalletPayload" !in names)
-        assertNotNull(CitizenSigning::class.java.getMethod("verify", ByteArray::class.java,
+        assertNotNull(CitizenSdk::class.java.getMethod("verify", ByteArray::class.java,
             ByteArray::class.java, ByteArray::class.java))
     }
 

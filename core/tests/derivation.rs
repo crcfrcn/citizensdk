@@ -7,17 +7,17 @@
 
 use std::sync::Arc;
 
-use crate::{
-    error::EngineError,
-    wallet_derivation::{
-        derive_wallet_accounts, generate_mnemonic, validate_wallet_password, WalletEntropySource,
-        WalletWordCount,
-    },
-};
-use citizen_sdk_contracts::{
-    citizen_ss58_address, ContractErrorCode, SecretBuffer, MAX_WALLET_ACCOUNT_INDEX,
-};
-use citizen_signer::Sr25519SoftwareSigner;
+use crate::error::EngineError;
+use crate::types::citizen_ss58_address;
+use crate::types::ContractErrorCode;
+use crate::types::SecretBuffer;
+use crate::types::MAX_WALLET_ACCOUNT_INDEX;
+use crate::wallet_derivation::derive_wallet_accounts;
+use crate::wallet_derivation::generate_mnemonic;
+use crate::wallet_derivation::validate_wallet_password;
+use crate::wallet_derivation::WalletEntropySource;
+use crate::wallet_derivation::WalletWordCount;
+
 use futures::executor::block_on;
 use serde_json::Value;
 
@@ -28,7 +28,7 @@ const PASSWORD_GOLDEN: &str = include_str!("citizenchain-wallet-password-v1.json
 struct FixedEntropy(Vec<u8>);
 
 impl WalletEntropySource for FixedEntropy {
-    fn fill(&self, output: &mut [u8]) -> citizen_sdk_contracts::ContractResult<()> {
+    fn fill(&self, output: &mut [u8]) -> crate::types::ContractResult<()> {
         assert_eq!(output.len(), self.0.len(), "测试熵长度必须精确匹配");
         output.copy_from_slice(&self.0);
         Ok(())
@@ -52,7 +52,6 @@ fn frozen_json_derivation_vectors_match_every_secret_public_key_and_ss58() {
             .to_vec(),
     )
     .expect("金标助记词非空");
-    let signer = Arc::new(Sr25519SoftwareSigner);
 
     for case in golden["cases"].as_array().expect("金标 cases") {
         let password = case["password"].as_str().expect("金标 password");
@@ -64,13 +63,8 @@ fn frozen_json_derivation_vectors_match_every_secret_public_key_and_ss58() {
                     .expect("金标 index 位于 u32")
             })
             .collect();
-        let derived = block_on(derive_wallet_accounts(
-            signer.clone(),
-            &mnemonic,
-            password,
-            &indices,
-        ))
-        .expect("冻结向量必须可派生");
+        let derived =
+            derive_wallet_accounts(&mnemonic, password, &indices).expect("冻结向量必须可派生");
 
         assert_eq!(derived.len(), expected.len());
         for (actual, expected) in derived.into_iter().zip(expected) {
@@ -85,9 +79,7 @@ fn frozen_json_derivation_vectors_match_every_secret_public_key_and_ss58() {
             assert_eq!(actual.public_key().as_bytes(), &expected_public);
             if let Some(ss58) = expected.get("ss58").and_then(Value::as_str) {
                 assert_eq!(
-                    citizen_ss58_address(citizen_sdk_contracts::AccountId32::from_bytes(
-                        expected_public,
-                    )),
+                    citizen_ss58_address(crate::types::AccountId32::from_bytes(expected_public,)),
                     ss58
                 );
             }
@@ -152,21 +144,12 @@ fn mnemonic_generation_and_index_validation_keep_the_public_boundary_narrow() {
             18
         )
     });
-    let eighteen_accounts = block_on(derive_wallet_accounts(
-        Arc::new(Sr25519SoftwareSigner),
-        &eighteen,
-        "",
-        &[0, 1, 1989, 1990, MAX_WALLET_ACCOUNT_INDEX],
-    ))
-    .expect("18 词必须支持恢复和派生");
+    let eighteen_accounts =
+        derive_wallet_accounts(&eighteen, "", &[0, 1, 1989, 1990, MAX_WALLET_ACCOUNT_INDEX])
+            .expect("18 词必须支持恢复和派生");
     assert_eq!(eighteen_accounts.len(), 5);
-    let protected = block_on(derive_wallet_accounts(
-        Arc::new(Sr25519SoftwareSigner),
-        &eighteen,
-        "abcdef",
-        &[0],
-    ))
-    .expect("18 词支持非空派生密码");
+    let protected =
+        derive_wallet_accounts(&eighteen, "abcdef", &[0]).expect("18 词支持非空派生密码");
     assert_ne!(eighteen_accounts[0].public_key(), protected[0].public_key());
 
     let twenty_four = generate_mnemonic(&FixedEntropy(vec![0; 32]), WalletWordCount::Words24)
@@ -181,25 +164,17 @@ fn mnemonic_generation_and_index_validation_keep_the_public_boundary_narrow() {
         )
     });
 
-    let signer = Arc::new(Sr25519SoftwareSigner);
     assert_contract_code(
-        block_on(derive_wallet_accounts(signer.clone(), &twelve, "", &[]))
-            .expect_err("空 index 列表必须拒绝"),
+        derive_wallet_accounts(&twelve, "", &[]).expect_err("空 index 列表必须拒绝"),
         ContractErrorCode::InvalidArgument,
     );
     assert_contract_code(
-        block_on(derive_wallet_accounts(signer.clone(), &twelve, "", &[1, 1]))
-            .expect_err("重复 index 必须拒绝"),
+        derive_wallet_accounts(&twelve, "", &[1, 1]).expect_err("重复 index 必须拒绝"),
         ContractErrorCode::InvalidArgument,
     );
     assert_contract_code(
-        block_on(derive_wallet_accounts(
-            signer,
-            &twelve,
-            "",
-            &[MAX_WALLET_ACCOUNT_INDEX + 1],
-        ))
-        .expect_err("越界 index 必须拒绝"),
+        derive_wallet_accounts(&twelve, "", &[MAX_WALLET_ACCOUNT_INDEX + 1])
+            .expect_err("越界 index 必须拒绝"),
         ContractErrorCode::InvalidArgument,
     );
 }

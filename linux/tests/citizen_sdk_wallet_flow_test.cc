@@ -10,7 +10,7 @@
 #include <vector>
 #include "citizensdk.h"
 #include "secret.hpp"
-#include "citizen_sdk_host_bridge.hpp"
+#include "host.hpp"
 #ifdef NDEBUG
 #error "CitizenSDK contract assertions must remain enabled"
 #endif

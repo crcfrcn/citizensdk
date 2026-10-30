@@ -1,17 +1,34 @@
 #![cfg(feature = "chain")]
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+#[path = "store/db.rs"]
+mod db;
+use citizensdk::{abi, store, types};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use citizen_sdk_contracts::{
-    CapabilityName, ChainIdentity, ChainSigner, ChainSyncStatus, ContractError, ContractErrorCode,
-    ContractFuture, ContractStream, ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef,
-    Hash32, Modules, RuntimeContext, SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic,
-    VerifiedBlockRef, VerifiedChainClient,
-};
-use citizen_sdk_engine::{CapabilityProbe, CitizenEngine, EngineComponents, EngineError};
+use citizensdk::types::CapabilityName;
+use citizensdk::types::ChainIdentity;
+
+use citizensdk::types::ChainSyncStatus;
+use citizensdk::types::ContractError;
+use citizensdk::types::ContractErrorCode;
+use citizensdk::types::ContractFuture;
+use citizensdk::types::ContractStream;
+use citizensdk::types::ExportedChainState;
+use citizensdk::types::ExtrinsicWatchEvent;
+use citizensdk::types::FinalizedBlockRef;
+use citizensdk::types::Hash32;
+use citizensdk::types::Modules;
+use citizensdk::types::RuntimeContext;
+use citizensdk::types::SignedExtrinsic;
+use citizensdk::types::StateImportReceipt;
+use citizensdk::types::SubmittedExtrinsic;
+use citizensdk::types::VerifiedBlockRef;
+use citizensdk::types::VerifiedChainClient;
+use citizensdk::CapabilityProbe;
+use citizensdk::CitizenEngine;
+use citizensdk::EngineError;
 
 struct CountingClient {
     reads: AtomicUsize,
@@ -232,11 +249,8 @@ fn genesis_hash_is_static_but_still_obeys_module_and_dispose_gates() {
         .unwrap_or_else(|error| panic!("dispose failed: {error}"));
     assert!(engine.genesis_hash().is_err());
 
-    let local = CitizenEngine::new(
-        EngineComponents::new(None, None, None, None, None, None, None, None).with_modules(
-            Modules::try_new(Modules::WALLET)
-                .unwrap_or_else(|error| panic!("modules failed: {error}")),
-        ),
+    let local = CitizenEngine::new(None, None, None, None, None, None, None).with_modules(
+        Modules::try_new(Modules::WALLET).unwrap_or_else(|error| panic!("modules failed: {error}")),
     );
     assert!(
         matches!(local.genesis_hash(), Err(EngineError::Contract(error)) if error.code() == ContractErrorCode::Unsupported)
@@ -358,16 +372,7 @@ fn probes() -> Vec<CapabilityProbe> {
 
 fn engine(client: Arc<CountingClient>) -> CitizenEngine {
     let chain: Arc<dyn VerifiedChainClient> = client;
-    let engine = CitizenEngine::new(EngineComponents::new(
-        Some(chain),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    ));
+    let engine = CitizenEngine::new(Some(chain), None, None, None, None, None, None);
     engine
         .update_capabilities(probes())
         .unwrap_or_else(|error| panic!("capabilities failed: {error}"));
@@ -430,17 +435,18 @@ fn typed_chain_access_is_closed_before_start_and_open_while_running() {
 fn raw_broadcast_entries_cannot_bypass_generic_pending_before_broadcast() {
     let client = Arc::new(CountingClient::new());
     let chain: Arc<dyn VerifiedChainClient> = client.clone();
-    let signer: Arc<dyn ChainSigner> = Arc::new(citizen_signer::Sr25519SoftwareSigner);
-    let engine = CitizenEngine::new(EngineComponents::new(
+
+    let engine = CitizenEngine::new(
         Some(chain),
-        Some(signer),
         None,
         None,
         None,
+        Some(Arc::new(
+            citizensdk::store::SecureStore::new(db::Db::open()),
+        )),
         None,
         None,
-        None,
-    ));
+    );
     engine
         .update_capabilities(probes())
         .unwrap_or_else(|error| panic!("capabilities failed: {error}"));

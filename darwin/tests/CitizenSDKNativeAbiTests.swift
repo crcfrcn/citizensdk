@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import CitizenSDK
 
-final class CitizenSDKNativeAbiTests: XCTestCase {
+final class CitizenSDKCoreAbiTests: XCTestCase {
     func testDefaultWalletCompositionReadsTheSameRustStoreAfterReopen() async throws {
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString,isDirectory:true)
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
@@ -10,7 +10,7 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
         for _ in 0..<2 {
             var step="open"
             do {
-            let native=try CitizenSDKNative.open(assets:nil,storageRoot:directory,applicationID:"org.example.rust-store",modules:.wallet)
+            let native=try CitizenSDKCore.open(assets:nil,storageRoot:directory,applicationID:"org.example.rust-store",modules:.wallet)
             step="walletState"
             let state=try await native.walletState().value()
             XCTAssertEqual(state.revision,0);XCTAssertNil(state.hotProfile);XCTAssertTrue(state.accounts.isEmpty)
@@ -102,10 +102,10 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
     }
 
     func testClosedCaptureRejectsLateStartWithoutRequestingCamera() async throws {
-        let native = try CitizenSDKNative.open(assets: nil, modules: .qr)
+        let native = try CitizenSDKCore.open(assets: nil, modules: .qr)
         let closed = expectation(description: "采集关闭通知")
         let ended = expectation(description: "采集所有权结束")
-        let camera = CitizenSDKQrCapture(native: native,
+        let camera = CitizenSDKQrCapture(core: native,
             purpose: try XCTUnwrap(CitizenQRScanPurpose(rawValue: 1)),
             listener: .init(result: { _ in XCTFail("关闭后不得识别") },
                             error: { _ in XCTFail("关闭后不得请求权限") },
@@ -152,8 +152,8 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
 
     func testImportedCoreAbiStructuresAreVersioned() {
         XCTAssertGreaterThan(MemoryLayout<citizensdk_create_options_t>.size, 0)
-        XCTAssertGreaterThan(MemoryLayout<citizensdk_host_services_v1_t>.size, 0)
-        XCTAssertEqual(MemoryLayout<citizensdk_host_secret_presence_v1_t>.size, 32)
+        XCTAssertEqual(MemoryLayout<citizensdk_stores_v1_t>.size, 32)
+        XCTAssertEqual(MemoryLayout<citizensdk_host_secret_vault_v1_t>.size, 80)
         XCTAssertGreaterThan(MemoryLayout<citizensdk_event_t>.size, 0)
         XCTAssertEqual(CITIZENSDK_HOST_BYTES_WRAPPED_DEK, 1)
         XCTAssertEqual(CITIZENSDK_OK, 0)
@@ -163,7 +163,7 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
 
     func testHeaderExportsExactUniqueCitizenSdkSymbolsIncludingModulesAndVerify() throws {
         // 构建器将同一实际编译头逐字节装入测试Bundle；模拟器不读取宿主源码路径。
-        let header = try XCTUnwrap(Bundle(for: CitizenSDKNativeAbiTests.self)
+        let header = try XCTUnwrap(Bundle(for: CitizenSDKCoreAbiTests.self)
             .url(forResource: "citizensdk", withExtension: "h"))
         let source = try String(contentsOf: header, encoding: .utf8)
         // 公开数值合同使用Clang可直接导入Swift的字面量宏，不维护第二份Swift常量。
@@ -176,12 +176,12 @@ final class CitizenSDKNativeAbiTests: XCTestCase {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         })
-        XCTAssertEqual(names.count, 148)
-        XCTAssertTrue(names.isSuperset(of: ["citizensdk_set_secret_presence_provider", "citizensdk_encrypted_secret_record_has_secret"]))
+        XCTAssertEqual(names.count, 143)
+        XCTAssertTrue(names.isDisjoint(with: ["citizensdk_set_secret_presence_provider", "citizensdk_encrypted_secret_record_has_secret"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_review_qr_sign_request", "citizensdk_sign_qr_request", "citizensdk_result_copy_qr"]))
         XCTAssertFalse(names.contains("citizensdk_qr_signing_bytes"))
         XCTAssertFalse(names.contains("citizensdk_qr_create_sign_response"))
-        XCTAssertTrue(names.isSuperset(of: ["citizensdk_validate_modules", "citizensdk_create_with_modules", "citizensdk_create_with_store", "citizensdk_verify_signature"]))
+        XCTAssertTrue(names.isSuperset(of: ["citizensdk_validate_modules", "citizensdk_create", "citizensdk_verify_signature"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_get_genesis_hash", "citizensdk_get_finalized_account_balances",
             "citizensdk_result_get_account_balance_count", "citizensdk_result_get_account_balance_at"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_get_storage_keys_paged", "citizensdk_call_runtime_api"]))

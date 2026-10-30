@@ -205,12 +205,12 @@ bool WindowLease::invoke(std::function<void()> action) const noexcept {
   return post(state_, std::move(action));
 }
 
-WindowRef::WindowRef(void *hwnd, std::thread::id ui_thread, bool enable_wallet)
+WindowRef::WindowRef(void *hwnd, std::thread::id ui_thread, bool enabled)
     : state_(std::make_shared<WindowState>()) {
   state_->ui_thread = ui_thread;
   state_->thread_id = GetCurrentThreadId();
-  state_->enabled = enable_wallet;
-  if (!enable_wallet) {
+  state_->enabled = enabled;
+  if (!enabled) {
     require(hwnd == nullptr, CITIZENSDK_ERROR_INVALID_ARGUMENT,
             "chain-only Host must not configure a wallet window");
     state_->retired = true;

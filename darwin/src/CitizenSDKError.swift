@@ -83,7 +83,7 @@ public struct CitizenSDKError: LocalizedError, Sendable, Equatable {
 internal enum CitizenSDKChecks {
     static func requireOK(_ rawCode: Int32, _ fallback: String) throws {
         guard rawCode == CitizenSDKErrorCode.ok.rawValue else {
-            throw CitizenSDKError(.checked(rawCode), CitizenSDKNative.lastError(fallback: fallback))
+            throw CitizenSDKError(.checked(rawCode), CitizenSDKCore.lastError(fallback: fallback))
         }
     }
 

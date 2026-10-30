@@ -1,0 +1,61 @@
+# 唯一SDK入口调用的实际发布实现，不另设手工入口。
+name: 公民SDK·发布
+'on':
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      artifact:
+        type: string
+        required: true
+permissions:
+  contents: write
+  actions: read
+env:
+  SOURCE_SHA: ${{ github.sha }}
+jobs:
+  publish:
+    name: 公民SDK·SDK·v${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      SDK_VERSION: ${{ inputs.version }}
+      SDK_ARTIFACT: ${{ inputs.artifact }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: bootstrap
+        name: 从本产品声明读取Node版本
+        shell: bash
+        run: |
+          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
+          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.bootstrap.outputs.node }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ inputs.artifact }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/publication
+      - name: 发布本轮已验收完整SDK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_ARTIFACT_DIRECTORY: ${{ runner.temp }}/publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="公民SDK·SDK·v${SDK_VERSION}"
+          cd "$SDK_ARTIFACT_DIRECTORY"
+          sha256sum -c "$name.sha256"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$name" -f sha="$GITHUB_SHA" >/dev/null
+          files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+          gh release create "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$name" --notes-file "$name.json" --draft
+          gh release edit "$name" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest

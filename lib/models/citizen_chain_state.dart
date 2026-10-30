@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+part of '../citizen_sdk.dart';
 
 /// CitizenSDK 实例的稳定生命周期。
 enum CitizenSdkLifecycle {

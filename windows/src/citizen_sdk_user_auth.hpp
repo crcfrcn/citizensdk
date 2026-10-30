@@ -10,7 +10,7 @@
 #include <mutex>
 #include <unordered_map>
 #include "secret.hpp"
-#include "../citizen_sdk/citizensdk_host.h"
+#include "citizensdk_host.h"
 
 namespace citizen_sdk::windows {
 

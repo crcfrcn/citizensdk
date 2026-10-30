@@ -5,35 +5,59 @@
 //! generation/owner 所有权；助记词、master mini-secret 和 child mini-secret 始终只在
 //! Rust [`SecretBuffer`] 中生存。普通签名不导出私钥；显式查看只走独立受控租约和receiver。
 
-use std::{
-    collections::BTreeSet,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, OnceLock,
-    },
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::BTreeSet;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use citizen_sdk_contracts::{
-    citizen_ss58_address, encode_signing_payload, parse_citizen_ss58_address,
-    store::{EncryptedSecretBlobState, EncryptedSecretBlobStore, WalletProfileStore},
-    AccountId32, ChainSigner, ColdWalletAccount, ContractErrorCode, ContractResult,
-    DefaultAccountChangeAuthorization, SecretBuffer, SecretOwner, SecretRef, SecretVault,
-    SigningPayload, Sr25519PublicKey, Sr25519Signature, VaultAvailability, VaultGeneration,
-    WalletAccount, WalletCleanupPlan, WalletOrigin, WalletProfile, WalletProvisioningPlan,
-    WalletRecord, WalletSignMode, WalletState, CITIZENCHAIN_GENESIS_HASH, CITIZEN_WALLET_INDEX,
-    DEFAULT_ACCOUNT_CHANGE_NONCE_BYTES, MAX_COLD_WALLET_ACCOUNTS, MAX_EXTERNAL_SIGNING_TTL_SECONDS,
-    MAX_WALLET_ACCOUNT_INDEX,
-};
+use crate::types::citizen_ss58_address;
+use crate::types::encode_signing_payload;
+use crate::types::parse_citizen_ss58_address;
+use crate::types::store::EncryptedSecretBlobState;
+use crate::types::store::EncryptedSecretBlobStore;
+use crate::types::store::WalletProfileStore;
+use crate::types::AccountId32;
+
+use crate::types::ColdWalletAccount;
+use crate::types::ContractErrorCode;
+use crate::types::ContractResult;
+use crate::types::DefaultAccountChangeAuthorization;
+use crate::types::SecretBuffer;
+use crate::types::SecretOwner;
+use crate::types::SecretRef;
+use crate::types::SecretVault;
+use crate::types::SigningPayload;
+use crate::types::Sr25519PublicKey;
+use crate::types::Sr25519Signature;
+use crate::types::VaultAvailability;
+use crate::types::VaultGeneration;
+use crate::types::WalletAccount;
+use crate::types::WalletCleanupPlan;
+use crate::types::WalletOrigin;
+use crate::types::WalletProfile;
+use crate::types::WalletProvisioningPlan;
+use crate::types::WalletRecord;
+use crate::types::WalletSignMode;
+use crate::types::WalletState;
+use crate::types::CITIZENCHAIN_GENESIS_HASH;
+use crate::types::CITIZEN_WALLET_INDEX;
+use crate::types::DEFAULT_ACCOUNT_CHANGE_NONCE_BYTES;
+use crate::types::MAX_COLD_WALLET_ACCOUNTS;
+use crate::types::MAX_EXTERNAL_SIGNING_TTL_SECONDS;
+use crate::types::MAX_WALLET_ACCOUNT_INDEX;
 use futures::lock::Mutex as AsyncMutex;
 use zeroize::Zeroizing;
 
-use crate::{
-    error::EngineError,
-    wallet_derivation::{
-        derive_wallet_accounts, generate_mnemonic, mint_owner, WalletEntropySource, WalletWordCount,
-    },
-};
+use crate::error::EngineError;
+use crate::wallet_derivation::derive_wallet_accounts;
+use crate::wallet_derivation::generate_mnemonic;
+use crate::wallet_derivation::mint_owner;
+use crate::wallet_derivation::WalletEntropySource;
+use crate::wallet_derivation::WalletWordCount;
 
 const MAX_CAS_ATTEMPTS: usize = 32;
 const MAX_CLEANUP_QUEUE: usize = 64;
@@ -196,17 +220,14 @@ impl WalletClock for SystemWalletClock {
         let millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_| {
-                citizen_sdk_contracts::ContractError::new(
+                crate::types::ContractError::new(
                     ContractErrorCode::Unavailable,
                     "系统时钟早于 Unix epoch",
                 )
             })?
             .as_millis();
         u64::try_from(millis).map_err(|_| {
-            citizen_sdk_contracts::ContractError::new(
-                ContractErrorCode::Internal,
-                "系统毫秒时间超出 u64",
-            )
+            crate::types::ContractError::new(ContractErrorCode::Internal, "系统毫秒时间超出 u64")
         })
     }
 }
@@ -246,7 +267,6 @@ struct PendingSecret {
 /// 产品无关的钱包服务；平台只需注入真实 vault 与两个强原子仓储。
 #[derive(Clone)]
 pub struct WalletService {
-    signer: Arc<dyn ChainSigner>,
     vault: Arc<dyn SecretVault>,
     profiles: Arc<dyn WalletProfileStore>,
     encrypted_secrets: Arc<dyn EncryptedSecretBlobStore>,
@@ -259,7 +279,6 @@ pub struct WalletService {
 /// 与钱包共用操作门和 exact generation/owner 复核，秘密仅由金库解锁至可清零缓冲区。
 #[derive(Clone)]
 pub(crate) struct SigningService {
-    signer: Arc<dyn ChainSigner>,
     vault: Arc<dyn SecretVault>,
     profiles: Arc<dyn WalletProfileStore>,
     encrypted_secrets: Arc<dyn EncryptedSecretBlobStore>,
@@ -267,13 +286,11 @@ pub(crate) struct SigningService {
 
 impl SigningService {
     pub(crate) fn new(
-        signer: Arc<dyn ChainSigner>,
         vault: Arc<dyn SecretVault>,
         profiles: Arc<dyn WalletProfileStore>,
         encrypted_secrets: Arc<dyn EncryptedSecretBlobStore>,
     ) -> Self {
         Self {
-            signer,
             vault,
             profiles,
             encrypted_secrets,
@@ -339,7 +356,7 @@ impl SigningService {
             .await
     }
 
-    /// 普通签名与模式验证共用这一实际签名叶子：先核公钥，再走唯一ChainSigner。
+    /// 普通签名与模式验证共用这一实际签名叶子：先核公钥，再走唯一同步sr25519函数。
     async fn sign_verified_secret(
         &self,
         account_id: AccountId32,
@@ -347,7 +364,7 @@ impl SigningService {
         message: Vec<u8>,
         ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
     ) -> Result<Sr25519Signature, EngineError> {
-        let public_key = self.signer.public_key(secret).await?;
+        let public_key = crate::sign::public_key(secret)?;
         if public_key.as_bytes() != account_id.as_bytes() {
             return Err(error(
                 ContractErrorCode::Integrity,
@@ -356,11 +373,7 @@ impl SigningService {
         }
         ensure_current()?;
         let span = crate::transaction_diagnostic::Span::start("sr25519_sign");
-        let result = self
-            .signer
-            .sign(secret, message)
-            .await
-            .map_err(EngineError::from);
+        let result = crate::sign::sign(secret, message).map_err(EngineError::from);
         if result.is_ok() {
             span.finish();
         }
@@ -505,7 +518,7 @@ impl WalletService {
                 "账户秘密长度不符合安全查看合同",
             ));
         }
-        let public_key = self.signer.public_key(&secret).await?;
+        let public_key = crate::sign::public_key(&secret)?;
         if public_key.as_bytes() != view.account.account_id().as_bytes() {
             return Err(error(
                 ContractErrorCode::Integrity,
@@ -517,7 +530,6 @@ impl WalletService {
     }
 
     pub fn new(
-        signer: Arc<dyn ChainSigner>,
         vault: Arc<dyn SecretVault>,
         profiles: Arc<dyn WalletProfileStore>,
         encrypted_secrets: Arc<dyn EncryptedSecretBlobStore>,
@@ -525,7 +537,6 @@ impl WalletService {
         clock: Arc<dyn WalletClock>,
     ) -> Self {
         Self {
-            signer,
             vault,
             profiles,
             encrypted_secrets,
@@ -667,15 +678,7 @@ impl WalletService {
         require_secure_device(self.vault.as_ref()).await?;
         let mut challenge = Zeroizing::new([0u8; 32]);
         self.entropy.fill(&mut challenge[..])?;
-        let mut payload = Zeroizing::new(Vec::with_capacity(100));
-        payload.extend_from_slice(CITIZENCHAIN_GENESIS_HASH.as_bytes());
-        payload.extend_from_slice(profile.master_account_id().as_bytes());
-        payload.extend_from_slice(b"\x0chot"); // 原SCALE字符串hot：compact长度3及原字节。
-        payload.extend_from_slice(&challenge[..]);
-        let message = Zeroizing::new(encode_signing_payload(SigningPayload::Message {
-            op_tag: 0x23,
-            scale_payload: payload.as_slice(),
-        })?);
+        let message = Zeroizing::new(hot_mode_payload(profile.master_account_id(), &challenge)?);
         {
             let stored = self.encrypted_secrets.load(account.secret_ref()).await?;
             let envelope = stored
@@ -687,7 +690,6 @@ impl WalletService {
                 return Err(conflict("钱包事实已变化，请重试"));
             }
             let signing = SigningService::new(
-                self.signer.clone(),
                 self.vault.clone(),
                 self.profiles.clone(),
                 self.encrypted_secrets.clone(),
@@ -701,11 +703,7 @@ impl WalletService {
                 )
                 .await?;
             let public_key = Sr25519PublicKey::from_bytes(*profile.master_account_id().as_bytes());
-            if !self
-                .signer
-                .verify(public_key, message.to_vec(), signature)
-                .await?
-            {
+            if !crate::sign::verify(public_key, message.as_slice(), signature)? {
                 return Err(error(ContractErrorCode::Integrity, "热钱包控制权验证失败"));
             }
         } // 真实解锁秘密到此归还并清零，不进入目录CAS/返回数据。
@@ -1023,16 +1021,11 @@ impl WalletService {
         self.require_default_change_current(authorization)?;
         let intent = authorization.signing_intent()?;
         let message = intent.signing_message()?;
-        let verified = self
-            .signer
-            .verify(
-                Sr25519PublicKey::from_bytes(
-                    authorization.current_default_account_id().into_bytes(),
-                ),
-                message,
-                signature,
-            )
-            .await?;
+        let verified = crate::sign::verify(
+            Sr25519PublicKey::from_bytes(authorization.current_default_account_id().into_bytes()),
+            message,
+            signature,
+        )?;
         if !verified {
             return Err(error(
                 ContractErrorCode::Integrity,
@@ -1339,8 +1332,7 @@ impl WalletService {
         self.require_existing_profile_secrets(&profile).await?;
 
         // 助记词/password 必须先由账户0公钥反证属于当前钱包。
-        let owner_check =
-            derive_wallet_accounts(self.signer.clone(), mnemonic, password, &[0]).await?;
+        let owner_check = derive_wallet_accounts(mnemonic, password, &[0])?;
         let owner_public_key = owner_check
             .first()
             .ok_or_else(|| error(ContractErrorCode::Internal, "账户0归属派生结果缺失"))?
@@ -1376,9 +1368,7 @@ impl WalletService {
         if self.profiles.load().await? != state {
             return Err(conflict("追加认证期间钱包状态已变化"));
         }
-        let derived =
-            derive_wallet_accounts(self.signer.clone(), mnemonic, password, &sorted_indices)
-                .await?;
+        let derived = derive_wallet_accounts(mnemonic, password, &sorted_indices)?;
         let created_at = self.clock.now_millis()?;
         let mut added = Vec::with_capacity(derived.len());
         let mut pending = Vec::with_capacity(derived.len());
@@ -1565,7 +1555,6 @@ impl WalletService {
         challenge.extend_from_slice(profile.master_account_id().as_bytes());
         challenge.extend_from_slice(profile.generation().as_bytes());
         let signing = SigningService::new(
-            self.signer.clone(),
             self.vault.clone(),
             self.profiles.clone(),
             self.encrypted_secrets.clone(),
@@ -1574,7 +1563,7 @@ impl WalletService {
             .sign_locked(profile.master_account_id(), challenge.clone(), &|| Ok(()))
             .await?;
         let public_key = Sr25519PublicKey::from_bytes(*profile.master_account_id().as_bytes());
-        if !self.signer.verify(public_key, challenge, signature).await? {
+        if !crate::sign::verify(public_key, challenge, signature)? {
             return Err(error(
                 ContractErrorCode::Integrity,
                 "删除钱包授权签名验证失败",
@@ -1607,9 +1596,7 @@ impl WalletService {
         forbidden.insert(owner_bytes);
         let operation_id = mint_owner(self.entropy.as_ref(), &forbidden)?;
         let owner = SecretOwner::from_bytes(owner_bytes);
-        let mut derived = derive_wallet_accounts(self.signer.clone(), mnemonic, password, &[0])
-            .await?
-            .into_iter();
+        let mut derived = derive_wallet_accounts(mnemonic, password, &[0])?.into_iter();
         let derived = derived
             .next()
             .ok_or_else(|| error(ContractErrorCode::Internal, "账户0派生未返回结果"))?;
@@ -1679,7 +1666,7 @@ impl WalletService {
             }
             let secret_ref = pending_secret.secret_ref;
             // 账户身份在加密前由真实派生秘密反证，不能只相信调用方的公开字段。
-            let public_key = self.signer.public_key(&pending_secret.secret).await?;
+            let public_key = crate::sign::public_key(&pending_secret.secret)?;
             if public_key.as_bytes() != secret_ref.account_id().as_bytes() {
                 return Err(error(
                     ContractErrorCode::Integrity,
@@ -1723,7 +1710,7 @@ impl WalletService {
         &self,
         operation_id: [u8; 16],
         pending: PendingSecret,
-    ) -> Result<citizen_sdk_contracts::EncryptedSecretEnvelope, EngineError> {
+    ) -> Result<crate::types::EncryptedSecretEnvelope, EngineError> {
         // 封装前后都核对持久所有权；追加不能因复用硬件钥而绕过账户级操作隔离。
         self.require_secret_write_ownership(operation_id, pending.secret_ref)
             .await?;
@@ -1805,7 +1792,7 @@ impl WalletService {
     async fn verify_provisioned(
         &self,
         expected: &WalletState,
-        saved: &[(SecretRef, citizen_sdk_contracts::EncryptedSecretEnvelope)],
+        saved: &[(SecretRef, crate::types::EncryptedSecretEnvelope)],
     ) -> Result<(), EngineError> {
         let persisted = self.profiles.load().await?;
         if persisted.profile() != expected.profile()
@@ -1916,7 +1903,7 @@ impl WalletService {
             .cloned()
             .ok_or_else(|| error(ContractErrorCode::NotFound, "账户设备密文不存在"))?;
         let secret = self.vault.open(secret_ref, envelope).await?;
-        let public_key = self.signer.public_key(&secret).await?;
+        let public_key = crate::sign::public_key(&secret)?;
         if public_key.as_bytes() != secret_ref.account_id().as_bytes() {
             return Err(error(
                 ContractErrorCode::Integrity,
@@ -1934,7 +1921,7 @@ impl WalletService {
             return Ok(false);
         };
         let secret = self.vault.open(secret_ref, envelope).await?;
-        let public_key = self.signer.public_key(&secret).await?;
+        let public_key = crate::sign::public_key(&secret)?;
         Ok(public_key.as_bytes() == secret_ref.account_id().as_bytes())
     }
 
@@ -2537,3 +2524,20 @@ fn is_conflict(error: &EngineError) -> bool {
         EngineError::Contract(contract) if contract.code() == ContractErrorCode::Conflict
     )
 }
+
+/// 钱包模式证明的唯一载荷编码；固定创世、账户、SCALE hot及本次挑战。
+fn hot_mode_payload(account: AccountId32, challenge: &[u8; 32]) -> ContractResult<Vec<u8>> {
+    let mut payload = Zeroizing::new(Vec::with_capacity(100));
+    payload.extend_from_slice(CITIZENCHAIN_GENESIS_HASH.as_bytes());
+    payload.extend_from_slice(account.as_bytes());
+    payload.extend_from_slice(b"\x0chot");
+    payload.extend_from_slice(challenge);
+    encode_signing_payload(SigningPayload::Message {
+        op_tag: 0x23,
+        scale_payload: payload.as_slice(),
+    })
+}
+
+#[cfg(test)]
+#[path = "../tests/wallet.rs"]
+mod tests;

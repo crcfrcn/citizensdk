@@ -1,162 +1,662 @@
-// 主包测试位于lib/test，测试依赖沿用pubspec的dev_dependencies，不进入运行依赖。
 // ignore_for_file: depend_on_referenced_packages
-
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate';
-
 import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/platform/bind.dart' as c;
-import 'package:citizen_sdk/platform/citizen_sdk_flutter_codec.dart';
-import 'package:citizen_sdk/platform/citizen_sdk_platform.dart';
-import 'package:citizen_sdk/platform/ffi.dart';
-import 'package:citizen_sdk/platform/result.dart';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _Allocator implements Allocator {
- final sizes=<int,int>{};int wiped=0;
- @override Pointer<T> allocate<T extends NativeType>(int byteCount,{int? alignment}){final p=calloc.allocate<T>(byteCount,alignment:alignment);sizes[p.address]=byteCount;return p;}
- @override void free(Pointer<NativeType> pointer){final size=sizes.remove(pointer.address)!;expect(pointer.cast<Uint8>().asTypedList(size),everyElement(0));wiped++;calloc.free(pointer);}
-}
-void main(){
- TestWidgetsFlutterBinding.ensureInitialized();
- final path=Platform.environment['CITIZENSDK_TEST_LIBRARY'];
- if(path==null)throw StateError('FFI test requires the product-built native fixture');
- final library=DynamicLibrary.open(path);final api=c.Bindings(library);
- final open=library.lookupFunction<Uint64 Function(Uint32),int Function(int)>('citizensdk_test_open');
- final close=library.lookupFunction<Int32 Function(Uint64),int Function(int)>('citizensdk_test_close');
- const method=MethodChannel('citizen/sdk/core/v2'),events=MethodChannel('citizen/sdk/events/v2');
- final handles=<String,int>{};final sequences=<String,int>{};int uiCalls=0;bool malformedOpen=false;
- late FfiCitizenSdkPlatform platform;StreamSubscription<Object?>? subscription;
- setUp((){uiCalls=0;malformedOpen=false;platform=FfiCitizenSdkPlatform(bindings:api);TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(events,(call)async=>null);TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(method,(call)async{
-  final args=call.arguments! as List<Object?>;if(call.method=='diagnose'){expect((args[2]! as List<Object?>).length,6);return[2,args[1],0,<Object?>[]];}uiCalls++;
-  if(call.method=='open'){final handle=open(args[1]! as int);expect(handle,isNot(0));final id='sdk-$handle';handles[id]=handle;return[2,id,0,malformedOpen?<Object?>['created']:<Object?>['created',1,decimal(handle)]];}
-  if(call.method=='close'){final id=args[1]! as String;check(api.citizensdk_accept_request_sequence(handles[id]!,args[2]! as int));var code=18;for(var i=0;i<200&&code==18;i++){code=close(handles[id]!);if(code==18)await Future<void>.delayed(const Duration(milliseconds:5));}expect(code,0);handles.remove(id);return[2,id,args[2],['disposed']];}
-  throw StateError('Ordinary business reached the platform channel');
- });subscription=platform.events.listen((_){});});
- tearDown(()async{final leaked=List<String>.of(handles.keys);for(final id in leaked){await platform.invoke('close',[2,id,(sequences[id]??0)+1]);}await subscription?.cancel();expect(leaked,isEmpty);expect(handles,isEmpty);TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(method,null);TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(events,null);});
- Future<String> session(int modules)async{final raw=await platform.invoke('open',[2,modules,false]) as List<Object?>;return raw[1]! as String;}
- Future<List<Object?>> call(String id,int seq,String method,[List<Object?> args=const[]])async{sequences[id]=(sequences[id]??0)>seq?sequences[id]!:seq;final raw=await platform.invoke(method,[2,id,seq,...args]) as List<Object?>;return raw[3]! as List<Object?>;}
- // 通过真实公开门面消费同一FFI，防止只测低层而漏掉会话的严格错误关联校验。
- Future<CitizenSdk> facade(int modules)async{
-  final previous=CitizenSdkPlatform.instance;CitizenSdkPlatform.instance=platform;
-  try{return await CitizenSdk.open(modules:modules);}finally{CitizenSdkPlatform.instance=previous;}
- }
- test('公开门面保留同步接纳错误及准确关联，不误报decode',()async{
-  final sdk=await facade(CitizenSdkModules.wallet);
-  try{
-   await expectLater(sdk.chain.getFinalizedHead(),throwsA(isA<CitizenSdkException>()
-    .having((e)=>e.code,'原类别',CitizenSdkErrorCode.unsupported)
-    .having((e)=>e.method,'方法','getFinalizedHead')
-    .having((e)=>e.sessionId,'所属会话',handles.keys.single)
-    .having((e)=>e.requestSequence,'序列',1)));
-   expect((await sdk.wallet.getState().result).accounts,isEmpty);
-  }finally{await sdk.close();}
- });
- test('公开门面保留异步钱包失败与并发请求各自的原始身份',()async{
-  final sdk=await facade(CitizenSdkModules.wallet);
-  try{
-   final first=sdk.wallet.renameAccount(accountId:'0x${'21'*32}',name:'合成一').result;
-   final second=sdk.wallet.renameAccount(accountId:'0x${'22'*32}',name:'合成二').result;
-   final errors=await Future.wait([first,second].map((f)=>f.then<CitizenSdkException>(
-    (_)=>throw StateError('不存在的合成账户不得重命名成功'),onError:(Object e)=>e as CitizenSdkException)));
-   expect(errors.map((e)=>e.requestSequence).toSet(),{1,2});
-   for(final e in errors){expect(e.code,CitizenSdkErrorCode.notFound);expect(e.method,'renameAccount');expect(e.sessionId,handles.keys.single);expect(e.message,isNotEmpty);}
-   expect((await sdk.wallet.getState().result).accounts,isEmpty);
-  }finally{await sdk.close();}
- });
- test('真实取消回执经公开门面仍是原终态，不改为decode',()async{
-  final sdk=await facade(CitizenSdkModules.wallet);
-  try{
-   final operation=sdk.wallet.getState();
-   final settled=operation.result.then<void>((state)=>expect(state.accounts,isEmpty),onError:(Object e){
-    expect(e,isA<CitizenSdkException>().having((e)=>e.code,'取消类别',CitizenSdkErrorCode.cancelled)
-     .having((e)=>e.method,'方法','getWalletState').having((e)=>e.sessionId,'会话',handles.keys.single));
-   });
-   expect(await operation.cancel(),isA<bool>());await settled;
-  }finally{await sdk.close();}
- });
- test('公开门面与原生完成保留相同code/stage/message及原抛出堆栈',()async{
-  Future<(CitizenSdkException,StackTrace)> rejected(Future<Object?> f)async{
-   try{await f;}on CitizenSdkException catch(e,st){return(e,st);}
-   throw StateError('合成缺失账户必须失败');
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final path = Platform.environment['CITIZENSDK_TEST_LIBRARY'];
+  if (path == null) throw StateError('需要本轮正式Core/SQLite/ZXing夹具');
+  final library = DynamicLibrary.open(path),
+      api = c.Bindings(DynamicLibrary.open(path));
+  final open = library
+      .lookupFunction<Uint64 Function(Uint32), int Function(int)>(
+        'citizensdk_test_open',
+      );
+  final close = library
+      .lookupFunction<Int32 Function(Uint64), int Function(int)>(
+        'citizensdk_test_close',
+      );
+  final vault = library
+      .lookupFunction<Int32 Function(Uint64, Int32), int Function(int, int)>(
+        'citizensdk_test_vault',
+      );
+  final vaultPending = library
+      .lookupFunction<Int32 Function(Uint64), int Function(int)>(
+        'citizensdk_test_vault_pending',
+      );
+  final vaultComplete = library
+      .lookupFunction<Int32 Function(Uint64, Int32), int Function(int, int)>(
+        'citizensdk_test_vault_complete',
+      );
+  const method = MethodChannel('citizen/sdk/core/v2'),
+      events = MethodChannel('citizen/sdk/events/v2');
+  final handles = <String, int>{};
+  var calls = <String>[], malformed = false;
+  var physicalUi = false, earlyCameraClose = false, rejectDiagnostic = false;
+  Completer<Uint8List>? revealBytes;
+  Completer<void>? cameraDrain;
+  final nativeResources = <String>{};
+  void emit(String kind, List<Object?> payload) {
+    ServicesBinding.instance.channelBuffers.push(
+      'citizen/sdk/events/v2',
+      const StandardMethodCodec().encodeSuccessEnvelope([
+        2,
+        handles.keys.single,
+        1,
+        kind,
+        payload,
+      ]),
+      (_) {},
+    );
   }
-  final account='0x${'23'*32}',id=await session(CitizenSdkModules.wallet);
-  final raw=await rejected(call(id,1,'renameAccount',[account,'合成原名']));
-  await call(id,2,'close');
-  final sdk=await facade(CitizenSdkModules.wallet);
-  try{
-   final exposed=await rejected(sdk.wallet.renameAccount(accountId:account,name:'合成原名').result);
-   expect(exposed.$1.code,raw.$1.code);expect(exposed.$1.stage,raw.$1.stage);
-   expect(exposed.$1.message,raw.$1.message);
-   expect(exposed.$2.toString(),contains('Projection.inspect'));
-   expect(exposed.$1.method,'renameAccount');expect(exposed.$1.requestSequence,1);
-  }finally{await sdk.close();}
- });
- test('stateless verification calls Rust without any platform request',()async{await expectLater(platform.invoke('verifySignature',[2,'0x${'00'*32}',Uint8List(64),Uint8List(0)]),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.invalidArgument)));final sig=Uint8List(64)..[63]=128;final value=await platform.invoke('verifySignature',[2,'0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d',sig,Uint8List(0)]);expect(value,[2,false]);expect(uiCalls,0);});
- test('QR protocol and image use the same real native implementation',()async{final id=await session(32);final account='0x${'01'*32}';final encoded=await call(id,1,'qrEncodeAccountId',[account]);final document=await call(id,2,'qrParse',[encoded[0]]);expect((const CitizenSdkFlutterCodec().decodeQrDocument(document[0])).canonicalText,encoded[0]);final image=await call(id,3,'qrEncode',[encoded[0],4]);final decoded=await call(id,4,'qrDecodeLuminance',[image[2],image[0],image[1],image[0]]);expect(const CitizenSdkFlutterCodec().decodeQrDocument(decoded[0]).canonicalText,encoded[0]);final other=await call(id,5,'qrEncodeAccountId',['0x${'08'*32}']);final second=await call(id,6,'qrEncode',[other[0],4]);expect(second[0],image[0]);expect(second[1],image[1]);final w=image[0]! as int,h=image[1]! as int;final pair=Uint8List(w*2*h);for(var row=0;row<h;row++){pair.setRange(row*w*2,row*w*2+w,(image[2]! as Uint8List).sublist(row*w,(row+1)*w));pair.setRange(row*w*2+w,(row+1)*w*2,(second[2]! as Uint8List).sublist(row*w,(row+1)*w));}await expectLater(call(id,7,'qrDecodeLuminance',[pair,w*2,h,w*2]),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.conflict)));expect(uiCalls,1);await call(id,8,'close');});
- test('real wallet requests receive one owned completion and retain exact catalog results',()async{final id=await session(1);final state=await call(id,1,'getWalletState');expect(const CitizenSdkFlutterCodec().decodeWalletState(state[0]).revision,BigInt.zero);final account='0x${'02'*32}';final imported=await call(id,2,'importColdAccountId',[account,'离线']);expect(const CitizenSdkFlutterCodec().decodeWalletState(imported[0]).accounts.length,1);final inspection=await call(id,3,'inspectWallets');expect(inspection[0],isA<String>());await call(id,4,'releaseWalletInspection',[inspection[0]]);await expectLater(call(id,5,'setActiveWallet',['0',1]),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.conflict)));final latest=await call(id,6,'getWalletState');expect(const CitizenSdkFlutterCodec().decodeWalletState(latest[0]).accounts.length,1);expect(uiCalls,1);await call(id,7,'close');});
- test('Core scan permission controls cold account code import',()async{final id=await session(33);final encoded=await call(id,1,'qrEncodeAccountId',['0x${'07'*32}']);final imported=await call(id,2,'importColdAccountCode',[encoded[0],'离线码']);expect(const CitizenSdkFlutterCodec().decodeWalletState(imported[0]).accounts.length,1);expect(uiCalls,1);await call(id,3,'close');});
- test('cancellation preserves the actual terminal completion',()async{final id=await session(1);final work=call(id,1,'getWalletState');final settled=work.then<void>((value){expect(const CitizenSdkFlutterCodec().decodeWalletState(value[0]).accounts,isEmpty);},onError:(Object e,StackTrace st){expect(e,isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.cancelled));});final result=await call(id,2,'cancelOperation',['1']);expect(result.single,isA<bool>());await settled;expect(await call(id,3,'cancelOperation',['1']),[false]);expect(uiCalls,1);await call(id,4,'close');});
- test('malformed bootstrap releases its actual native owner',()async{malformedOpen=true;await expectLater(platform.invoke('open',[2,32,false]),throwsA(isA<CitizenSdkException>()));expect(handles,isEmpty);expect(uiCalls,2);});
- test('rejected input spends the unique sequence and cannot select a fallback route',()async{final id=await session(32);await expectLater(call(id,1,'qrParse',[123]),throwsA(isA<CitizenSdkException>()));final value=await call(id,2,'qrEncodeAccountId',['0x${'03'*32}']);expect(value[0],isA<String>());await expectLater(call(id,2,'getWalletState'),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.conflict)));await call(id,3,'close');});
- test('resources are owner scoped and close releases unclaimed result ownership',()async{final first=await session(1),second=await session(1);final inspection=await call(first,1,'inspectWallets');await expectLater(call(second,1,'releaseWalletInspection',[inspection[0]]),throwsA(isA<CitizenSdkException>().having((e)=>e.code,'code',CitizenSdkErrorCode.notFound)));await call(first,2,'close');await call(second,2,'close');});
- test('native input and output buffers are zero before every allocator release',(){final allocator=_Allocator();final m=Memory(allocator:allocator);try{final v=m.struct<c.citizensdk_wallet_input_validation_v1>(sizeOf<c.citizensdk_wallet_input_validation_v1>());check(api.citizensdk_validate_wallet_input(2,m.view('synthetic input'),12,v));expect(v.ref.reason,isNot(0));}finally{m.dispose();}expect(allocator.sizes,isEmpty);expect(allocator.wiped,greaterThan(1));});
- // 直接检查交给C ABI的内存布局，防止仅修复结果投影而遗漏请求区块。
- test('block inputs carry the versioned ABI header and preserve unsigned heights',(){
-  final hash='0x${List.generate(32,(i)=>i.toRadixString(16).padLeft(2,'0')).join()}';
-  for(final finality in ['best','finalized']){
-   for(final height in ['0','9223372036854775808','18446744073709551615']){
-    final allocator=_Allocator(),memory=Memory(allocator:allocator);
-    final input=<Object?>[hash,height,finality];
-    try{
-     final value=memory.block(input).ref;
-     expect(value.struct_size,sizeOf<c.citizensdk_block_ref>());
-     expect(value.abi_version,c.CITIZENSDK_ABI_VERSION);
-     expect(value.reserved,0);
-     expect(value.finality,finality=='best'?c.CITIZENSDK_FINALITY_BEST:c.CITIZENSDK_FINALITY_FINALIZED);
-     expect(block(value),input);
-    }finally{memory.dispose();}
-    expect(allocator.sizes,isEmpty);
-    expect(allocator.wiped,greaterThan(0));
-   }
-  }
- });
- test('invalid block inputs are rejected and partially filled buffers are wiped',(){
-  final hash='0x${'01'*32}';
-  for(final input in <Object?>[
-   null,<Object?>[],<Object?>[hash,'80'],
-   <Object?>['0x00','80','finalized'],
-   <Object?>[hash,'-1','finalized'],
-   <Object?>[hash,'18446744073709551616','finalized'],
-   <Object?>[hash,'80','unknown'],
-  ]){
-   final allocator=_Allocator(),memory=Memory(allocator:allocator);
-   try{
-    expect(()=>memory.block(input),throwsA(isA<CitizenSdkException>().having((error)=>error.code,'code',CitizenSdkErrorCode.invalidArgument)));
-   }finally{memory.dispose();}
-   expect(allocator.sizes,isEmpty);
-  }
- });
- test('a closed native port cannot leave an unreachable owned result',()async{
-  final handle=open(1);expect(handle,isNot(0));final port=ReceivePort();check(api.citizensdk_attach(handle,api.addresses.citizensdk_dart_emit,NativeApi.postCObject.cast(),port.sendPort.nativePort));port.close();
-  final out=calloc<Uint64>();final job=NativeCallable<Int32 Function(Pointer<Void>)>.isolateLocal((Pointer<Void> _)=>api.citizensdk_get_wallet_state(handle,out),exceptionalReturn:20);
-  try{check(api.citizensdk_invoke(handle,job.nativeFunction,nullptr));}finally{job.close();calloc.free(out);}
-  var code=18;for(var i=0;i<200&&code==18;i++){code=close(handle);if(code==18)await Future<void>.delayed(const Duration(milliseconds:5));}expect(code,0);
- });
- test('queued native messages cannot keep results alive after receiver revocation',()async{
-  final handle=open(1);expect(handle,isNot(0));final port=ReceivePort();final delivered=Completer<int>();port.listen((Object? message){final values=(message! as List<Object?>).cast<int>();if(values[0]==1&&!delivered.isCompleted)delivered.complete(values[3]);});
-  check(api.citizensdk_attach(handle,api.addresses.citizensdk_dart_emit,NativeApi.postCObject.cast(),port.sendPort.nativePort));
-  final out=calloc<Uint64>();final job=NativeCallable<Int32 Function(Pointer<Void>)>.isolateLocal((Pointer<Void> _)=>api.citizensdk_get_wallet_state(handle,out),exceptionalReturn:20);
-  try{check(api.citizensdk_invoke(handle,job.nativeFunction,nullptr));}finally{job.close();calloc.free(out);}
-  final result=await delivered.future.timeout(const Duration(seconds:2));expect(close(handle),18);check(api.citizensdk_detach(handle));expect(api.citizensdk_result_release(result),2);port.close();
-  var code=18;for(var i=0;i<200&&code==18;i++){code=close(handle);if(code==18)await Future<void>.delayed(const Duration(milliseconds:5));}expect(code,0);
- });
- test('engine detach releases Dart inspection ownership before native destruction',()async{
-  final id=await session(1);await call(id,1,'inspectWallets');check(api.citizensdk_detach(handles[id]!));await Future<void>.delayed(const Duration(milliseconds:20));var code=18;for(var i=0;i<200&&code==18;i++){code=close(handles[id]!);if(code==18)await Future<void>.delayed(const Duration(milliseconds:5));}expect(code,0);handles.remove(id);
- });
 
+  final diagnosticRows = <List<Object?>>[];
+  setUp(() {
+    calls = [];
+    malformed = false;
+    physicalUi = false;
+    earlyCameraClose = false;
+    rejectDiagnostic = false;
+    revealBytes = null;
+    cameraDrain = null;
+    nativeResources.clear();
+    diagnosticRows.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(events, (call) async => null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(method, (call) async {
+          calls.add(call.method);
+          final args = call.arguments! as List<Object?>;
+          if (call.method == 'open') {
+            final handle = open(args[1]! as int);
+            if (handle == 0) throw StateError('真实Core创建失败');
+            final id = 'sdk-$handle';
+            handles[id] = handle;
+            return [
+              2,
+              id,
+              0,
+              malformed
+                  ? <Object?>['created', 1]
+                  : <Object?>[
+                      'created',
+                      1,
+                      BigInt.from(handle).toUnsigned(64).toString(),
+                    ],
+            ];
+          }
+          if (call.method == 'close') {
+            expect(nativeResources, isEmpty);
+            final id = args[1]! as String, handle = handles[id]!;
+            expect(
+              api.citizensdk_accept_request_sequence(handle, args[2]! as int),
+              0,
+            );
+            var status = 18;
+            for (var i = 0; i < 200 && status == 18; i++) {
+              status = close(handle);
+              if (status == 18)
+                await Future<void>.delayed(const Duration(milliseconds: 5));
+            }
+            expect(status, 0);
+            handles.remove(id);
+            return [
+              2,
+              id,
+              args[2],
+              ['disposed'],
+            ];
+          }
+          if (call.method == 'diagnose') {
+            if (rejectDiagnostic)
+              throw StateError('finite diagnostic IO failure');
+            final row = List<Object?>.of(args[2]! as List<Object?>);
+            CitizenSdkDiagnostic.decode(row);
+            diagnosticRows.add(row);
+            if (diagnosticRows.length > 128) diagnosticRows.removeAt(0);
+            return [2, args[1], 0, <Object?>[]];
+          }
+          if (call.method == 'readDiagnostics') {
+            expect(
+              api.citizensdk_accept_request_sequence(
+                handles[args[1]]!,
+                args[2]! as int,
+              ),
+              0,
+            );
+            return [
+              2,
+              args[1],
+              args[2],
+              [List<List<Object?>>.of(diagnosticRows)],
+            ];
+          }
+          // 只模拟物理显示/相机确认与排空；不提供钱包、签名、链或QR业务结果。
+          if (physicalUi) {
+            expect(
+              api.citizensdk_accept_request_sequence(
+                handles[args[1]]!,
+                args[2]! as int,
+              ),
+              0,
+            );
+            List<Object?> value;
+            switch (call.method) {
+              case 'openPrivateKey':
+                nativeResources.add('private');
+                value = ['private'];
+              case 'revealPrivateKey':
+                revealBytes = Completer<Uint8List>();
+                value = [await revealBytes!.future];
+              case 'closePrivateKey':
+                if (revealBytes != null) await revealBytes!.future;
+                nativeResources.remove('private');
+                value = [];
+              case 'openQrCapture':
+                nativeResources.add('camera');
+                if (earlyCameraClose) {
+                  emit('qrCaptureClosed', ['camera']);
+                  await Future<void>.delayed(Duration.zero);
+                }
+                value = ['camera', 4, 320, 240, 0];
+              case 'closeQrCapture':
+                await cameraDrain?.future;
+                nativeResources.remove('camera');
+                value = [];
+              case 'resumeQrCapture':
+              case 'pauseQrCapture':
+              case 'setQrCaptureTorch':
+                value = [];
+              default:
+                throw StateError('non-resource UI call');
+            }
+            return [2, args[1], args[2], value];
+          }
+          throw StateError('业务调用进入了系统资源通道：${call.method}');
+        });
+  });
+  tearDown(() async {
+    expect(handles, isEmpty);
+    expect(nativeResources, isEmpty);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(method, null);
+  });
+  Future<CitizenSdk> wallet() =>
+      CitizenSdk.open(modules: CitizenSdkModules.wallet | CitizenSdkModules.qr);
+  Future<CitizenSdk> hot(int mode) async {
+    final sdk = await CitizenSdk.open(
+      modules:
+          CitizenSdkModules.wallet |
+          CitizenSdkModules.signing |
+          CitizenSdkModules.qr,
+    );
+    expect(vault(handles.values.single, mode), 0);
+    return sdk;
+  }
+
+  Future<void> finishPhysical(CitizenSdk sdk, int handle) async {
+    if (vaultPending(handle) != 0) expect(vaultComplete(handle, 22), 0);
+    await sdk.close().timeout(const Duration(seconds: 5));
+  }
+
+  String account(int b) => citizenAccountIdFromBytes(List<int>.filled(32, b));
+  test('唯一生成声明与实际Core一致，旧构造不导出', () {
+    expect(api.citizensdk_abi_version(), c.CITIZENSDK_ABI_VERSION);
+    for (final name in [
+      'citizensdk_create_with_modules',
+      'citizensdk_create_with_store',
+      'citizensdk_create_with_host',
+      'citizensdk_set_secret_presence_provider',
+    ]) {
+      expect(() => library.lookup<Void>(name), throwsArgumentError);
+    }
+  });
+  test('只打开QR真实Core，无钱包/链资源', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    try {
+      expect(await sdk.lifecycle, CitizenSdkLifecycle.created);
+      final snapshot = await sdk.getCapabilities();
+      expect(snapshot.statuses, hasLength(10));
+      final wire = await sdk.encodeAccountId(account(1));
+      expect((await sdk.parseQr(wire)).accountId, account(1));
+    } finally {
+      await sdk.close();
+    }
+    expect(calls.where((method) => method != 'diagnose'), ['open', 'close']);
+  });
+  test('扫码用途由Core同一次解析拒绝不匹配输入', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    try {
+      final text = await sdk.encodeAccountId(account(2));
+      expect(
+        (await sdk.parseForPurpose(
+          text,
+          CitizenQrScanPurpose.coldAccountImport,
+        )).document.accountId,
+        account(2),
+      );
+      await expectLater(
+        sdk.parseForPurpose(text, CitizenQrScanPurpose.externalSignature),
+        throwsA(isA<CitizenSdkException>()),
+      );
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('钱包真实SQLite读写，余额/链方法不走系统通道', () async {
+    final sdk = await wallet();
+    try {
+      expect((await sdk.getWalletState().result).accounts, isEmpty);
+      final state = await sdk
+          .importColdAccount(accountId: account(3), name: '本轮临时账户')
+          .result;
+      expect(state.accounts.single.accountId, account(3));
+      expect(
+        (await sdk.getWalletState().result).accounts.single.name,
+        '本轮临时账户',
+      );
+      await expectLater(
+        sdk.getFinalizedHead(),
+        throwsA(
+          isA<CitizenSdkException>().having(
+            (e) => e.code,
+            'Core原类别',
+            CitizenSdkErrorCode.unsupported,
+          ),
+        ),
+      );
+    } finally {
+      await sdk.close();
+    }
+    expect(calls.where((method) => method != 'diagnose'), ['open', 'close']);
+  });
+  test('未选钱包模块真实拒绝，不构造空钱包', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    try {
+      await expectLater(
+        sdk.getWalletState().result,
+        throwsA(isA<CitizenSdkException>()),
+      );
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('规范地址导入与字节身份共用同一Core目录', () async {
+    final sdk = await wallet();
+    try {
+      final id = account(4);
+      final address = citizenSs58FromAccountId(id);
+      await sdk.importColdAccount(ss58Address: address).result;
+      expect((await sdk.getWalletState().result).accounts.single.accountId, id);
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('有效扫码代码直接导入实际冷目录', () async {
+    final sdk = await wallet();
+    try {
+      final wire = await sdk.encodeAccountId(account(5));
+      expect(
+        (await sdk.importColdAccountCode(code: wire).result)
+            .accounts
+            .single
+            .accountId,
+        account(5),
+      );
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('真实检查快照归还后失效，父关闭可重复', () async {
+    final sdk = await wallet();
+    final inspection = await sdk.inspectWallets().result;
+    expect(inspection.state.accounts, isEmpty);
+    await inspection.release();
+    expect(() => inspection.delete(0), throwsA(isA<CitizenSdkException>()));
+    await sdk.close();
+    await sdk.close();
+    expect(calls.where((method) => method != 'diagnose'), ['open', 'close']);
+  });
+  test('多个真实实例互不共享SQLite目录', () async {
+    final a = await wallet(), b = await wallet();
+    try {
+      await a.importColdAccount(accountId: account(6)).result;
+      expect((await a.getWalletState().result).accounts, hasLength(1));
+      expect((await b.getWalletState().result).accounts, isEmpty);
+    } finally {
+      await a.close();
+      await b.close();
+    }
+  });
+  test('真实异步错误保留类别/阶段，失败后仍可读', () async {
+    final sdk = await wallet();
+    try {
+      await expectLater(
+        sdk
+            .renameWallet(
+              expectedRevision: BigInt.one,
+              walletIndex: 99,
+              name: 'missing',
+            )
+            .result,
+        throwsA(isA<CitizenSdkException>()),
+      );
+      expect((await sdk.getWalletState().result).accounts, isEmpty);
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('无硬件金库的本轮夹具不能伪造本地签名就绪', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.signing);
+    try {
+      final caps = await sdk.getCapabilities();
+      expect(
+        caps.statuses
+            .firstWhere((s) => s.name == CitizenCapabilityName.localSigning)
+            .ready,
+        isFalse,
+      );
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('公开验签只调用真实密码学，不创建资源', () async {
+    final vectors =
+        jsonDecode(
+              File(
+                'core/tests/citizenchain-wallet-derivation-v1.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final cases = vectors['cases'] as List;
+    final first = cases.first as Map;
+    final rows = first['accounts'] as List;
+    final id = (rows.first as Map)['account_id'] as String;
+    final signature = Uint8List(64)..[63] = 128;
+    expect(
+      await CitizenSdk.verify(
+        accountId: id,
+        signature: signature,
+        payload: Uint8List.fromList([1]),
+      ),
+      isFalse,
+    );
+    expect(calls, isEmpty);
+  });
+  test('接纳取消只请求Core，终态实际返回一次', () async {
+    final sdk = await wallet();
+    try {
+      final op = sdk.getWalletState();
+      expect(BigInt.parse(op.operationId) > BigInt.zero, isTrue);
+      expect(await op.cancel(), isA<bool>());
+      try {
+        await op.result;
+      } on CitizenSdkException catch (e) {
+        expect(e.code, CitizenSdkErrorCode.cancelled);
+      }
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('父关闭先排空实际在途读取', () async {
+    final sdk = await wallet();
+    final reads = List.generate(
+      16,
+      (_) => sdk.getWalletState().result.then<void>(
+        (_) {},
+        onError: (Object e, StackTrace s) {},
+      ),
+    );
+    await sdk.close();
+    await Future.wait(reads);
+  });
+  test('格式错误的资源open回包归还已经创建的Core', () async {
+    malformed = true;
+    await expectLater(wallet(), throwsA(isA<CitizenSdkException>()));
+    expect(handles, isEmpty);
+    expect(calls.where((method) => method != 'diagnose'), ['open', 'close']);
+  });
+  test('关闭后不再接纳真实Core调用', () async {
+    final sdk = await wallet();
+    await sdk.close();
+    expect(() => sdk.getWalletState(), throwsA(isA<CitizenSdkException>()));
+    await expectLater(
+      sdk.getCapabilities(),
+      throwsA(isA<CitizenSdkException>()),
+    );
+  });
+  test('真实热准备提交成功后释放幂等，恢复词副本清零且父关闭完成', () async {
+    final sdk = await hot(1), handle = handles.values.single;
+    try {
+      final prepared = await sdk
+          .prepareWalletCreation(wordCount: CitizenWalletWordCount.words12)
+          .result;
+      final phrase = await prepared.recoveryPhrase(), borrowed = phrase.bytes;
+      expect(borrowed.isNotEmpty, isTrue);
+      await prepared.commit().result;
+      expect((await sdk.getWalletState().result).hotProfile != null, isTrue);
+      await phrase.release();
+      expect(borrowed.every((b) => b == 0), isTrue);
+      await prepared.release();
+      await prepared.release();
+    } finally {
+      await finishPhysical(sdk, handle);
+    }
+  });
+  test('真实提交作业失败后释放不覆盖原金库错误，父关闭不遗留准备', () async {
+    final sdk = await hot(2), handle = handles.values.single;
+    try {
+      final prepared = await sdk
+          .prepareWalletCreation(wordCount: CitizenWalletWordCount.words12)
+          .result;
+      await expectLater(
+        prepared.commit().result,
+        throwsA(
+          isA<CitizenSdkException>().having(
+            (e) => e.code,
+            'code',
+            CitizenSdkErrorCode.unavailable,
+          ),
+        ),
+      );
+      await prepared.release();
+    } finally {
+      await finishPhysical(sdk, handle);
+    }
+  });
+  test('父关闭先请求取消，再等待不可取消提交的真实成功终态', () async {
+    final sdk = await hot(3), handle = handles.values.single;
+    try {
+      final prepared = await sdk
+          .prepareWalletCreation(wordCount: CitizenWalletWordCount.words12)
+          .result;
+      final operation = prepared.commit();
+      final terminal = operation.result.then<Object?>(
+        (v) => v,
+        onError: (Object e) => e,
+      );
+      final until = DateTime.now().add(const Duration(seconds: 5));
+      while (vaultPending(handle) == 0 && DateTime.now().isBefore(until)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(vaultPending(handle), 1);
+      final closing = sdk.close().then<Object?>(
+        (_) => null,
+        onError: (Object error) => error,
+      );
+      await Future<void>.delayed(Duration.zero);
+      // Core将此写操作明确标为不可取消；诊断核对实际取消尝试，不能篡改成功终态。
+      expect(
+        diagnosticRows.any(
+          (row) =>
+              row[0] == 'cancelOperation' &&
+              row[1] == 'COMPLETE' &&
+              row[2] == 4,
+        ),
+        isTrue,
+      );
+      expect(vaultComplete(handle, 0), 0);
+      expect(
+        await terminal.timeout(const Duration(seconds: 5)),
+        isA<CitizenWalletProfile>(),
+      );
+      expect(await closing.timeout(const Duration(seconds: 5)), isNull);
+    } finally {
+      await finishPhysical(sdk, handle);
+    }
+  });
+  test('本地读取诊断由真实操作上报，失败类别保留且不含账户和异常正文', () async {
+    final sdk = await wallet();
+    try {
+      await sdk.getWalletState().result;
+      final rows = await sdk.readDiagnostics();
+      expect(
+        rows.any(
+          (r) =>
+              r.method == 'getWalletState' &&
+              r.phase == 'COMPLETE' &&
+              r.code == 0 &&
+              r.point == 'RESULT_READY',
+        ),
+        isTrue,
+      );
+      final serialized = rows.map((r) => r.toString()).join();
+      expect(serialized.contains(account(1)), isFalse);
+      expect(serialized.contains('failed'), isFalse);
+      expect(await sdk.readDiagnostics(), hasLength(rows.length));
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('输入过长由Core返回结构化原因，诊断IO失败不改变实际目录读取', () async {
+    final sdk = await wallet();
+    try {
+      expect(
+        (await sdk.validatePassword('x' * 1025)).reason,
+        CitizenWalletInputReason.inputTooLong,
+      );
+      rejectDiagnostic = true;
+      expect((await sdk.getWalletState().result).accounts, isEmpty);
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('真实模块拒绝进入闭集诊断，保留Core异步终态且不写正文', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    try {
+      await expectLater(
+        sdk.getWalletState().result,
+        throwsA(isA<CitizenSdkException>()),
+      );
+      final rows = await sdk.readDiagnostics();
+      expect(
+        rows.any(
+          (r) =>
+              r.method == 'getWalletState' &&
+              r.phase == 'COMPLETE' &&
+              r.code == 4,
+        ),
+        isTrue,
+      );
+    } finally {
+      await sdk.close();
+    }
+  });
+  test('Dart取钥资源在迟到显示时拒绝交付，并等待物理关闭确认', () async {
+    final sdk = await wallet();
+    physicalUi = true;
+    try {
+      final key = await sdk.openPrivateKey(account(8));
+      final reveal = key.reveal().then<Object?>(
+        (value) => value,
+        onError: (Object error) => error,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(revealBytes, isNotNull);
+      var closed = false;
+      final closing = key.close().then((_) => closed = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(closed, isFalse);
+      revealBytes!.complete(Uint8List(32));
+      expect(
+        await reveal,
+        isA<CitizenSdkException>().having(
+          (e) => e.code,
+          'code',
+          CitizenSdkErrorCode.cancelled,
+        ),
+      );
+      await closing;
+      await key.closed;
+    } finally {
+      if (revealBytes != null && !revealBytes!.isCompleted)
+        revealBytes!.complete(Uint8List(32));
+      await sdk.close();
+    }
+  });
+  test('Dart拥有的显式显示副本在关闭时清零，重复关闭不重复归还', () async {
+    final sdk = await wallet();
+    physicalUi = true;
+    try {
+      final key = await sdk.openPrivateKey(account(9));
+      final revealing = key.reveal();
+      await Future<void>.delayed(Duration.zero);
+      revealBytes!.complete(Uint8List.fromList(List<int>.filled(32, 0x55)));
+      final borrowed = await revealing;
+      expect(borrowed.every((b) => b == 0x55), isTrue);
+      await key.close();
+      expect(borrowed.every((b) => b == 0), isTrue);
+      await key.close();
+    } finally {
+      if (revealBytes != null && !revealBytes!.isCompleted)
+        revealBytes!.complete(Uint8List(32));
+      await sdk.close();
+    }
+  });
+  test('Dart相机关闭等待物理纹理排空，暂停订阅不阻塞归还', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    physicalUi = true;
+    try {
+      final capture = await sdk.openQrCapture(CitizenQrScanPurpose.generalScan);
+      final preview = Completer<CitizenQrPreview>();
+      final subscription = capture.previewChanges.listen(
+        (value) => preview.complete(value),
+      );
+      emit('qrCapturePreview', ['camera', 240, 320, 90]);
+      expect((await preview.future).rotationDegrees, 90);
+      subscription.pause();
+      cameraDrain = Completer<void>();
+      var closed = false;
+      final closing = capture.close().then((_) => closed = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(closed, isFalse);
+      cameraDrain!.complete();
+      await closing;
+      await subscription.cancel();
+    } finally {
+      if (cameraDrain != null && !cameraDrain!.isCompleted)
+        cameraDrain!.complete();
+      await sdk.close();
+    }
+  });
+  test('物理相机关闭早于open回包时仍归还真实资源', () async {
+    final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
+    physicalUi = true;
+    earlyCameraClose = true;
+    try {
+      await expectLater(
+        sdk.openQrCapture(CitizenQrScanPurpose.generalScan),
+        throwsA(isA<CitizenSdkException>()),
+      );
+      expect(nativeResources, isEmpty);
+    } finally {
+      await sdk.close();
+    }
+  });
 }

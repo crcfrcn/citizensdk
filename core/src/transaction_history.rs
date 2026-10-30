@@ -4,22 +4,33 @@
 //! rewrites the complete history value: public pages are limit-bounded, status
 //! updates touch one record, and recovery reads only reconcilable records.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+use std::sync::OnceLock;
 
-use citizen_sdk_contracts::{
-    store::{
-        HistoryTransactionStatus, TransactionExecutionRecord, TransactionHistoryCursor,
-        TransactionHistoryIndex, TransactionHistoryMutation, TransactionHistoryPage,
-        TransactionHistoryQueryKind, TransactionHistoryRecord, TransactionHistoryRecordBatch,
-        TransactionHistoryStore,
-    },
-    AccountId32, ContractErrorCode, Hash32, RuntimeVersion, SignedExtrinsic,
-    TransactionExecutionId, VerifiedBlockRef, MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES,
-    MAX_TRANSACTION_HISTORY_PAGE_SIZE, MAX_TRANSACTION_HISTORY_RECORDS,
-};
+use crate::types::store::HistoryTransactionStatus;
+use crate::types::store::TransactionExecutionRecord;
+use crate::types::store::TransactionHistoryCursor;
+use crate::types::store::TransactionHistoryIndex;
+use crate::types::store::TransactionHistoryMutation;
+use crate::types::store::TransactionHistoryPage;
+use crate::types::store::TransactionHistoryQueryKind;
+use crate::types::store::TransactionHistoryRecord;
+use crate::types::store::TransactionHistoryRecordBatch;
+use crate::types::store::TransactionHistoryStore;
+use crate::types::AccountId32;
+use crate::types::ContractErrorCode;
+use crate::types::Hash32;
+use crate::types::RuntimeVersion;
+use crate::types::SignedExtrinsic;
+use crate::types::TransactionExecutionId;
+use crate::types::VerifiedBlockRef;
+use crate::types::MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES;
+use crate::types::MAX_TRANSACTION_HISTORY_PAGE_SIZE;
+use crate::types::MAX_TRANSACTION_HISTORY_RECORDS;
 use futures::lock::Mutex as AsyncMutex;
 
-use crate::{error::EngineError, wallet_service::WalletClock};
+use crate::error::EngineError;
+use crate::wallet_service::WalletClock;
 
 const MAX_HISTORY_CAS_ATTEMPTS: usize = 8;
 static HISTORY_MUTATION_GATE: OnceLock<AsyncMutex<()>> = OnceLock::new();

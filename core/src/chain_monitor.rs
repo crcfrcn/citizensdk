@@ -1,12 +1,12 @@
 //! SDK generic execution-history coordination state.
-use citizen_sdk_contracts::{FinalizedBlockRef, TransactionExecutionId};
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-    task::{Context, Poll, Waker},
-};
+use crate::types::FinalizedBlockRef;
+use crate::types::TransactionExecutionId;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
 #[derive(Default, Debug)]
 pub(crate) struct MonitorCancellation {

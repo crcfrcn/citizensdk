@@ -1,28 +1,40 @@
 #![cfg(feature = "chain")]
 
-use std::{
-    collections::BTreeMap,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-};
+use std::collections::BTreeMap;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use citizen_sdk_contracts::{
-    AccountId32, AccountNonce, AccountNonceSource, ChainIdentity, ContractError, ContractErrorCode,
-    ContractFuture, ContractStream, ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef,
-    Hash32, RuntimeContext, RuntimeVersion, SignedExtrinsic, StateImportReceipt,
-    SubmittedExtrinsic, VerifiedBlockRef, VerifiedChainClient,
-};
-use citizen_sdk_engine::{
-    account_state::{
-        decode_best_fee_snapshot, decode_finalized_account_balance, system_account_storage_key,
-        AccountStateService,
-    },
-    CapabilityProbe, CitizenEngine, EngineComponents, EngineError,
-};
+use citizensdk::account_state::decode_best_fee_snapshot;
+use citizensdk::account_state::decode_finalized_account_balance;
+use citizensdk::account_state::system_account_storage_key;
+use citizensdk::account_state::AccountStateService;
+use citizensdk::types::AccountId32;
+use citizensdk::types::AccountNonce;
+use citizensdk::types::AccountNonceSource;
+use citizensdk::types::ChainIdentity;
+use citizensdk::types::ContractError;
+use citizensdk::types::ContractErrorCode;
+use citizensdk::types::ContractFuture;
+use citizensdk::types::ContractStream;
+use citizensdk::types::ExportedChainState;
+use citizensdk::types::ExtrinsicWatchEvent;
+use citizensdk::types::FinalizedBlockRef;
+use citizensdk::types::Hash32;
+use citizensdk::types::RuntimeContext;
+use citizensdk::types::RuntimeVersion;
+use citizensdk::types::SignedExtrinsic;
+use citizensdk::types::StateImportReceipt;
+use citizensdk::types::SubmittedExtrinsic;
+use citizensdk::types::VerifiedBlockRef;
+use citizensdk::types::VerifiedChainClient;
+use citizensdk::CapabilityProbe;
+use citizensdk::CitizenEngine;
+use citizensdk::EngineError;
 use serde_json::Value as JsonValue;
-use subxt_core::{ext::codec::Decode, Metadata};
+use subxt_core::ext::codec::Decode;
+use subxt_core::Metadata;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 const VECTOR_JSON: &str = include_str!("citizenchain-balance-fee-v1.json");
@@ -332,18 +344,15 @@ fn finalized_batch_empty_and_limit_are_checked_before_any_chain_access() {
 
 #[test]
 fn nonempty_batch_can_progress_after_chain_readiness_without_wallet_or_subscription() {
-    use citizen_sdk_contracts::{CapabilityName, Modules};
+    use citizensdk::types::{CapabilityName, Modules};
     let finalized = FinalizedBlockRef::from_parts(Hash32::from_bytes([0xaa; 32]), 77);
     let client = Arc::new(TestClient::new(
         VerifiedBlockRef::best(Hash32::from_bytes([0xbb; 32]), 78),
         finalized,
     ));
     let chain: Arc<dyn VerifiedChainClient> = client.clone();
-    let engine = CitizenEngine::new(
-        EngineComponents::new(Some(chain), None, None, None, None, None, None, None).with_modules(
-            Modules::try_new(Modules::CHAIN)
-                .unwrap_or_else(|error| panic!("modules failed: {error}")),
-        ),
+    let engine = CitizenEngine::new(Some(chain), None, None, None, None, None, None).with_modules(
+        Modules::try_new(Modules::CHAIN).unwrap_or_else(|error| panic!("modules failed: {error}")),
     );
     engine
         .update_capabilities(
@@ -642,18 +651,18 @@ fn current_revive_metadata_reaches_native_cold_signing_without_more_nonce_reads(
 }
 
 fn check_prepared_execution(metadata_hex: &str) {
-    use citizen_sdk_contracts::{
+    use citizensdk::types::{
         citizen_ss58_address, CapabilityName, ColdWalletAccount, TransactionExecutionId,
         TransactionHistoryCursor, TransactionHistoryIndex, TransactionHistoryMutation,
         TransactionHistoryQueryKind, TransactionHistoryRecordBatch,
         TransactionHistoryRecordSnapshot, TransactionHistoryStore, WalletProfileStore, WalletState,
     };
-    use citizen_sdk_contracts::{
+    use citizensdk::types::{
         EncryptedSecretBlobSnapshot, EncryptedSecretBlobState, EncryptedSecretBlobStore,
         EncryptedSecretEnvelope, SecretBuffer, SecretRef, SecretVault, VaultAvailability,
         VaultGeneration,
     };
-    use citizen_sdk_engine::TransactionExecutionStart;
+    use citizensdk::TransactionExecutionStart;
     // 冷签只读取公开目录；任何秘密、金库或密文操作都会使本测试失败。
     struct NoSecrets;
     impl SecretVault for NoSecrets {
@@ -811,18 +820,15 @@ fn check_prepared_execution(metadata_hex: &str) {
     .expect("synthetic wallet state");
     let nonce = Arc::new(Nonce(AtomicUsize::new(0)));
     let engine = CitizenEngine::new(
-        EngineComponents::new(
-            Some(chain.clone()),
-            Some(Arc::new(citizen_signer::Sr25519SoftwareSigner)),
-            Some(Arc::new(NoSecrets)),
-            None,
-            None,
-            Some(Arc::new(Profile(profile))),
-            Some(Arc::new(History)),
-            Some(Arc::new(NoSecrets)),
-        )
-        .with_account_nonce_source(nonce.clone()),
-    );
+        Some(chain.clone()),
+        Some(Arc::new(NoSecrets)),
+        None,
+        None,
+        Some(Arc::new(Profile(profile))),
+        Some(Arc::new(History)),
+        Some(Arc::new(NoSecrets)),
+    )
+    .with_account_nonce_source(nonce.clone());
     engine
         .update_capabilities(
             CapabilityName::ALL

@@ -39,7 +39,7 @@ bool valid_credential(citizensdk_bytes_view_t value) noexcept {
 
 citizensdk_error_code_t UserAuth::configure(const citizensdk_credential_provider_v1_t *provider) {
   if (provider != nullptr && (provider->struct_size != sizeof(*provider) ||
-      provider->abi_version != 1 || provider->request == nullptr || provider->cancel == nullptr ||
+      provider->abi_version != CITIZENSDK_ABI_VERSION || provider->request == nullptr || provider->cancel == nullptr ||
       provider->retain == nullptr || provider->release == nullptr || provider->idle == nullptr))
     return CITIZENSDK_ERROR_INVALID_ARGUMENT;
   std::shared_ptr<Provider> previous;
@@ -196,7 +196,7 @@ AuthenticationResult UserAuth::request(uint32_t key_purpose, uint64_t host_opera
       provider = provider_;
     }
     const citizensdk_credential_challenge_v1_t challenge{
-        sizeof(citizensdk_credential_challenge_v1_t), 1, host_operation_id, key_purpose, 0};
+        sizeof(citizensdk_credential_challenge_v1_t), CITIZENSDK_ABI_VERSION, host_operation_id, key_purpose, 0};
     try { provider->value.request(provider->value.context, &challenge); }
     catch (...) {
       // 异常不能留下等待者或已经同步交付的凭据。

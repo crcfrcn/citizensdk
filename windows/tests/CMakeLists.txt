@@ -63,6 +63,7 @@ foreach(_source IN LISTS CITIZENSDK_HOST_SOURCES)
   list(APPEND _host_sources "${CMAKE_CURRENT_LIST_DIR}/../${_source}")
 endforeach()
 add_library(citizensdk_windows_test_support STATIC ${_host_sources})
+target_include_directories(citizensdk_windows_test_support PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp")
 target_compile_features(citizensdk_windows_test_support PUBLIC cxx_std_17)
 target_compile_definitions(citizensdk_windows_test_support PUBLIC
   WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 CITIZENSDK_HOST_BUILDING=1)
@@ -70,7 +71,7 @@ target_compile_definitions(citizensdk_windows_test_support PRIVATE
   CITIZENSDK_HOST_VERSION="${PROJECT_VERSION}" CITIZENSDK_SQLITE_TEST_DIAGNOSTICS=1
   CITIZENSDK_HOST_TEST_DIAGNOSTICS=1)
 target_include_directories(citizensdk_windows_test_support PUBLIC
-  "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../src"
+  "${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_CURRENT_LIST_DIR}/../src" "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp"
   "${PROJECT_BINARY_DIR}/public" "${CITIZENSDK_CORE_INCLUDE_DIR}" "${CITIZENSDK_SQLITE_INCLUDE_DIR}"
   "${CITIZENSDK_INTERNAL_INCLUDE_DIR}")
 target_compile_options(citizensdk_windows_test_support PRIVATE /W4 /permissive- /utf-8 /EHsc
@@ -79,9 +80,7 @@ target_link_libraries(citizensdk_windows_test_support PUBLIC CitizenSDK::Core Ci
   "${CITIZENSDK_SQLITE_ARCHIVE}" winbio ncrypt bcrypt tbs advapi32 user32 gdi32 comctl32 ntdll wtsapi32 mf mfplat mfreadwrite mfuuid ole32 windowscodecs)
 
 set(CITIZENSDK_WINDOWS_CONTRACT_TESTS
-  citizen_sdk_api_contract_test
   citizen_sdk_assets_test
-  citizen_sdk_lifecycle_test
   citizen_sdk_directory_test
   sqlite
   citizen_sdk_secret_vault_test
@@ -94,7 +93,7 @@ foreach(test_name IN LISTS CITIZENSDK_WINDOWS_CONTRACT_TESTS)
   target_link_libraries(${test_name} PRIVATE citizensdk_windows_test_support)
   target_compile_definitions(${test_name} PRIVATE
     CITIZENSDK_WINDOWS_TEST_SOURCE_DIR="${CITIZENSDK_WINDOWS_TEST_SOURCE_DIR}"
-    CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR="${_citizensdk_headers}")
+    CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR="${CITIZENSDK_CORE_INCLUDE_DIR}")
   # Release 默认的 NDEBUG 必须撤销，否则 assert 会被静默删除。
   target_compile_options(${test_name} PRIVATE /UNDEBUG /W4 /permissive- /utf-8 /EHsc
     $<$<BOOL:${CITIZENSDK_WARNINGS_AS_ERRORS}>:/WX>)
@@ -123,3 +122,10 @@ add_test(NAME CitizenSDK.Windows.TPM COMMAND citizen_sdk_cng_test --hardware)
 set_tests_properties(CitizenSDK.Windows.TPM PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77
   LABELS "CitizenSDK;Hardware"
   ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
+
+# C++只直接消费唯一Core C ABI；两实际宿主运行同一合同正文。
+add_executable(citizensdk_core_contracts "${CMAKE_CURRENT_LIST_DIR}/../../core/tests/cpp/contracts.cc")
+target_compile_features(citizensdk_core_contracts PRIVATE cxx_std_17)
+target_link_libraries(citizensdk_core_contracts PRIVATE CitizenSDK::Host)
+target_compile_options(citizensdk_core_contracts PRIVATE /UNDEBUG /W4 /WX)
+add_test(NAME CitizenSDK.Core.CppContract COMMAND citizensdk_core_contracts)

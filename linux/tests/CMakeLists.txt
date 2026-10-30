@@ -40,7 +40,7 @@ if(TARGET citizen_sdk_plugin)
   # 测试支持库复编正式插件源码，直接继承同一生成头目录，不复制插件头或另建路径。
   target_include_directories(citizensdk_linux_flutter_test_support PUBLIC
     "$<TARGET_PROPERTY:citizen_sdk_plugin,INTERFACE_INCLUDE_DIRECTORIES>"
-    "${CMAKE_CURRENT_LIST_DIR}/../src")
+    "${CMAKE_CURRENT_LIST_DIR}/../src" "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp")
   target_link_libraries(citizensdk_linux_flutter_test_support PUBLIC
     flutter CitizenSDK::Host Threads::Threads)
   target_compile_options(citizensdk_linux_flutter_test_support PRIVATE
@@ -67,9 +67,8 @@ endif()
 
 set(CITIZENSDK_LINUX_HOST_TEST_SOURCES
   ../src/citizen_sdk_assets.cc
-  ../src/citizen_sdk_host_api.cc
-  ../src/citizen_sdk_host_bridge.cc
-  ../src/citizen_sdk_lifecycle.cc
+  "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp/host.cc"
+  "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp/resource.cc"
   ../src/citizen_sdk_secret_vault.cc
   ../src/citizen_sdk_sqlite.cc
   ../src/citizen_sdk_tpm2.cc
@@ -80,6 +79,7 @@ set(CITIZENSDK_LINUX_HOST_TEST_SOURCES
 add_library(citizensdk_linux_test_support STATIC
   ${CITIZENSDK_LINUX_HOST_TEST_SOURCES}
 )
+target_include_directories(citizensdk_linux_test_support PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp")
 target_compile_features(citizensdk_linux_test_support PUBLIC cxx_std_17)
 # SQLite扩展错误码只在此测试支持库中输出，正式Host目标不启用。
 target_compile_definitions(citizensdk_linux_test_support PRIVATE
@@ -92,7 +92,7 @@ target_compile_definitions(citizensdk_linux_test_support PRIVATE
 target_include_directories(citizensdk_linux_test_support
   PUBLIC
     "${CMAKE_CURRENT_LIST_DIR}/.."
-    "${CMAKE_CURRENT_LIST_DIR}/../src"
+    "${CMAKE_CURRENT_LIST_DIR}/../src" "${CMAKE_CURRENT_LIST_DIR}/../../core/cpp"
     "${PROJECT_BINARY_DIR}/public"
     "${CITIZENSDK_CORE_INCLUDE_DIR}"
     "${CITIZENSDK_INTERNAL_INCLUDE_DIR}"
@@ -118,9 +118,7 @@ target_compile_options(citizensdk_linux_test_support PRIVATE
 )
 
 set(CITIZENSDK_LINUX_CONTRACT_TESTS
-  citizen_sdk_api_contract_test
   citizen_sdk_assets_test
-  citizen_sdk_lifecycle_test
   sqlite
   citizen_sdk_secret_vault_test
   citizen_sdk_secret_boundary_test
@@ -141,7 +139,7 @@ foreach(test_name IN LISTS CITIZENSDK_LINUX_CONTRACT_TESTS)
   )
   target_compile_definitions(${test_name} PRIVATE
     CITIZENSDK_LINUX_TEST_SOURCE_DIR="${CMAKE_CURRENT_LIST_DIR}/.."
-    CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR="${PROJECT_BINARY_DIR}/public/citizen_sdk"
+    CITIZENSDK_LINUX_PUBLIC_INCLUDE_DIR="${CITIZENSDK_CORE_INCLUDE_DIR}"
     CITIZENSDK_ENABLE_QR_CAPTURE=$<BOOL:${CITIZENSDK_ENABLE_QR_CAPTURE}>
   )
   target_compile_options(${test_name} PRIVATE
@@ -173,3 +171,10 @@ add_test(NAME CitizenSDK.Linux.cpp COMMAND cpp)
 
 target_include_directories(cpp PRIVATE "${CITIZENSDK_SQLITE_INCLUDE_DIR}" "${CITIZENSDK_OPENSSL_INCLUDE_DIR}")
 set_tests_properties(CitizenSDK.Linux.cpp PROPERTIES TIMEOUT 120 LABELS "CitizenSDK;LinuxHost;Contract" ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
+
+# C++只直接消费唯一Core C ABI；两实际宿主运行同一合同正文。
+add_executable(citizensdk_core_contracts "${CMAKE_CURRENT_LIST_DIR}/../../core/tests/cpp/contracts.cc")
+target_compile_features(citizensdk_core_contracts PRIVATE cxx_std_17)
+target_link_libraries(citizensdk_core_contracts PRIVATE CitizenSDK::Host)
+target_compile_options(citizensdk_core_contracts PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+add_test(NAME CitizenSDK.Core.CppContract COMMAND citizensdk_core_contracts)

@@ -11,6 +11,24 @@ import java.util.concurrent.TimeUnit
 
 class CitizenSdkNativeAbiTest {
     @Test
+    fun inspectionRejectsAnotherRealSdkBeforeBorrowingItsHandle() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val first = CitizenSdk.open(context, modules = CitizenSdkModules.WALLET)
+        val second = CitizenSdk.open(context, modules = CitizenSdkModules.WALLET)
+        try {
+            val inspection = first.inspectWallets().future.get(5, TimeUnit.SECONDS)
+            try {
+                var borrowed = false
+                val error = assertThrows(CitizenSdkException::class.java) {
+                    inspection.withHandle(second) { borrowed = true }
+                }
+                assertEquals(CitizenSdkErrorCode.INVALID_STATE, error.code)
+                assertEquals(false, borrowed)
+            } finally { inspection.close() }
+        } finally { closeAfterCallbacks(second); closeAfterCallbacks(first) }
+    }
+
+    @Test
     fun qrOnlyRoundTripUsesRustAfterZxingWithoutOpeningChainOrWallet() {
         val sdk = CitizenSdk.open(ApplicationProvider.getApplicationContext(), modules = CitizenSdkModules.QR)
         try {
@@ -103,13 +121,13 @@ class CitizenSdkNativeAbiTest {
             assertEquals(32, genesis.size)
             assertArrayEquals(genesis, chain.getGenesisHash())
             assertEquals(CitizenSdkLifecycle.CREATED, chain.lifecycle)
-        } finally { chain.close() }
+        } finally { closeAfterCallbacks(chain) }
         val signing = CitizenSdk.open(ApplicationProvider.getApplicationContext(), modules = CitizenSdkModules.SIGNING)
         try {
             assertEquals(CitizenSdkErrorCode.UNSUPPORTED, assertThrows(CitizenSdkException::class.java) {
                 signing.getGenesisHash()
             }.code)
-        } finally { signing.close() }
+        } finally { closeAfterCallbacks(signing) }
     }
 
     @Test
@@ -122,9 +140,9 @@ class CitizenSdkNativeAbiTest {
     }
 
     @Test
-    fun officialAarLoadsAbiVersionOneCore() {
+    fun officialAarLoadsCurrentCoreAndClosesAfterCallbacks() {
         val sdk = CitizenSdk.open(ApplicationProvider.getApplicationContext())
         assertEquals(CitizenSdkLifecycle.CREATED, sdk.lifecycle)
-        sdk.close()
+        closeAfterCallbacks(sdk)
     }
 }

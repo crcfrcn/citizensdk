@@ -6,31 +6,51 @@
 
 use std::collections::HashMap;
 
-use citizen_sdk_contracts::{
-    apply_signing_transform, AccountId32, AccountNonce, AccountNonceSource, ChainIdentity,
-    ChainSigner, ContractErrorCode, Hash32, ImmortalSigningPayload, OpaqueTransactionCall,
-    PreparedTransactionSummary, RuntimeContext, SignedExtrinsic, SignedTransactionBuild,
-    SigningIntent, SigningTransform, Sr25519PublicKey, Sr25519Signature,
-    TransactionExecutionRecord, TransactionPreparationId, VerifiedChainClient,
-    MAX_PREPARED_TRANSACTIONS,
-};
-use subxt_core::{
-    config::{
-        substrate::{SubstrateExtrinsicParams, SubstrateExtrinsicParamsBuilder, H256},
-        ExtrinsicParams, ExtrinsicParamsEncoder, SubstrateConfig,
-    },
-    ext::codec::{Compact, Decode},
-    tx::{self, ClientState, RuntimeVersion as SubxtRuntimeVersion, TransactionVersion},
-    utils::{AccountId32 as SubxtAccountId32, MultiSignature},
-};
-use zeroize::{Zeroize, Zeroizing};
+use crate::types::apply_signing_transform;
+use crate::types::AccountId32;
+use crate::types::AccountNonce;
+use crate::types::AccountNonceSource;
+use crate::types::ChainIdentity;
 
-use crate::{
-    account_state::{verified_identity, verified_runtime_context},
-    error::EngineError,
-    metadata::{signed_extension_identifiers, validate_opaque_runtime_call},
-    system_events::decode_metadata_strict,
-};
+use crate::types::ContractErrorCode;
+use crate::types::Hash32;
+use crate::types::ImmortalSigningPayload;
+use crate::types::OpaqueTransactionCall;
+use crate::types::PreparedTransactionSummary;
+use crate::types::RuntimeContext;
+use crate::types::SignedExtrinsic;
+use crate::types::SignedTransactionBuild;
+use crate::types::SigningIntent;
+use crate::types::SigningTransform;
+use crate::types::Sr25519PublicKey;
+use crate::types::Sr25519Signature;
+use crate::types::TransactionExecutionRecord;
+use crate::types::TransactionPreparationId;
+use crate::types::VerifiedChainClient;
+use crate::types::MAX_PREPARED_TRANSACTIONS;
+use subxt_core::config::substrate::SubstrateExtrinsicParams;
+use subxt_core::config::substrate::SubstrateExtrinsicParamsBuilder;
+use subxt_core::config::substrate::H256;
+use subxt_core::config::ExtrinsicParams;
+use subxt_core::config::ExtrinsicParamsEncoder;
+use subxt_core::config::SubstrateConfig;
+use subxt_core::ext::codec::Compact;
+use subxt_core::ext::codec::Decode;
+use subxt_core::tx;
+use subxt_core::tx::ClientState;
+use subxt_core::tx::RuntimeVersion as SubxtRuntimeVersion;
+use subxt_core::tx::TransactionVersion;
+use subxt_core::utils::AccountId32 as SubxtAccountId32;
+use subxt_core::utils::MultiSignature;
+use zeroize::Zeroize;
+use zeroize::Zeroizing;
+
+use crate::account_state::verified_identity;
+use crate::account_state::verified_runtime_context;
+use crate::error::EngineError;
+use crate::metadata::signed_extension_identifiers;
+use crate::metadata::validate_opaque_runtime_call;
+use crate::system_events::decode_metadata_strict;
 
 /// Engine-owned material that must never be projected into language bindings.
 pub(crate) struct PreparedTransaction {
@@ -103,17 +123,14 @@ impl PreparedTransaction {
     }
 
     /// Fill the single frozen signature slot after an independently completed hot/QR signature.
-    pub(crate) async fn complete_with_signature(
+    pub(crate) fn complete_with_signature(
         self,
-        signer: &dyn ChainSigner,
+
         signature: Sr25519Signature,
     ) -> Result<SignedTransactionBuild, EngineError> {
         let public_key =
             Sr25519PublicKey::from_bytes(self.summary.source_account_id().into_bytes());
-        if !signer
-            .verify(public_key, self.signing_message.to_vec(), signature)
-            .await?
-        {
+        if !crate::sign::verify(public_key, self.signing_message.as_slice(), signature)? {
             return Err(EngineError::contract(
                 ContractErrorCode::Integrity,
                 "transaction signature 与冻结 signer message/source 不一致",
@@ -386,16 +403,15 @@ pub(crate) async fn build_prepared_transaction(
 /// Recovery never signs again. This check proves that the stored account, call, nonce, runtime,
 /// signature and complete encoded extrinsic are the same bytes originally authorized before the
 /// caller is allowed to resubmit those bytes.
-pub(crate) async fn validate_persisted_transaction_execution(
+pub(crate) fn validate_persisted_transaction_execution(
     record: &TransactionExecutionRecord,
     identity: &ChainIdentity,
     runtime_context: &RuntimeContext,
-    signer: &dyn ChainSigner,
 ) -> Result<(), EngineError> {
     if identity.genesis_hash() != record.genesis_hash()
         || runtime_context.version() != record.runtime_version()
         || record.call_data_hash()
-            != Hash32::from_bytes(citizen_sdk_contracts::blake2_256(record.call_data())?)
+            != Hash32::from_bytes(crate::types::blake2_256(record.call_data())?)
     {
         return Err(EngineError::contract(
             ContractErrorCode::Integrity,
@@ -456,13 +472,11 @@ pub(crate) async fn validate_persisted_transaction_execution(
         )
         .into_encoded();
     if encoded != record.signed_extrinsic().as_bytes()
-        || !signer
-            .verify(
-                Sr25519PublicKey::from_bytes(record.account_id().into_bytes()),
-                partial.signer_payload(),
-                Sr25519Signature::from_bytes(signature),
-            )
-            .await?
+        || !crate::sign::verify(
+            Sr25519PublicKey::from_bytes(record.account_id().into_bytes()),
+            partial.signer_payload(),
+            Sr25519Signature::from_bytes(signature),
+        )?
     {
         return Err(EngineError::contract(
             ContractErrorCode::Integrity,

@@ -131,7 +131,7 @@ export async function run(command,args,{cwd=root,env={},capture=false,signal:tas
 }
 function put(path,bytes){mkdirSync(dirname(path),{recursive:true});writeFileSync(path,bytes,{flag:'wx'});}
 function copy(source,output){mkdirSync(dirname(output),{recursive:true});cpSync(source,output,{recursive:true,verbatimSymlinks:true});}
-export function createFlutterSourceView(source,output,{flutter=true}={}){
+export function createFlutterSourceView(source,output){
  if(realpathSync(source)!==source||resolve(output)!==output||source===output||output.startsWith(source+sep)&&!output.startsWith(join(source,'target')+sep)||existsSync(output))throw Error('SDK工程输入输出无效');
  mkdirSync(output,{recursive:true});
  const excluded=new Set(['.git','target','build','.dart_tool','.gradle','node_modules','Pods','.DS_Store']);
@@ -143,15 +143,12 @@ export function createFlutterSourceView(source,output,{flutter=true}={}){
    const target=realpathSync(from);if(!path.startsWith(frame)||links[path.slice(frame.length)]!==readlinkSync(from)||!target.startsWith(join(source,frame,'Versions/A')+sep)&&target!==join(source,frame,'Versions/A'))throw Error('SDK源码链接越界');symlinkSync(readlinkSync(from),to,lstatSync(target).isDirectory()?'dir':'file');
   }else throw Error('SDK源码输入禁止特殊文件');
  }}visit(source);
- // 仅Flutter交付包按官方工具的固定入口装配；普通构建副本保持仓库标准源码布局。
- const from=join(output,'android/flutter/CitizenSdkPlugin.kt'),to=join(output,'android/src/main/kotlin/org/citizen/sdk/CitizenSdkPlugin.kt');
- if(flutter&&existsSync(from)){if(existsSync(to))throw Error('Flutter入口重复');mkdirSync(dirname(to),{recursive:true});renameSync(from,to);}
  return output;
 }
 export function assertFlutterSourceView(source,output){
  for(const name of ['pubspec.yaml','pubspec.lock','include/citizensdk.h'])if(!readFileSync(join(source,name)).equals(readFileSync(join(output,name))))throw Error('SDK原锁或公开头漂移');return output;
 }
-export function citizenSdkInternalHeader(){return "#ifndef CITIZENSDK_INTERNAL_H\n#define CITIZENSDK_INTERNAL_H\n#include \"citizensdk.h\"\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n/* 同步硬件元数据接口，配置/输入只借用于本次调用。generation action:1 ensure,2 active,3 owner,4 retire,5 Linux物理对象存在性。 */\nint32_t citizensdk_store_generation(const citizensdk_store_v1_t*,uint32_t,const citizensdk_host_wallet_key_ref_v1_t*,const citizensdk_host_id128_t*,uint8_t*);\nint32_t citizensdk_store_generations(const citizensdk_store_v1_t*,citizensdk_host_wallet_key_ref_v1_t*,uint64_t,uint64_t*);\nint32_t citizensdk_store_has_secret(const citizensdk_store_v1_t*,const citizensdk_account_id_t*,uint8_t*);\n/* object action:1 load,2 store-owned,3 active,4 delete。五字段固定为key_name/public/private/name/salt；输出先全部验容量后再写，均为密封对象或公开身份。 */\nint32_t citizensdk_store_object(const citizensdk_store_v1_t*,uint32_t,const citizensdk_host_wallet_key_ref_v1_t*,const citizensdk_host_id128_t*,const citizensdk_bytes_view_t*,const citizensdk_mutable_bytes_view_t*,uint64_t*,uint8_t*);\n#ifdef __cplusplus\n}\n#endif\n#endif\n";}
+export function citizenSdkInternalHeader(){return "#ifndef CITIZENSDK_INTERNAL_H\n#define CITIZENSDK_INTERNAL_H\n#include \"citizensdk.h\"\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n/* 同步硬件元数据接口，配置/输入只借用于本次调用。generation action:1 ensure,2 active,3 owner,4 retire,5 Linux物理对象存在性。 */\nint32_t citizensdk_store_generation(const citizensdk_store_v1_t*,uint32_t,const citizensdk_host_wallet_key_ref_v1_t*,const citizensdk_host_id128_t*,uint8_t*);\nint32_t citizensdk_store_generations(const citizensdk_store_v1_t*,citizensdk_host_wallet_key_ref_v1_t*,uint64_t,uint64_t*);\n/* object action:1 load,2 store-owned,3 active,4 delete。五字段固定为key_name/public/private/name/salt；输出先全部验容量后再写，均为密封对象或公开身份。 */\nint32_t citizensdk_store_object(const citizensdk_store_v1_t*,uint32_t,const citizensdk_host_wallet_key_ref_v1_t*,const citizensdk_host_id128_t*,const citizensdk_bytes_view_t*,const citizensdk_mutable_bytes_view_t*,uint64_t*,uint8_t*);\n#ifdef __cplusplus\n}\n#endif\n#endif\n";}
 function privateHeaders(project,work){
  const directory=join(work,'private');put(join(directory,'citizensdk_internal.h'),citizenSdkInternalHeader());copy(join(project,'image/citizensdk_qr_image.h'),join(directory,'citizensdk_qr_image.h'));
  put(join(directory,'module.modulemap'),'module CitizenSDKInternal { header "citizensdk_internal.h" header "citizensdk_qr_image.h" export * }\n');return directory;
@@ -160,7 +157,7 @@ function files(directory){return readdirSync(directory,{recursive:true}).map(nam
 async function cargo(project,triple,env){
  await run('rustup',['target','add','--toolchain',tools.rust,triple],{env});
  // 正式目标只生成实际链接或交付的一种Core；测试沿原Cargo声明保留rlib。
- await run('cargo',['rustc','--locked','--release','-p','citizen-sdk-ffi','--lib','--crate-type',triple.includes('-apple-')?'staticlib':'cdylib','--target',triple],{cwd:project,env});return join(env.CARGO_TARGET_DIR,triple,'release');
+ await run('cargo',['rustc','--locked','--release','-p','citizensdk','--lib','--crate-type',triple.includes('-apple-')?'staticlib':'cdylib','--target',triple],{cwd:project,env});return join(env.CARGO_TARGET_DIR,triple,'release');
 }
 export function verifyImageSymbols(output,header){
  const expected=new Set([...header.matchAll(/\b(citizensdk_(?:qr_image_|dart_)[a-z0-9_]+)\s*\(/gu)].map(m=>m[1]));
@@ -239,7 +236,7 @@ async function appleTests(project,work,env,headers,{simulator,performance=false}
  const harness=join(work,'apple-tests'),core=join(env.CARGO_TARGET_DIR,triple,'release'),qr=join(work,triple,'qr');
  for(const name of ['citizensdk.h','citizensdk_types.h'])copy(join(project,'include',name),join(harness,'Sources/CitizenSDKC/include',name));copy(join(project,'image/citizensdk_qr_image.h'),join(harness,'Sources/CitizenSDKC/include/citizensdk_qr_image.h'));put(join(harness,'Sources/CitizenSDKC/harness.c'),'#include "citizensdk.h"\nint citizensdk_test_anchor(void){return 0;}\n');
  for(const file of files(join(project,'darwin/src')).filter(path=>path.endsWith('.swift')))put(join(harness,'Sources/CitizenSDK',basename(file)),'import CitizenSDKC\n'+readFileSync(file,'utf8'));
- put(join(harness,'Sources/CitizenSDK/CitizenSDKCExports.swift'),'@_exported import CitizenSDKC\n');copy(join(project,'darwin/citizen_sdk'),join(harness,'Sources/CitizenSDKFlutter'));
+ put(join(harness,'Sources/CitizenSDK/CitizenSDKCExports.swift'),'@_exported import CitizenSDKC\n');copy(join(project,'darwin/flutter'),join(harness,'Sources/CitizenSDKFlutter'));
  // 同一平面测试目录按所属模块装配SwiftPM目标，每个测试只编译一次。
  for(const name of readdirSync(join(project,'darwin/tests')).filter(name=>name.endsWith('.swift')))copy(join(project,'darwin/tests',name),join(harness,'Tests',name.startsWith('CitizenSDKFlutter')?'CitizenSDKFlutterTests':'CitizenSDKTests',name));
  const engine=join(process.env.FLUTTER_ROOT,'bin/cache/artifacts/engine'),artifacts=simulator?[join(engine,'ios-release/Flutter.xcframework')].filter(existsSync):readdirSync(engine).filter(name=>/^darwin-.*-release$/u.test(name)).map(name=>join(engine,name,'FlutterMacOS.xcframework')).filter(existsSync);if(artifacts.length!==1)throw Error('官方Flutter Release framework不唯一');copy(artifacts[0],join(harness,'Artifacts',flutterName+'.xcframework'));
@@ -298,14 +295,16 @@ let package = Package(name: "CitizenSDKAppleTests", platforms: [.macOS(.v14), .i
  const output=await run('swift',['test','--skip-build',...args],{env:{...env,CITIZENSDK_PERFORMANCE:String(performance)},capture:true});console.error(output);console.error(JSON.stringify({target:'macOS',...xctestReport(output),notRun:['Secure Enclave真机授权','相机物理采集']}));
  // 同一正式Rust/图像静态库装配真实FFI测试库，不替代业务和结果投影。
  const fixture=join(work,'ffi.dylib');
- await run('xcrun',['clang++','-std=c++17','-dynamiclib','-fPIC','-Wall','-Wextra','-Wpedantic','-Wconversion','-Wsign-conversion','-Werror','-I'+join(project,'include'),'-I'+headers,join(project,'lib/test/cpp.cc'),...libraries.map(path=>'-Wl,-force_load,'+path),'-framework','Security','-framework','SystemConfiguration','-framework','CoreFoundation','-lsqlite3','-lc++','-liconv','-lresolv','-o',fixture],{env});
+ await run('xcrun',['clang++','-std=c++17','-dynamiclib','-fPIC','-Wall','-Wextra','-Wpedantic','-Wconversion','-Wsign-conversion','-Werror','-I'+join(project,'include'),'-I'+join(project,'core/cpp'),'-I'+headers,join(project,'lib/test/cpp.cc'),...libraries.map(path=>'-Wl,-force_load,'+path),'-framework','Security','-framework','SystemConfiguration','-framework','CoreFoundation','-lsqlite3','-lc++','-liconv','-lresolv','-o',fixture],{env});
  const flutter=join(process.env.FLUTTER_ROOT,'bin/flutter');
  await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});
  // ffigen只能修改构建副本；头文件与提交绑定不一致则失败，不能手修签名。
  const binding=join(project,'lib/platform/bind.dart'),expected=readFileSync(binding);
  await run(join(process.env.FLUTTER_ROOT,'bin/dart'),['run','ffigen'],{cwd:project,env});
  if(!readFileSync(binding).equals(expected))throw Error('C ABI生成绑定与源码不一致');
- await run(flutter,['test','--no-pub','--reporter=expanded','lib/test/platform/ffi_test.dart'],{cwd:project,env:{...env,CITIZENSDK_TEST_LIBRARY:fixture,CITIZENSDK_TEST_WORK_DIR:work}});
+ // 官方Flutter工具快照直接由同版Dart启动，保留实际进程符号预载，不经系统shell丢弃DYLD变量。
+ await run(join(process.env.FLUTTER_ROOT,'bin/cache/dart-sdk/bin/dart'),[join(process.env.FLUTTER_ROOT,'bin/cache/flutter_tools.snapshot'),'test','--no-pub','--reporter=expanded','lib/test/platform/ffi_test.dart'],{cwd:project,env:{...env,DYLD_INSERT_LIBRARIES:fixture,CITIZENSDK_TEST_LIBRARY:fixture,CITIZENSDK_TEST_WORK_DIR:work}});
+ const contract=join(work,'core-cpp-contract');await run('xcrun',['clang++','-std=c++17','-UNDEBUG','-Wall','-Wextra','-Werror','-I'+join(project,'include'),join(project,'core/tests/cpp/contracts.cc'),fixture,'-o',contract],{env});await run(contract,[],{env});
 }
 async function desktop(project,work,env,headers,target){
  const windows=target==='Windows',triple=windows?'x86_64-pc-windows-msvc':'aarch64-unknown-linux-gnu',platform=windows?'windows':'linux',core=await cargo(project,triple,env);
@@ -379,7 +378,7 @@ export function sqliteLinkEnv(env,archive,platform=process.platform){
 // 性能仅描述同一真实实现；带替身的Engine样本明确标注为本机调度/缓存，不冒充实网。
 async function performanceTests(project,work,env){
  console.error(JSON.stringify({performance:{platform:process.platform,arch:process.arch,os:release(),cpu:cpus()[0]?.model,cores:cpus().length,load:loadavg(),totalMemory:totalmem(),freeMemory:freemem(),rust:tools.rust,flutter:tools.flutter,threshold:'descriptive'}}));
- for(const [packageName,target,filter]of [['citizen-sdk-ffi',['--lib'],'baseline_lifecycle_contract'],['citizen-sdk-engine',['--test','baseline_resource_contract'],''],['citizen-sdk-store',['--test','public'],'baseline']]){
+ for(const [packageName,target,filter]of [['citizensdk',['--lib'],'baseline_lifecycle_contract'],['citizensdk',['--test','baseline_resource_contract'],''],['citizensdk',['--test','store_public'],'baseline']]){
   const build=await run('cargo',['test','--release','--locked','-p',packageName,...target,'--no-run','--message-format=json'],{cwd:project,env,capture:true});
   const artifacts=build.split(/\r?\n/u).filter(Boolean).map(line=>JSON.parse(line)).filter(value=>value.reason==='compiler-artifact'&&value.profile.test&&value.executable);
   if(artifacts.length!==1)throw Error('性能测试可执行文件不唯一');
@@ -496,6 +495,16 @@ async function androidTests(work,env,serial,performance){
   }catch(error){if(pending)console.error('测试宿主清理失败：'+error.message);else throw error;}}
  }
 }
+// 独立C11/C++17声明、大小与偏移金标必须由真实编译器执行；不生成源码或兼容头。
+export async function headerChecks(project,{env={},runImpl=run,platform=process.platform}={}){
+ const include=join(project,'include');
+ for(const [standard,file]of [['c11','c_header_c11.c'],['c++17','c_header_cpp17.cc']]){
+  const source=join(project,'core/tests/abi',file);
+  if(platform==='win32')await runImpl('cl',['/nologo','/Zs','/W4','/WX',standard==='c11'?'/std:c11':'/std:c++17','/I'+include,source],{cwd:project,env});
+  else await runImpl(standard==='c11'?'cc':'c++',['-std='+standard,'-fsyntax-only','-Wall','-Wextra','-Werror','-I'+include,source],{cwd:project,env});
+ }
+}
+
 export async function build({target,test=false,testDevice,simulator,performance=false,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))[1],native,device=false}={}){
 
  if(test&&target){testOptions([target,...testDevice?['--device',testDevice]:[],...simulator?['--simulator',simulator]:[]]);const host={Android:['darwin','linux'],iOS:['darwin'],macOS:['darwin'],LinuxARM:['linux'],Windows:['win32']}[target];if(!host?.includes(process.platform)||target==='LinuxARM'&&process.arch!=='arm64')throw Error('当前宿主不能执行所选平台测试：'+target);}
@@ -503,8 +512,9 @@ export async function build({target,test=false,testDevice,simulator,performance=
  const base=join(root,'target',test?'test':'build');mkdirSync(base,{recursive:true});if(realpathSync(base)!==base)throw Error('任务目录经过链接');const work=mkdtempSync(join(base,'sdk-')),cache=claimCache(work);let complete=false,safe=true;
  try{
   if(cache.project)rmSync(cache.project,{recursive:true,force:true});
-  const project=createFlutterSourceView(root,cache.project||join(work,'project'),{flutter:false}),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
+  const project=createFlutterSourceView(root,cache.project||join(work,'project')),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
   if(test)Object.assign(env,sqliteLinkEnv(env,process.env.CITIZENSDK_SQLITE_ARCHIVE));
+  await headerChecks(project,{env});
   if(test&&!target){
    await run(process.execPath,['--test','lib/test/build.test.mjs'],{cwd:project,env});
    // 上游扩展有独立workspace/原锁，定向执行真实块接纳与清理回归，不启用Wasmtime。

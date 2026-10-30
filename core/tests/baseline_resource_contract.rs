@@ -5,31 +5,57 @@
 //! Timings are evidence only: this test freezes cardinality and ownership limits,
 //! but deliberately has no machine-specific latency threshold.
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-    time::Instant,
-};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Instant;
 
-use citizen_sdk_contracts::{
-    AccountId32, CapabilityName, ChainIdentity, ContractError, ContractErrorCode, ContractFuture,
-    ContractStream, ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef, Hash32,
-    HistoryTransactionStatus, Modules, RuntimeCacheStore, RuntimeContext, RuntimeVersion,
-    SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic, TransactionExecutionId,
-    TransactionExecutionRecord, TransactionHistoryCursor, TransactionHistoryIndex,
-    TransactionHistoryMutation, TransactionHistoryQueryKind, TransactionHistoryRecordBatch,
-    TransactionHistoryRecordSnapshot, TransactionHistoryStore, VerifiedBlockRef,
-    VerifiedChainClient, MAX_PERSISTED_RUNTIME_CONTEXTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES,
-    MAX_PREPARED_TRANSACTIONS, MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES,
-    MAX_TRANSACTION_HISTORY_PAGE_SIZE, MAX_TRANSACTION_HISTORY_RECORDS,
-    MAX_TRANSACTION_HISTORY_SYNC_BATCH,
-};
-use citizen_sdk_engine::{
-    CapabilityProbe, CitizenEngine, EngineComponents, RuntimeContextCache, MAX_RUNTIME_CONTEXTS,
-};
+use citizensdk::types::AccountId32;
+use citizensdk::types::CapabilityName;
+use citizensdk::types::ChainIdentity;
+use citizensdk::types::ContractError;
+use citizensdk::types::ContractErrorCode;
+use citizensdk::types::ContractFuture;
+use citizensdk::types::ContractStream;
+use citizensdk::types::ExportedChainState;
+use citizensdk::types::ExtrinsicWatchEvent;
+use citizensdk::types::FinalizedBlockRef;
+use citizensdk::types::Hash32;
+use citizensdk::types::HistoryTransactionStatus;
+use citizensdk::types::Modules;
+use citizensdk::types::RuntimeCacheStore;
+use citizensdk::types::RuntimeContext;
+use citizensdk::types::RuntimeVersion;
+use citizensdk::types::SignedExtrinsic;
+use citizensdk::types::StateImportReceipt;
+use citizensdk::types::SubmittedExtrinsic;
+use citizensdk::types::TransactionExecutionId;
+use citizensdk::types::TransactionExecutionRecord;
+use citizensdk::types::TransactionHistoryCursor;
+use citizensdk::types::TransactionHistoryIndex;
+use citizensdk::types::TransactionHistoryMutation;
+use citizensdk::types::TransactionHistoryQueryKind;
+use citizensdk::types::TransactionHistoryRecordBatch;
+use citizensdk::types::TransactionHistoryRecordSnapshot;
+use citizensdk::types::TransactionHistoryStore;
+use citizensdk::types::VerifiedBlockRef;
+use citizensdk::types::VerifiedChainClient;
+use citizensdk::types::MAX_PERSISTED_RUNTIME_CONTEXTS;
+use citizensdk::types::MAX_PERSISTED_RUNTIME_METADATA_BYTES;
+use citizensdk::types::MAX_PREPARED_TRANSACTIONS;
+use citizensdk::types::MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES;
+use citizensdk::types::MAX_TRANSACTION_HISTORY_PAGE_SIZE;
+use citizensdk::types::MAX_TRANSACTION_HISTORY_RECORDS;
+use citizensdk::types::MAX_TRANSACTION_HISTORY_SYNC_BATCH;
+use citizensdk::CapabilityProbe;
+use citizensdk::CitizenEngine;
+use citizensdk::RuntimeContextCache;
+use citizensdk::MAX_RUNTIME_CONTEXTS;
 
 const SAMPLE_COUNTS: [usize; 4] = [0, 1, 100, 1_000];
 const SAMPLE_ROUNDS: usize = 20;
@@ -419,7 +445,7 @@ fn execution(index: usize) -> TransactionExecutionRecord {
     transaction_hash[..16].copy_from_slice(&ordinal.to_le_bytes());
     let call_data = vec![u8::try_from(index % 251).expect("baseline marker"); 128];
     let call_data_hash = Hash32::from_bytes(
-        citizen_sdk_contracts::blake2_256(&call_data).expect("baseline callData hash"),
+        citizensdk::types::blake2_256(&call_data).expect("baseline callData hash"),
     );
     TransactionExecutionRecord::try_new(
         TransactionExecutionId::try_new(ordinal.to_le_bytes()).expect("baseline execution id"),
@@ -443,9 +469,8 @@ fn running_history_engine(
     records: Vec<TransactionExecutionRecord>,
 ) -> (CitizenEngine, Arc<MemoryHistoryStore>) {
     let store = Arc::new(MemoryHistoryStore::with_records(records));
-    let components = EngineComponents::new(
+    let components = CitizenEngine::new(
         Some(Arc::new(BaselineClient::default())),
-        None,
         None,
         None,
         None,
@@ -454,7 +479,7 @@ fn running_history_engine(
         None,
     )
     .with_modules(Modules::try_new(Modules::CHAIN | Modules::HISTORY).expect("baseline modules"));
-    let engine = CitizenEngine::new(components);
+    let engine = components;
     let probes = CapabilityName::ALL
         .into_iter()
         .map(CapabilityProbe::ready)
@@ -623,7 +648,7 @@ fn runtime_and_session_cardinalities_remain_explicit_and_bounded() {
     assert_eq!(retained, MAX_RUNTIME_CONTEXTS);
     assert_eq!(MAX_PREPARED_TRANSACTIONS, 256);
 
-    let qr_session_source = include_str!("../../qr/src/session.rs");
+    let qr_session_source = include_str!("../src/qr/session.rs");
     assert!(qr_session_source.contains("const MAX_ACTIVE_SESSIONS: usize = 64;"));
     assert!(qr_session_source.contains("self.sessions.len() >= MAX_ACTIVE_SESSIONS"));
     let wallet_source = include_str!("../src/wallet_service.rs");
@@ -636,9 +661,8 @@ fn runtime_and_session_cardinalities_remain_explicit_and_bounded() {
 #[test]
 fn persistent_runtime_cache_retains_only_the_latest_sixty_four_contexts() {
     let store = Arc::new(MemoryRuntimeCacheStore::default());
-    let components = EngineComponents::new(
+    let components = CitizenEngine::new(
         Some(Arc::new(BaselineClient::default())),
-        None,
         None,
         None,
         Some(Arc::clone(&store) as Arc<dyn RuntimeCacheStore>),
@@ -647,7 +671,7 @@ fn persistent_runtime_cache_retains_only_the_latest_sixty_four_contexts() {
         None,
     )
     .with_modules(Modules::try_new(Modules::CHAIN).expect("baseline chain module"));
-    let engine = CitizenEngine::new(components);
+    let engine = components;
     let probes = CapabilityName::ALL
         .into_iter()
         .map(CapabilityProbe::ready)
@@ -696,9 +720,8 @@ fn runtime_metadata_above_persistent_capacity_remains_memory_usable() {
     let store = Arc::new(MemoryRuntimeCacheStore::default());
     let metadata_bytes = MAX_PERSISTED_RUNTIME_METADATA_BYTES + 1;
     let (client, runtime_requests) = BaselineClient::with_metadata_bytes(metadata_bytes);
-    let components = EngineComponents::new(
+    let components = CitizenEngine::new(
         Some(Arc::new(client)),
-        None,
         None,
         None,
         Some(Arc::clone(&store) as Arc<dyn RuntimeCacheStore>),
@@ -707,7 +730,7 @@ fn runtime_metadata_above_persistent_capacity_remains_memory_usable() {
         None,
     )
     .with_modules(Modules::try_new(Modules::CHAIN).expect("baseline chain module"));
-    let engine = CitizenEngine::new(components);
+    let engine = components;
     engine
         .update_capabilities(
             CapabilityName::ALL
@@ -742,19 +765,8 @@ fn runtime_metadata_above_persistent_capacity_remains_memory_usable() {
 #[test]
 fn runtime_dispatch_baseline() {
     let (client, requests) = BaselineClient::with_metadata_bytes(1024);
-    let engine = CitizenEngine::new(
-        EngineComponents::new(
-            Some(Arc::new(client)),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .with_modules(Modules::try_new(Modules::CHAIN).unwrap()),
-    );
+    let engine = CitizenEngine::new(Some(Arc::new(client)), None, None, None, None, None, None)
+        .with_modules(Modules::try_new(Modules::CHAIN).unwrap());
     engine
         .update_capabilities(
             CapabilityName::ALL

@@ -13,16 +13,14 @@ void main() {
     const root = 'chain';
     expect(Directory('assets').existsSync(), isFalse);
     expect(
-      Directory(root)
-          .listSync()
-          .map((file) => file.uri.pathSegments.last)
-          .toList()
-        ..sort(),
+      Directory(
+        root,
+      ).listSync().map((file) => file.uri.pathSegments.last).toList()..sort(),
       ['chainspec.json', 'light_sync_state.json', 'manifest.json'],
     );
-    final manifest = jsonDecode(
-      await File('$root/manifest.json').readAsString(),
-    ) as Map<String, dynamic>;
+    final manifest =
+        jsonDecode(await File('$root/manifest.json').readAsString())
+            as Map<String, dynamic>;
     final specBytes = await File('$root/chainspec.json').readAsBytes();
     final syncBytes = await File('$root/light_sync_state.json').readAsBytes();
     final spec = jsonDecode(utf8.decode(specBytes)) as Map<String, dynamic>;
@@ -49,16 +47,20 @@ void main() {
   });
 
   test('启动清单 fixture 保持服务端共同消费的原有 wire 合同', () async {
-    final wire = jsonDecode(
-      await File('ffi/tests/citizensdk_bootstrap_manifest.json').readAsString(),
-    ) as Map<String, dynamic>;
+    final wire =
+        jsonDecode(
+              await File(
+                'core/tests/abi/citizensdk_bootstrap_manifest.json',
+              ).readAsString(),
+            )
+            as Map<String, dynamic>;
     expect(wire['schema'], 'citizensdk.chain.bootstrap');
-    final manifest = jsonDecode(
-      await File('chain/manifest.json').readAsString(),
-    ) as Map<String, dynamic>;
-    final spec = jsonDecode(
-      await File('chain/chainspec.json').readAsString(),
-    ) as Map<String, dynamic>;
+    final manifest =
+        jsonDecode(await File('chain/manifest.json').readAsString())
+            as Map<String, dynamic>;
+    final spec =
+        jsonDecode(await File('chain/chainspec.json').readAsString())
+            as Map<String, dynamic>;
     final chain = wire['chain'] as Map<String, dynamic>;
     expect(chain['genesis_hash'], manifest['genesis_hash']);
     expect(

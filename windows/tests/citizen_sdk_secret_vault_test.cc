@@ -29,7 +29,7 @@ template <class Function>
 void fails(citizensdk_error_code_t expected, Function &&function) {
   bool rejected = false;
   try { function(); }
-  catch (const citizen_sdk::HostError &error) { rejected = error.code() == expected; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code == expected; }
   assert(rejected);
 }
 
@@ -151,7 +151,7 @@ int retire_child(int count, wchar_t **arguments) {
   if (!blocked || !proceed) return 2;
   bool busy = false;
   try { GenerationLock denied(wallet, 0); }
-  catch (const citizen_sdk::HostError &error) { busy = error.code() == CITIZENSDK_ERROR_BUSY; }
+  catch (const citizen_sdk::HostError &error) { busy = error.code == CITIZENSDK_ERROR_BUSY; }
   if (!busy || !::SetEvent(blocked.get()) ||
       ::WaitForSingleObject(proceed.get(), 30000) != WAIT_OBJECT_0) return 3;
   try {
@@ -252,10 +252,10 @@ void headless_credential_contract() {
   } provider;
   provider.auth = &auth;
   citizensdk_credential_provider_v1_t binding{
-      sizeof(citizensdk_credential_provider_v1_t), 1, &provider,
+      sizeof(citizensdk_credential_provider_v1_t), CITIZENSDK_ABI_VERSION, &provider,
       +[](void *context, const citizensdk_credential_challenge_v1_t *challenge) {
         auto &p = *static_cast<Provider *>(context);
-        assert(challenge->struct_size == sizeof(*challenge) && challenge->abi_version == 1);
+        assert(challenge->struct_size == sizeof(*challenge) && challenge->abi_version == CITIZENSDK_ABI_VERSION);
         assert(challenge->reserved == 0 && challenge->host_operation_id != 0);
         p.id = challenge->host_operation_id; p.purpose = challenge->key_purpose;
         if (p.throws) throw std::runtime_error("synthetic provider failure");

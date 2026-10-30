@@ -78,17 +78,16 @@ internal class CitizenSdkHostServices(context: Context, private val modules: Int
     fun databaseExecute(secure: Boolean, sql: String, values: Array<Any?>): Long = resource(secure).execute(sql, values)
     fun databaseCursor(secure: Boolean, sql: String, values: Array<Any?>): android.database.Cursor = resource(secure).cursor(sql, values)
 
-    fun hasAccountSecret(accountId: ByteArray): Boolean = CitizenSdkNative.storeHasSecret(this, accountId)
     fun hasAnyWalletKey(walletIndex: Int): Boolean = vault.hasAnyWalletKey(walletIndex)
     fun ensureGeneration(index: Int, generation: ByteArray, operation: ByteArray): Boolean =
-        CitizenSdkNative.storeGeneration(this, 1, index, generation, operation)
+        Bindings.storeGeneration(this, 1, index, generation, operation)
     fun isGenerationActive(index: Int, generation: ByteArray): Boolean =
-        CitizenSdkNative.storeGeneration(this, 2, index, generation, ByteArray(16))
+        Bindings.storeGeneration(this, 2, index, generation, ByteArray(16))
     fun retireGeneration(index: Int, generation: ByteArray, operation: ByteArray) {
-        CitizenSdkNative.storeGeneration(this, 4, index, generation, operation)
+        Bindings.storeGeneration(this, 4, index, generation, operation)
     }
     fun vaultGenerations(): List<Pair<Int, ByteArray>> {
-        val bytes = CitizenSdkNative.storeGenerations(this)
+        val bytes = Bindings.storeGenerations(this)
         check(bytes.size % 20 == 0 && bytes.size / 20 <= 65536)
         val buffer = ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         return List(bytes.size / 20) { val index = buffer.int; val generation = ByteArray(16); buffer.get(generation); index to generation }
@@ -121,7 +120,7 @@ internal class CitizenSdkHostServices(context: Context, private val modules: Int
     fun authorizeAddAccounts(nativeBridge: Long, hostOperationId: Long, walletIndex: Int,
         generation: ByteArray, provisioningOperationId: ByteArray): Int = try {
         vault.authorizeAddAccounts(hostOperationId, walletIndex, generation, provisioningOperationId) { code ->
-            CitizenSdkNative.completeVaultStatus(nativeBridge, hostOperationId, code)
+            Bindings.completeVaultStatus(nativeBridge, hostOperationId, code)
         }
         CitizenSdkErrorCode.OK.value
     } catch (error: CitizenSdkHardwareVault.VaultFailure) { error.code.value }
@@ -143,7 +142,7 @@ internal class CitizenSdkHostServices(context: Context, private val modules: Int
             )
             vault.unwrapDek(hostOperationId, privateRequest != null, privateRequest?.host?.get(),
                 walletIndex, generation, wrappedDek, plaintextDekOut) { errorCode ->
-                CitizenSdkNative.completeVaultStatus(nativeBridge, hostOperationId, errorCode)
+                Bindings.completeVaultStatus(nativeBridge, hostOperationId, errorCode)
             }
         }
         CitizenSdkErrorCode.OK.value

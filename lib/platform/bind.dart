@@ -65,52 +65,16 @@ class Bindings {
       _citizensdk_accept_request_sequencePtr
           .asFunction<int Function(int, int)>();
 
-  int citizensdk_create_with_modules(
-    ffi.Pointer<citizensdk_create_options_t> options,
-    ffi.Pointer<citizensdk_host_services_v1_t> host_services,
-    int modules,
-    ffi.Pointer<citizensdk_handle_t> out_handle,
-  ) {
-    return _citizensdk_create_with_modules(
-      options,
-      host_services,
-      modules,
-      out_handle,
-    );
-  }
-
-  late final _citizensdk_create_with_modulesPtr =
-      _lookup<
-        ffi.NativeFunction<
-          citizensdk_error_code_t Function(
-            ffi.Pointer<citizensdk_create_options_t>,
-            ffi.Pointer<citizensdk_host_services_v1_t>,
-            ffi.Uint32,
-            ffi.Pointer<citizensdk_handle_t>,
-          )
-        >
-      >('citizensdk_create_with_modules');
-  late final _citizensdk_create_with_modules =
-      _citizensdk_create_with_modulesPtr
-          .asFunction<
-            int Function(
-              ffi.Pointer<citizensdk_create_options_t>,
-              ffi.Pointer<citizensdk_host_services_v1_t>,
-              int,
-              ffi.Pointer<citizensdk_handle_t>,
-            )
-          >();
-
-  int citizensdk_create_with_store(
+  int citizensdk_create(
     ffi.Pointer<citizensdk_create_options_t> options,
     int modules,
     ffi.Pointer<citizensdk_stores_v1_t> stores,
     ffi.Pointer<citizensdk_handle_t> out_handle,
   ) {
-    return _citizensdk_create_with_store(options, modules, stores, out_handle);
+    return _citizensdk_create(options, modules, stores, out_handle);
   }
 
-  late final _citizensdk_create_with_storePtr =
+  late final _citizensdk_createPtr =
       _lookup<
         ffi.NativeFunction<
           citizensdk_error_code_t Function(
@@ -120,8 +84,8 @@ class Bindings {
             ffi.Pointer<citizensdk_handle_t>,
           )
         >
-      >('citizensdk_create_with_store');
-  late final _citizensdk_create_with_store = _citizensdk_create_with_storePtr
+      >('citizensdk_create');
+  late final _citizensdk_create = _citizensdk_createPtr
       .asFunction<
         int Function(
           ffi.Pointer<citizensdk_create_options_t>,
@@ -274,6 +238,7 @@ class Bindings {
   int citizensdk_qr_parse(
     int handle,
     citizensdk_bytes_view_t text,
+    int purpose,
     ffi.Pointer<ffi.Uint8> output,
     int output_capacity,
     ffi.Pointer<ffi.Uint64> out_required,
@@ -281,6 +246,7 @@ class Bindings {
     return _citizensdk_qr_parse(
       handle,
       text,
+      purpose,
       output,
       output_capacity,
       out_required,
@@ -293,6 +259,7 @@ class Bindings {
           citizensdk_error_code_t Function(
             citizensdk_handle_t,
             citizensdk_bytes_view_t,
+            ffi.Uint32,
             ffi.Pointer<ffi.Uint8>,
             ffi.Uint64,
             ffi.Pointer<ffi.Uint64>,
@@ -304,6 +271,7 @@ class Bindings {
         int Function(
           int,
           citizensdk_bytes_view_t,
+          int,
           ffi.Pointer<ffi.Uint8>,
           int,
           ffi.Pointer<ffi.Uint64>,
@@ -657,57 +625,6 @@ class Bindings {
               ffi.Pointer<ffi.Uint64>,
             )
           >();
-
-  int citizensdk_create(
-    ffi.Pointer<citizensdk_create_options_t> options,
-    ffi.Pointer<citizensdk_handle_t> out_handle,
-  ) {
-    return _citizensdk_create(options, out_handle);
-  }
-
-  late final _citizensdk_createPtr =
-      _lookup<
-        ffi.NativeFunction<
-          citizensdk_error_code_t Function(
-            ffi.Pointer<citizensdk_create_options_t>,
-            ffi.Pointer<citizensdk_handle_t>,
-          )
-        >
-      >('citizensdk_create');
-  late final _citizensdk_create = _citizensdk_createPtr
-      .asFunction<
-        int Function(
-          ffi.Pointer<citizensdk_create_options_t>,
-          ffi.Pointer<citizensdk_handle_t>,
-        )
-      >();
-
-  int citizensdk_create_with_host(
-    ffi.Pointer<citizensdk_create_options_t> options,
-    ffi.Pointer<citizensdk_host_services_v1_t> host_services,
-    ffi.Pointer<citizensdk_handle_t> out_handle,
-  ) {
-    return _citizensdk_create_with_host(options, host_services, out_handle);
-  }
-
-  late final _citizensdk_create_with_hostPtr =
-      _lookup<
-        ffi.NativeFunction<
-          citizensdk_error_code_t Function(
-            ffi.Pointer<citizensdk_create_options_t>,
-            ffi.Pointer<citizensdk_host_services_v1_t>,
-            ffi.Pointer<citizensdk_handle_t>,
-          )
-        >
-      >('citizensdk_create_with_host');
-  late final _citizensdk_create_with_host = _citizensdk_create_with_hostPtr
-      .asFunction<
-        int Function(
-          ffi.Pointer<citizensdk_create_options_t>,
-          ffi.Pointer<citizensdk_host_services_v1_t>,
-          ffi.Pointer<citizensdk_handle_t>,
-        )
-      >();
 
   int citizensdk_destroy(int handle) {
     return _citizensdk_destroy(handle);
@@ -1898,64 +1815,6 @@ class Bindings {
               ffi.Pointer<ffi.Uint8>,
               int,
               ffi.Pointer<ffi.Uint64>,
-            )
-          >();
-
-  int citizensdk_set_secret_presence_provider(
-    int handle,
-    ffi.Pointer<citizensdk_host_secret_presence_v1_t> provider,
-  ) {
-    return _citizensdk_set_secret_presence_provider(handle, provider);
-  }
-
-  late final _citizensdk_set_secret_presence_providerPtr =
-      _lookup<
-        ffi.NativeFunction<
-          citizensdk_error_code_t Function(
-            citizensdk_handle_t,
-            ffi.Pointer<citizensdk_host_secret_presence_v1_t>,
-          )
-        >
-      >('citizensdk_set_secret_presence_provider');
-  late final _citizensdk_set_secret_presence_provider =
-      _citizensdk_set_secret_presence_providerPtr
-          .asFunction<
-            int Function(int, ffi.Pointer<citizensdk_host_secret_presence_v1_t>)
-          >();
-
-  int citizensdk_encrypted_secret_record_has_secret(
-    ffi.Pointer<citizensdk_account_id_t> account_id,
-    int expected_revision,
-    citizensdk_bytes_view_t record,
-    ffi.Pointer<ffi.Uint8> out_present,
-  ) {
-    return _citizensdk_encrypted_secret_record_has_secret(
-      account_id,
-      expected_revision,
-      record,
-      out_present,
-    );
-  }
-
-  late final _citizensdk_encrypted_secret_record_has_secretPtr =
-      _lookup<
-        ffi.NativeFunction<
-          citizensdk_error_code_t Function(
-            ffi.Pointer<citizensdk_account_id_t>,
-            ffi.Uint64,
-            citizensdk_bytes_view_t,
-            ffi.Pointer<ffi.Uint8>,
-          )
-        >
-      >('citizensdk_encrypted_secret_record_has_secret');
-  late final _citizensdk_encrypted_secret_record_has_secret =
-      _citizensdk_encrypted_secret_record_has_secretPtr
-          .asFunction<
-            int Function(
-              ffi.Pointer<citizensdk_account_id_t>,
-              int,
-              citizensdk_bytes_view_t,
-              ffi.Pointer<ffi.Uint8>,
             )
           >();
 
@@ -4725,21 +4584,10 @@ final class citizensdk_mutable_bytes_view extends ffi.Struct {
 }
 
 typedef citizensdk_mutable_bytes_view_t = citizensdk_mutable_bytes_view;
-typedef citizensdk_host_record_domain_t = ffi.Uint32;
-typedef Dartcitizensdk_host_record_domain_t = int;
-typedef citizensdk_host_secret_kind_t = ffi.Uint32;
-typedef Dartcitizensdk_host_secret_kind_t = int;
 typedef citizensdk_host_vault_availability_t = ffi.Uint32;
 typedef Dartcitizensdk_host_vault_availability_t = int;
 typedef citizensdk_host_bytes_kind_t = ffi.Uint32;
 typedef Dartcitizensdk_host_bytes_kind_t = int;
-
-final class citizensdk_host_hash32 extends ffi.Struct {
-  @ffi.Array.multi([32])
-  external ffi.Array<ffi.Uint8> bytes;
-}
-
-typedef citizensdk_host_hash32_t = citizensdk_host_hash32;
 
 final class citizensdk_host_id128 extends ffi.Struct {
   @ffi.Array.multi([16])
@@ -4747,28 +4595,6 @@ final class citizensdk_host_id128 extends ffi.Struct {
 }
 
 typedef citizensdk_host_id128_t = citizensdk_host_id128;
-
-final class citizensdk_host_secret_ref_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  @ffi.Uint32()
-  external int wallet_index;
-
-  @citizensdk_host_secret_kind_t()
-  external int kind;
-
-  external citizensdk_host_id128_t generation;
-
-  external citizensdk_host_id128_t owner;
-
-  external citizensdk_host_hash32_t account_id;
-}
-
-typedef citizensdk_host_secret_ref_v1_t = citizensdk_host_secret_ref_v1;
 
 final class citizensdk_host_wallet_key_ref_v1 extends ffi.Struct {
   @ffi.Uint32()
@@ -4787,36 +4613,6 @@ final class citizensdk_host_wallet_key_ref_v1 extends ffi.Struct {
 }
 
 typedef citizensdk_host_wallet_key_ref_v1_t = citizensdk_host_wallet_key_ref_v1;
-
-final class citizensdk_host_record_result_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  @ffi.Uint64()
-  external int host_operation_id;
-
-  @citizensdk_error_code_t()
-  external int error_code;
-
-  @citizensdk_host_record_domain_t()
-  external int domain;
-
-  @ffi.Uint8()
-  external int present;
-
-  @ffi.Array.multi([7])
-  external ffi.Array<ffi.Uint8> reserved;
-
-  @ffi.Uint64()
-  external int revision;
-
-  external citizensdk_bytes_view_t record;
-}
-
-typedef citizensdk_host_record_result_v1_t = citizensdk_host_record_result_v1;
 
 final class citizensdk_host_status_result_v1 extends ffi.Struct {
   @ffi.Uint32()
@@ -4899,20 +4695,6 @@ final class citizensdk_host_bytes_result_v1 extends ffi.Struct {
 }
 
 typedef citizensdk_host_bytes_result_v1_t = citizensdk_host_bytes_result_v1;
-typedef citizensdk_host_record_completion_v1_tFunction =
-    ffi.Void Function(
-      ffi.Pointer<ffi.Void> sdk_context,
-      ffi.Pointer<citizensdk_host_record_result_v1_t> result,
-    );
-typedef Dartcitizensdk_host_record_completion_v1_tFunction =
-    void Function(
-      ffi.Pointer<ffi.Void> sdk_context,
-      ffi.Pointer<citizensdk_host_record_result_v1_t> result,
-    );
-typedef citizensdk_host_record_completion_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_record_completion_v1_tFunction>
-    >;
 typedef citizensdk_host_status_completion_v1_tFunction =
     ffi.Void Function(
       ffi.Pointer<ffi.Void> sdk_context,
@@ -4971,260 +4753,6 @@ typedef citizensdk_host_bytes_completion_v1_t =
     ffi.Pointer<
       ffi.NativeFunction<citizensdk_host_bytes_completion_v1_tFunction>
     >;
-typedef citizensdk_host_chain_database_load_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_chain_database_load_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_chain_database_load_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_chain_database_load_v1_tFunction>
-    >;
-typedef citizensdk_host_chain_database_compare_and_swap_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      ffi.Uint64 expected_revision,
-      ffi.Uint8 present,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_chain_database_compare_and_swap_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      int expected_revision,
-      int present,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_chain_database_compare_and_swap_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        citizensdk_host_chain_database_compare_and_swap_v1_tFunction
-      >
-    >;
-typedef citizensdk_host_runtime_cache_load_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_runtime_cache_load_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_runtime_cache_load_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_runtime_cache_load_v1_tFunction>
-    >;
-typedef citizensdk_host_runtime_cache_store_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_status_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_runtime_cache_store_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_status_completion_v1_t completion,
-    );
-typedef citizensdk_host_runtime_cache_store_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_runtime_cache_store_v1_tFunction>
-    >;
-typedef citizensdk_host_runtime_cache_delete_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_status_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_runtime_cache_delete_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_host_hash32_t block_hash,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_status_completion_v1_t completion,
-    );
-typedef citizensdk_host_runtime_cache_delete_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_runtime_cache_delete_v1_tFunction>
-    >;
-typedef citizensdk_host_transaction_history_query_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_bytes_view_t query,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_transaction_history_query_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_bytes_view_t query,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_transaction_history_query_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_transaction_history_query_v1_tFunction>
-    >;
-typedef citizensdk_host_transaction_history_mutate_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      ffi.Uint64 expected_revision,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_transaction_history_mutate_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      int expected_revision,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_transaction_history_mutate_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        citizensdk_host_transaction_history_mutate_v1_tFunction
-      >
-    >;
-
-final class citizensdk_host_public_store_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  external ffi.Pointer<ffi.Void> context;
-
-  external citizensdk_host_chain_database_load_v1_t chain_database_load;
-
-  external citizensdk_host_chain_database_compare_and_swap_v1_t
-  chain_database_compare_and_swap;
-
-  external citizensdk_host_runtime_cache_load_v1_t runtime_cache_load;
-
-  external citizensdk_host_runtime_cache_store_v1_t runtime_cache_store;
-
-  external citizensdk_host_runtime_cache_delete_v1_t runtime_cache_delete;
-
-  external citizensdk_host_transaction_history_query_v1_t
-  transaction_history_query;
-
-  external citizensdk_host_transaction_history_mutate_v1_t
-  transaction_history_mutate;
-}
-
-typedef citizensdk_host_public_store_v1_t = citizensdk_host_public_store_v1;
-typedef citizensdk_host_wallet_profile_load_v1_t =
-    citizensdk_host_chain_database_load_v1_t;
-typedef citizensdk_host_wallet_profile_compare_and_swap_v1_t =
-    citizensdk_host_transaction_history_mutate_v1_t;
-typedef citizensdk_host_encrypted_secret_blob_load_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_host_secret_ref_v1_t secret_ref,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_encrypted_secret_blob_load_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_host_secret_ref_v1_t secret_ref,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_encrypted_secret_blob_load_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        citizensdk_host_encrypted_secret_blob_load_v1_tFunction
-      >
-    >;
-typedef citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_host_secret_ref_v1_t secret_ref,
-      ffi.Uint64 expected_revision,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_encrypted_secret_blob_compare_and_swap_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> host_context,
-      int host_operation_id,
-      citizensdk_host_secret_ref_v1_t secret_ref,
-      int expected_revision,
-      citizensdk_bytes_view_t candidate_record,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_record_completion_v1_t completion,
-    );
-typedef citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_tFunction
-      >
-    >;
-
-final class citizensdk_host_secure_store_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  external ffi.Pointer<ffi.Void> context;
-
-  external citizensdk_host_wallet_profile_load_v1_t wallet_profile_load;
-
-  external citizensdk_host_wallet_profile_compare_and_swap_v1_t
-  wallet_profile_compare_and_swap;
-
-  external citizensdk_host_encrypted_secret_blob_load_v1_t
-  encrypted_secret_blob_load;
-
-  external citizensdk_host_encrypted_secret_blob_compare_and_swap_v1_t
-  encrypted_secret_blob_compare_and_swap;
-}
-
-typedef citizensdk_host_secure_store_v1_t = citizensdk_host_secure_store_v1;
 typedef citizensdk_host_vault_availability_v1_tFunction =
     citizensdk_error_code_t Function(
       ffi.Pointer<ffi.Void> host_context,
@@ -5379,6 +4907,26 @@ typedef citizensdk_host_vault_authorize_add_accounts_v1_t =
         citizensdk_host_vault_authorize_add_accounts_v1_tFunction
       >
     >;
+typedef citizensdk_host_vault_has_any_wallet_key_v1_tFunction =
+    citizensdk_error_code_t Function(
+      ffi.Pointer<ffi.Void> context,
+      ffi.Uint64 host_operation_id,
+      ffi.Uint32 wallet_index,
+      ffi.Pointer<ffi.Void> sdk_context,
+      citizensdk_host_bool_completion_v1_t completion,
+    );
+typedef Dartcitizensdk_host_vault_has_any_wallet_key_v1_tFunction =
+    Dartcitizensdk_error_code_t Function(
+      ffi.Pointer<ffi.Void> context,
+      int host_operation_id,
+      int wallet_index,
+      ffi.Pointer<ffi.Void> sdk_context,
+      citizensdk_host_bool_completion_v1_t completion,
+    );
+typedef citizensdk_host_vault_has_any_wallet_key_v1_t =
+    ffi.Pointer<
+      ffi.NativeFunction<citizensdk_host_vault_has_any_wallet_key_v1_tFunction>
+    >;
 
 final class citizensdk_host_secret_vault_v1 extends ffi.Struct {
   @ffi.Uint32()
@@ -5403,6 +4951,8 @@ final class citizensdk_host_secret_vault_v1 extends ffi.Struct {
 
   external citizensdk_host_vault_authorize_add_accounts_v1_t
   authorize_add_accounts;
+
+  external citizensdk_host_vault_has_any_wallet_key_v1_t has_any_wallet_key;
 }
 
 typedef citizensdk_host_secret_vault_v1_t = citizensdk_host_secret_vault_v1;
@@ -5526,79 +5076,6 @@ final class citizensdk_stores_v1 extends ffi.Struct {
 }
 
 typedef citizensdk_stores_v1_t = citizensdk_stores_v1;
-
-final class citizensdk_host_services_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  external ffi.Pointer<citizensdk_host_public_store_v1_t> public_store;
-
-  external ffi.Pointer<citizensdk_host_secure_store_v1_t> secure_store;
-
-  external ffi.Pointer<citizensdk_host_secret_vault_v1_t> secret_vault;
-}
-
-typedef citizensdk_host_services_v1_t = citizensdk_host_services_v1;
-typedef citizensdk_host_has_account_secret_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> context,
-      ffi.Uint64 host_operation_id,
-      citizensdk_account_id_t account_id,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_bool_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_has_account_secret_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> context,
-      int host_operation_id,
-      citizensdk_account_id_t account_id,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_bool_completion_v1_t completion,
-    );
-typedef citizensdk_host_has_account_secret_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_has_account_secret_v1_tFunction>
-    >;
-typedef citizensdk_host_has_any_wallet_key_v1_tFunction =
-    citizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> context,
-      ffi.Uint64 host_operation_id,
-      ffi.Uint32 wallet_index,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_bool_completion_v1_t completion,
-    );
-typedef Dartcitizensdk_host_has_any_wallet_key_v1_tFunction =
-    Dartcitizensdk_error_code_t Function(
-      ffi.Pointer<ffi.Void> context,
-      int host_operation_id,
-      int wallet_index,
-      ffi.Pointer<ffi.Void> sdk_context,
-      citizensdk_host_bool_completion_v1_t completion,
-    );
-typedef citizensdk_host_has_any_wallet_key_v1_t =
-    ffi.Pointer<
-      ffi.NativeFunction<citizensdk_host_has_any_wallet_key_v1_tFunction>
-    >;
-
-final class citizensdk_host_secret_presence_v1 extends ffi.Struct {
-  @ffi.Uint32()
-  external int struct_size;
-
-  @ffi.Uint32()
-  external int abi_version;
-
-  external ffi.Pointer<ffi.Void> context;
-
-  external citizensdk_host_has_account_secret_v1_t has_account_secret;
-
-  external citizensdk_host_has_any_wallet_key_v1_t has_any_wallet_key;
-}
-
-typedef citizensdk_host_secret_presence_v1_t =
-    citizensdk_host_secret_presence_v1;
 
 final class citizensdk_create_options extends ffi.Struct {
   @ffi.Uint32()
@@ -6501,7 +5978,7 @@ typedef citizensdk_transaction_history_record_info_t =
 typedef citizensdk_qr_image_status_t = ffi.Int32;
 typedef Dartcitizensdk_qr_image_status_t = int;
 
-const int CITIZENSDK_ABI_VERSION = 1;
+const int CITIZENSDK_ABI_VERSION = 2;
 
 const int CITIZENSDK_CAPABILITY_COUNT = 10;
 
@@ -6836,18 +6313,6 @@ const int CITIZENSDK_DISPATCH_ERROR_UNAVAILABLE = 12;
 const int CITIZENSDK_DISPATCH_ERROR_ROOT_NOT_ALLOWED = 13;
 
 const int CITIZENSDK_HOST_DEK_BYTES = 32;
-
-const int CITIZENSDK_HOST_RECORD_CHAIN_DATABASE = 1;
-
-const int CITIZENSDK_HOST_RECORD_RUNTIME_CACHE = 2;
-
-const int CITIZENSDK_HOST_RECORD_WALLET_PROFILE = 3;
-
-const int CITIZENSDK_HOST_RECORD_TRANSACTION_HISTORY = 4;
-
-const int CITIZENSDK_HOST_RECORD_ENCRYPTED_SECRET_BLOB = 5;
-
-const int CITIZENSDK_HOST_SECRET_ACCOUNT_MINI_SECRET = 1;
 
 const int CITIZENSDK_HOST_VAULT_AVAILABLE = 1;
 

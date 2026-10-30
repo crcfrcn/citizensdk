@@ -30,24 +30,12 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_validate_modules(uint32_t modu
 CITIZENSDK_API citizensdk_error_code_t citizensdk_accept_request_sequence(
     citizensdk_handle_t handle, uint64_t request_sequence);
 
-/* One composition path for full and selected modules. Existing ABI v1 structures
- * are unchanged. Chain assets are required only when CHAIN is selected and must
- * be empty otherwise. host_services may be NULL for public chain-only use.
- * WALLET or SIGNING requires secure_store + secret_vault; HISTORY requires its
- * typed public-store callbacks. Each public callback group is all-or-none.
- * Vtables are copied; contexts live through successful destroy. */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_create_with_modules(
-    const citizensdk_create_options_t *options,
-    const citizensdk_host_services_v1_t *host_services, uint32_t modules,
-    citizensdk_handle_t *out_handle);
-
-/* 平台默认构造：公共/安全持久化直接使用Rust Store，仅由平台提供SQLite及设备金库。
- * stores按modules提供所需资源，未选择的资源必须为空；原构造的自定义宿主合同保持。
- * 构造仅复制配置，首次资源操作在已有请求工作线程进行。 */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_create_with_store(
+/* 唯一Core创建入口。模块先校验，再复制链资产与实际SQLite/设备金库资源。
+ * 所有业务记录与SQL只由同一Rust实现处理；不存在业务仓储注入或后置装配。
+ * 构造不执行需要UI线程完成的认证；回调上下文保持到成功destroy。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_create(
     const citizensdk_create_options_t *options, uint32_t modules,
-    const citizensdk_stores_v1_t *stores,
-    citizensdk_handle_t *out_handle);
+    const citizensdk_stores_v1_t *stores, citizensdk_handle_t *out_handle);
 
 /* 同一实例只安装一次按值接收端；发送函数保有至detach或destroy完成。
  * invoke只同步调用当前线程的job。job内部以原类型化异步API接纳的请求，其完成
@@ -85,7 +73,7 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_verify_signature(
  * QR_V1码型及用途允许集由Core唯一解释；冷导入只允许账户码，
  * 用户与转账码型按各自用途保留；码型只允许1至5，用途只允许1至5、7、8。 */
 CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_parse(
-    citizensdk_handle_t handle, citizensdk_bytes_view_t text,
+    citizensdk_handle_t handle, citizensdk_bytes_view_t text, uint32_t purpose,
     uint8_t *output, uint64_t output_capacity, uint64_t *out_required);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_create_sign_request(
     citizensdk_handle_t handle, uint16_t action,
@@ -133,22 +121,6 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_prepare_account_authorizati
 CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_encode_account_id(
     citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
     uint8_t *output, uint64_t output_capacity, uint64_t *out_required);
-/* All input views are copied before return. Empty system_name/system_version
- * select CitizenSDK/1.0.0 defaults. The three verified chain assets are
- * mandatory and are revalidated before a smoldot provider is constructed. */
-CITIZENSDK_API citizensdk_error_code_t
-citizensdk_create(const citizensdk_create_options_t *options,
-                  citizensdk_handle_t *out_handle);
-
-/* 默认耐久组合：提供安全组时选择完整模块，否则选择链／交易／历史。
- * 显式按需集成使用 create_with_modules；两者进入同一内部装配。
- * CitizenSDK copies all supplied vtables; secure_store and secret_vault are
- * all-or-none. Host-owned contexts live through successful destroy. */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_create_with_host(
-    const citizensdk_create_options_t *options,
-    const citizensdk_host_services_v1_t *host_services,
-    citizensdk_handle_t *out_handle);
-
 /* Destroy rejects outstanding requests/results and calls from the instance's
  * own callback with BUSY before teardown, leaving the handle usable. If a live
  * handle returns another error after teardown begins, it is teardown-only:
@@ -359,15 +331,7 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_wallet_state_get_active_wallet
     citizensdk_result_handle_t result, uint8_t *out_present, uint32_t *out_wallet_index);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_wallet_profile_copy_name(
     citizensdk_result_handle_t result, uint8_t *buffer, uint64_t capacity, uint64_t *out_required);
-/* 在该实例首次Host操作前一次登记；拒绝替换或关闭期间登记。
- * provider及两回调非空，结构大小必须准确；代码/context保有至真实SDK销毁。 */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_set_secret_presence_provider(
-    citizensdk_handle_t handle, const citizensdk_host_secret_presence_v1_t *provider);
-/* 无实例纯投影：完整校验有界CSHR/身份/状态及存储revision。
- * 只有匹配账户的sealed记录返回1；有效其它记录为0，失败不改输出。 */
-CITIZENSDK_API citizensdk_error_code_t citizensdk_encrypted_secret_record_has_secret(
-    const citizensdk_account_id_t *account_id, uint64_t expected_revision,
-    citizensdk_bytes_view_t record, uint8_t *out_present);
+
 
 /* open只接纳资源；reveal在真实授权后最多交付一次。
  * cancel撤销迟到交付；finish在宿主清屏/清理副本后请求关闭。

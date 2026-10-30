@@ -1,3 +1,5 @@
+part of '../citizen_sdk.dart';
+
 /// 一条公民链账户的公开资料。
 final class CitizenAccount {
   CitizenAccount({

@@ -4,13 +4,14 @@
 //! It never assigns application meaning, maintains an allowlist, or accepts pallet/call names from
 //! a binding.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::catch_unwind;
+use std::panic::AssertUnwindSafe;
 
-use citizen_sdk_contracts::{ContractErrorCode, OpaqueTransactionCall};
-use subxt_core::{
-    ext::{scale_encode::EncodeAsType, scale_value},
-    Metadata,
-};
+use crate::types::ContractErrorCode;
+use crate::types::OpaqueTransactionCall;
+use subxt_core::ext::scale_encode::EncodeAsType;
+use subxt_core::ext::scale_value;
+use subxt_core::Metadata;
 
 use crate::error::EngineError;
 

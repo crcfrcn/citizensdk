@@ -1,21 +1,39 @@
 #![cfg(feature = "chain")]
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Barrier, Mutex,
-};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::sync::Mutex;
 
-use citizen_sdk_contracts::{
-    CapabilityName, CapabilityReason, ChainDatabaseSnapshot, ChainDatabaseStore, ChainIdentity,
-    ContractError, ContractErrorCode, ContractFuture, ContractStream, ExecutionConclusion,
-    ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef, Hash32, RuntimeCacheStore,
-    RuntimeContext, RuntimeVersion, SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic,
-    UnverifiedReason, VerifiedBlockRef, VerifiedChainClient,
-};
-use citizen_sdk_engine::{
-    signed_extrinsic_hash, CapabilityProbe, CitizenEngine, EngineComponents, EngineLifecycle,
-    CHAIN_STATE_FORMAT_VERSION,
-};
+use citizensdk::signed_extrinsic_hash;
+use citizensdk::types::CapabilityName;
+use citizensdk::types::CapabilityReason;
+use citizensdk::types::ChainDatabaseSnapshot;
+use citizensdk::types::ChainDatabaseStore;
+use citizensdk::types::ChainIdentity;
+use citizensdk::types::ContractError;
+use citizensdk::types::ContractErrorCode;
+use citizensdk::types::ContractFuture;
+use citizensdk::types::ContractStream;
+use citizensdk::types::ExecutionConclusion;
+use citizensdk::types::ExportedChainState;
+use citizensdk::types::ExtrinsicWatchEvent;
+use citizensdk::types::FinalizedBlockRef;
+use citizensdk::types::Hash32;
+use citizensdk::types::RuntimeCacheStore;
+use citizensdk::types::RuntimeContext;
+use citizensdk::types::RuntimeVersion;
+use citizensdk::types::SignedExtrinsic;
+use citizensdk::types::StateImportReceipt;
+use citizensdk::types::SubmittedExtrinsic;
+use citizensdk::types::UnverifiedReason;
+use citizensdk::types::VerifiedBlockRef;
+use citizensdk::types::VerifiedChainClient;
+use citizensdk::CapabilityProbe;
+use citizensdk::CitizenEngine;
+use citizensdk::EngineLifecycle;
+use citizensdk::CHAIN_STATE_FORMAT_VERSION;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 const EVENTS_HEX: &str = include_str!("citizenchain-runtime-system-events.hex");
@@ -355,9 +373,8 @@ fn engine_with_options_and_runtime_cache(
             });
             store
         });
-    let components = EngineComponents::new(
+    let components = CitizenEngine::new(
         Some(client),
-        None,
         None,
         Some(Arc::clone(&chain_database) as Arc<dyn ChainDatabaseStore>),
         runtime_cache,
@@ -366,17 +383,17 @@ fn engine_with_options_and_runtime_cache(
         None,
     )
     .with_modules(
-        citizen_sdk_contracts::Modules::try_new(
-            citizen_sdk_contracts::Modules::CHAIN
+        citizensdk::types::Modules::try_new(
+            citizensdk::types::Modules::CHAIN
                 | if cfg!(feature = "transactions") {
-                    citizen_sdk_contracts::Modules::TRANSACTIONS
+                    citizensdk::types::Modules::TRANSACTIONS
                 } else {
                     0
                 },
         )
         .unwrap_or_else(|error| panic!("chain fixture module selection: {error}")),
     );
-    let engine = CitizenEngine::new(components);
+    let engine = components;
     if let Err(error) = engine.update_capabilities(all_ready()) {
         panic!("capability initialization failed: {error}");
     }

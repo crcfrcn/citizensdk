@@ -4,7 +4,6 @@ EXPORTS
   citizensdk_host_abandon
   citizensdk_host_config_size
   citizensdk_host_create
-  citizensdk_host_create_with_modules
   citizensdk_host_create_sdk
   citizensdk_host_destroy
   citizensdk_host_last_error_copy

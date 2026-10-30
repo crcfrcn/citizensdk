@@ -1,1652 +1,903 @@
-import 'dart:async';
-import 'dart:ffi';
+part of '../citizen_sdk.dart';
 
-import 'package:flutter/foundation.dart';
+final c.Bindings _api = c.Bindings.fromLookup(<T extends NativeType>(
+  String name,
+) {
+  if (Platform.isIOS || Platform.isMacOS)
+    return DynamicLibrary.process().lookup<T>(name);
+  if (name.startsWith('citizensdk_qr_image_') ||
+      name.startsWith('citizensdk_dart_')) {
+    return DynamicLibrary.open(
+      Platform.isAndroid
+          ? 'libcitizensdk_jni.so'
+          : Platform.isWindows
+          ? 'citizensdk_host.dll'
+          : 'libcitizensdk_host.so',
+    ).lookup<T>(name);
+  }
+  return DynamicLibrary.open(
+    Platform.isWindows ? 'citizensdk.dll' : 'libcitizensdk.so',
+  ).lookup<T>(name);
+});
 
-import '../account_codec.dart';
-import '../models/citizen_capability.dart';
-import '../models/citizen_chain_state.dart';
-import '../models/citizen_signing.dart';
-import '../models/citizen_transaction.dart';
-import '../models/citizen_wallet.dart';
-import '../platform/citizen_sdk_flutter_codec.dart';
-import '../platform/citizen_sdk_flutter_sessions.dart';
-import '../platform/citizen_sdk_platform.dart';
-import '../platform/ffi.dart';
-import 'citizen_chain.dart';
-import 'citizen_qr.dart';
-import 'citizen_sdk_error.dart';
-import 'citizen_sdk_events.dart';
-import 'citizen_sdk_wallet.dart';
-import 'citizen_transactions.dart';
+// 一个实例直接拥有Core句柄、真实在途请求和资源，不保留Platform或Session对象。
+final class CitizenSdk with WidgetsBindingObserver {
+  CitizenSdk._(this._hostId, this._handle, this._credentialProvider);
+  static const _methods = MethodChannel('citizen/sdk/core/v2');
+  static const _nativeEvents = EventChannel('citizen/sdk/events/v2');
+  static final _instances = <String, CitizenSdk>{};
+  static final _early = <String, List<List<Object?>>>{};
+  static StreamSubscription<Object?>? _nativeSubscription;
+  static int _opening = 0;
+  static CitizenSdkException? _channelError;
 
-/// CitizenSDK 的唯一 Dart/Flutter 公共门面。
-final class CitizenSdk {
-  CitizenSdk._(this._session, CitizenSdkFlutterCodec codec)
-    : chain = _CitizenChain(_session, codec),
-      wallet = _CitizenSdkWallet(_session, codec),
-      signing = _CitizenSigning(_session, codec),
-      qr = _CitizenQr(_session),
-      transactions = _CitizenTransactions(_session, codec),
-      history = _CitizenHistory(_session, codec);
+  final String _hostId;
+  final int _handle;
+  final Future<Uint8List?> Function(CitizenCredentialChallenge)?
+  _credentialProvider;
+  final _pending = <int, _Request>{};
+  final _resources = <Future<void> Function()>{};
+  final _uiWork = <Future<void>>{};
+  final _preparedTransactions = <String, int>{};
+  final _transferred = <int>{};
+  final _credentials = <BigInt, _Credential>{};
+  final _closedResources = <String>{};
+  final _acknowledgedResources = <String>{};
+  final _events = StreamController<CitizenSdkEvent>.broadcast(sync: true);
+  ReceivePort? _port;
+  bool _closed = false, _closing = false, _detached = false, _foreground = true;
+  int _resourceSequence = 1, _eventSequence = 1;
+  CitizenSdkException? _protocolError;
+  Future<void>? _closeFuture;
 
-  /// 打开当前受支持平台的 CitizenSDK session，但不隐式启动轻节点。
-  ///
-  /// Flutter 产品投影覆盖 Android、iOS、macOS、LinuxARM 与 Windows；Linux
-  /// 只接受 ARM64 机器目标。全部使用相同的公开 API、固定
-  /// tuple 方法和事件合同；同版原生插件缺失时失败关闭，不注入替代实现。
-  /// Windows 宿主在构建时声明 CITIZENSDK_APPLICATION_ID；此入口不接收路径或秘密。
+  static void _checkAbi() {
+    try {
+      if (_api.citizensdk_abi_version() != c.CITIZENSDK_ABI_VERSION ||
+          _api.citizensdk_dart_api_major() != NativeApi.majorVersion)
+        throw _failure(4);
+    } on ArgumentError {
+      throw _failure(4, 'CitizenSDK原生库不可用');
+    }
+  }
+
   static Future<CitizenSdk> open({
     int modules = CitizenSdkModules.full,
     Future<Uint8List?> Function(CitizenCredentialChallenge challenge)?
     credentialProvider,
   }) async {
-    final codec = const CitizenSdkFlutterCodec();
-    final platform = CitizenSdkPlatform.instance ?? _defaultPlatform();
-    final session = await CitizenSdkFlutterSession.open(
-      platform: platform,
-      codec: codec,
-      modules: modules,
-      credentialProvider: credentialProvider,
-    );
-    return CitizenSdk._(session, codec);
-  }
-
-  static final CitizenSdkPlatform _defaultFlutterPlatform =
-      FfiCitizenSdkPlatform();
-
-  static CitizenSdkPlatform _defaultPlatform() {
-    final supportedLinux = !kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.linux &&
-        Abi.current() == Abi.linuxArm64;
-    if (!kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS ||
-            defaultTargetPlatform == TargetPlatform.macOS ||
-            supportedLinux ||
-            defaultTargetPlatform == TargetPlatform.windows)) {
-      return _defaultFlutterPlatform;
-    }
-    throw const CitizenSdkException(
-      code: CitizenSdkErrorCode.unsupported,
-      message: 'CitizenSDK Flutter binding 当前仅支持 Android、iOS、macOS、LinuxARM 与 Windows',
-    );
-  }
-
-  final CitizenSdkFlutterSession _session;
-
-  /// 已验证的公民链读取能力。
-  final CitizenChain chain;
-
-  /// 设备本地热钱包和账户管理，不包含公开签名门面。
-  final CitizenSdkWallet wallet;
-
-  /// 独立签名能力；私钥只经设备安全金库受控使用。纯验签使用 [CitizenSigning.verify]。
-  final CitizenSigning signing;
-
-  /// QR_V1 协议、扫码签名会话和五端统一 ZXing-C++ 图像能力。
-  final CitizenQr qr;
-
-  /// 公民链交易构造、提交与观察能力。
-  final CitizenTransactions transactions;
-
-  /// 可独立于本地钱包使用的已确认交易历史能力。
-  final CitizenHistory history;
-
-  /// 当前 session 的类型化生命周期与请求事件。
-  Stream<CitizenSdkEvent> get events => _session.events;
-
-  /// 只读安全诊断，最多128条；不获取钱包、链数据或用户输入。
-  Future<List<CitizenSdkDiagnostic>> readDiagnostics() async {
-    final value = await _session.invoke('readDiagnostics');
-    return List<CitizenSdkDiagnostic>.unmodifiable(
-      (value[0]! as List<Object?>).map(CitizenSdkDiagnostic.decode));
-  }
-
-  /// 当前 session 生命周期快照。
-  CitizenSdkLifecycle get lifecycle => _session.lifecycle;
-
-  /// 启动当前 session 的公民链轻节点。
-  Future<void> start() async {
-    final value = await _session.invoke('start');
-    final lifecycle = const CitizenSdkFlutterCodec().decodeLifecycle(value[0]);
-    if (lifecycle != CitizenSdkLifecycle.running) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.decode,
-        message: 'CitizenSDK start 未进入 running',
-      );
-    }
-  }
-
-  /// 在完成 checkpoint 后有序停止当前 session 的轻节点。
-  Future<void> stop() async {
-    final value = await _session.invoke('stop');
-    final lifecycle = const CitizenSdkFlutterCodec().decodeLifecycle(value[0]);
-    if (lifecycle != CitizenSdkLifecycle.stopped) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.decode,
-        message: 'CitizenSDK stop 未进入 stopped',
-      );
-    }
-  }
-
-  /// 返回当前宿主事实对应的能力快照。
-  Future<CitizenCapabilitySnapshot> getCapabilities() =>
-      chain.getCapabilities();
-
-  /// 关闭已停止的 session；只有原生侧完成结果释放和 destroy 后才完成。
-  ///
-  /// 若 session 正在运行，调用方必须先等待 [stop] 成功，不能用 [close]
-  /// 绕过 checkpoint 与有序停止。
-  Future<void> close() => _session.close();
-}
-
-final class _CitizenChain implements CitizenChain {
-  const _CitizenChain(this._session, this._codec);
-
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-
-  @override
-  Future<CitizenCapabilitySnapshot> getCapabilities() async {
-    final value = await _session.invoke('getCapabilities');
-    return _codec.decodeCapabilities(value[0]);
-  }
-
-  @override
-  Future<String> getGenesisHash() async {
-    final value = await _session.invoke('getGenesisHash');
-    return value[0]! as String;
-  }
-
-  @override
-  Future<CitizenBlockRef> getFinalizedHead() async {
-    final value = await _session.invoke('getFinalizedHead');
-    return _codec.decodeBlock(value[0]);
-  }
-
-  @override
-  Future<CitizenChainSyncStatus> getSyncStatus() async {
-    final value = await _session.invoke('getSyncStatus');
-    return _codec.decodeSyncStatus(value[0]);
-  }
-
-  @override
-  Future<CitizenBlockRef> getBestHead() async {
-    final value = await _session.invoke('getBestHead');
-    return _codec.decodeBlock(value[0]);
-  }
-
-  @override
-  Future<CitizenBlockRef> getFinalizedBlockAt(BigInt number) async {
-    final value = await _session.invoke(
-      'getFinalizedBlockAt',
-      fields: <Object?>[number.toString()],
-    );
-    return _codec.decodeBlock(value[0]);
-  }
-
-  @override
-  Future<CitizenBlockRef> resolveFinalizedBlock(
-    String hash,
-    BigInt number,
-  ) async {
-    final value = await _session.invoke(
-      'resolveFinalizedBlock',
-      fields: <Object?>[hash, number.toString()],
-    );
-    return _codec.decodeBlock(value[0]);
-  }
-
-  @override
-  Future<CitizenBlockHeader> getBlockHeader(CitizenBlockRef block) async {
-    final value = await _session.invoke(
-      'getBlockHeader',
-      fields: <Object?>[_codec.encodeBlock(block)],
-    );
-    return _codec.decodeBlockHeader(value[0]);
-  }
-
-  @override
-  Future<CitizenBlockBody> getBlockBody(CitizenBlockRef block) async {
-    final value = await _session.invoke(
-      'getBlockBody',
-      fields: <Object?>[_codec.encodeBlock(block)],
-    );
-    return _codec.decodeBlockBody(value[0]);
-  }
-
-  @override
-  Future<CitizenRuntimeContext> getRuntimeContext(CitizenBlockRef block) async {
-    final value = await _session.invoke(
-      'getRuntimeContext',
-      fields: <Object?>[_codec.encodeBlock(block)],
-    );
-    return _codec.decodeRuntimeContext(value[0]);
-  }
-
-  @override
-  Future<Uint8List?> getStorage(CitizenBlockRef block, Uint8List key) async {
-    final value = await _session.invoke(
-      'getStorage',
-      fields: <Object?>[_codec.encodeBlock(block), Uint8List.fromList(key)],
-    );
-    return _codec.decodeStorage(value[0]);
-  }
-
-  @override
-  Future<List<Uint8List?>> getStorageBatch(
-    CitizenBlockRef block,
-    List<Uint8List> keys,
-  ) async {
-    final value = await _session.invoke(
-      'getStorageBatch',
-      fields: <Object?>[
-        _codec.encodeBlock(block),
-        keys.map(Uint8List.fromList).toList(growable: false),
-      ],
-    );
-    return _codec.decodeStorageBatch(value[0]);
-  }
-
-  @override
-  Future<List<Uint8List>> getStorageKeysPaged(
-    CitizenBlockRef finalizedBlock,
-    Uint8List prefix, {
-    Uint8List? startKey,
-    int limit = 1000,
-  }) async {
-    // 发送及回包关联必须使用同一快照，调用方等待期间修改数组不改变请求。
-    final prefixSnapshot = Uint8List.fromList(prefix).asUnmodifiableView();
-    final startSnapshot = startKey == null
-        ? null
-        : Uint8List.fromList(startKey).asUnmodifiableView();
-    final value = await _session.invoke(
-      'getStorageKeysPaged',
-      fields: <Object?>[
-        _codec.encodeBlock(finalizedBlock),
-        prefixSnapshot,
-        startSnapshot,
-        limit,
-      ],
-    );
-    final keys = (value[0]! as List<Object?>)
-        .map(
-          (item) => Uint8List.fromList(item! as Uint8List).asUnmodifiableView(),
-        )
-        .toList(growable: false);
-    if (keys.length > limit) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.integrity,
-        message: 'storage keys page 返回数量超过请求 limit',
-      );
-    }
-    for (var index = 0; index < keys.length; index += 1) {
-      final key = keys[index];
-      if (!_startsWithBytes(key, prefixSnapshot) ||
-          (startSnapshot != null && _compareBytes(key, startSnapshot) <= 0) ||
-          (index > 0 && _compareBytes(keys[index - 1], key) >= 0)) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.integrity,
-          message: 'storage keys page 与请求前缀、游标或顺序不一致',
+    if (Platform.isFuchsia ||
+        Platform.isLinux && Abi.current() != Abi.linuxArm64)
+      throw _failure(4);
+    if (_channelError != null) throw _channelError!;
+    _nativeSubscription ??= _nativeEvents
+        .receiveBroadcastStream(const [2])
+        .listen(
+          _route,
+          onError: (Object error, StackTrace stack) {
+            final failure = error is CitizenSdkException
+                ? error
+                : _failure(9, '系统资源事件通道失败');
+            _channelError ??= failure;
+            for (final sdk in List<CitizenSdk>.of(_instances.values)) {
+              sdk._failEvents(failure, stack);
+            }
+          },
         );
+    _opening++;
+    String? id;
+    CitizenSdk? sdk;
+    try {
+      final raw = await _rawResource('open', [
+        2,
+        modules,
+        credentialProvider != null,
+      ]);
+      if (raw is! List<Object?> ||
+          raw.length != 4 ||
+          raw[0] != 2 ||
+          raw[1] is! String ||
+          raw[2] != 0)
+        throw _failure(9);
+      id = raw[1]! as String;
+      if (id.isEmpty || id.length > 128 || _instances.containsKey(id))
+        throw _failure(9);
+      final value = raw[3];
+      if (value is! List<Object?> || value.length != 3 || value[2] is! String)
+        throw _failure(9);
+      final handle = _nativeId(value[2]! as String);
+      if (handle == 0) throw _failure(9);
+      _checkAbi();
+      sdk = CitizenSdk._(id, handle, credentialProvider);
+      sdk._attach();
+      _instances[id] = sdk;
+      if (credentialProvider != null) {
+        sdk._foreground =
+            WidgetsBinding.instance.lifecycleState == null ||
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+        WidgetsBinding.instance.addObserver(sdk);
       }
-    }
-    return List<Uint8List>.unmodifiable(keys);
-  }
-
-  @override
-  Future<Uint8List> callRuntimeApi(
-    CitizenBlockRef block,
-    String method,
-    Uint8List arguments,
-  ) async {
-    final value = await _session.invoke(
-      'callRuntimeApi',
-      fields: <Object?>[
-        _codec.encodeBlock(block),
-        method,
-        Uint8List.fromList(arguments),
-      ],
-    );
-    return Uint8List.fromList(value[0]! as Uint8List).asUnmodifiableView();
-  }
-
-  @override
-  Future<Uint8List?> getSystemEvents(CitizenBlockRef finalizedBlock) async {
-    final value = await _session.invoke(
-      'getSystemEvents',
-      fields: <Object?>[_codec.encodeBlock(finalizedBlock)],
-    );
-    return _codec.decodeStorage(value[0]);
-  }
-
-  @override
-  Future<CitizenChainState> exportState() async {
-    final value = await _session.invoke('exportState');
-    return _codec.decodeChainState(value[0]);
-  }
-
-  @override
-  Future<void> importState(CitizenChainState state) async {
-    await _session.invoke(
-      'importState',
-      fields: <Object?>[
-        state.formatVersion,
-        _codec.encodeBlock(state.finalized),
-        Uint8List.fromList(state.database),
-      ],
-    );
-  }
-
-  @override
-  Future<CitizenAccountBalance> getAccountBalance(String accountId) async {
-    final value = await _session.invoke(
-      'getAccountBalance',
-      fields: <Object?>[accountId],
-    );
-    final balance = _codec.decodeBalance(value[0]);
-    if (balance.accountId != accountId) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.decode,
-        message: '余额响应账户与请求账户不一致',
-      );
-    }
-    return balance;
-  }
-
-  @override
-  Future<List<CitizenAccountBalance>> getAccountBalances(
-    List<String> accountIds,
-  ) async {
-    _requireCount(
-      accountIds.length,
-      minimum: 0,
-      maximum: CitizenSdkFlutterCodec.maximumBalanceAccounts,
-      label: '批量余额 accountIds',
-    );
-    // 固定 await 前的请求顺序；不能让调用方后续变更列表改变响应关联依据。
-    final requested = List<String>.unmodifiable(accountIds);
-    final value = await _session.invoke(
-      'getAccountBalances',
-      fields: <Object?>[requested],
-    );
-    final balances = _codec.decodeBalances(value[0]);
-    if (balances.length != requested.length) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.decode,
-        message: '批量余额响应数量与请求不一致',
-      );
-    }
-    for (var index = 0; index < requested.length; index += 1) {
-      if (balances[index].accountId != requested[index]) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '批量余额响应账户未保持请求顺序或重复项',
-        );
+      for (final event in _early.remove(id) ?? <List<Object?>>[]) {
+        sdk._nativeEvent(event);
       }
-    }
-    return balances;
-  }
-
-  @override
-  Future<CitizenAccountNonce> getAccountNonce(String accountId) async {
-    final value = await _session.invoke(
-      'getAccountNonce',
-      fields: <Object?>[accountId],
-    );
-    final nonce = _codec.decodeNonce(value[0]);
-    if (nonce.accountId != accountId) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.decode,
-        message: 'nonce 响应账户与请求账户不一致',
-      );
-    }
-    return nonce;
-  }
-
-  @override
-  Future<CitizenFeeSnapshot> getFeeSnapshot() async {
-    final value = await _session.invoke('getFeeSnapshot');
-    return _codec.decodeFeeSnapshot(value[0]);
-  }
-}
-
-final class _CitizenSdkWallet implements CitizenSdkWallet {
-  const _CitizenSdkWallet(this._session, this._codec);
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-
-  CitizenSdkOperation<CitizenWalletState> _state(
-    String method,
-    List<Object?> fields,
-  ) => _session.operation(
-    method,
-    fields: fields,
-    decode: (value) => _codec.decodeWalletState(value[0]),
-  );
-  CitizenSdkOperation<CitizenWalletProfile> _profile(
-    String method,
-    List<Object?> fields,
-  ) => _session.operation(
-    method,
-    fields: fields,
-    decode: (value) {
-      final profile = _codec.decodeWalletProfile(value[0]);
-      if (profile == null) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '钱包操作没有返回已提交的公开profile',
-        );
+      if (sdk._protocolError != null) throw sdk._protocolError!;
+      return sdk;
+    } on Object {
+      if (sdk != null) {
+        sdk._closing = true;
+        try {
+          await sdk._cancelCredentials();
+        } on Object {
+          /* 保留最先错误。 */
+        }
+        _instances.remove(sdk._hostId);
+        WidgetsBinding.instance.removeObserver(sdk);
+        if (sdk._port != null) {
+          _api.citizensdk_detach(sdk._handle);
+          sdk._port!.close();
+        }
       }
-      return profile;
-    },
-  );
-
-  @override
-  CitizenSdkOperation<CitizenWalletState> getState() =>
-      _state('getWalletState', const []);
-  @override
-  CitizenSdkOperation<CitizenWalletInspection> inspect() => _session.operation(
-    'inspectWallets',
-    decode: (value) => _CitizenWalletInspection(
-      _session,
-      _codec,
-      _resourceId(value[0]),
-      _codec.decodeWalletState(value[1]),
-    ),
-  );
-  @override
-  Future<CitizenWalletInputValidation> validatePassword(String password) async {
-    if (!_codec.walletInputWithinLimit(password)) {
-      return const CitizenWalletInputValidation(
-        reason: CitizenWalletInputReason.inputTooLong,
-      );
+      if (id != null) {
+        try {
+          await _rawResource('close', [2, id, 1]);
+        } on Object {
+          /* 原生所有者继续负责收尾。 */
+        }
+      }
+      rethrow;
+    } finally {
+      _opening--;
+      if (_opening == 0)
+        _early.removeWhere((id, _) => !_instances.containsKey(id));
     }
-    return _codec.decodeWalletInputValidation(
-      await _session.invoke('validateWalletPassword', fields: [password]),
-    );
   }
 
-  @override
-  Future<CitizenWalletInputValidation> validateMnemonic(
-    String mnemonic,
-    CitizenWalletWordCount wordCount,
+  static Future<Object?> _rawResource(
+    String method,
+    List<Object?> arguments,
   ) async {
-    if (!_codec.walletInputWithinLimit(mnemonic)) {
-      return const CitizenWalletInputValidation(
-        reason: CitizenWalletInputReason.inputTooLong,
+    try {
+      return await _methods.invokeMethod<Object?>(method, arguments);
+    } on MissingPluginException {
+      throw _failure(4, 'CitizenSDK系统资源未注册');
+    } on PlatformException catch (error) {
+      final data = error.details;
+      if (data is! List<Object?> ||
+          data.length != 7 ||
+          data[0] != 2 ||
+          data[3] is! int ||
+          data[4] is! int ||
+          data[5] != method)
+        throw _failure(9);
+      final code = data[3]! as int, stage = data[4]! as int;
+      if (code < 1 ||
+          code > 22 ||
+          stage < 1 ||
+          stage > 8 ||
+          error.code !=
+              'citizensdk.${CitizenSdkErrorCode.values[code - 1].name}')
+        throw _failure(9);
+      throw CitizenSdkException(
+        code: CitizenSdkErrorCode.values[code - 1],
+        stage: CitizenSdkFailureStage.values[stage - 1],
+        message: data[6] is String
+            ? data[6]! as String
+            : CitizenSdkErrorCode.values[code - 1].name,
+        method: method,
+        sessionId: data[1] as String?,
+        requestSequence: data[2] as int?,
       );
     }
-    return _codec.decodeWalletInputValidation(
-      await _session.invoke(
-        'validateWalletMnemonic',
-        fields: [mnemonic, wordCount.value],
+  }
+
+  Future<List<Object?>> _resource(String method, List<Object?> fields) async {
+    if (_closed) throw _failure(3);
+    final sequence = _resourceSequence++;
+    final raw = await _rawResource(method, [2, _hostId, sequence, ...fields]);
+    if (raw is! List<Object?> ||
+        raw.length != 4 ||
+        raw[0] != 2 ||
+        raw[1] != _hostId ||
+        raw[2] != sequence ||
+        raw[3] is! List<Object?>)
+      throw _failure(9);
+    final value = raw[3]! as List<Object?>;
+    if (const {
+          'closePrivateKey',
+          'closeQrCapture',
+          'pauseQrCapture',
+          'resumeQrCapture',
+          'setQrCaptureTorch',
+          'respondCredential',
+          'cancelCredential',
+        }.contains(method) &&
+        value.isNotEmpty)
+      throw _failure(9);
+    if (method == 'close' && (value.length != 1 || value[0] != 'disposed'))
+      throw _failure(9);
+    return value;
+  }
+
+  static void _route(Object? raw) {
+    if (raw is! List<Object?> ||
+        raw.length != 5 ||
+        raw[0] != 2 ||
+        raw[1] is! String ||
+        raw[3] is! String ||
+        raw[4] is! List<Object?>) {
+      final error = _failure(9, '系统资源事件损坏');
+      for (final sdk in List<CitizenSdk>.of(_instances.values)) {
+        sdk._failEvents(error, StackTrace.current);
+      }
+      return;
+    }
+    final id = raw[1]! as String, sdk = _instances[id];
+    if (sdk != null) {
+      sdk._nativeEvent(raw);
+      return;
+    }
+    if (_opening == 0) return;
+    if (_early.length >= 32 && !_early.containsKey(id)) {
+      _channelError ??= _failure(19);
+      return;
+    }
+    final pending = _early.putIfAbsent(id, () => []);
+    if (pending.length >= 64) {
+      _channelError ??= _failure(19);
+      return;
+    }
+    pending.add(raw);
+  }
+
+  void _attach() {
+    _port = ReceivePort();
+    _port!.listen((Object? raw) {
+      if (raw is! List<Object?> ||
+          raw.length != 5 ||
+          raw.any((v) => v is! int)) {
+        _failEvents(_failure(9), StackTrace.current);
+        return;
+      }
+      final values = raw.cast<int>();
+      final kind = values[0], request = values[2], result = values[3];
+      if (kind == 0) {
+        _detached = true;
+        _port!.close();
+        for (final pending in _pending.values.toList()) {
+          pending.fail(_failure(22, 'Core接收端已卸载'));
+        }
+        _pending.clear();
+        return;
+      }
+      if (kind == 1) {
+        final pending = _pending.remove(request);
+        if (pending == null) {
+          _releaseResult(result);
+          return;
+        }
+        try {
+          pending.deliver(result);
+        } finally {
+          if (!_transferred.remove(result)) _releaseResult(result);
+        }
+        return;
+      }
+      try {
+        if (_closing || _closed) return;
+        final sequence = _eventSequence++;
+        switch (kind) {
+          case 3:
+            _events.add(
+              CitizenSdkCapabilitiesChanged(
+                sequence: sequence,
+                snapshot: _withMemory((m) => _readCapabilities(this, m)),
+              ),
+            );
+          case 4:
+            _events.add(
+              CitizenSdkLifecycleChanged(
+                sequence: sequence,
+                lifecycle: lifecycle,
+              ),
+            );
+          case 5:
+            _events.add(CitizenSdkHistoryChanged(sequence: sequence));
+          case 6:
+            _events.add(
+              CitizenSdkFinalizedBlockChanged(
+                sequence: sequence,
+                finalized: _withMemory((m) => _readBlock(m, result)),
+              ),
+            );
+          case 7:
+            _events.add(CitizenSdkWalletChanged(sequence: sequence));
+        }
+      } on Object catch (error, stack) {
+        _failEvents(error is CitizenSdkException ? error : _failure(9), stack);
+      } finally {
+        if (result != 0) _releaseResult(result);
+      }
+    });
+    _status(
+      _api.citizensdk_attach(
+        _handle,
+        _api.addresses.citizensdk_dart_emit,
+        NativeApi.postCObject.cast(),
+        _port!.sendPort.nativePort,
       ),
     );
   }
 
-  @override
-  Future<List<String>> wordSuggestions(String prefix) async {
-    final value = await _session.invoke(
-      'walletWordSuggestions',
-      fields: [prefix],
+  void _releaseResult(int result) {
+    if (result == 0) return;
+    final code = _api.citizensdk_result_release(result);
+    if (code != 0 && !(code == 2 && _detached)) throw _failure(code);
+  }
+
+  void _inspect(_Memory m, int result) {
+    final info = m.struct<c.citizensdk_result_info>(
+      sizeOf<c.citizensdk_result_info>(),
     );
-    return List<String>.unmodifiable(
-      (value[0]! as List<Object?>).cast<String>(),
+    _status(_api.citizensdk_result_get_info(result, info));
+    if (info.ref.error_code == 0) return;
+    final stage = m.alloc<Uint32>(4);
+    _status(_api.citizensdk_result_get_failure_stage(result, stage));
+    final message = m.text(
+      (out, capacity, count) => _api.citizensdk_result_copy_error_message(
+        result,
+        out,
+        capacity,
+        count,
+      ),
+      4096,
     );
+    throw _failure(info.ref.error_code, message, stage.value);
   }
-
-  @override
-  CitizenSdkOperation<CitizenSdkPreparedWallet> prepareCreation({
-    required CitizenWalletWordCount wordCount,
-    String password = '',
-  }) => _session.operation(
-    'prepareWalletCreation',
-    fields: [wordCount.value, password],
-    decode: (value) =>
-        _CitizenSdkPreparedWallet(_session, _codec, _resourceId(value[0])),
-  );
-
-  @override
-  CitizenSdkOperation<CitizenWalletProfile> importWallet({
-    required String mnemonic,
-    String password = '',
-  }) => _profile('importWallet', [mnemonic, password]);
-  @override
-  CitizenSdkOperation<CitizenWalletProfile> addAccounts({
-    required String mnemonic,
-    String password = '',
-    required List<int> indices,
-  }) => _profile('addWalletAccounts', [
-    mnemonic,
-    password,
-    List<int>.unmodifiable(indices),
-  ]);
-  @override
-  CitizenSdkOperation<CitizenWalletProfile> addNextAccount({
-    required String mnemonic,
-    String password = '',
-  }) => _profile('addNextWalletAccount', [mnemonic, password]);
-
-  @override
-  CitizenSdkOperation<CitizenWalletState> importColdAccount({
-    String? accountId,
-    String? ss58Address,
-    String name = '',
-  }) {
-    if ((accountId == null) == (ss58Address == null)) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: 'accountId与ss58Address必须且只能提供一个',
-      );
-    }
-    return _state(
-      accountId == null ? 'importColdAccountSs58' : 'importColdAccountId',
-      [accountId ?? ss58Address!, name.trim()],
-    );
-  }
-
-  @override
-  CitizenSdkOperation<CitizenWalletState> importColdAccountCode({
-    required String code,
-    String name = '',
-  }) => _state('importColdAccountCode', [code, name.trim()]);
-  @override
-  Future<CitizenSdkPrivateKey> openPrivateKey(String accountId) async {
-    final value = await _session.invoke('openPrivateKey', fields: [accountId]);
-    return _CitizenSdkPrivateKey(_session, _resourceId(value[0]));
-  }
-
-  @override
-  CitizenSdkOperation<CitizenWalletProfile> setActiveAccount(
-    String accountId,
-  ) => _profile('setActiveWalletAccount', [accountId]);
-  @override
-  CitizenSdkOperation<CitizenWalletState> setActiveWallet({
-    required BigInt expectedRevision,
-    required int walletIndex,
-  }) => _state('setActiveWallet', [expectedRevision.toString(), walletIndex]);
-  @override
-  CitizenSdkOperation<CitizenWalletState> renameWallet({
-    required BigInt expectedRevision,
-    required int walletIndex,
-    required String name,
-  }) => _state('renameWallet', [
-    expectedRevision.toString(),
-    walletIndex,
-    name.trim(),
-  ]);
-  @override
-  CitizenSdkOperation<CitizenWalletState> renameAccount({
-    required String accountId,
-    required String name,
-  }) => _state('renameAccount', [accountId, name.trim()]);
-  @override
-  CitizenSdkOperation<CitizenWalletState> deleteAccount(String accountId) =>
-      _state('deleteAccount', [accountId]);
-  @override
-  CitizenSdkOperation<void> delete() =>
-      _session.operation('deleteWallet', decode: (_) {});
-  @override
-  CitizenSdkOperation<void> signAndDelete() =>
-      _session.operation('signAndDeleteWallet', decode: (_) {});
-  @override
-  CitizenSdkOperation<CitizenWalletProfile?> reconcileCleanup() =>
-      _session.operation(
-        'reconcileWalletCleanup',
-        decode: (value) => _codec.decodeWalletProfile(value[0]),
-      );
-
-  @override
-  CitizenSdkOperation<CitizenWalletState> reorderAccountsWithoutDefaultChange({
-    required BigInt expectedRevision,
-    required List<String> accountIds,
-  }) => _state('reorderWalletAccountsWithoutDefaultChange', [
-    expectedRevision.toString(),
-    List<String>.unmodifiable(accountIds),
-  ]);
-  @override
-  CitizenSdkOperation<CitizenDefaultAccountChangeOutcome>
-  beginDefaultAccountChange({
-    required BigInt expectedRevision,
-    required List<String> accountIds,
-    int ttlSeconds = 90,
-  }) => _session.operation(
-    'beginDefaultAccountChange',
-    fields: [
-      expectedRevision.toString(),
-      List<String>.unmodifiable(accountIds),
-      ttlSeconds,
-    ],
-    decode: (value) => _codec.decodeDefaultAccountChangeOutcome(value[0]),
-  );
-  @override
-  CitizenSdkOperation<CitizenDefaultAccountChangeCompleted>
-  consumeDefaultAccountChange({
-    required String sessionId,
-    required String response,
-  }) => _session.operation(
-    'consumeDefaultAccountChange',
-    fields: [sessionId, response],
-    decode: (value) {
-      final result = _codec.decodeDefaultAccountChangeOutcome(value[0]);
-      if (result is! CitizenDefaultAccountChangeCompleted) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '默认账户签名消费没有返回完成事实',
-        );
-      }
-      return result;
-    },
-  );
-}
-
-/// 资源标识只关联本session的SDK对象，不向应用公开或接受Core裸指针。
-String _resourceId(Object? raw) {
-  if (raw is! String ||
-      raw.isEmpty ||
-      raw.length > 128 ||
-      !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(raw)) {
-    throw const CitizenSdkException(
-      code: CitizenSdkErrorCode.decode,
-      message: 'SDK资源标识无效',
-    );
-  }
-  return raw;
-}
-
-final class _CitizenSdkPreparedWallet implements CitizenSdkPreparedWallet {
-  _CitizenSdkPreparedWallet(this._session, this._codec, this._id) {
-    _session.registerResource(release);
-  }
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-  final String _id;
-  bool _closing = false;
-  bool _released = false;
-  bool _committed = false;
-  bool _committing = false;
-  Future<CitizenWalletProfile>? _commitResult;
-  Future<void>? _releaseFuture;
 
   void _requireOpen() {
-    if (_closing || _released || _committed || _committing) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidState,
-        message: '创建准备资源已提交、正在使用或关闭',
-      );
-    }
+    if (_closed || _closing || _detached) throw _failure(3);
+    if (_protocolError != null) throw _protocolError!;
   }
 
-  @override
-  Future<CitizenSdkRecoveryPhrase> recoveryPhrase() async {
-    _requireOpen();
-    final value = await _session.invoke('copyRecoveryPhrase', fields: [_id]);
-    final raw = value[0]! as Uint8List;
+  CitizenSdkOperation<T> _operation<T>(
+    int Function(_Memory, Pointer<Uint64>) accept,
+    T Function(_Memory, int) read, {
+    String? diagnostic,
+  }) {
+    final complete = Completer<T>();
+    final memory = _Memory();
+    final elapsed = Stopwatch()..start();
+    unawaited(_diagnose(diagnostic, 'ADMISSION', elapsed, point: 'ADMISSION'));
+    int id;
     try {
       _requireOpen();
-      return _CitizenSdkRecoveryPhrase(_session, Uint8List.fromList(raw));
-    } finally {
-      raw.fillRange(0, raw.length, 0);
-    }
-  }
-
-  @override
-  CitizenSdkOperation<CitizenWalletProfile> commit() {
-    _requireOpen();
-    final operation = _session.operation<CitizenWalletProfile>(
-      'commitWalletCreation',
-      fields: [_id],
-      decode: (value) {
-        final profile = _codec.decodeWalletProfile(value[0]);
-        if (profile == null) {
-          throw const CitizenSdkException(
-            code: CitizenSdkErrorCode.decode,
-            message: '创建提交未返回profile',
-          );
+      if (_pending.length >= 64) throw _failure(19);
+      final out = memory.alloc<Uint64>(8);
+      Object? thrown;
+      final job = NativeCallable<Int32 Function(Pointer<Void>)>.isolateLocal((
+        Pointer<Void> _,
+      ) {
+        try {
+          return accept(memory, out);
+        } on Object catch (error) {
+          thrown = error;
+          return 1;
         }
-        return profile;
+      }, exceptionalReturn: 20);
+      int code;
+      try {
+        code = _api.citizensdk_invoke(_handle, job.nativeFunction, nullptr);
+      } finally {
+        job.close();
+      }
+      if (thrown != null) throw thrown!;
+      _status(code);
+      id = out.value;
+      if (id == 0 || _pending.containsKey(id)) throw _failure(9);
+      unawaited(_diagnose(diagnostic, 'BEGIN', elapsed));
+      final finished = complete.future.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {},
+      );
+      _pending[id] = _Request(
+        (result) {
+          try {
+            final value = _withMemory((m) {
+              _inspect(m, result);
+              return read(m, result);
+            });
+            unawaited(
+              _diagnose(
+                diagnostic,
+                'COMPLETE',
+                elapsed,
+                point:
+                    diagnostic == 'getWalletState' ||
+                        diagnostic == 'inspectWallets'
+                    ? 'RESULT_READY'
+                    : 'NONE',
+              ),
+            );
+            complete.complete(value);
+          } on Object catch (error, stack) {
+            unawaited(_diagnose(diagnostic, 'COMPLETE', elapsed, error: error));
+            complete.completeError(error, stack);
+          }
+        },
+        (error) {
+          unawaited(_diagnose(diagnostic, 'COMPLETE', elapsed, error: error));
+          if (!complete.isCompleted) complete.completeError(error);
+        },
+        finished,
+      );
+    } on Object catch (error) {
+      unawaited(_diagnose(diagnostic, 'COMPLETE', elapsed, error: error));
+      rethrow;
+    } finally {
+      memory.dispose();
+    }
+    var settled = false;
+    final result = complete.future.whenComplete(() {
+      settled = true;
+    });
+    return CitizenSdkOperation<T>(
+      operationId: _unsigned(id).toString(),
+      result: result,
+      cancel: () async {
+        if (settled || _closed || _detached) return false;
+        final elapsed = Stopwatch()..start();
+        unawaited(_diagnose('cancelOperation', 'BEGIN', elapsed));
+        final code = _api.citizensdk_cancel_request(_handle, id);
+        unawaited(
+          _diagnose(
+            'cancelOperation',
+            'COMPLETE',
+            elapsed,
+            error: code == 0 ? null : _failure(code),
+          ),
+        );
+        if (code == 4 || code == 7) return false;
+        _status(code);
+        return true;
       },
     );
-    _committing = true;
-    Future<CitizenWalletProfile> settle() async {
-      try {
-        final profile = await operation.result;
-        _committed = true;
-        return profile;
-      } finally {
-        // 原生准备对象决定是否已经接纳/消费；失败重试不能越过其单次提交守卫。
-        _committing = false;
+  }
+
+  Future<T> _request<T>(
+    int Function(_Memory, Pointer<Uint64>) accept,
+    T Function(_Memory, int) read, {
+    String? diagnostic,
+  }) async => _operation(accept, read, diagnostic: diagnostic).result;
+
+  // 只把闭集事实交给既有系统诊断资源；不派发业务，不记录参数、标识或异常正文。
+  Future<void> _diagnose(
+    String? method,
+    String phase,
+    Stopwatch elapsed, {
+    Object? error,
+    String point = 'NONE',
+  }) async {
+    if (method == null) return;
+    final failure = error == null
+        ? null
+        : error is CitizenSdkException
+        ? error
+        : _failure(20);
+    if (failure != null) {
+      for (final known in CitizenSdkDiagnostic.points) {
+        if (known != 'NONE' && failure.message.endsWith(' at $known')) {
+          point = known;
+          break;
+        }
       }
     }
+    try {
+      await _rawResource('diagnose', [
+        2,
+        _hostId,
+        [
+          method,
+          phase,
+          failure == null ? 0 : failure.code.index + 1,
+          failure == null ? 0 : failure.stage.index + 1,
+          point,
+          elapsed.elapsedMilliseconds.clamp(0, 86400000),
+        ],
+      ]);
+    } on Object {
+      // 诊断持久化失败不改变原操作和真实资源终态。
+    }
+  }
 
-    final result = settle();
-    _commitResult = result;
-    return CitizenSdkOperation(
-      operationId: operation.operationId,
-      result: result,
-      cancel: operation.cancel,
+  void _remember(Future<void> Function() close) {
+    _resources.add(close);
+    if (_closing || _closed) throw _failure(22);
+  }
+
+  void _forget(Future<void> Function() close) => _resources.remove(close);
+  bool _resourceClosed(String id) => _closedResources.contains(id);
+  void _acknowledge(String id) {
+    if (!_closedResources.remove(id)) _acknowledgedResources.add(id);
+  }
+
+  void _markClosed(String id) {
+    if (!_acknowledgedResources.remove(id)) _closedResources.add(id);
+  }
+
+  void _failEvents(CitizenSdkException error, StackTrace stack) {
+    _protocolError ??= error;
+    if (!_events.isClosed) _events.addError(error, stack);
+    unawaited(_cancelCredentials().catchError((Object _) {}));
+  }
+
+  Stream<CitizenSdkEvent> get events => _events.stream;
+  CitizenSdkLifecycle get lifecycle => _closed
+      ? CitizenSdkLifecycle.disposed
+      : _withMemory((m) {
+          final out = m.alloc<Uint32>(4);
+          _status(_api.citizensdk_get_lifecycle(_handle, out));
+          return _enum(CitizenSdkLifecycle.values, out.value, 1);
+        });
+  Future<void> start() => _request(
+    (m, out) => _api.citizensdk_start(_handle, out),
+    (m, r) {},
+    diagnostic: 'start',
+  );
+  Future<void> stop() => _request(
+    (m, out) => _api.citizensdk_stop(_handle, out),
+    (m, r) {},
+    diagnostic: 'stop',
+  );
+  Future<List<CitizenSdkDiagnostic>> readDiagnostics() async {
+    final value = await _resource('readDiagnostics', const []);
+    if (value.length != 1 ||
+        value[0] is! List<Object?> ||
+        (value[0]! as List<Object?>).length > 128)
+      throw _failure(9);
+    return List.unmodifiable(
+      (value[0]! as List<Object?>).map(CitizenSdkDiagnostic.decode),
     );
   }
 
-  @override
-  Future<void> release() {
-    if (_released) return Future<void>.value();
-    return _releaseFuture ??= _release();
-  }
-
-  Future<void> _release() async {
-    _closing = true;
-    try {
-      try {
-        await _commitResult;
-      } on Object {
-        /* 仍须向原生归还未消费资源。 */
-      }
-      // 原生仍持有资源登记：提交成功或接纳后失败都必须归还，不能只清Dart对象。
-      await _session.invoke('releasePreparedWallet', fields: [_id]);
-      _released = true;
-      _session.unregisterResource(release);
-    } on Object {
-      _releaseFuture = null;
-      rethrow;
-    }
-  }
-}
-
-final class _CitizenSdkRecoveryPhrase implements CitizenSdkRecoveryPhrase {
-  _CitizenSdkRecoveryPhrase(this._session, this._bytes) {
-    try {
-      _session.registerResource(release);
-    } on Object {
-      _bytes.fillRange(0, _bytes.length, 0);
-      rethrow;
-    }
-  }
-  final CitizenSdkFlutterSession _session;
-  final Uint8List _bytes;
-  bool _released = false;
-  @override
-  Uint8List get bytes {
-    if (_released) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidState,
-        message: '备份显示资源已释放',
-      );
-    }
-    return _bytes.asUnmodifiableView();
-  }
-
-  @override
-  Future<void> release() async {
-    if (_released) return;
-    _released = true;
-    _bytes.fillRange(0, _bytes.length, 0);
-    _session.unregisterResource(release);
-  }
-
-  @override
-  String toString() => 'CitizenSdkRecoveryPhrase(redacted)';
-}
-
-final class _CitizenSdkPrivateKey implements CitizenSdkPrivateKey {
-  _CitizenSdkPrivateKey(this._session, this._id) {
-    _session.registerResource(close);
-    _events = _session.events.listen((event) {
-      if (event is CitizenSdkPrivateKeyClosed && event.resourceId == _id) {
-        _closeRequested = true;
-        _bytes?.fillRange(0, _bytes!.length, 0);
-        unawaited(
-          close().catchError((Object _) {
-            /* 调用方仍可重试close，秘密已经清零。 */
-          }),
-        );
-      }
-    });
-    if (_session.hasResourceClosed(_id)) {
-      _closeRequested = true;
-      unawaited(
-        close().catchError((Object _) {
-          /* 原生关闭早于资源接管。 */
-        }),
-      );
-    }
-  }
-  final CitizenSdkFlutterSession _session;
-  final String _id;
-  final Completer<void> _closed = Completer<void>();
-  Future<Uint8List>? _revealing;
-  Future<void>? _closing;
-  Uint8List? _bytes;
-  bool _closeRequested = false;
-  late final StreamSubscription<CitizenSdkEvent> _events;
-  @override
-  Future<void> get closed => _closed.future;
-  @override
-  Future<Uint8List> reveal() {
-    if (_closeRequested || _revealing != null) {
-      return Future<Uint8List>.error(
-        const CitizenSdkException(
-          code: CitizenSdkErrorCode.invalidState,
-          message: '私钥资源只允许一次显式查看',
-        ),
-      );
-    }
-    return _revealing = _reveal();
-  }
-
-  Future<Uint8List> _reveal() async {
-    final value = await _session.invoke('revealPrivateKey', fields: [_id]);
-    final raw = value[0]! as Uint8List;
-    try {
-      if (_closeRequested) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.cancelled,
-          message: '私钥显示已取消',
-        );
-      }
-      if (raw.length != 32) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '私钥显示结果长度无效',
-        );
-      }
-      _bytes = Uint8List.fromList(raw);
-      return _bytes!.asUnmodifiableView();
-    } finally {
-      raw.fillRange(0, raw.length, 0);
-    }
-  }
-
-  @override
-  Future<void> close() {
-    if (_closed.isCompleted) return _closed.future;
-    return _closing ??= _close();
-  }
-
-  Future<void> _close() async {
-    _closeRequested = true;
-    _bytes?.fillRange(0, _bytes!.length, 0);
-    try {
-      await _session.invoke('closePrivateKey', fields: [_id]);
-      try {
-        await _revealing;
-      } on Object {
-        /* 已请求关闭，不再显示迟到结果。 */
-      }
-      _bytes?.fillRange(0, _bytes!.length, 0);
-      _session.unregisterResource(close);
-      _session.acknowledgeResourceClosed(_id);
-      await _events.cancel();
-      _closed.complete();
-    } on Object {
-      _closing = null;
-      rethrow;
-    }
-  }
-
-  @override
-  String toString() => 'CitizenSdkPrivateKey(redacted)';
-}
-
-/// 独立密码学控制面：验签无需金库，签名只引用 SDK 安全建立的账户秘密。
-abstract interface class CitizenSigning {
-  /// 无实例的有界编码，原语只在Core执行，不在Dart复制哈希/SCALE实现。
-  static Future<Uint8List> encodePayload(CitizenSigningPayload payload) async {
-    const codec = CitizenSdkFlutterCodec();
-    final arguments = codec.encodeSigningPayload(payload);
-    final platform =
-        CitizenSdkPlatform.instance ?? CitizenSdk._defaultPlatform();
-    return codec.decodeSigningPayload(
-      await platform.invoke('encodeSigningPayload', arguments),
-      payload.kind,
+  Future<T> _ownUi<T>(Future<T> Function() work) {
+    final result = work();
+    final settled = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
     );
+    _uiWork.add(settled);
+    unawaited(settled.whenComplete(() => _uiWork.remove(settled)));
+    return result;
   }
 
-  /// Core审阅返回事实资源，App以原UI确认后提交同一资源；不返回裸句柄或待签秘密。
-  CitizenSdkOperation<CitizenQrReview> reviewQrRequest(String signRequest);
-  CitizenSdkOperation<CitizenQrSigned> signQrRequest(CitizenQrReview review);
+  Future<void> _closeResources() async {
+    while (_resources.isNotEmpty) {
+      Object? first;
+      StackTrace? trace;
+      for (final close in _resources.toList()) {
+        try {
+          await close();
+        } on Object catch (error, stack) {
+          first ??= error;
+          trace ??= stack;
+        }
+      }
+      if (first != null) Error.throwWithStackTrace(first, trace!);
+    }
+  }
 
-  CitizenSdkOperation<CitizenWalletSignature> sign({
-    required String accountId,
-    required Uint8List payload,
-  });
-
-  /// Routes a generic opaque intent using the account's persisted hot/cold mode.
-  CitizenSdkOperation<CitizenSigningOutcome> begin(CitizenSigningIntent intent);
-
-  /// Verifies and consumes exactly one instance-local external signing response.
-  CitizenSdkOperation<CitizenSigningCompleted> consumeExternalSignature({
-    required String sessionId,
-    required String response,
-  });
-
-  Future<bool> cancel(String sessionId);
-
-  /// 无状态纯验签，无需 open、模块实例、事件订阅、链数据库或设备金库。
-  ///
-  /// 仅编码公开输入，密码学验证由五端共同使用的 Rust 实现完成。
   static Future<bool> verify({
     required String accountId,
     required Uint8List signature,
     required Uint8List payload,
   }) async {
-    const codec = CitizenSdkFlutterCodec();
-    final arguments = codec.encodeVerification(
-      accountId: accountId,
-      signature: signature,
-      payload: payload,
-    );
-    final platform =
-        CitizenSdkPlatform.instance ?? CitizenSdk._defaultPlatform();
-    return codec.decodeVerification(
-      await platform.invoke('verifySignature', arguments),
-    );
-  }
-}
-
-final class _CitizenSigning implements CitizenSigning {
-  const _CitizenSigning(this._session, this._codec);
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-
-  @override
-  CitizenSdkOperation<CitizenQrReview> reviewQrRequest(String signRequest) =>
-      _session.operation(
-        'reviewQrRequest',
-        fields: [signRequest],
-        decode: (value) {
-          final facts = _codec.decodeQrReview(value[1]);
-          return _CitizenQrReview(
-            _session,
-            _resourceId(value[0]),
-            facts.document,
-            facts.palletName,
-            facts.callName,
-            facts.callArguments,
-          );
-        },
+    _checkAbi();
+    return _withMemory((m) {
+      final out = m.alloc<Uint8>(1);
+      _status(
+        _api.citizensdk_verify_signature(
+          m.account(accountId),
+          m.view(signature, 64),
+          m.view(payload),
+          out,
+        ),
       );
-
-  @override
-  CitizenSdkOperation<CitizenQrSigned> signQrRequest(CitizenQrReview review) {
-    if (review is! _CitizenQrReview ||
-        !identical(review._session, _session) ||
-        review._released ||
-        review._signing) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: '审阅资源无效、已使用或不属于本实例',
-      );
-    }
-    final operation = _session.operation<CitizenQrSigned>(
-      'signQrRequest',
-      fields: [review._id],
-      decode: (value) {
-        final document = _codec.decodeQrDocument(value[0], signed: true);
-        return CitizenQrSigned(
-          canonicalText: document.canonicalText,
-          qrImage: CitizenQrImage(
-            width: value[1]! as int,
-            height: value[2]! as int,
-            luminance: value[3]! as Uint8List,
-          ),
-          requestId: document.requestId!,
-          signerAccountId: document.signerAccountId!,
-          signature: document.signature!,
-          signRequest: document.signRequest!,
-        );
-      },
-    );
-    // 单次提交由原生/Core所有权守卫最终裁决；Dart只阻止同对象并发调用。
-    review._signing = true;
-    return CitizenSdkOperation(
-      operationId: operation.operationId,
-      result: operation.result.whenComplete(() {
-        review._signing = false;
-      }),
-      cancel: operation.cancel,
-    );
-  }
-
-  @override
-  CitizenSdkOperation<CitizenWalletSignature> sign({
-    required String accountId,
-    required Uint8List payload,
-  }) {
-    if (payload.length > CitizenSdkFlutterCodec.maximumSigningPayloadBytes) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: '签名payload超过16MiB',
-      );
-    }
-    final copy = Uint8List.fromList(payload);
-    try {
-      final operation = _session.operation<CitizenWalletSignature>(
-        'signWalletPayload',
-        fields: [accountId, copy],
-        decode: (value) =>
-            _codec.decodeSignature(accountId: accountId, raw: value[0]),
-      );
-      return CitizenSdkOperation(
-        operationId: operation.operationId,
-        result: operation.result.whenComplete(() {
-          copy.fillRange(0, copy.length, 0);
-        }),
-        cancel: operation.cancel,
-      );
-    } on Object {
-      copy.fillRange(0, copy.length, 0);
-      rethrow;
-    }
-  }
-
-  @override
-  CitizenSdkOperation<CitizenSigningOutcome> begin(
-    CitizenSigningIntent intent,
-  ) => _session.operation(
-    'beginSigning',
-    fields: [
-      intent.accountId,
-      Uint8List.fromList(intent.payload),
-      intent.transform.kind.name,
-      Uint8List.fromList(intent.transform.domain),
-      intent.externalSignerTransport?.name ?? 'none',
-      intent.opaqueAction,
-      intent.ttlSeconds,
-    ],
-    decode: (value) => _codec.decodeSigningOutcome(value[0]),
-  );
-
-  @override
-  CitizenSdkOperation<CitizenSigningCompleted> consumeExternalSignature({
-    required String sessionId,
-    required String response,
-  }) => _session.operation(
-    'consumeExternalSignature',
-    fields: [sessionId, response],
-    decode: (value) {
-      final outcome = _codec.decodeSigningOutcome(value[0]);
-      if (outcome is! CitizenSigningCompleted) {
-        throw const CitizenSdkException(
-          code: CitizenSdkErrorCode.decode,
-          message: '外部签名未返回完成结果',
-        );
-      }
-      return outcome;
-    },
-  );
-
-  @override
-  Future<bool> cancel(String sessionId) async =>
-      (await _session.invoke('cancelSigning', fields: [sessionId]))[0]! as bool;
-}
-
-final class _CitizenWalletInspection implements CitizenWalletInspection {
-  _CitizenWalletInspection(this._session, this._codec, this._id, this.state) {
-    _session.registerResource(release);
-  }
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-  final String _id;
-  @override
-  final CitizenWalletState state;
-  bool _released = false;
-  Future<void>? _releasing;
-
-  CitizenSdkOperation<CitizenWalletState> _change(
-    String method,
-    int index, [
-    String? name,
-  ]) {
-    if (_released || _releasing != null) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidState,
-        message: '钱包检查资源正在释放或已释放',
-      );
-    }
-    if (!state.diagnostics.any((record) => record.walletIndex == index)) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.notFound,
-        message: '检查快照中没有该异常钱包',
-      );
-    }
-    // 只交不透明资源号和目标索引；原记录、修订与授权由Core保有并重新核实。
-    return _session.operation(
-      method,
-      fields: [_id, index, if (name != null) name.trim()],
-      decode: (value) => _codec.decodeWalletState(value[0]),
-    );
-  }
-
-  @override
-  CitizenSdkOperation<CitizenWalletState> repairHot(int walletIndex) =>
-      _change('repairHotWallet', walletIndex);
-  @override
-  CitizenSdkOperation<CitizenWalletState> rename({
-    required int walletIndex,
-    required String name,
-  }) => _change('renameDiagnosticWallet', walletIndex, name);
-  @override
-  CitizenSdkOperation<CitizenWalletState> delete(int walletIndex) =>
-      _change('deleteDiagnosticWallet', walletIndex);
-  @override
-  Future<void> release() {
-    if (_released) return Future<void>.value();
-    return _releasing ??= _release();
-  }
-
-  Future<void> _release() async {
-    try {
-      await _session.invoke('releaseWalletInspection', fields: [_id]);
-      _released = true;
-      _session.unregisterResource(release);
-    } on Object {
-      _releasing = null;
-      rethrow;
-    }
-  }
-}
-
-final class _CitizenQrReview implements CitizenQrReview {
-  _CitizenQrReview(
-    this._session,
-    this._id,
-    this.document,
-    this.palletName,
-    this.callName,
-    this.callArguments,
-  ) {
-    _session.registerResource(release);
-  }
-  final CitizenSdkFlutterSession _session;
-  final String _id;
-  @override
-  final CitizenQrDocument document;
-  @override
-  final String palletName;
-  @override
-  final String callName;
-  @override
-  final String callArguments;
-  @override
-  String get requestId => document.requestId!;
-  @override
-  String get signerAccountId => document.signerAccountId!;
-  @override
-  int get expiresAt => document.expiresAt!;
-  bool _released = false;
-  bool _signing = false;
-  Future<void>? _releasing;
-  @override
-  Future<void> release() {
-    if (_released) return Future<void>.value();
-    return _releasing ??= _release();
-  }
-
-  Future<void> _release() async {
-    try {
-      await _session.invoke('releaseQrReview', fields: [_id]);
-      _released = true;
-      _session.unregisterResource(release);
-    } on Object {
-      _releasing = null;
-      rethrow;
-    }
-  }
-}
-
-final class _CitizenQr implements CitizenQr {
-  @override
-  Future<CitizenQrDocument> encodeDocument(CitizenQrContent content) async {
-    final value = await _session.invoke(
-      'qrEncodeDocument',
-      fields: [content.inputJson],
-    );
-    return const CitizenSdkFlutterCodec().decodeQrDocument(value[0]);
-  }
-
-  @override
-  Future<CitizenQrAuthorization> prepareAccountAuthorization({
-    required int action,
-    required Uint8List payload,
-    required String accountId,
-  }) async {
-    final value = await _session.invoke(
-      'qrPrepareAccountAuthorization',
-      fields: [action, payload, accountId],
-    );
-    return const CitizenSdkFlutterCodec().decodeQrAuthorization(value[0]);
-  }
-
-  const _CitizenQr(this._session);
-
-  final CitizenSdkFlutterSession _session;
-
-  @override
-  Future<CitizenQrScanResult> parseForPurpose(
-    String text,
-    CitizenQrScanPurpose purpose,
-  ) async {
-    final document = await parse(text);
-    // 只投影Core给出的允许集，不在Dart另写kind→用途表。
-    if (document.scanPurposeMask & (1 << (purpose.value - 1)) == 0) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: '二维码不属于当前扫码用途',
-      );
-    }
-    return CitizenQrScanResult(purpose: purpose, document: document);
-  }
-
-  @override
-  Future<CitizenQrCapture> openCapture(CitizenQrScanPurpose purpose) async {
-    final value = await _session.invoke(
-      'openQrCapture',
-      fields: [purpose.value],
-    );
-    final capture = _CitizenQrCapture(
-      _session,
-      _resourceId(value[0]),
-      value[1]! as int,
-      const CitizenSdkFlutterCodec().decodeQrPreview(value.sublist(2)),
-      purpose,
-    );
-    try {
-      await capture.resume();
-      return capture;
-    } on Object {
-      await capture.close();
-      rethrow;
-    }
-  }
-
-  @override
-  Future<List<CitizenQrScanResult>> decodeImage(
-    Uint8List encodedImage,
-    CitizenQrScanPurpose purpose,
-  ) async {
-    final value = await _session.invoke(
-      'qrDecodeImage',
-      fields: [Uint8List.fromList(encodedImage), purpose.value],
-    );
-    return List<CitizenQrScanResult>.unmodifiable(
-      (value[0]! as List<Object?>).map((raw) {
-        final document = const CitizenSdkFlutterCodec().decodeQrDocument(raw);
-        if (document.scanPurposeMask & (1 << (purpose.value - 1)) == 0) {
-          throw const CitizenSdkException(
-            code: CitizenSdkErrorCode.invalidArgument,
-            message: '图片二维码不属于当前用途',
-          );
-        }
-        return CitizenQrScanResult(purpose: purpose, document: document);
-      }),
-    );
-  }
-
-  @override
-  Future<CitizenQrDocument> parse(String text) async {
-    final value = await _session.invoke('qrParse', fields: <Object?>[text]);
-    return const CitizenSdkFlutterCodec().decodeQrDocument(value[0]);
-  }
-
-  @override
-  Future<String> createSignRequest({
-    required int action,
-    required String signerAccountId,
-    required Uint8List reviewPayload,
-    int ttlSeconds = 120,
-  }) async =>
-      (await _session.invoke(
-            'qrCreateSignRequest',
-            fields: <Object?>[
-              action,
-              signerAccountId,
-              Uint8List.fromList(reviewPayload),
-              ttlSeconds,
-            ],
-          ))[0]!
-          as String;
-
-  @override
-  Future<void> validateSignResponse({
-    required String sessionId,
-    required String response,
-  }) async {
-    await _session.invoke(
-      'qrValidateSignResponse',
-      fields: [sessionId, response],
-    );
-  }
-
-  @override
-  Future<Uint8List> consumeSignResponse(String signResponse) async {
-    final value = await _session.invoke(
-      'qrConsumeSignResponse',
-      fields: <Object?>[signResponse],
-    );
-    return Uint8List.fromList(value[0]! as Uint8List).asUnmodifiableView();
-  }
-
-  @override
-  Future<bool> cancelSignRequest(String requestId) async =>
-      (await _session.invoke(
-            'qrCancelSignRequest',
-            fields: <Object?>[requestId],
-          ))[0]!
-          as bool;
-
-  @override
-  Future<String> encodeAccountId(String accountId) async =>
-      (await _session.invoke(
-            'qrEncodeAccountId',
-            fields: <Object?>[accountId],
-          ))[0]!
-          as String;
-
-  @override
-  Future<CitizenQrScanResult> decodeLuminance({
-    required Uint8List data,
-    required int width,
-    required int height,
-    required int rowStride,
-    required CitizenQrScanPurpose purpose,
-  }) async {
-    final value = await _session.invoke(
-      'qrDecodeLuminance',
-      fields: <Object?>[Uint8List.fromList(data), width, height, rowStride],
-    );
-    final document = const CitizenSdkFlutterCodec().decodeQrDocument(value[0]);
-    if (document.scanPurposeMask & (1 << (purpose.value - 1)) == 0) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: '二维码不属于当前用途',
-      );
-    }
-    return CitizenQrScanResult(purpose: purpose, document: document);
-  }
-
-  @override
-  Future<CitizenQrImage> encode(String text, {int scale = 4}) async {
-    final value = await _session.invoke(
-      'qrEncode',
-      fields: <Object?>[text, scale],
-    );
-    return CitizenQrImage(
-      width: value[0]! as int,
-      height: value[1]! as int,
-      luminance: value[2]! as Uint8List,
-    );
-  }
-}
-
-final class _CitizenQrCapture implements CitizenQrCapture {
-  _CitizenQrCapture(
-    this._session,
-    this._id,
-    this.textureId,
-    this._preview,
-    this._purpose,
-  ) {
-    _session.registerResource(close);
-    _events = _session.events.listen((event) {
-      if (event is! CitizenSdkQrCaptureEvent ||
-          event.resourceId != _id ||
-          _closed) {
-        return;
-      }
-      if (event.preview != null) {
-        _preview = event.preview!;
-        _previews.add(_preview);
-      }
-      if (event.result != null && !_closingRequested) {
-        if (event.result!.purpose != _purpose) {
-          _errors.add(
-            const CitizenSdkException(
-              code: CitizenSdkErrorCode.integrity,
-              message: '采集用途与资源不一致',
-            ),
-          );
-          unawaited(close());
-        } else {
-          _results.add(event.result!);
-        }
-      }
-      if (event.error != null) _errors.add(event.error!);
-      if (event.closed) {
-        unawaited(
-          close().catchError((Object error) {
-            if (!_closed && error is CitizenSdkException) _errors.add(error);
-          }),
-        );
-      }
+      return _boolean(out.value);
     });
-    if (_session.hasResourceClosed(_id)) unawaited(close());
-  }
-  final CitizenSdkFlutterSession _session;
-  final String _id;
-  final CitizenQrScanPurpose _purpose;
-  @override
-  final int textureId;
-  CitizenQrPreview _preview;
-  @override
-  CitizenQrPreview get preview => _preview;
-  final _results = StreamController<CitizenQrScanResult>.broadcast();
-  final _errors = StreamController<CitizenSdkException>.broadcast();
-  final _previews = StreamController<CitizenQrPreview>.broadcast();
-  late final StreamSubscription<CitizenSdkEvent> _events;
-  bool _closed = false;
-  bool _closingRequested = false;
-  Future<void>? _closing;
-  @override
-  Stream<CitizenQrScanResult> get results => _results.stream;
-  @override
-  Stream<CitizenSdkException> get errors => _errors.stream;
-  @override
-  Stream<CitizenQrPreview> get previewChanges => _previews.stream;
-  @override
-  Future<void> setTorch(bool enabled) async {
-    await _session.invoke('setQrCaptureTorch', fields: [_id, enabled]);
   }
 
-  @override
-  Future<void> pause() async {
-    await _session.invoke('pauseQrCapture', fields: [_id]);
+  static Future<Uint8List> encodePayload(CitizenSigningPayload payload) async {
+    _checkAbi();
+    return _withMemory(
+      (m) => m
+          .copy(
+            (b, cap, n) => _api.citizensdk_encode_signing_payload(
+              payload.kind,
+              m.view(payload.fieldsJson, 4096),
+              m.view(payload.payloadBytes),
+              b,
+              cap,
+              n,
+            ),
+            16 * 1024 * 1024,
+          )
+          .asUnmodifiableView(),
+    );
   }
 
-  @override
-  Future<void> resume() async {
-    if (_closingRequested) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.cancelled,
-        message: '采集资源已关闭',
-      );
-    }
-    await _session.invoke('resumeQrCapture', fields: [_id]);
-  }
-
-  @override
   Future<void> close() {
-    if (_closed) return Future<void>.value();
-    _closingRequested = true;
-    return _closing ??= _close();
+    if (_closed) return Future.value();
+    return _closeFuture ??= _close();
   }
 
   Future<void> _close() async {
+    _closing = true;
     try {
-      await _session.invoke('closeQrCapture', fields: [_id]);
+      // 先请求取消，再等待提交资源释放；释放会等待真实终态，不能挡住取消本身。
+      for (final id in _pending.keys.toList()) {
+        final elapsed = Stopwatch()..start();
+        final code = _api.citizensdk_cancel_request(_handle, id);
+        unawaited(
+          _diagnose(
+            'cancelOperation',
+            'COMPLETE',
+            elapsed,
+            error: code == 0 ? null : _failure(code),
+          ),
+        );
+        if (code != 0 && code != 4 && code != 7) throw _failure(code);
+      }
+      await _cancelCredentials();
+      await _closeResources();
+      while (_pending.isNotEmpty) {
+        await Future.wait(_pending.values.map((p) => p.finished));
+      }
+      await _closeResources();
+      for (final token in _preparedTransactions.values.toList()) {
+        _status(_api.citizensdk_prepared_transaction_release(_handle, token));
+      }
+      _preparedTransactions.clear();
+      if (!_detached) {
+        _status(_api.citizensdk_detach(_handle));
+        _detached = true;
+      }
+      await _resource('close', const []);
       _closed = true;
-      _session.unregisterResource(close);
-      _session.acknowledgeResourceClosed(_id);
-      await _events.cancel();
-      // 暂停的宿主Stream订阅不能阻塞已真实排空的相机/纹理释放。
-      unawaited(_results.close());
-      unawaited(_errors.close());
-      unawaited(_previews.close());
+      while (_uiWork.isNotEmpty) {
+        await Future.wait(_uiWork.toList());
+      }
+      await _closeResources();
+      _port?.close();
+      _instances.remove(_hostId);
+      WidgetsBinding.instance.removeObserver(this);
+      _closedResources.clear();
+      _acknowledgedResources.clear();
+      unawaited(_events.close().catchError((Object _) {}));
     } on Object {
-      _closing = null;
+      _closeFuture = null;
       rethrow;
     }
   }
-}
-
-final class _CitizenTransactions implements CitizenTransactions {
-  const _CitizenTransactions(this._session, this._codec);
-
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
 
   @override
-  Future<CitizenPreparedTransaction> prepareTransaction(
-    Uint8List sourceAccountId,
-    Uint8List callData,
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) unawaited(_cancelCredentials().catchError((Object _) {}));
+  }
+
+  void _receiveCredential(CitizenSdkCredentialRequest event) {
+    if (_credentials.containsKey(event.hostOperationId) ||
+        _credentials.length >= 64) {
+      throw const CitizenSdkException(
+        code: CitizenSdkErrorCode.conflict,
+        message: '凭据挑战重复或超过并发上限',
+      );
+    }
+    final pending = _Credential(event.hostOperationId);
+    _credentials[event.hostOperationId] = pending;
+    // 先退出当前事件派发再调用宿主/取消通道，避免同步平台回调重入同一广播流。
+    // 立即登记真实完成Future，关闭仍须等待提供者返回及秘密副本finally清零。
+    pending.finished = Future<void>.microtask(
+      () => _provideCredential(event, pending),
+    );
+    unawaited(pending.finished.catchError((Object _) {}));
+  }
+
+  Future<void> _provideCredential(
+    CitizenSdkCredentialRequest event,
+    _Credential pending,
   ) async {
-    if (sourceAccountId.length != 32) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: 'sourceAccountId 必须是 32 字节',
-      );
+    Uint8List? supplied;
+    Uint8List? owned;
+    try {
+      if (_closing ||
+          _closed ||
+          !_foreground ||
+          _protocolError != null ||
+          _credentialProvider == null) {
+        await _cancelCredential(pending);
+        return;
+      }
+      try {
+        supplied = await _credentialProvider(
+          CitizenCredentialChallenge(
+            hostOperationId: event.hostOperationId,
+            keyPurpose: event.keyPurpose,
+            accountId: event.accountId,
+            cancelled: pending.cancelled.future,
+          ),
+        );
+      } on Object {
+        // 宿主异常可能含输入，既不记录、也不作为SDK异常文案或事件转发。
+        supplied = null;
+      }
+      if (pending.revoked ||
+          _closing ||
+          _closed ||
+          !_foreground ||
+          _protocolError != null) {
+        await _cancelCredential(pending);
+        return;
+      }
+      if (supplied != null && supplied.length > 1024) {
+        await _cancelCredential(pending);
+        return;
+      }
+      owned = supplied == null ? null : Uint8List.fromList(supplied);
+      // 必须等方法通道完成编码和回包再擦除，不能在返回给codec之前清零。
+      await _resource('respondCredential', <Object?>[
+        pending.id.toString(),
+        owned,
+      ]);
+    } finally {
+      owned?.fillRange(0, owned.length, 0);
+      // 只能保证SDK自己的副本；不承诺擦除宿主的只读视图或任意额外副本。
+      try {
+        supplied?.fillRange(0, supplied.length, 0);
+      } on UnsupportedError {
+        /* 宿主只读副本。 */
+      }
+      if (identical(_credentials[pending.id], pending))
+        _credentials.remove(pending.id);
     }
-    if (callData.isEmpty ||
-        callData.length >
-            CitizenSdkFlutterCodec.maximumTransactionCallDataBytes) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: 'callData 必须包含 1..1 MiB 字节',
-      );
-    }
-    final source = Uint8List.fromList(sourceAccountId);
-    final call = Uint8List.fromList(callData);
-    final value = await _session.invoke(
-      'prepareTransaction',
-      fields: <Object?>[citizenAccountIdFromBytes(source), call],
-    );
-    final prepared = _codec.decodePreparedTransaction(value[0]);
-    if (!_bytesEqual(prepared.sourceAccountId, source)) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.integrity,
-        message: 'transaction preparation source 与请求不一致',
-      );
-    }
-    return prepared;
   }
 
-  @override
-  Future<void> cancelPreparedTransaction(String preparationId) async {
-    await _session.invoke(
-      'cancelPreparedTransaction',
-      fields: <Object?>[preparationId],
-    );
-  }
-
-  @override
-  Future<CitizenTransactionExecution> executePreparedTransaction(
-    String preparationId,
-  ) async {
-    final value = await _session.invoke(
-      'executePreparedTransaction',
-      fields: <Object?>[preparationId],
-    );
-    return _codec.decodeTransactionExecution(value[0]);
-  }
-
-  @override
-  Future<CitizenTransactionExecutionCompleted>
-  consumePreparedTransactionQrResponse(
-    String executionId,
-    String response,
-  ) async {
-    final value = await _session.invoke(
-      'consumePreparedTransactionQrResponse',
-      fields: <Object?>[executionId, response],
-    );
-    final completed = _codec.decodeTransactionExecution(value[0]);
-    if (completed is! CitizenTransactionExecutionCompleted) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.integrity,
-        message: 'QR_V1 response 未返回 transaction terminal',
-      );
+  Future<void> _cancelCredential(_Credential pending) async {
+    pending.revoke();
+    if (_closed) return;
+    try {
+      await _resource('cancelCredential', <Object?>[pending.id.toString()]);
+    } on CitizenSdkException catch (error) {
+      // 精确请求已终结时的取消无副作用；其他失败不能伪装成原生排空成功。
+      if (error.code != CitizenSdkErrorCode.invalidState &&
+          error.code != CitizenSdkErrorCode.notFound) {
+        rethrow;
+      }
     }
-    return completed;
   }
 
-  @override
-  Future<void> cancelPreparedTransactionExecution(String executionId) async {
-    await _session.invoke(
-      'cancelPreparedTransactionExecution',
-      fields: <Object?>[executionId],
-    );
+  Future<void> _cancelCredentials() async {
+    final pending = List<_Credential>.of(_credentials.values);
+    for (final request in pending) {
+      request.revoke();
+    }
+    for (final request in pending) {
+      await _cancelCredential(request);
+    }
+    // 取消通知不代替提供者实际返回；关闭等待秘密副本的finally真正完成。
+    for (final request in pending) {
+      try {
+        await request.finished;
+      } on Object {
+        /* 原始操作通过自己的结果报告失败。 */
+      }
+    }
+  }
+
+  void _nativeEvent(List<Object?> raw) {
+    try {
+      final kind = raw[3]! as String,
+          payload = raw[4]! as List<Object?>,
+          sequence = _eventSequence++;
+      switch (kind) {
+        case 'credentialRequest':
+          if (payload.length != 3 ||
+              payload[0] is! String ||
+              payload[1] is! String ||
+              payload[2] != null && payload[2] is! String)
+            throw _failure(9);
+          _receiveCredential(
+            CitizenSdkCredentialRequest(
+              sequence: sequence,
+              hostOperationId: BigInt.parse(payload[0]! as String),
+              keyPurpose: payload[1]! as String,
+              accountId: payload[2] as String?,
+            ),
+          );
+        case 'credentialCancelled':
+          if (payload.length != 1 || payload[0] is! String) throw _failure(9);
+          _credentials[BigInt.parse(payload[0]! as String)]?.revoke();
+        case 'privateKeyClosed':
+          if (payload.length != 1 || payload[0] is! String) throw _failure(9);
+          final id = payload[0]! as String;
+          _markClosed(id);
+          _events.add(
+            CitizenSdkPrivateKeyClosed(sequence: sequence, resourceId: id),
+          );
+        case 'qrCaptureClosed':
+          if (payload.length != 1 || payload[0] is! String) throw _failure(9);
+          final id = payload[0]! as String;
+          _markClosed(id);
+          _events.add(
+            CitizenSdkQrCaptureEvent(
+              sequence: sequence,
+              resourceId: id,
+              closed: true,
+            ),
+          );
+        case 'qrCapturePreview':
+          if (payload.length != 4 || payload[0] is! String) throw _failure(9);
+          _events.add(
+            CitizenSdkQrCaptureEvent(
+              sequence: sequence,
+              resourceId: payload[0]! as String,
+              preview: _preview(payload.sublist(1)),
+            ),
+          );
+        case 'qrCaptureResult':
+          if (payload.length != 3 ||
+              payload[0] is! String ||
+              payload[1] is! int ||
+              payload[2] is! String)
+            throw _failure(9);
+          final purpose = CitizenQrScanPurpose.values.firstWhere(
+            (p) => p.value == payload[1],
+          );
+          _events.add(
+            CitizenSdkQrCaptureEvent(
+              sequence: sequence,
+              resourceId: payload[0]! as String,
+              result: CitizenQrScanResult(
+                purpose: purpose,
+                document: _document(payload[2]! as String),
+              ),
+            ),
+          );
+        case 'qrCaptureError':
+          if (payload.length != 4 ||
+              payload[0] is! String ||
+              payload[1] is! int ||
+              payload[3] is! int)
+            throw _failure(9);
+          _events.add(
+            CitizenSdkQrCaptureEvent(
+              sequence: sequence,
+              resourceId: payload[0]! as String,
+              error: _failure(payload[1]! as int, '采集失败', payload[3]! as int),
+            ),
+          );
+      }
+    } on Object catch (error, stack) {
+      _failEvents(error is CitizenSdkException ? error : _failure(9), stack);
+    }
   }
 }
 
-bool _bytesEqual(Uint8List left, Uint8List right) {
-  if (left.length != right.length) return false;
-  var difference = 0;
-  for (var index = 0; index < left.length; index += 1) {
-    difference |= left[index] ^ right[index];
-  }
-  return difference == 0;
+final class _Request {
+  _Request(this.deliver, this.fail, this.finished);
+  final void Function(int) deliver;
+  final void Function(Object) fail;
+  final Future<void> finished;
 }
 
-bool _startsWithBytes(Uint8List value, Uint8List prefix) {
-  if (value.length < prefix.length) return false;
-  for (var index = 0; index < prefix.length; index += 1) {
-    if (value[index] != prefix[index]) return false;
-  }
-  return true;
-}
-
-int _compareBytes(Uint8List left, Uint8List right) {
-  final shared = left.length < right.length ? left.length : right.length;
-  for (var index = 0; index < shared; index += 1) {
-    final difference = left[index] - right[index];
-    if (difference != 0) return difference;
-  }
-  return left.length - right.length;
-}
-
-final class _CitizenHistory implements CitizenHistory {
-  const _CitizenHistory(this._session, this._codec);
-
-  final CitizenSdkFlutterSession _session;
-  final CitizenSdkFlutterCodec _codec;
-
-  @override
-  Future<CitizenTransactionHistoryPage> getTransactionHistory({
-    String? beforeExecutionId,
-    int limit = 100,
-  }) async {
-    if (limit < 1 || limit > 100) {
-      throw const CitizenSdkException(
-        code: CitizenSdkErrorCode.invalidArgument,
-        message: '交易历史 limit 必须在 1..100 范围内',
-      );
-    }
-    final value = await _session.invoke(
-      'getTransactionHistory',
-      fields: <Object?>[beforeExecutionId, limit],
-    );
-    return _codec.decodeTransactionHistoryPage(value[0]);
-  }
-
-  @override
-  Future<CitizenTransactionHistoryPage> syncTransactionHistory() async {
-    final value = await _session.invoke('syncTransactionHistory');
-    return _codec.decodeTransactionHistoryPage(value[0]);
-  }
-}
-
-void _requireCount(
-  int count, {
-  required int minimum,
-  required int maximum,
-  required String label,
-}) {
-  if (count < minimum || count > maximum) {
-    throw CitizenSdkException(
-      code: CitizenSdkErrorCode.invalidArgument,
-      message: '$label 必须包含 $minimum..$maximum 项',
-    );
+final class _Credential {
+  _Credential(this.id);
+  final BigInt id;
+  final Completer<void> cancelled = Completer<void>();
+  Future<void> finished = Future<void>.value();
+  bool revoked = false;
+  void revoke() {
+    if (revoked) return;
+    revoked = true;
+    cancelled.complete();
   }
 }

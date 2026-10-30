@@ -68,30 +68,20 @@ internal final class CitizenSDKHostBridge {
     func withStores<T>(_ body:(UnsafePointer<citizensdk_stores_v1_t>)->T)->T {
       var publicConfig=database.config(),secureConfig=secureDatabase.config()
       return withUnsafePointer(to:&publicConfig){publicPointer in withUnsafePointer(to:&secureConfig){securePointer in withUnsafePointer(to:&vaultVTable){vaultPointer in
-        var stores=citizensdk_stores_v1_t();stores.struct_size=UInt32(MemoryLayout<citizensdk_stores_v1_t>.size);stores.abi_version=1
+        var stores=citizensdk_stores_v1_t();stores.struct_size=UInt32(MemoryLayout<citizensdk_stores_v1_t>.size);stores.abi_version = CITIZENSDK_ABI_VERSION
         stores.public_store=modules.contains(.chain) ? publicPointer : nil;stores.secure_store=modules.usesSecrets ? securePointer : nil;stores.secret_vault=modules.usesSecrets ? vaultPointer : nil
         return withUnsafePointer(to:&stores,body)
       }}}
     }
 
-    func registerSecretPresence(handle: UInt64) throws {
-        guard modules.usesSecrets else { return }
-        var provider = citizensdk_host_secret_presence_v1_t()
-        provider.struct_size = UInt32(MemoryLayout<citizensdk_host_secret_presence_v1_t>.size)
-        provider.abi_version = 1
-        provider.context = Unmanaged.passUnretained(self).toOpaque()
-        provider.has_account_secret = citizenSDKAccountSecretPresence
-        provider.has_any_wallet_key = citizenSDKWalletKeyPresence
-        try CitizenSDKChecks.requireOK(citizensdk_set_secret_presence_provider(handle, &provider), "秘密存在性提供者登记失败")
-    }
 
-    func hasAccountSecret(_ accountID: Data) throws -> Bool { try secureDatabase.hasAccountSecret(accountID: accountID) }
+
     func hasAnyWalletKey(_ walletIndex: UInt32) throws -> Bool { try vault().hasAnyWalletKey(walletIndex: walletIndex) }
 
     private func configureVTables() {
         let context = Unmanaged.passUnretained(self).toOpaque()
         vaultVTable.struct_size = UInt32(MemoryLayout<citizensdk_host_secret_vault_v1_t>.size)
-        vaultVTable.abi_version = 1
+        vaultVTable.abi_version = CITIZENSDK_ABI_VERSION
         vaultVTable.context = context
         vaultVTable.availability = citizenSDKVaultAvailability
         vaultVTable.ensure_wallet_kek = citizenSDKVaultEnsure
@@ -100,6 +90,7 @@ internal final class CitizenSDKHostBridge {
         vaultVTable.unwrap_dek = citizenSDKVaultUnwrap
         vaultVTable.retire_wallet_kek = citizenSDKVaultRetire
         vaultVTable.authorize_add_accounts = citizenSDKVaultAuthorizeAddAccounts
+        vaultVTable.has_any_wallet_key = citizenSDKWalletKeyPresence
     }
 
     static func storageRoot(applicationSupport: URL, applicationID: String?) throws -> URL {
@@ -178,7 +169,7 @@ private func citizenSDKFixedData<T>(_ value: T, count: Int) -> Data {
 }
 
 private func citizenSDKWalletKey(_ value: citizensdk_host_wallet_key_ref_v1_t) throws -> CitizenSDKHostWalletKey {
-    try CitizenSDKChecks.require(value.struct_size >= UInt32(MemoryLayout<citizensdk_host_wallet_key_ref_v1_t>.size) && value.abi_version == 1,
+    try CitizenSDKChecks.require(value.struct_size >= UInt32(MemoryLayout<citizensdk_host_wallet_key_ref_v1_t>.size) && value.abi_version == CITIZENSDK_ABI_VERSION,
                                  "wallet key reference ABI is invalid")
     return CitizenSDKHostWalletKey(walletIndex: value.wallet_index,
                                    generation: citizenSDKFixedData(value.generation.bytes, count: 16))
@@ -192,7 +183,7 @@ private func citizenSDKCompleteStatus(_ operationID: UInt64, _ sdkContext: Unsaf
                                       _ code: CitizenSDKErrorCode) {
     var result = citizensdk_host_status_result_v1_t()
     result.struct_size = UInt32(MemoryLayout<citizensdk_host_status_result_v1_t>.size)
-    result.abi_version = 1
+    result.abi_version = CITIZENSDK_ABI_VERSION
     result.host_operation_id = operationID
     result.error_code = code.rawValue
     completion?(sdkContext, &result)
@@ -202,18 +193,7 @@ private func citizenSDKCode(_ error: Error) -> Int32 {
     (error as? CitizenSDKError)?.code.rawValue ?? CitizenSDKErrorCode.storage.rawValue
 }
 
-private func citizenSDKAccountSecretPresence(_ context: UnsafeMutableRawPointer?, _ operationID: UInt64,
-    _ account: citizensdk_account_id_t, _ sdkContext: UnsafeMutableRawPointer?,
-    _ completion: citizensdk_host_bool_completion_v1_t?) -> Int32 {
-    guard let host = citizenSDKHost(context), completion != nil else { return CitizenSDKErrorCode.invalidArgument.rawValue }
-    do {
-        var result = citizensdk_host_bool_result_v1_t()
-        result.struct_size = UInt32(MemoryLayout<citizensdk_host_bool_result_v1_t>.size)
-        result.abi_version = 1; result.host_operation_id = operationID; result.error_code = 0
-        result.value = try host.hasAccountSecret(citizenSDKFixedData(account.bytes, count: 32)) ? 1 : 0
-        completion?(sdkContext, &result); return 0
-    } catch { return citizenSDKCode(error) }
-}
+
 private func citizenSDKWalletKeyPresence(_ context: UnsafeMutableRawPointer?, _ operationID: UInt64,
     _ walletIndex: UInt32, _ sdkContext: UnsafeMutableRawPointer?,
     _ completion: citizensdk_host_bool_completion_v1_t?) -> Int32 {
@@ -221,7 +201,7 @@ private func citizenSDKWalletKeyPresence(_ context: UnsafeMutableRawPointer?, _ 
     do {
         var result = citizensdk_host_bool_result_v1_t()
         result.struct_size = UInt32(MemoryLayout<citizensdk_host_bool_result_v1_t>.size)
-        result.abi_version = 1; result.host_operation_id = operationID; result.error_code = 0
+        result.abi_version = CITIZENSDK_ABI_VERSION; result.host_operation_id = operationID; result.error_code = 0
         result.value = try host.hasAnyWalletKey(walletIndex) ? 1 : 0
         completion?(sdkContext, &result); return 0
     } catch { return citizenSDKCode(error) }
@@ -233,7 +213,7 @@ private func citizenSDKVaultAvailability(_ context: UnsafeMutableRawPointer?, _ 
     guard let host = citizenSDKHost(context), completion != nil else { return CitizenSDKErrorCode.invalidArgument.rawValue }
     var result = citizensdk_host_vault_availability_result_v1_t()
     result.struct_size = UInt32(MemoryLayout<citizensdk_host_vault_availability_result_v1_t>.size)
-    result.abi_version = 1
+    result.abi_version = CITIZENSDK_ABI_VERSION
     result.host_operation_id = operationID
     result.error_code = 0
     result.availability = host.vaultAvailability().rawValue
@@ -259,7 +239,7 @@ private func citizenSDKVaultHas(_ context: UnsafeMutableRawPointer?, _ operation
     do {
         var result = citizensdk_host_bool_result_v1_t()
         result.struct_size = UInt32(MemoryLayout<citizensdk_host_bool_result_v1_t>.size)
-        result.abi_version = 1
+        result.abi_version = CITIZENSDK_ABI_VERSION
         result.host_operation_id = operationID
         result.error_code = 0
         result.value = try host.vaultHas(citizenSDKWalletKey(wallet)) ? 1 : 0
@@ -281,7 +261,7 @@ private func citizenSDKVaultWrap(_ context: UnsafeMutableRawPointer?, _ operatio
                                          plaintext: UnsafeRawBufferPointer(start: pointer, count: 32))
         var result = citizensdk_host_bytes_result_v1_t()
         result.struct_size = UInt32(MemoryLayout<citizensdk_host_bytes_result_v1_t>.size)
-        result.abi_version = 1
+        result.abi_version = CITIZENSDK_ABI_VERSION
         result.host_operation_id = operationID
         result.error_code = 0
         result.kind = CITIZENSDK_HOST_BYTES_WRAPPED_DEK

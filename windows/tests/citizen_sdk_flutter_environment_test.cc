@@ -55,7 +55,7 @@ int main() {
   const auto config = csf::FlutterEnvironment::resolve(inputs);
   assert(config.application_id == inputs.application_id);
   assert(config.storage_root == user_data && config.asset_root == assets);
-  assert(config.hwnd == nullptr && config.modules == CITIZENSDK_MODULE_FULL);
+  assert(config.parent == nullptr && config.modules == CITIZENSDK_MODULE_FULL);
 
   mark("invalid_application_id");
   // 这些是装配预检夹具，不冒充通过 Core 的 manifest/链锚验真。
@@ -98,7 +98,7 @@ int main() {
   Window view(parent.value);
   csf::FlutterEnvironment environment(view.value);
   const auto opened = environment.open(inputs);
-  assert(opened.config.hwnd == parent.value && opened.ui_parent_lease);
+  assert(opened.config.parent == parent.value && opened.ui_parent_lease);
   mark("foreign_thread");
   std::thread worker([&] {
     expect_failure([&] { (void)environment.open(inputs); }, CITIZENSDK_ERROR_INVALID_STATE);
@@ -114,20 +114,20 @@ int main() {
   mark("root_window");
   Window root;
   csf::FlutterEnvironment root_environment(root.value);
-  assert(root_environment.open(inputs).config.hwnd == root.value);
+  assert(root_environment.open(inputs).config.parent == root.value);
   root.destroy();
   expect_failure([&] { (void)root_environment.open(inputs); }, CITIZENSDK_ERROR_INVALID_STATE);
 
   mark("rootless");
   csf::FlutterEnvironment rootless(nullptr);
-  assert(rootless.open(inputs).config.hwnd == nullptr);
+  assert(rootless.open(inputs).config.parent == nullptr);
   rootless.detach();
   expect_failure([&] { (void)rootless.open(inputs); }, CITIZENSDK_ERROR_INVALID_STATE);
   return 0;
   } catch (const csf::ContractFailure &error) {
     std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s contract_code=%d\n", stage, static_cast<int>(error.code));
-  } catch (const citizen_sdk::Error &error) {
-    std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s native_code=%d\n", stage, static_cast<int>(error.code()));
+  } catch (const citizen_sdk::flutter::ContractFailure &error) {
+    std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s native_code=%d\n", stage, static_cast<int>(error.code));
   } catch (const std::exception &) {
     std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s exception=true\n", stage);
   }

@@ -23,7 +23,7 @@ public final class CitizenSDKQrCapture: NSObject, AVCaptureVideoDataOutputSample
         }
     }
     public let purpose: CitizenQRScanPurpose
-    private let native: CitizenSDKNative
+    private let core: CitizenSDKCore
     private let listener: Listener
     private let ended: @Sendable (CitizenSDKQrCapture) -> Void
     private let queue = DispatchQueue(label: "org.citizen.sdk.qr-camera")
@@ -42,9 +42,9 @@ public final class CitizenSDKQrCapture: NSObject, AVCaptureVideoDataOutputSample
     private var pixel: CVPixelBuffer?
     private var previewValue: CitizenQRPreview?
 
-    internal init(native: CitizenSDKNative, purpose: CitizenQRScanPurpose, listener: Listener,
+    internal init(core: CitizenSDKCore, purpose: CitizenQRScanPurpose, listener: Listener,
                   ended: @escaping @Sendable (CitizenSDKQrCapture) -> Void) {
-        self.native = native; self.purpose = purpose; self.listener = listener; self.ended = ended
+        self.core = core; self.purpose = purpose; self.listener = listener; self.ended = ended
         super.init()
     }
 
@@ -212,7 +212,7 @@ public final class CitizenSDKQrCapture: NSObject, AVCaptureVideoDataOutputSample
             } }
         }
         do {
-            let document = try native.qrDecodeLuminance(luminance, width: UInt32(width), height: UInt32(height), rowStride: UInt32(width))
+            guard let document = try core.qrDecodeLuminanceAll(luminance, width: UInt32(width), height: UInt32(height), rowStride: UInt32(width), firstOnly: true).first else { throw CitizenSDKError(.notFound,"image contains no QR code") }
             let result = try CitizenQRScanResult(document: document, purpose: purpose)
             gate.lock(); let current = !revoked && !paused && generation == snapshot; gate.unlock()
             if current { listener.result(result) }

@@ -1,16 +1,22 @@
 #![cfg(feature = "chain")]
 
-use citizen_sdk_contracts::{
-    ExecutionConclusion, Hash32, RuntimeContext, RuntimeVersion, SignedExtrinsic, UnverifiedReason,
-    VerifiedBlockRef,
-};
-use citizen_sdk_engine::{signed_extrinsic_hash, verify_transaction_outcome, TransactionEvidence};
-use subxt_core::{
-    config::SubstrateConfig,
-    events::{Events, Phase},
-    ext::codec::{Compact, Decode, Encode},
-    Metadata,
-};
+use citizensdk::signed_extrinsic_hash;
+use citizensdk::types::ExecutionConclusion;
+use citizensdk::types::Hash32;
+use citizensdk::types::RuntimeContext;
+use citizensdk::types::RuntimeVersion;
+use citizensdk::types::SignedExtrinsic;
+use citizensdk::types::UnverifiedReason;
+use citizensdk::types::VerifiedBlockRef;
+use citizensdk::verify_transaction_outcome;
+use citizensdk::TransactionEvidence;
+use subxt_core::config::SubstrateConfig;
+use subxt_core::events::Events;
+use subxt_core::events::Phase;
+use subxt_core::ext::codec::Compact;
+use subxt_core::ext::codec::Decode;
+use subxt_core::ext::codec::Encode;
+use subxt_core::Metadata;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 const EVENTS_HEX: &str = include_str!("citizenchain-runtime-system-events.hex");

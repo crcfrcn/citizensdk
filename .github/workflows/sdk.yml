@@ -2,7 +2,13 @@
 name: 公民SDK·SDK
 run-name: 公民SDK·SDK·${{ github.run_number }}
 'on':
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '正式发布及远端清理须独立授权'
+        type: boolean
+        required: false
+        default: false
 concurrency:
   group: ${{ github.repository }}-sdk
   cancel-in-progress: false
@@ -46,8 +52,15 @@ jobs:
           if(previous){
             const data=JSON.parse(execFileSync('gh',['api','repos/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+previous.id+'/artifacts?per_page=100'],{encoding:'utf8'}));
             const artifact=data.artifacts.find(value=>/^公民SDK·SDK·v\d+\.\d+\.\d+$/u.test(value.name));
-            const parts=artifact.name.slice('公民SDK·SDK·v'.length).split('.');
-            parts[2]=String(BigInt(parts[2])+1n);version=parts.join('.');
+            const next=artifact.name.slice('公民SDK·SDK·v'.length).split('.').map(BigInt);
+            next[2]++;
+            // 新主版本以源码声明为下限；同版交付继续递增补丁。
+            const declared=version.split('.').map(BigInt);
+            for(let i=0;i<3;i++){
+              if(next[i]===declared[i])continue;
+              if(next[i]>declared[i])version=next.join('.');
+              break;
+            }
           }
           console.log('version='+version);
           NODE
@@ -627,53 +640,19 @@ jobs:
           rm -rf "$SDK_WORK_DIRECTORY"
   publish:
     needs: [select, complete]
-    if: github.ref == 'refs/heads/main'
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
     name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    uses: ./.github/workflows/publish.yml
     permissions:
       contents: write
       actions: read
-    env:
-      SDK_VERSION: ${{ needs.select.outputs.version }}
-      SDK_ARTIFACT: ${{ needs.complete.outputs.artifact }}
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - id: bootstrap
-        name: 从本产品声明读取Node版本
-        shell: bash
-        run: |
-          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
-          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.bootstrap.outputs.node }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          artifact-ids: ${{ needs.complete.outputs.artifact }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/publication
-      - name: 发布本轮已验收完整SDK
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SDK_ARTIFACT_DIRECTORY: ${{ runner.temp }}/publication
-        shell: bash
-        run: |
-          set -euo pipefail
-          name="公民SDK·SDK·v${SDK_VERSION}"
-          cd "$SDK_ARTIFACT_DIRECTORY"
-          sha256sum -c "$name.sha256"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$name" -f sha="$GITHUB_SHA" >/dev/null
-          files=(); for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
-          gh release create "$name" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$name" --notes-file "$name.json" --draft
-          gh release edit "$name" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+    with:
+      version: ${{ needs.select.outputs.version }}
+      artifact: ${{ needs.complete.outputs.artifact }}
+    secrets: inherit
   cleanup:
     needs: [select, android, apple, linux, windows, complete, publish]
-    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    if: ${{ inputs.publish && always() && github.ref == 'refs/heads/main' }}
     name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20

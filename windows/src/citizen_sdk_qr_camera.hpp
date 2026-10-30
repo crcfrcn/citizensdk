@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 #include "citizensdk_types.h"
-#include "citizen_sdk/citizensdk_host.h"
+#include "citizensdk_host.h"
 namespace citizen_sdk::windows {
 // 相机输出同帧RGBA8与识别用亮度；不创建预览窗口、不解释QR协议。
 struct QrFrame final {

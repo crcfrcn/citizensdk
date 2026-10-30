@@ -3,9 +3,7 @@ use super::*;
 #[cfg(not(feature = "chain"))]
 #[test]
 fn static_genesis_does_not_enable_an_uncompiled_chain_module() {
-    let engine = CitizenEngine::new(EngineComponents::new(
-        None, None, None, None, None, None, None, None,
-    ));
+    let engine = CitizenEngine::new(None, None, None, None, None, None, None);
     assert!(
         matches!(engine.genesis_hash(), Err(EngineError::Contract(error))
             if error.code() == ContractErrorCode::Unsupported)
@@ -14,9 +12,7 @@ fn static_genesis_does_not_enable_an_uncompiled_chain_module() {
 
 // 用原状态协调入口验证所有权，不触碰实际钱包、存储或硬件认证。
 fn local_engine(lifecycle: EngineLifecycle) -> CitizenEngine {
-    let engine = CitizenEngine::new(EngineComponents::new(
-        None, None, None, None, None, None, None, None,
-    ));
+    let engine = CitizenEngine::new(None, None, None, None, None, None, None);
     engine
         .state
         .lock()
@@ -208,9 +204,7 @@ fn monitor_can_start_while_syncing_but_not_when_stopped_or_disabled() {
 
 #[test]
 fn chain_only_refresh_preserves_every_other_raw_probe() {
-    let engine = CitizenEngine::new(EngineComponents::new(
-        None, None, None, None, None, None, None, None,
-    ));
+    let engine = CitizenEngine::new(None, None, None, None, None, None, None);
     engine
         .update_capabilities(
             CapabilityName::ALL

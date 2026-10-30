@@ -1,8 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use citizen_sdk_contracts::{
-    CapabilityName, CapabilityReason, CapabilitySnapshot, CapabilityStatus,
-};
+use crate::types::CapabilityName;
+use crate::types::CapabilityReason;
+use crate::types::CapabilitySnapshot;
+use crate::types::CapabilityStatus;
 
 use crate::error::EngineError;
 
@@ -183,4 +185,43 @@ const fn dependencies(name: CapabilityName) -> &'static [CapabilityName] {
         History => &[ChainRead],
         BackgroundSync => &[ChainRead, History],
     }
+}
+
+// 唯一模块选择校验；在创建任何系统资源之前执行。
+pub(crate) fn validate_modules(
+    bits: u32,
+) -> Result<crate::types::Modules, crate::types::ContractError> {
+    let modules = crate::types::Modules::try_new(bits)?;
+    let compiled = (if cfg!(feature = "wallet") {
+        crate::types::Modules::WALLET
+    } else {
+        0
+    }) | (if cfg!(feature = "signing") {
+        crate::types::Modules::SIGNING
+    } else {
+        0
+    }) | (if cfg!(feature = "chain") {
+        crate::types::Modules::CHAIN
+    } else {
+        0
+    }) | (if cfg!(feature = "transactions") {
+        crate::types::Modules::TRANSACTIONS
+    } else {
+        0
+    }) | (if cfg!(feature = "history") {
+        crate::types::Modules::HISTORY
+    } else {
+        0
+    }) | (if cfg!(feature = "qr") {
+        crate::types::Modules::QR
+    } else {
+        0
+    });
+    if bits & !compiled != 0 {
+        return Err(crate::types::ContractError::new(
+            crate::types::ContractErrorCode::Unsupported,
+            "requested modules are not compiled into this CitizenSDK build",
+        ));
+    }
+    Ok(modules)
 }

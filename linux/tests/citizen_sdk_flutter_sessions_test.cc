@@ -2,8 +2,8 @@
 #include <functional>
 #include <memory>
 #include <vector>
-#include "citizen_sdk/citizen_sdk_error.hpp"
-#include "citizen_sdk_flutter_sessions.hpp"
+#include "value.hpp"
+#include "flutter.hpp"
 namespace csf=citizen_sdk::flutter;
 static const csf::Value::List &items(const csf::Value&v){return std::get<csf::Value::List>(v.data);}
 static const std::string &text(const csf::Value&v){return std::get<std::string>(v.data);}
@@ -18,7 +18,7 @@ struct CaptureTextureFixture final : csf::CaptureTexture {
   void update(std::shared_ptr<const std::vector<uint8_t>> value) override { ++updates; pixels = std::move(value); }
   void close(std::function<void()> done) override {
     ++closes;
-    if (fail_close) throw citizen_sdk::Error(CITIZENSDK_ERROR_UNAVAILABLE, "合成纹理暂未注销");
+    if (fail_close) throw citizen_sdk::flutter::ContractFailure(CITIZENSDK_ERROR_UNAVAILABLE, "合成纹理暂未注销");
     drained = std::move(done);
   }
 };
@@ -43,7 +43,7 @@ struct CaptureBindingFixture final {
   void open() {
     csf::CaptureControls api{
       [&](citizensdk_host_handle_t host, uint32_t purpose, const citizensdk_qr_capture_callbacks_v1_t *value, uint64_t *id) {
-        assert(host == 55 && purpose == 1 && value->struct_size == sizeof(*value) && value->abi_version == 1);
+        assert(host == 55 && purpose == 1 && value->struct_size == sizeof(*value) && value->abi_version == CITIZENSDK_HOST_ABI_VERSION);
         if (admission != CITIZENSDK_OK) return admission;
         callbacks = *value; callbacks.retain(callbacks.context);
         // 特意在接纳函数返回编号前回调；生产对象必须在UI派发后关联正确ID。
@@ -60,7 +60,7 @@ struct CaptureBindingFixture final {
         [&](std::function<void()> work) { tasks.push_back(std::move(work)); },
         [&](uint32_t width, uint32_t height) -> std::shared_ptr<csf::CaptureTexture> {
           assert(width == 2 && height == 2); ++factories;
-          if (fail_texture) throw citizen_sdk::Error(CITIZENSDK_ERROR_UNAVAILABLE, "合成注册失败");
+          if (fail_texture) throw citizen_sdk::flutter::ContractFailure(CITIZENSDK_ERROR_UNAVAILABLE, "合成注册失败");
           return texture;
         },
         [&](std::string type, csf::Value) { events.push_back(std::move(type)); },
@@ -84,7 +84,7 @@ struct CaptureBindingFixture final {
   }
   void frame() {
     const std::vector<uint8_t> rgba(16, 7), luma(4, 7);
-    const citizensdk_qr_frame_v1_t value{sizeof(citizensdk_qr_frame_v1_t), 1, 2, 2, 0, 0, 1,
+    const citizensdk_qr_frame_v1_t value{sizeof(citizensdk_qr_frame_v1_t), CITIZENSDK_ABI_VERSION, 2, 2, 0, 0, 1,
         {rgba.data(), rgba.size()}, {luma.data(), luma.size()}};
     callbacks.frame(callbacks.context, 9, &value);
   }
@@ -96,7 +96,7 @@ struct CaptureBindingFixture final {
 void capture_binding_contract() {
   const auto fails = [](std::function<csf::Value()> project, citizensdk_error_code_t code) {
     bool rejected = false;
-    try { (void)project(); } catch (const citizen_sdk::Error &error) { rejected = error.code() == code; }
+    try { (void)project(); } catch (const citizen_sdk::flutter::ContractFailure &error) { rejected = error.code == code; }
     assert(rejected);
   };
   {
@@ -160,7 +160,7 @@ void capture_binding_contract() {
   {
     CaptureBindingFixture p; p.open(); p.publish(); p.texture->fail_close = true;
     bool rejected = false;
-    try { p.close(); } catch (const citizen_sdk::Error &) { rejected = true; }
+    try { p.close(); } catch (const citizen_sdk::flutter::ContractFailure &) { rejected = true; }
     assert(rejected && !p.resource->is_closed());
     p.texture->fail_close = false; p.close(); p.native_finished(); p.pump();
     p.texture->drained(); p.pump();
@@ -170,7 +170,7 @@ void capture_binding_contract() {
     CaptureBindingFixture p; p.open(); p.publish();
     for (int i = 0; i < 64; ++i) p.command(csf::Method::pause_qr_capture);
     bool full = false;
-    try { p.command(csf::Method::resume_qr_capture); } catch (const citizen_sdk::Error &error) { full = error.code() == CITIZENSDK_ERROR_QUEUE_FULL; }
+    try { p.command(csf::Method::resume_qr_capture); } catch (const citizen_sdk::flutter::ContractFailure &error) { full = error.code == CITIZENSDK_ERROR_QUEUE_FULL; }
     assert(full); p.close(); p.native_finished(); p.pump(); p.texture->drained(); p.pump();
     assert(p.resource->is_closed() && p.controls.size() == 64 && p.closings.size() == 1);
     for (const auto &project : p.controls) fails(project, CITIZENSDK_ERROR_CANCELLED);
@@ -194,7 +194,7 @@ int main(){
         [&](auto value) { opened.push_back(std::move(value)); },
         [&](bool granted) { assert(granted); ++terminal_calls; }, controls);
     const auto receiver = resource->receiver();
-    assert(receiver.struct_size == sizeof(receiver) && receiver.abi_version == 1);
+    assert(receiver.struct_size == sizeof(receiver) && receiver.abi_version == CITIZENSDK_ABI_VERSION);
     std::vector<uint8_t> synthetic(32, 7);
     assert(receiver.receive(receiver.context, 9, {synthetic.data(), 32}) == CITIZENSDK_ERROR_INTEGRITY);
     assert(receiver.authorizing(receiver.context, 9, 100) == CITIZENSDK_ERROR_INTEGRITY);
@@ -217,8 +217,8 @@ int main(){
     auto value = revealed[0]();
     assert(items(value)[0].sensitive && std::get<csf::Value::Bytes>(items(value)[0].data) == csf::Value::Bytes(32, 7));
     bool repeated = false;
-    try { resource->reveal([](auto) {}); } catch (const citizen_sdk::Error &error) {
-      repeated = error.code() == CITIZENSDK_ERROR_INVALID_STATE;
+    try { resource->reveal([](auto) {}); } catch (const citizen_sdk::flutter::ContractFailure &error) {
+      repeated = error.code == CITIZENSDK_ERROR_INVALID_STATE;
     }
     assert(repeated && reveal_calls == 1);
     resource->close([&](auto value) { closed.push_back(std::move(value)); });
@@ -251,8 +251,8 @@ int main(){
     receiver.settled(receiver.context, 9, CITIZENSDK_OK);
     resource->request_close();
     bool revoked = false;
-    try { (void)revealed(); } catch (const citizen_sdk::Error &error) {
-      revoked = error.code() == CITIZENSDK_ERROR_CANCELLED;
+    try { (void)revealed(); } catch (const citizen_sdk::flutter::ContractFailure &error) {
+      revoked = error.code == CITIZENSDK_ERROR_CANCELLED;
     }
     assert(revoked && !ended && !resource->is_closed());
     resource->terminal(CITIZENSDK_ERROR_CANCELLED);
@@ -275,7 +275,7 @@ int main(){
     resource->close([&](auto value) { first_close.push_back(std::move(value)); });
     assert(first_close.size() == 1 && !resource->is_closed());
     bool rejected = false;
-    try { (void)first_close[0](); } catch (const citizen_sdk::Error &error) { rejected = error.code() == CITIZENSDK_ERROR_BUSY; }
+    try { (void)first_close[0](); } catch (const citizen_sdk::flutter::ContractFailure &error) { rejected = error.code == CITIZENSDK_ERROR_BUSY; }
     assert(rejected);
     reject_finish = false;
     resource->close([&](auto value) { second_close.push_back(std::move(value)); });
@@ -298,7 +298,7 @@ int main(){
     receiver.settled(receiver.context, 9, CITIZENSDK_OK);
     resource->request_close(); resource->bind(9);
     bool rejected = false;
-    try { (void)opened(); } catch (const citizen_sdk::Error &error) { rejected = error.code() == CITIZENSDK_ERROR_CANCELLED; }
+    try { (void)opened(); } catch (const citizen_sdk::flutter::ContractFailure &error) { rejected = error.code == CITIZENSDK_ERROR_CANCELLED; }
     assert(rejected && !closed);
     resource->terminal(CITIZENSDK_ERROR_CANCELLED);
     assert(closed);

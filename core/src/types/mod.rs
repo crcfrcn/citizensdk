@@ -1,0 +1,174 @@
+//! CitizenSDK Core 的类型化依赖合同。
+//!
+//! 本 crate 不实现业务，只冻结 Engine 与轻节点、签名器、系统金库及各类持久化之间的
+//! 语义边界。公开 trait 均为对象安全接口，不能把 Flutter、具体异步运行时或任意 RPC
+//! 方法泄漏到 Core。
+
+#![forbid(unsafe_code)]
+
+use std::future::Future;
+use std::pin::Pin;
+
+use futures_core::Stream;
+
+pub mod account;
+pub mod capability;
+pub mod chain;
+pub mod error;
+pub mod secret_vault;
+pub mod signing;
+pub mod store;
+mod store_chain_database;
+mod store_encrypted_secret_blob;
+mod store_runtime_cache;
+mod store_transaction_history;
+mod store_wallet_profile;
+pub mod transaction;
+pub mod transaction_build;
+pub mod transaction_prepare;
+pub mod wallet;
+
+pub use account::AccountNonce;
+pub use account::AccountNonceSource;
+pub use account::FinalizedAccountBalance;
+pub use account::OnchainFeePolicy;
+pub use account::PERBILL_DENOMINATOR;
+pub use capability::CapabilityName;
+pub use capability::CapabilityReason;
+pub use capability::CapabilitySnapshot;
+pub use capability::CapabilityStatus;
+pub use capability::Modules;
+pub use chain::validated_finalized_block_range_len;
+pub use chain::AccountId32;
+pub use chain::BlockFinality;
+pub use chain::ChainIdentity;
+pub use chain::ChainSyncStatus;
+pub use chain::ExportedChainState;
+pub use chain::FinalizedBlockRef;
+pub use chain::Hash32;
+pub use chain::RuntimeContext;
+pub use chain::RuntimeVersion;
+pub use chain::StateImportReceipt;
+pub use chain::VerifiedBlockBody;
+pub use chain::VerifiedBlockHeader;
+pub use chain::VerifiedBlockRef;
+pub use chain::VerifiedChainClient;
+pub use chain::CITIZENCHAIN_CHAIN_ID;
+pub use chain::CITIZENCHAIN_GENESIS_HASH;
+pub use chain::CITIZENCHAIN_PROTOCOL_ID;
+pub use chain::MAX_BLOCK_BODY_BYTES;
+pub use chain::MAX_BLOCK_BODY_EXTRINSICS;
+pub use chain::MAX_FINALIZED_BLOCKS_PER_BATCH;
+pub use chain::MAX_HEADER_DIGEST_BYTES;
+pub use chain::MAX_RUNTIME_API_ARGUMENT_BYTES;
+pub use chain::MAX_RUNTIME_API_METHOD_BYTES;
+pub use chain::MAX_RUNTIME_API_OUTPUT_BYTES;
+pub use chain::MAX_RUNTIME_METADATA_BYTES;
+pub use chain::MAX_STORAGE_BATCH_KEYS;
+pub use chain::MAX_STORAGE_BATCH_KEY_BYTES;
+pub use chain::MAX_STORAGE_KEYS_PAGE_BYTES;
+pub use chain::MAX_STORAGE_KEYS_PAGE_LIMIT;
+pub use chain::MAX_STORAGE_KEY_BYTES;
+
+pub use error::ContractError;
+pub use error::ContractErrorCode;
+pub use error::ContractResult;
+pub use error::FailureStage;
+pub use secret_vault::EncryptedSecretEnvelope;
+pub use secret_vault::Hash32Bytes;
+pub use secret_vault::SecretBuffer;
+pub use secret_vault::SecretKind;
+pub use secret_vault::SecretOwner;
+pub use secret_vault::SecretRef;
+pub use secret_vault::SecretVault;
+pub use secret_vault::VaultAvailability;
+pub use secret_vault::VaultGeneration;
+pub use signing::apply_signing_transform;
+pub use signing::blake2_256;
+pub use signing::encode_signing_payload;
+pub use signing::DefaultAccountChangeAuthorization;
+pub use signing::DerivationJunction;
+pub use signing::SigningCompletion;
+pub use signing::SigningIntent;
+pub use signing::SigningPayload;
+pub use signing::SigningTransform;
+pub use signing::Sr25519PublicKey;
+pub use signing::Sr25519Signature;
+pub use signing::DEFAULT_ACCOUNT_CHANGE_DOMAIN;
+pub use signing::DEFAULT_ACCOUNT_CHANGE_NONCE_BYTES;
+pub use signing::DEFAULT_ACCOUNT_CHANGE_QR_ACTION;
+pub use signing::MAX_DEFAULT_ACCOUNT_CHANGE_ACCOUNTS;
+pub use signing::MAX_EXTERNAL_SIGNING_TTL_SECONDS;
+pub use signing::MAX_SIGNING_DOMAIN_BYTES;
+pub use signing::MAX_SIGNING_PAYLOAD_BYTES;
+pub use signing::SR25519_SIGNING_CONTEXT;
+pub use store::ChainDatabaseSnapshot;
+pub use store::ChainDatabaseStore;
+pub use store::EncryptedSecretBlobSnapshot;
+pub use store::EncryptedSecretBlobState;
+pub use store::EncryptedSecretBlobStore;
+pub use store::HistoryTransactionStatus;
+pub use store::RuntimeCacheStore;
+pub use store::TransactionExecutionRecord;
+pub use store::TransactionHistoryCursor;
+pub use store::TransactionHistoryIndex;
+pub use store::TransactionHistoryMutation;
+pub use store::TransactionHistoryPage;
+pub use store::TransactionHistoryQueryKind;
+pub use store::TransactionHistoryRecord;
+pub use store::TransactionHistoryRecordBatch;
+pub use store::TransactionHistoryRecordSnapshot;
+pub use store::TransactionHistoryStore;
+pub use store::WalletProfileStore;
+pub use store::MAX_PERSISTED_RUNTIME_CONTEXTS;
+pub use store::MAX_PERSISTED_RUNTIME_METADATA_BYTES;
+pub use store::MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES;
+pub use store::MAX_TRANSACTION_HISTORY_PAGE_SIZE;
+pub use store::MAX_TRANSACTION_HISTORY_RECORDS;
+pub use store::MAX_TRANSACTION_HISTORY_SYNC_BATCH;
+pub use store::MAX_TRANSACTION_POOL_REASON_BYTES;
+pub use transaction::DispatchFailure;
+pub use transaction::ExecutionConclusion;
+pub use transaction::ExtrinsicWatchEvent;
+pub use transaction::ModuleDispatchFailure;
+pub use transaction::SignedExtrinsic;
+pub use transaction::SubmittedExtrinsic;
+pub use transaction::UnverifiedReason;
+pub use transaction_build::ImmortalSigningPayload;
+pub use transaction_build::SignedTransactionBuild;
+pub use transaction_build::IMMORTAL_ERA;
+pub use transaction_prepare::OpaqueTransactionCall;
+pub use transaction_prepare::PreparedTransactionSummary;
+pub use transaction_prepare::TransactionExecutionCompleted;
+pub use transaction_prepare::TransactionExecutionId;
+pub use transaction_prepare::TransactionExecutionResolution;
+pub use transaction_prepare::TransactionPreparationId;
+pub use transaction_prepare::MAX_PREPARED_TRANSACTIONS;
+pub use transaction_prepare::MAX_TRANSACTION_CALL_DATA_BYTES;
+pub use transaction_prepare::MAX_TRANSACTION_SIGNED_EXTRINSIC_BYTES;
+pub use wallet::citizen_ss58_address;
+pub use wallet::parse_citizen_ss58_address;
+pub use wallet::ColdWalletAccount;
+pub use wallet::WalletAccount;
+pub use wallet::WalletCleanupPlan;
+pub use wallet::WalletDiagnosticReason;
+pub use wallet::WalletOrigin;
+pub use wallet::WalletProfile;
+pub use wallet::WalletProvisioningPlan;
+pub use wallet::WalletRecord;
+pub use wallet::WalletRecordAccount;
+pub use wallet::WalletSignMode;
+pub use wallet::WalletState;
+pub use wallet::CITIZEN_SS58_PREFIX;
+pub use wallet::CITIZEN_WALLET_INDEX;
+pub use wallet::FIRST_COLD_WALLET_INDEX;
+pub use wallet::MAX_COLD_WALLET_ACCOUNTS;
+pub use wallet::MAX_WALLET_ACCOUNTS;
+pub use wallet::MAX_WALLET_ACCOUNT_INDEX;
+pub use wallet::MAX_WALLET_ACCOUNT_NAME_SCALARS;
+
+/// 对象安全合同使用的异步返回值；具体 executor 由调用者决定。
+pub type ContractFuture<'a, T> = Pin<Box<dyn Future<Output = ContractResult<T>> + Send + 'a>>;
+
+/// 对象安全合同使用的事件流；每个事件都可以独立报告 provider 错误。
+pub type ContractStream<'a, T> = Pin<Box<dyn Stream<Item = ContractResult<T>> + Send + 'a>>;

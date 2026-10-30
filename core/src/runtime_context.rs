@@ -1,4 +1,7 @@
-use citizen_sdk_contracts::{BlockFinality, ContractErrorCode, RuntimeContext, VerifiedBlockRef};
+use crate::types::BlockFinality;
+use crate::types::ContractErrorCode;
+use crate::types::RuntimeContext;
+use crate::types::VerifiedBlockRef;
 
 use crate::error::EngineError;
 

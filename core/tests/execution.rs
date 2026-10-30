@@ -1,4 +1,5 @@
-use std::{future::Future, task::Context};
+use std::future::Future;
+use std::task::Context;
 
 use futures::task::noop_waker_ref;
 

@@ -10,7 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <citizen_sdk/citizensdk_host.h>
+#include <citizensdk_host.h>
 
 /* 仅从已安装公开头核对四项新增查询 ABI，不扩大 Host 门面职责。 */
 _Static_assert(_Generic(&citizensdk_get_genesis_hash,
@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
   CHECK(citizensdk_create_options_size() == sizeof(citizensdk_create_options_t));
   CHECK(citizensdk_host_config_size() == sizeof(citizensdk_host_config_v1_t));
   citizensdk_host_handle_t host = 99;
-  CHECK(citizensdk_host_create(NULL, &host) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
+  CHECK(citizensdk_host_create(NULL, CITIZENSDK_MODULE_CHAIN, &host) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
   CHECK(host == 0);
   uint64_t error_size = 0;
   CHECK(citizensdk_host_last_error_copy(NULL, 0, &error_size) == CITIZENSDK_OK);
@@ -162,12 +162,11 @@ int main(int argc, char **argv) {
   config.storage_root_utf8 = view(argv[1]);
   config.asset_root_utf8 = view(argv[2]);
   config.application_id_utf8 = view(application_id);
-  config.enable_wallet = 0;  /* 链消费者不需要 TPM，也不建立钱包。 */
-  config.reserved[0] = 1;
-  CHECK(citizensdk_host_create(&config, &host) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
+  config.abi_version = CITIZENSDK_HOST_ABI_VERSION + 1;
+  CHECK(citizensdk_host_create(&config, CITIZENSDK_MODULE_CHAIN | CITIZENSDK_MODULE_TRANSACTIONS | CITIZENSDK_MODULE_HISTORY, &host) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
   CHECK(host == 0);
-  config.reserved[0] = 0;
-  CHECK(citizensdk_host_create(&config, &host) == CITIZENSDK_OK && host != 0);
+  config.abi_version = CITIZENSDK_HOST_ABI_VERSION;
+  CHECK(citizensdk_host_create(&config, CITIZENSDK_MODULE_CHAIN | CITIZENSDK_MODULE_TRANSACTIONS | CITIZENSDK_MODULE_HISTORY, &host) == CITIZENSDK_OK && host != 0);
   citizensdk_handle_t sdk = 99;
   CHECK(citizensdk_host_sdk(host, &sdk) == CITIZENSDK_ERROR_NOT_READY && sdk == 0);
   citizensdk_host_vault_availability_t vault = 0;

@@ -80,7 +80,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
         var firstAttempt = true
         var destroyed = 0
         func closeAttempt() throws {
-            try CitizenSDKNative.releasePreparedBeforeDestroy(
+            try CitizenSDKCore.releasePreparedBeforeDestroy(
                 [7],
                 release: { _ in
                     if firstAttempt { firstAttempt = false; throw ProbeFailure.install }
@@ -204,7 +204,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
     func testCallbackOrSubscribeSetupFailureConvergesThroughSameMachine() {
         for setupPoint in ["callbackInstall", "capabilitySubscribe"] {
             var calls: [String] = []
-            XCTAssertThrowsError(try CitizenSDKNative.bindOrRecover(
+            XCTAssertThrowsError(try CitizenSDKCore.bindOrRecover(
                 bind: { calls.append(setupPoint); throw ProbeFailure.install },
                 close: { calls.append("close") },
                 supervise: { calls.append("supervise") }
@@ -215,7 +215,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
 
     func testBindingFailureCloseFailureTransfersToSupervisor() {
         var calls: [String] = []
-        XCTAssertThrowsError(try CitizenSDKNative.bindOrRecover(
+        XCTAssertThrowsError(try CitizenSDKCore.bindOrRecover(
             bind: { calls.append("bind"); throw ProbeFailure.install },
             close: { calls.append("close"); throw CitizenSDKError(.busy, "fixture") },
             supervise: { calls.append("supervise") }
@@ -344,7 +344,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
         var destroyAttempts = 0
         var supervised = 0
 
-        XCTAssertThrowsError(try CitizenSDKNative.bindOrRecover(
+        XCTAssertThrowsError(try CitizenSDKCore.bindOrRecover(
             bind: { throw ProbeFailure.install },
             close: {
                 try coordinator.perform(
@@ -390,7 +390,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
         // completed stop. Recovery must use the injected C lifecycle instead.
         let delayedFacadeCache = CitizenSDKLifecycle.running
         var coreQueries = 0
-        let action = try CitizenSDKNative.supervisedCloseAction(
+        let action = try CitizenSDKCore.supervisedCloseAction(
             teardownStarted: false,
             lifecycle: {
                 coreQueries += 1
@@ -403,23 +403,23 @@ final class CitizenSDKLifecycleTests: XCTestCase {
     }
 
     func testSupervisedCloseQueryFailureDoesNotEnterTeardown() {
-        XCTAssertThrowsError(try CitizenSDKNative.supervisedCloseAction(
+        XCTAssertThrowsError(try CitizenSDKCore.supervisedCloseAction(
             teardownStarted: false,
             lifecycle: { throw ProbeFailure.lifecycle }
         )) { XCTAssertTrue($0 is ProbeFailure) }
     }
 
     func testSupervisedCloseLifecyclePolicyIsFailClosed() throws {
-        XCTAssertEqual(try CitizenSDKNative.supervisedCloseAction(
+        XCTAssertEqual(try CitizenSDKCore.supervisedCloseAction(
             teardownStarted: false, lifecycle: { .running }
         ), .stopThenClose)
         for lifecycle in [CitizenSDKLifecycle.created, .stopped, .startFailed, .disposed] {
-            XCTAssertEqual(try CitizenSDKNative.supervisedCloseAction(
+            XCTAssertEqual(try CitizenSDKCore.supervisedCloseAction(
                 teardownStarted: false, lifecycle: { lifecycle }
             ), .close)
         }
         for lifecycle in [CitizenSDKLifecycle.starting, .importingState] {
-            XCTAssertThrowsError(try CitizenSDKNative.supervisedCloseAction(
+            XCTAssertThrowsError(try CitizenSDKCore.supervisedCloseAction(
                 teardownStarted: false, lifecycle: { lifecycle }
             )) { error in
                 XCTAssertEqual((error as? CitizenSDKError)?.code, .busy)
@@ -429,7 +429,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
 
     func testPartialTeardownNeverQueriesLifecycleAgain() throws {
         var queried = false
-        let action = try CitizenSDKNative.supervisedCloseAction(
+        let action = try CitizenSDKCore.supervisedCloseAction(
             teardownStarted: true,
             lifecycle: {
                 queried = true
@@ -443,25 +443,25 @@ final class CitizenSDKLifecycleTests: XCTestCase {
     func testAuthoritativeCloseGateRejectsDelayedRunningLifecycle() {
         let delayedFacadeCache = CitizenSDKLifecycle.created
         XCTAssertEqual(delayedFacadeCache, .created)
-        XCTAssertThrowsError(try CitizenSDKNative.requireCheckpointSafeForClose(.running)) { error in
+        XCTAssertThrowsError(try CitizenSDKCore.requireCheckpointSafeForClose(.running)) { error in
             XCTAssertEqual((error as? CitizenSDKError)?.code, .invalidState)
         }
         for lifecycle in [CitizenSDKLifecycle.starting, .importingState] {
-            XCTAssertThrowsError(try CitizenSDKNative.requireCheckpointSafeForClose(lifecycle)) { error in
+            XCTAssertThrowsError(try CitizenSDKCore.requireCheckpointSafeForClose(lifecycle)) { error in
                 XCTAssertEqual((error as? CitizenSDKError)?.code, .busy)
             }
         }
         for lifecycle in [CitizenSDKLifecycle.created, .stopped, .startFailed] {
-            XCTAssertNoThrow(try CitizenSDKNative.requireCheckpointSafeForClose(lifecycle))
+            XCTAssertNoThrow(try CitizenSDKCore.requireCheckpointSafeForClose(lifecycle))
         }
-        XCTAssertThrowsError(try CitizenSDKNative.requireCheckpointSafeForClose(.disposed))
+        XCTAssertThrowsError(try CitizenSDKCore.requireCheckpointSafeForClose(.disposed))
     }
 
     func testPartialTeardownCloseGateNeverQueriesCoreLifecycle() throws {
         let lock = NSRecursiveLock()
         var queried = false
         var bodyRan = false
-        try CitizenSDKNative.withCheckpointSafeCloseGate(
+        try CitizenSDKCore.withCheckpointSafeCloseGate(
             lock: lock,
             checkpointRequired: { false },
             lifecycle: { queried = true; return .running },
@@ -480,7 +480,7 @@ final class CitizenSDKLifecycleTests: XCTestCase {
         let startEntered = DispatchSemaphore(value: 0)
 
         DispatchQueue.global(qos: .userInitiated).async {
-            _ = try? CitizenSDKNative.withCheckpointSafeCloseGate(
+            _ = try? CitizenSDKCore.withCheckpointSafeCloseGate(
                 lock: lock.value,
                 checkpointRequired: { true },
                 lifecycle: { .created },

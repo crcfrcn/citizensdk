@@ -53,7 +53,7 @@ Future<void> _until(bool Function() condition) async {
 
 Future<void> _emptyWallet(CitizenSdk sdk) async {
   // 只回读隔离目录的公开快照；空热资料与空账户目录必须同时成立。
-  final state = await sdk.wallet.getState().result.timeout(_timeout);
+  final state = await sdk.getWalletState().result.timeout(_timeout);
   _require(state.hotProfile == null && state.accounts.isEmpty);
 }
 
@@ -108,10 +108,7 @@ Future<void> _verify() async {
     final initial = await opened.getCapabilities().timeout(_timeout);
     _capabilities(initial);
     _require(!initial[CitizenCapabilityName.chainRead].ready);
-    await _expectError(
-      opened.chain.getFinalizedHead,
-      CitizenSdkErrorCode.notReady,
-    );
+    await _expectError(opened.getFinalizedHead, CitizenSdkErrorCode.notReady);
     // 只查询隔离命名空间的公开资料；不创建/导入钱包，不签名、不触发秘密 UI。
     await _emptyWallet(opened);
     await opened.start().timeout(_timeout);
@@ -151,10 +148,7 @@ Future<void> _verify() async {
     _capabilities(reopened);
     _require(!reopened[CitizenCapabilityName.chainRead].ready);
     await _emptyWallet(sdk);
-    await _expectError(
-      sdk.chain.getFinalizedHead,
-      CitizenSdkErrorCode.notReady,
-    );
+    await _expectError(sdk.getFinalizedHead, CitizenSdkErrorCode.notReady);
     await sdk.close().timeout(_timeout);
     _require(sdk.lifecycle == CitizenSdkLifecycle.disposed);
     sdk = null;

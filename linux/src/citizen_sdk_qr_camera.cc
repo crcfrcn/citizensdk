@@ -1,5 +1,5 @@
 #include "citizen_sdk_qr_camera.hpp"
-#include "citizen_sdk/citizen_sdk.hpp"
+#include "input.hpp"
 #include "citizensdk_qr_image.h"
 #include <algorithm>
 #include <condition_variable>
@@ -238,18 +238,15 @@ citizensdk_error_code_t capture_image_error(citizensdk_qr_image_status_t code) {
 }
 std::vector<uint8_t> capture_document(citizensdk_handle_t sdk, const uint8_t *bytes, std::size_t size, uint32_t purpose) {
   uint64_t required = 0;
-  auto code = citizensdk_qr_parse(sdk, {bytes, size}, nullptr, 0, &required);
+  auto code = citizensdk_qr_parse(sdk, {bytes, size}, purpose, nullptr, 0, &required);
   require(code == CITIZENSDK_OK, code, "二维码解析失败");
   require(required > 0 && required <= 65536, CITIZENSDK_ERROR_INTEGRITY, "二维码文档大小无效");
   std::vector<uint8_t> result(static_cast<std::size_t>(required));
   const auto capacity = required;
-  code = citizensdk_qr_parse(sdk, {bytes, size}, result.data(), capacity, &required);
+  code = citizensdk_qr_parse(sdk, {bytes, size}, purpose, result.data(), capacity, &required);
   require(code == CITIZENSDK_OK, code, "二维码解析失败");
   require(required == capacity, CITIZENSDK_ERROR_INTEGRITY, "二维码文档复制期间变化");
-  uint64_t mask = 0;
-  try { mask = citizen_sdk::detail::qr_public_unsigned(std::string(result.begin(), result.end()), "scan_purpose_mask", 255); }
-  catch (const citizen_sdk::Error &error) { throw HostError(error.code(), "Core二维码文档字段无效"); }
-  require((mask & (UINT64_C(1) << (purpose - 1))) != 0, CITIZENSDK_ERROR_INVALID_ARGUMENT, "二维码用途不符");
+  // 用途由同一次Core解析直接验证，平台不再解析JSON位图。
   return result;
 }
 void validate_capture_frame(const QrFrame &frame) {

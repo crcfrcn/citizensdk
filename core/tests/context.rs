@@ -1,8 +1,11 @@
-use citizen_sdk_contracts::{
-    ContractErrorCode, Hash32, RuntimeContext, RuntimeVersion, VerifiedBlockRef,
-};
+use crate::types::ContractErrorCode;
+use crate::types::Hash32;
+use crate::types::RuntimeContext;
+use crate::types::RuntimeVersion;
+use crate::types::VerifiedBlockRef;
 
-use super::{RuntimeContextCache, MAX_RUNTIME_CONTEXTS};
+use super::RuntimeContextCache;
+use super::MAX_RUNTIME_CONTEXTS;
 use crate::EngineError;
 
 #[test]

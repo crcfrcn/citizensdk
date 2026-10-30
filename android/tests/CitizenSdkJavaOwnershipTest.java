@@ -29,7 +29,7 @@ public final class CitizenSdkJavaOwnershipTest {
 
     ClassLoader loader = CitizenSdkJavaOwnershipTest.class.getClassLoader();
     Class<?> nativeOwner =
-        Class.forName("org.citizen.sdk.internal.CitizenSdkNative", false, loader);
+        Class.forName("org.citizen.sdk.internal.Bindings", false, loader);
     assertTrue(
         java.util.Arrays.stream(nativeOwner.getDeclaredConstructors())
             .allMatch(

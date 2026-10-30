@@ -373,11 +373,14 @@ class CitizenPreparedTransaction internal constructor(
     val runtimeSpecNumber: Long,
     val transactionFormatNumber: Long,
     val nonce: String,
-) {
+    @get:JvmSynthetic internal val nativeHandle:Long,
+) : AutoCloseable {
     private val sourceValue = sourceAccountId.requireSize(32, "sourceAccountId")
     private val callHashValue = callDataHash.requireSize(32, "callDataHash")
     fun sourceAccountId(): ByteArray = sourceValue.clone()
     fun callDataHash(): ByteArray = callHashValue.clone()
+    @JvmSynthetic internal var release:(()->Unit)?=null
+    override fun close(){val action=synchronized(this){val current=release;release=null;current};action?.invoke()}
 }
 
 sealed class CitizenTransactionExecution(

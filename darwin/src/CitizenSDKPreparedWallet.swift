@@ -5,14 +5,14 @@ public final class CitizenSDKPreparedWallet: @unchecked Sendable, CustomStringCo
     public var description: String { "CitizenSDKPreparedWallet(<redacted>)" }
     private enum State { case open, committing, committed, releasing, released }
     private let lock = NSLock()
-    private let native: CitizenSDKNative
+    private let core: CitizenSDKCore
     private let handle: UInt64
     private var state: State = .open
     private var phrases: [CitizenSDKRecoveryPhrase] = []
     private let released: ((CitizenSDKPreparedWallet) -> Void)?
 
-    init(native: CitizenSDKNative, handle: UInt64, released: ((CitizenSDKPreparedWallet) -> Void)? = nil) {
-        self.native = native
+    init(core: CitizenSDKCore, handle: UInt64, released: ((CitizenSDKPreparedWallet) -> Void)? = nil) {
+        self.core = core
         self.handle = handle
         self.released = released
     }
@@ -20,7 +20,7 @@ public final class CitizenSDKPreparedWallet: @unchecked Sendable, CustomStringCo
     public func recoveryPhrase() throws -> CitizenSDKRecoveryPhrase {
         try lock.withLock {
             guard state == .open else { throw CitizenSDKError(.invalidState, "prepared wallet is already consumed") }
-            let phrase = CitizenSDKRecoveryPhrase(buffer: try native.copyPreparedMnemonic(handle))
+            let phrase = CitizenSDKRecoveryPhrase(buffer: try core.copyPreparedMnemonic(handle))
             phrases.append(phrase)
             return phrase
         }
@@ -33,7 +33,7 @@ public final class CitizenSDKPreparedWallet: @unchecked Sendable, CustomStringCo
             state = .committing
         }
         do {
-            let operation = try native.commitPrepared(handle)
+            let operation = try core.commitPrepared(handle)
             // Acceptance consumes the independent Core prepared handle even if
             // its later durable wallet mutation reports an error.
             lock.withLock { state = .committed }
@@ -58,7 +58,7 @@ public final class CitizenSDKPreparedWallet: @unchecked Sendable, CustomStringCo
         }
         if shouldRelease {
             do {
-                try native.releasePrepared(handle)
+                try core.releasePrepared(handle)
                 lock.withLock { state = .released }
             } catch {
                 lock.withLock { state = .open }

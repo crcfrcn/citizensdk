@@ -1,13 +1,18 @@
-use citizen_sdk_contracts::{
-    DispatchFailure, ExecutionConclusion, Hash32, ModuleDispatchFailure, RuntimeContext,
-    SignedExtrinsic, UnverifiedReason, VerifiedBlockRef,
-};
-use subxt_core::config::{substrate::BlakeTwo256, Hasher};
+use crate::types::DispatchFailure;
+use crate::types::ExecutionConclusion;
+use crate::types::Hash32;
+use crate::types::ModuleDispatchFailure;
+use crate::types::RuntimeContext;
+use crate::types::SignedExtrinsic;
+use crate::types::UnverifiedReason;
+use crate::types::VerifiedBlockRef;
+use subxt_core::config::substrate::BlakeTwo256;
+use subxt_core::config::Hasher;
 
-use crate::{
-    error::EngineError,
-    system_events::{decode_metadata_strict, DecodedDispatchFailure, DecodedSystemOutcome},
-};
+use crate::error::EngineError;
+use crate::system_events::decode_metadata_strict;
+use crate::system_events::DecodedDispatchFailure;
+use crate::system_events::DecodedSystemOutcome;
 
 /// All already-verified block evidence required to decide one transaction's
 /// runtime execution result.

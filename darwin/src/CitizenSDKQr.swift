@@ -274,10 +274,10 @@ public final class CitizenQRReview: @unchecked Sendable {
     public let callArguments: String
     @_spi(CitizenSDKFlutter) public var coreJSON: String { document.coreJSON }
     private let lock = NSLock()
-    private let owner: CitizenSDKNative
+    private let owner: CitizenSDKCore
     private var result: UInt64
     private var released: ((CitizenQRReview) -> Void)?
-    internal init(owner: CitizenSDKNative, result: UInt64, json: String) throws {
+    internal init(owner: CitizenSDKCore, result: UInt64, json: String) throws {
         let projection = try CitizenSDKQrProjection.decode(json)
         guard projection.kind == 1 else { throw CitizenSDKError(.integrity, "QR review is not a request") }
         document = try CitizenQRDocument(coreJSON: json)
@@ -297,7 +297,7 @@ public final class CitizenQRReview: @unchecked Sendable {
         self.owner = owner
         self.result = result
     }
-    internal func withResult<T>(owner: CitizenSDKNative, _ body: (UInt64) throws -> T) throws -> T {
+    internal func withResult<T>(owner: CitizenSDKCore, _ body: (UInt64) throws -> T) throws -> T {
         lock.lock(); defer { lock.unlock() }
         guard self.owner === owner, result != 0 else { throw CitizenSDKError(.invalidState, "QR review is released or belongs to another SDK") }
         return try body(result)

@@ -22,7 +22,7 @@ using namespace citizen_sdk::windows;
 void rejects(const std::function<void()> &action, citizensdk_error_code_t expected) {
   bool rejected = false;
   try { action(); }
-  catch (const citizen_sdk::HostError &error) { rejected = error.code() == expected; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code == expected; }
   assert(rejected);
 }
 

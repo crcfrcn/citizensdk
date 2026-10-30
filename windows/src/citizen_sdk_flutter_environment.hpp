@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-#include "citizen_sdk/citizen_sdk_config.hpp"
+#include "environment.hpp"
 
 namespace citizen_sdk::flutter {
 

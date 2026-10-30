@@ -1,10 +1,12 @@
 //! SDK 无界面的钱包输入能力；词表、checksum 与派生使用同一个 BIP-39 依赖。
 //! 不生成钱包、不访问金库、不持久化输入，错误仅携带位置而不包含单词或秘密。
 
-use bip39::{Language, Mnemonic};
-use citizen_sdk_contracts::ContractErrorCode;
+use crate::types::ContractErrorCode;
+use bip39::Language;
+use bip39::Mnemonic;
 
-use crate::{EngineError, WalletWordCount};
+use crate::EngineError;
+use crate::WalletWordCount;
 
 const MAX_INPUT_BYTES: usize = 1024;
 const MAX_SUGGESTIONS: usize = 6;
@@ -33,7 +35,10 @@ pub struct WalletInputValidation {
 
 impl WalletInputValidation {
     pub const fn new(reason: WalletInputReason) -> Self {
-        Self { reason, position: None }
+        Self {
+            reason,
+            position: None,
+        }
     }
 
     fn into_error(self) -> EngineError {
@@ -42,13 +47,16 @@ impl WalletInputValidation {
             WalletInputReason::InputTooLong => "助记词输入超过长度上限".to_owned(),
             WalletInputReason::WordCount => "助记词只允许与所选词数一致的12、18或24词".to_owned(),
             WalletInputReason::UnknownWord => format!(
-                "第 {} 个助记词不在英文词表中", self.position.unwrap_or(0) + 1,
+                "第 {} 个助记词不在英文词表中",
+                self.position.unwrap_or(0) + 1,
             ),
             WalletInputReason::Checksum => "助记词校验和不正确".to_owned(),
             WalletInputReason::PasswordFormat => "钱包派生密码格式不符".to_owned(),
             WalletInputReason::MnemonicFormat => "助记词无效".to_owned(),
             WalletInputReason::PasswordLength => "密码长度必须为 6–30 位".to_owned(),
-            WalletInputReason::PasswordNormalization => "密码包含规范化后无法安全恢复的字符".to_owned(),
+            WalletInputReason::PasswordNormalization => {
+                "密码包含规范化后无法安全恢复的字符".to_owned()
+            }
         };
         invalid(message)
     }

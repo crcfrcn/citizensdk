@@ -1,4 +1,6 @@
-/// 与 CitizenSDK C ABI v1 一一对应的稳定错误分类。
+part of '../citizen_sdk.dart';
+
+/// 与 CitizenSDK C ABI 2 一一对应的稳定错误分类。
 enum CitizenSdkErrorCode {
   invalidArgument,
   invalidHandle,
@@ -49,25 +51,28 @@ final class CitizenSdkException implements Exception {
 
   final CitizenSdkErrorCode code;
   final CitizenSdkFailureStage? _stage;
-  CitizenSdkFailureStage get stage => _stage ?? switch (code) {
-    CitizenSdkErrorCode.invalidArgument || CitizenSdkErrorCode.decode =>
-      CitizenSdkFailureStage.validation,
-    CitizenSdkErrorCode.authenticationCancelled ||
-    CitizenSdkErrorCode.authenticationRequired ||
-    CitizenSdkErrorCode.keyInvalidated ||
-    CitizenSdkErrorCode.permissionDenied =>
-      CitizenSdkFailureStage.authentication,
-    CitizenSdkErrorCode.storage => CitizenSdkFailureStage.persistence,
-    CitizenSdkErrorCode.unavailable ||
-    CitizenSdkErrorCode.network ||
-    CitizenSdkErrorCode.timeout => CitizenSdkFailureStage.provider,
-    CitizenSdkErrorCode.integrity => CitizenSdkFailureStage.verification,
-    CitizenSdkErrorCode.cancelled => CitizenSdkFailureStage.cancellation,
-    CitizenSdkErrorCode.internal || CitizenSdkErrorCode.panic =>
-      CitizenSdkFailureStage.teardown,
-    _ => CitizenSdkFailureStage.admission,
-  };
+  CitizenSdkFailureStage get stage =>
+      _stage ??
+      switch (code) {
+        CitizenSdkErrorCode.invalidArgument ||
+        CitizenSdkErrorCode.decode => CitizenSdkFailureStage.validation,
+        CitizenSdkErrorCode.authenticationCancelled ||
+        CitizenSdkErrorCode.authenticationRequired ||
+        CitizenSdkErrorCode.keyInvalidated ||
+        CitizenSdkErrorCode.permissionDenied =>
+          CitizenSdkFailureStage.authentication,
+        CitizenSdkErrorCode.storage => CitizenSdkFailureStage.persistence,
+        CitizenSdkErrorCode.unavailable ||
+        CitizenSdkErrorCode.network ||
+        CitizenSdkErrorCode.timeout => CitizenSdkFailureStage.provider,
+        CitizenSdkErrorCode.integrity => CitizenSdkFailureStage.verification,
+        CitizenSdkErrorCode.cancelled => CitizenSdkFailureStage.cancellation,
+        CitizenSdkErrorCode.internal ||
+        CitizenSdkErrorCode.panic => CitizenSdkFailureStage.teardown,
+        _ => CitizenSdkFailureStage.admission,
+      };
   final String message;
+
   /// 失败跨公开调用边界后，必须属于现行通道方法闭集；边界前可为空。
   final String? method;
   final String? sessionId;
@@ -80,26 +85,74 @@ final class CitizenSdkException implements Exception {
 
 /// SDK安全诊断只携带闭集事实；不接受异常原文、账户或秘密。
 final class CitizenSdkDiagnostic {
-  const CitizenSdkDiagnostic._(this.method, this.phase, this.code, this.stage, this.point, this.elapsedMillis);
+  const CitizenSdkDiagnostic._(
+    this.method,
+    this.phase,
+    this.code,
+    this.stage,
+    this.point,
+    this.elapsedMillis,
+  );
   final String method;
   final String phase;
   final int code;
   final int stage;
   final String point;
   final int elapsedMillis;
-  static const methods = {'open', 'start', 'stop', 'getSyncStatus', 'getWalletState', 'inspectWallets', 'releaseWalletInspection', 'cancelOperation'};
-  static const points = {'NONE', 'ADMISSION', 'LOCAL_READ', 'RESULT_READY', 'RESTORE', 'BEGIN', 'PUBLISH_BEGIN', 'PROVIDER_START', 'REFRESH', 'COMPLETE', 'SERVICES', 'PUBLISH_COMPLETE'};
+  static const methods = {
+    'open',
+    'start',
+    'stop',
+    'getSyncStatus',
+    'getWalletState',
+    'inspectWallets',
+    'releaseWalletInspection',
+    'cancelOperation',
+  };
+  static const points = {
+    'NONE',
+    'ADMISSION',
+    'LOCAL_READ',
+    'RESULT_READY',
+    'RESTORE',
+    'BEGIN',
+    'PUBLISH_BEGIN',
+    'PROVIDER_START',
+    'REFRESH',
+    'COMPLETE',
+    'SERVICES',
+    'PUBLISH_COMPLETE',
+  };
   factory CitizenSdkDiagnostic.decode(Object? input) {
-    if (input is! List<Object?> || input.length != 6 || !methods.contains(input[0]) ||
+    if (input is! List<Object?> ||
+        input.length != 6 ||
+        !methods.contains(input[0]) ||
         !{'ADMISSION', 'BEGIN', 'DECODE', 'COMPLETE'}.contains(input[1]) ||
-        input[2] is! int || (input[2] as int) < 0 || (input[2] as int) > 22 ||
-        input[3] is! int || (input[3] as int) < 0 || (input[3] as int) > 8 ||
-        !points.contains(input[4]) || input[5] is! int ||
-        (input[5] as int) < 0 || (input[5] as int) > 86400000) {
-      throw const CitizenSdkException(code: CitizenSdkErrorCode.decode, message: 'SDK安全诊断结构无效');
+        input[2] is! int ||
+        (input[2] as int) < 0 ||
+        (input[2] as int) > 22 ||
+        input[3] is! int ||
+        (input[3] as int) < 0 ||
+        (input[3] as int) > 8 ||
+        !points.contains(input[4]) ||
+        input[5] is! int ||
+        (input[5] as int) < 0 ||
+        (input[5] as int) > 86400000) {
+      throw const CitizenSdkException(
+        code: CitizenSdkErrorCode.decode,
+        message: 'SDK安全诊断结构无效',
+      );
     }
-    return CitizenSdkDiagnostic._(input[0] as String, input[1] as String, input[2] as int,
-        input[3] as int, input[4] as String, input[5] as int);
+    return CitizenSdkDiagnostic._(
+      input[0] as String,
+      input[1] as String,
+      input[2] as int,
+      input[3] as int,
+      input[4] as String,
+      input[5] as int,
+    );
   }
-  @override String toString() => 'method=$method phase=$phase code=$code stage=$stage point=$point elapsed_ms=$elapsedMillis';
+  @override
+  String toString() =>
+      'method=$method phase=$phase code=$code stage=$stage point=$point elapsed_ms=$elapsedMillis';
 }

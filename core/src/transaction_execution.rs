@@ -6,20 +6,24 @@
 
 use std::sync::Arc;
 
-use citizen_sdk_contracts::{
-    store::HistoryTransactionStatus, ContractErrorCode, ExecutionConclusion, ExtrinsicWatchEvent,
-    Hash32, SignedExtrinsic, TransactionExecutionCompleted, TransactionExecutionId,
-    TransactionExecutionResolution, VerifiedChainClient,
-};
+use crate::types::store::HistoryTransactionStatus;
+use crate::types::ContractErrorCode;
+use crate::types::ExecutionConclusion;
+use crate::types::ExtrinsicWatchEvent;
+use crate::types::Hash32;
+use crate::types::SignedExtrinsic;
+use crate::types::TransactionExecutionCompleted;
+use crate::types::TransactionExecutionId;
+use crate::types::TransactionExecutionResolution;
+use crate::types::VerifiedChainClient;
 use futures::StreamExt;
 
-use crate::{
-    chain_monitor::MonitorCancellation,
-    error::EngineError,
-    system_events::SYSTEM_EVENTS_STORAGE_KEY,
-    transaction_history::TransactionHistoryService,
-    transaction_outcome::{verify_transaction_outcome, TransactionEvidence},
-};
+use crate::chain_monitor::MonitorCancellation;
+use crate::error::EngineError;
+use crate::system_events::SYSTEM_EVENTS_STORAGE_KEY;
+use crate::transaction_history::TransactionHistoryService;
+use crate::transaction_outcome::verify_transaction_outcome;
+use crate::transaction_outcome::TransactionEvidence;
 
 /// Cooperative cancellation for one generic execution after a cold signature is accepted.
 ///
@@ -68,11 +72,11 @@ pub(crate) async fn persist_submit_and_verify_exact(
     chain: &dyn VerifiedChainClient,
     history: &TransactionHistoryService,
     execution_id: TransactionExecutionId,
-    source: citizen_sdk_contracts::AccountId32,
+    source: crate::types::AccountId32,
     call_data_hash: Hash32,
     call_data: Vec<u8>,
-    prepared_block: citizen_sdk_contracts::VerifiedBlockRef,
-    runtime_context: citizen_sdk_contracts::RuntimeContext,
+    prepared_block: crate::types::VerifiedBlockRef,
+    runtime_context: crate::types::RuntimeContext,
     genesis_hash: Hash32,
     nonce: u64,
     signed_extrinsic: SignedExtrinsic,

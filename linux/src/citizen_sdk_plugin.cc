@@ -1,4 +1,4 @@
-#include "citizen_sdk/citizen_sdk_plugin.h"
+#include "citizen_sdk_plugin.h"
 
 #include <algorithm>
 #include <functional>
@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
-#include "citizen_sdk_flutter_codec.hpp"
+#include "value.hpp"
 #include "citizen_sdk_flutter_environment.hpp"
-#include "citizen_sdk_flutter_sessions.hpp"
+#include "flutter.hpp"
 
 namespace {
 
@@ -558,13 +558,9 @@ TextureRegistration create_texture_registration(FlTextureRegistrar *registrar) {
           [owner] { owner->detach(); }};
 }
 
-// Internal dependency seam for deterministic native transport fixtures. This
-// symbol is hidden by the plugin's visibility policy and is not declared in
-// installed/public headers. Production and tests use this same registration,
-// pending-reply and detach implementation; the exported entry uses OS/Host.
-void register_plugin(FlPluginRegistrar *registrar,
-                     EnvironmentFactory environment_factory,
-                     TransportFactory transport_factory) {
+// 原生注册直接创建实际Host资源。
+void register_plugin(FlPluginRegistrar *registrar) {
+  EnvironmentFactory environment_factory;
   g_return_if_fail(FL_IS_PLUGIN_REGISTRAR(registrar));
   // Generated GTK runners register synchronously from the UI context. There
   // is no worker-thread registration path and no asynchronous half-attachment.
@@ -593,7 +589,7 @@ void register_plugin(FlPluginRegistrar *registrar,
     state->sessions = Sessions::create(
         std::move(environment_factory),
         [context](std::function<void()> work) { post(context.get(), std::move(work)); },
-        std::move(transport_factory), state->textures.open);
+        state->textures.open);
     g_autoptr(FlStandardMethodCodec) codec = new_method_codec();
     auto method_token = std::make_unique<HandlerToken>(
         plugin, &state->method_registration);
@@ -625,5 +621,5 @@ void register_plugin(FlPluginRegistrar *registrar,
 }  // namespace citizen_sdk::flutter
 
 void citizen_sdk_plugin_register_with_registrar(FlPluginRegistrar *registrar) {
-  citizen_sdk::flutter::register_plugin(registrar, {}, {});
+  citizen_sdk::flutter::register_plugin(registrar);
 }

@@ -1,29 +1,34 @@
 //! 已验证 finalized Runtime 上的完整 QR SCALE 审阅；没有测试快照或调用方 metadata 入口。
 
-use std::{cell::Cell, collections::BTreeSet, marker::PhantomData};
+use std::cell::Cell;
+use std::collections::BTreeSet;
+use std::marker::PhantomData;
 
-use citizen_sdk_contracts::{
-    ChainIdentity, ContractErrorCode, FinalizedBlockRef, Hash32, RuntimeContext,
-    VerifiedChainClient,
-};
-use citizen_sdk_qr::SignRequest;
-use sha2::{Digest, Sha256};
-use subxt_core::{
-    ext::{
-        codec::{Compact, Decode, Encode},
-        scale_decode::{
-            visitor::{self, DecodeError, Unexpected, Visitor},
-            TypeResolver,
-        },
-        scale_value::{self, Value},
-    },
-    utils::Era,
-    Metadata,
-};
+use crate::qr::SignRequest;
+use crate::types::ChainIdentity;
+use crate::types::ContractErrorCode;
+use crate::types::FinalizedBlockRef;
+use crate::types::Hash32;
+use crate::types::RuntimeContext;
+use crate::types::VerifiedChainClient;
+use sha2::Digest;
+use sha2::Sha256;
+use subxt_core::ext::codec::Compact;
+use subxt_core::ext::codec::Decode;
+use subxt_core::ext::codec::Encode;
+use subxt_core::ext::scale_decode::visitor;
+use subxt_core::ext::scale_decode::visitor::DecodeError;
+use subxt_core::ext::scale_decode::visitor::Unexpected;
+use subxt_core::ext::scale_decode::visitor::Visitor;
+use subxt_core::ext::scale_decode::TypeResolver;
+use subxt_core::ext::scale_value;
+use subxt_core::ext::scale_value::Value;
+use subxt_core::utils::Era;
+use subxt_core::Metadata;
 
-use crate::{
-    account_state::verified_identity, error::EngineError, system_events::decode_metadata_strict,
-};
+use crate::account_state::verified_identity;
+use crate::error::EngineError;
+use crate::system_events::decode_metadata_strict;
 
 /// 审阅事实只由本模块构造；业务不能把自行拼接的摘要当成已经核验的交易。
 #[derive(Clone, Debug)]
@@ -94,7 +99,9 @@ pub(crate) async fn review_request(
     client: &dyn VerifiedChainClient,
     request: SignRequest,
 ) -> Result<QrReview, EngineError> {
-    request.require_signer().map_err(|_| decode("链扫码审阅必须有明确签名账户"))?;
+    request
+        .require_signer()
+        .map_err(|_| decode("链扫码审阅必须有明确签名账户"))?;
     let identity = verified_identity(client).await?;
     let finalized = client.get_finalized_head().await?;
     let context = client.get_finalized_runtime_context_at(finalized).await?;

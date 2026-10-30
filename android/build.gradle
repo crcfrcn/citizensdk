@@ -1,8 +1,8 @@
 // JVM与设备共用唯一测试目录；设备文件集合只归本声明。
-rootProject.ext.citizenSdkDeviceTests = ['CitizenSdkHardwareVaultTest.kt', 'CitizenSdkLifecycleTest.kt', 'CitizenSdkNativeAbiTest.kt', 'CitizenSdkStateStoreTest.kt', 'CitizenSdkWalletFlowCancellationTest.kt', 'CitizenSdkWalletFlowSecretBoundaryTest.kt', 'CitizenSdkWalletInputTest.kt']
+rootProject.ext.citizenSdkDeviceTests = ['CitizenSdkHardwareVaultTest.kt', 'CitizenSdkLifecycleTest.kt', 'CitizenSdkNativeAbiTest.kt', 'CitizenSdkStateStoreTest.kt', 'CitizenSdkWalletFlowSecretBoundaryTest.kt', 'CitizenSdkWalletInputTest.kt']
 
 group = 'org.citizen.sdk'
-version = '1.0.0'
+version = '2.0.0'
 
 // 独立AAR使用显式原源码根；Flutter插件继续使用宿主登记的插件根。
 def sdkSourceValue = System.getenv('CITIZENSDK_SOURCE_DIR')

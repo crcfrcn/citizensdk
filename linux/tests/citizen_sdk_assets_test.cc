@@ -49,7 +49,7 @@ int main() {
   try {
     (void)Assets::load(directory);
   } catch (const HostError &error) {
-    symlink_rejected = error.code() == CITIZENSDK_ERROR_INTEGRITY;
+    symlink_rejected = error.code == CITIZENSDK_ERROR_INTEGRITY;
   }
   assert(symlink_rejected);
 
@@ -57,7 +57,7 @@ int main() {
   try {
     (void)Assets::load("relative-assets");
   } catch (const HostError &error) {
-    relative_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    relative_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(relative_rejected);
   return 0;

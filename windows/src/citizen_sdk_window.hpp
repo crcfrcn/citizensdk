@@ -36,7 +36,7 @@ class WindowLease final {
 
 class WindowRef final {
  public:
-  WindowRef(void *hwnd, std::thread::id ui_thread, bool enable_wallet = true);
+  WindowRef(void *hwnd, std::thread::id ui_thread, bool enabled = true);
   WindowRef(const WindowRef &) = delete;
   WindowRef &operator=(const WindowRef &) = delete;
   ~WindowRef();

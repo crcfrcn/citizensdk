@@ -1,7 +1,7 @@
 package org.citizen.sdk
 
 import org.json.JSONObject
-import org.citizen.sdk.internal.CitizenSdkNative
+import org.citizen.sdk.CitizenSdk
 
 
 /** 仅保存规范输入字段；短键、Base64、随机编号和协议校验只由Core处理。 */
@@ -170,7 +170,7 @@ class CitizenQrDocument internal constructor(
 
 /** 不可变审阅事实及同实例凭证；不含标题、按钮或排版字符串。 */
 class CitizenQrReview internal constructor(
-    private val native: CitizenSdkNative,
+    private val native: CitizenSdk,
     result: Long,
     @get:JvmSynthetic internal val coreJson: String,
     private val released: (CitizenQrReview) -> Unit,
@@ -195,7 +195,7 @@ class CitizenQrReview internal constructor(
     val callArguments: String = with(CitizenQrDocument) { facts.text("call_arguments") }
 
     @JvmSynthetic
-    internal fun <T> withHandle(owner: CitizenSdkNative, body: (Long) -> T): T = synchronized(gate) {
+    internal fun <T> withHandle(owner: CitizenSdk, body: (Long) -> T): T = synchronized(gate) {
         check(owner === native && handle != 0L) { "QR review is closed or belongs to another SDK" }
         body(handle)
     }

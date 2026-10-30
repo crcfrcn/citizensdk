@@ -36,7 +36,7 @@ int main() {
   assert(config.application_id == "org.example.fixture");
   assert(config.storage_root == temporary.path() / "xdg-data");
   assert(config.asset_root == assets);
-  assert(config.gtk_parent_window == nullptr);
+  assert(config.parent == nullptr);
   assert(config.modules == CITIZENSDK_MODULE_FULL);
 
   auto invalid = inputs;

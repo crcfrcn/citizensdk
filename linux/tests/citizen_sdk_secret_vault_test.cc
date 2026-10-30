@@ -45,10 +45,10 @@ void headless_credential_contract() {
   } provider;
   provider.auth = &auth;
   citizensdk_credential_provider_v1_t binding{
-      sizeof(citizensdk_credential_provider_v1_t), 1, &provider,
+      sizeof(citizensdk_credential_provider_v1_t), CITIZENSDK_ABI_VERSION, &provider,
       +[](void *context, const citizensdk_credential_challenge_v1_t *challenge) {
         auto &p = *static_cast<Provider *>(context);
-        assert(challenge->struct_size == sizeof(*challenge) && challenge->abi_version == 1);
+        assert(challenge->struct_size == sizeof(*challenge) && challenge->abi_version == CITIZENSDK_ABI_VERSION);
         assert(challenge->reserved == 0 && challenge->host_operation_id != 0);
         p.id = challenge->host_operation_id; p.purpose = challenge->key_purpose;
         if (p.throws) throw std::runtime_error("synthetic provider failure");
@@ -159,7 +159,7 @@ int main() {
       vault.ensure_wallet_kek(1, invalid, operation);
     } catch (const citizen_sdk::HostError &error) {
       wrong_wallet_rejected =
-          error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+          error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
     }
     assert(wrong_wallet_rejected);
 
@@ -172,20 +172,20 @@ int main() {
     auto reject_wrap = [&] {
       bool rejected = false;
       try { (void)vault.wrap_dek(8, missing, operation, output.data()); }
-      catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+      catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED; }
       assert(rejected);
     };
     reject_wrap();
     bool add_rejected = false;
     try { vault.authorize_add_accounts(10, missing, operation); }
-    catch (const citizen_sdk::HostError &error) { add_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+    catch (const citizen_sdk::HostError &error) { add_rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED; }
     assert(add_rejected && vault.idle());
     assert(!store.is_generation_active(missing));
     bool missing_rejected = false;
     try {
       vault.unwrap_dek(9, missing, citizen_sdk::Bytes{1, 2}, output.data());
     } catch (const citizen_sdk::HostError &error) {
-      missing_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED;
+      missing_rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED;
     }
     assert(missing_rejected);
     assert(std::all_of(output.begin(), output.end(),
@@ -250,7 +250,7 @@ int main() {
 
   const std::string bridge_path =
       std::string(CITIZENSDK_LINUX_TEST_SOURCE_DIR) +
-      "/src/citizen_sdk_host_bridge.hpp";
+      "/src/host.hpp";
   std::ifstream bridge_stream(bridge_path, std::ios::binary);
   assert(bridge_stream.good());
   const std::string bridge((std::istreambuf_iterator<char>(bridge_stream)),

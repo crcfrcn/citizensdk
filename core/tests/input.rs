@@ -1,9 +1,12 @@
 //! 仅使用公开合成熵，不引入真实用户助记词或密码。
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use bip39::{Language, Mnemonic};
+use bip39::Language;
+use bip39::Mnemonic;
 
-use crate::{validate_wallet_mnemonic, wallet_word_suggestions, WalletWordCount};
+use crate::validate_wallet_mnemonic;
+use crate::wallet_word_suggestions;
+use crate::WalletWordCount;
 
 #[test]
 fn headless_input_results_share_the_real_parser_without_secret_echo() {

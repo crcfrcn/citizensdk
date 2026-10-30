@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.31.6)
 project(citizensdk_jni LANGUAGES CXX)
 
 if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
-  message(FATAL_ERROR "CitizenSDK Android 1.0.0 supports only arm64-v8a")
+  message(FATAL_ERROR "CitizenSDK Android 2.0.0 supports only arm64-v8a")
 endif()
 if(NOT DEFINED CITIZENSDK_CORE_DIR)
   message(FATAL_ERROR "CITIZENSDK_CORE_DIR is required")
@@ -31,6 +31,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../image"
 
 add_library(citizensdk_jni SHARED
   citizensdk_host_bridge.cpp
+  values.cpp
   citizensdk_jni.cpp
 )
 target_compile_features(citizensdk_jni PRIVATE cxx_std_17)
@@ -48,7 +49,7 @@ target_link_libraries(citizensdk_jni PRIVATE citizensdk_core CitizenSDK::QrImage
 set(CITIZENSDK_JNI_VERSION_SCRIPT
     "${CMAKE_CURRENT_BINARY_DIR}/citizensdk-jni.exports.map")
 file(GENERATE OUTPUT "${CITIZENSDK_JNI_VERSION_SCRIPT}" CONTENT
-"CITIZENSDK_JNI_1.0 {
+"CITIZENSDK_JNI_2.0 {
   global:
     JNI_OnLoad;
     citizensdk_qr_image_*;

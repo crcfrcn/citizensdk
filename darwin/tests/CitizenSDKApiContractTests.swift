@@ -67,10 +67,10 @@ final class CitizenSDKApiContractTests: XCTestCase {
         }
         let a = try balance(first, finalized)
         let b = try balance(second, finalized)
-        XCTAssertEqual(try CitizenSDKNativeCodec.validateBalances([], accountIDs: []), [])
-        XCTAssertEqual(try CitizenSDKNativeCodec.validateBalances([b, a, b], accountIDs: [second, first, second]), [b, a, b])
+        XCTAssertEqual(try CitizenSDKRead.validateBalances([], accountIDs: []), [])
+        XCTAssertEqual(try CitizenSDKRead.validateBalances([b, a, b], accountIDs: [second, first, second]), [b, a, b])
         for values in [[a], [b, a], [a, try balance(second, next)], [a, try balance(second, best)]] {
-            XCTAssertThrowsError(try CitizenSDKNativeCodec.validateBalances(values, accountIDs: [first, second])) {
+            XCTAssertThrowsError(try CitizenSDKRead.validateBalances(values, accountIDs: [first, second])) {
                 XCTAssertEqual(($0 as? CitizenSDKError)?.code, .integrity)
             }
         }
@@ -117,14 +117,14 @@ final class CitizenSDKApiContractTests: XCTestCase {
 
     func testCoreRejectsInvalidModuleCombinationsBeforeHostCreation() {
         for raw: UInt32 in [0, 64, 8, 16, UInt32.max] {
-            XCTAssertThrowsError(try CitizenSDKNative.validateModules(CitizenSDKModules(rawValue: raw)))
+            XCTAssertThrowsError(try CitizenSDKCore.validateModules(CitizenSDKModules(rawValue: raw)))
         }
     }
 
     func testStandaloneVerifyRejectsMalformedPublicInputsWithoutOpeningSdk() {
-        XCTAssertThrowsError(try CitizenSigning.verify(accountID: Data(repeating: 0, count: 31),
+        XCTAssertThrowsError(try CitizenSdk.verify(accountID: Data(repeating: 0, count: 31),
                                                        signature: Data(repeating: 0, count: 64), message: Data()))
-        XCTAssertThrowsError(try CitizenSigning.verify(accountID: Data(repeating: 0, count: 32),
+        XCTAssertThrowsError(try CitizenSdk.verify(accountID: Data(repeating: 0, count: 32),
                                                        signature: Data(repeating: 0, count: 63), message: Data()))
     }
 

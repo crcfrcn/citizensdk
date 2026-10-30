@@ -1,6 +1,8 @@
 use core::fmt;
 
-use citizen_sdk_contracts::{ContractError, ContractErrorCode, FailureStage};
+use crate::types::ContractError;
+use crate::types::ContractErrorCode;
+use crate::types::FailureStage;
 
 /// Stable Rust-side failure categories used before the C ABI maps them to
 /// numeric public error codes.

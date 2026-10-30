@@ -25,8 +25,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include "citizen_sdk/citizen_sdk_error.hpp"
-#include "citizen_sdk_flutter_sessions.hpp"
+#include "value.hpp"
+#include "flutter.hpp"
 
 #ifdef NDEBUG
 #error "CitizenSDK Windows Flutter contract assertions must remain enabled"

@@ -1,5 +1,9 @@
-use citizen_sdk_contracts::{CapabilityName, CapabilityReason, CapabilitySnapshot};
-use citizen_sdk_engine::{resolve_capabilities, CapabilityProbe, CapabilityTracker};
+use citizensdk::resolve_capabilities;
+use citizensdk::types::CapabilityName;
+use citizensdk::types::CapabilityReason;
+use citizensdk::types::CapabilitySnapshot;
+use citizensdk::CapabilityProbe;
+use citizensdk::CapabilityTracker;
 
 fn all_ready() -> Vec<CapabilityProbe> {
     CapabilityName::ALL

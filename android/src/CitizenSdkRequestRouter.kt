@@ -7,17 +7,15 @@ import org.citizen.sdk.CitizenSdkException
 import org.citizen.sdk.CitizenSdkOperation
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /** Exact request-ID admission bridge; no callback is associated by ordering. */
 internal class CitizenSdkRequestRouter(
     private val cancelNative: (Long) -> Boolean,
-    private val releaseResult: (CitizenSdkNativeResult) -> Unit = {},
 ) : AutoCloseable {
+    private val releaseResult:(CoreResult)->Unit={it.close()}
     private class Pending<T>(
-        val operationId: String,
         val future: CompletableFuture<T>,
-        val decode: (CitizenSdkNativeResult) -> T,
+        val decode: (CoreResult) -> T,
     ) {
         val deliveryGate = Any()
         val deliveries = ArrayDeque<Delivery>()
@@ -25,29 +23,27 @@ internal class CitizenSdkRequestRouter(
     }
 
     private sealed class Delivery {
-        class Completion(val decoded: CitizenSdkNativeCodec.Decoded) : Delivery()
+        class Completion(val decoded: Result<CoreResult>) : Delivery()
     }
 
     private val gate = Any()
-    private val nextOperation = AtomicLong(1)
     private val closed = AtomicBoolean(false)
     private val pending = HashMap<Long, Pending<*>>()
-    private val requestByOperation = HashMap<String, Long>()
-    private val earlyCompletions = HashMap<Long, CitizenSdkNativeCodec.Decoded>()
+    private val earlyCompletions = HashMap<Long, Result<CoreResult>>()
     private var admissionInProgress = false
     private var queuedDeliveries = 0
 
-    fun <T> submit(begin: () -> Long, decode: (CitizenSdkNativeResult) -> T): CompletableFuture<T> =
+    fun <T> submit(begin: () -> Long, decode: (CoreResult) -> T): CompletableFuture<T> =
         submitOperation(begin, decode).future
 
     fun <T> submitOperation(
         begin: () -> Long,
-        decode: (CitizenSdkNativeResult) -> T,
+        decode: (CoreResult) -> T,
     ): CitizenSdkOperation<T> {
         check(!closed.get()) { "CitizenSdk request router is closed" }
-        val operationId = allocateOperationId()
+        var coreRequestId=0L
         val future = CompletableFuture<T>()
-        val entry = Pending(operationId, future, decode)
+        val entry = Pending(future, decode)
         var drainEntry: Pending<*>? = null
         synchronized(gate) {
             check(!closed.get()) { "CitizenSdk request router is closed" }
@@ -55,13 +51,13 @@ internal class CitizenSdkRequestRouter(
             // callback that races before return blocks here; a same-thread
             // reentrant test callback is retained in the exact early map.
             admissionInProgress = true
-            val coreRequestId = try {
+            coreRequestId = try {
                 begin()
             } catch (error: Throwable) {
                 // Only one admission owns the gate. Any reentrant callback in
                 // these maps belongs to the failed admission and cannot be
                 // exposed because no operation was returned to the caller.
-                earlyCompletions.values.forEach { it.result?.let(releaseResult) }
+                earlyCompletions.values.forEach { it.getOrNull()?.let(releaseResult) }
                 earlyCompletions.clear()
                 throw error
             } finally {
@@ -69,29 +65,30 @@ internal class CitizenSdkRequestRouter(
             }
             check(coreRequestId != 0L) { "Core returned reserved request ID 0" }
             check(pending.put(coreRequestId, entry) == null) { "Core request ID was reused" }
-            check(requestByOperation.put(operationId, coreRequestId) == null) { "facade operation ID was reused" }
+
             earlyCompletions.remove(coreRequestId)?.let { decoded ->
                 pending.remove(coreRequestId)
-                requestByOperation.remove(operationId)
+
                 if (enqueue(entry, Delivery.Completion(decoded))) drainEntry = entry
             }
         }
         drainEntry?.let(::drain)
+        val operationId=java.lang.Long.toUnsignedString(coreRequestId)
         return CitizenSdkOperation(operationId, future) { cancel(operationId) }
     }
 
-    fun onCompletion(coreRequestId: Long, decoded: CitizenSdkNativeCodec.Decoded) {
+    fun onCompletion(coreRequestId: Long, decoded: Result<CoreResult>) {
         val drainEntry = synchronized(gate) {
             if (!pending.containsKey(coreRequestId)) {
                 if (admissionInProgress) {
                     check(earlyCompletions.put(coreRequestId, decoded) == null) {
                         "Core delivered duplicate completion"
                     }
-                } else { decoded.result?.let(releaseResult) }
+                } else { decoded.getOrNull()?.let(releaseResult) }
                 null
             } else {
                 val entry = checkNotNull(pending.remove(coreRequestId))
-                requestByOperation.remove(entry.operationId)
+
                 if (enqueue(entry, Delivery.Completion(decoded))) entry else null
             }
         }
@@ -105,14 +102,12 @@ internal class CitizenSdkRequestRouter(
         }
     }
 
-    fun cancel(operationId: String): Boolean {
-        return synchronized(gate) {
-            val coreRequestId = requestByOperation[operationId] ?: return@synchronized false
-            // Keep the same admission gate through the native call. Completion
-            // and close cannot remove/destroy the exact request in this gap.
-            cancelNative(coreRequestId)
-        }
+    fun cancel(operationId:String):Boolean {
+        if(!operationId.matches(Regex("^[1-9][0-9]{0,19}$")))return false
+        val request=try{java.lang.Long.parseUnsignedLong(operationId)}catch(_:NumberFormatException){return false}
+        return synchronized(gate){if(!pending.containsKey(request))false else cancelNative(request)}
     }
+
 
     override fun close() {
         synchronized(gate) {
@@ -122,10 +117,10 @@ internal class CitizenSdkRequestRouter(
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun deliverCompletion(entryValue: Pending<*>, decoded: CitizenSdkNativeCodec.Decoded) {
+    private fun deliverCompletion(entryValue: Pending<*>, decoded: Result<CoreResult>) {
         val entry = entryValue as Pending<Any?>
-        if (decoded.error != null) {
-            entry.future.completeExceptionally(decoded.error)
+        if (decoded.exceptionOrNull() != null) {
+            entry.future.completeExceptionally(checkNotNull(decoded.exceptionOrNull()))
             return
         }
         var projected: Any? = null
@@ -135,11 +130,11 @@ internal class CitizenSdkRequestRouter(
             cleanupAttempted = true
             val owned = projected
             // 已构造公开资源时从其唯一close路径归还，避免Core已释放而门面登记仍存活。
-            if (owned is AutoCloseable) owned.close() else decoded.result?.let(releaseResult)
+            if (owned is AutoCloseable) owned.close() else decoded.getOrNull()?.let(releaseResult)
         }
         try {
             if (entry.future.isDone) { releaseOwned(); return }
-            projected = entry.decode(checkNotNull(decoded.result))
+            projected = entry.decode(checkNotNull(decoded.getOrNull()))
             if (!entry.future.complete(projected)) releaseOwned()
         } catch (error: Throwable) {
             try { releaseOwned() } catch (cleanup: Throwable) {
@@ -152,7 +147,7 @@ internal class CitizenSdkRequestRouter(
                     error,
                 ),
             )
-        }
+        } finally {decoded.getOrNull()?.close()}
     }
 
     /** Queues under admission order and elects at most one lock-free drainer. */
@@ -187,14 +182,5 @@ internal class CitizenSdkRequestRouter(
         }
     }
 
-    private fun allocateOperationId(): String {
-        val value = nextOperation.getAndUpdate { current ->
-            if (current == Long.MAX_VALUE) 0 else current + 1
-        }
-        if (value <= 0) throw CitizenSdkException(
-            CitizenSdkErrorCode.INTERNAL,
-            "CitizenSDK operation ID space is exhausted",
-        )
-        return value.toString()
-    }
+
 }

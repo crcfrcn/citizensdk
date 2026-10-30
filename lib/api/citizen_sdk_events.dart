@@ -1,7 +1,4 @@
-import '../models/citizen_capability.dart';
-import '../models/citizen_chain_state.dart';
-import 'citizen_qr.dart';
-import 'citizen_sdk_error.dart';
+part of '../citizen_sdk.dart';
 
 sealed class CitizenSdkEvent {
   const CitizenSdkEvent({required this.sequence});
@@ -11,8 +8,12 @@ sealed class CitizenSdkEvent {
 
 /// 绑定内部消费的非秘密认证挑战；不向CitizenSdk.events公共流重放。
 final class CitizenSdkCredentialRequest extends CitizenSdkEvent {
-  const CitizenSdkCredentialRequest({required super.sequence,
-    required this.hostOperationId, required this.keyPurpose, this.accountId});
+  const CitizenSdkCredentialRequest({
+    required super.sequence,
+    required this.hostOperationId,
+    required this.keyPurpose,
+    this.accountId,
+  });
   final BigInt hostOperationId;
   final String keyPurpose;
   final String? accountId;
@@ -20,7 +21,10 @@ final class CitizenSdkCredentialRequest extends CitizenSdkEvent {
 
 /// 实际Host已撤销此挑战；不包含输入、认证结果或设备秘密。
 final class CitizenSdkCredentialCancelled extends CitizenSdkEvent {
-  const CitizenSdkCredentialCancelled({required super.sequence, required this.hostOperationId});
+  const CitizenSdkCredentialCancelled({
+    required super.sequence,
+    required this.hostOperationId,
+  });
   final BigInt hostOperationId;
 }
 
@@ -36,8 +40,14 @@ final class CitizenSdkWalletChanged extends CitizenSdkEvent {
 
 /// 仅按实例内资源路由；不承载UI定义，不复用Core的钱包失效事件编号。
 final class CitizenSdkQrCaptureEvent extends CitizenSdkEvent {
-  const CitizenSdkQrCaptureEvent({required super.sequence, required this.resourceId,
-    this.result, this.error, this.preview, this.closed = false});
+  const CitizenSdkQrCaptureEvent({
+    required super.sequence,
+    required this.resourceId,
+    this.result,
+    this.error,
+    this.preview,
+    this.closed = false,
+  });
   final String resourceId;
   final CitizenQrScanResult? result;
   final CitizenSdkException? error;
@@ -47,7 +57,10 @@ final class CitizenSdkQrCaptureEvent extends CitizenSdkEvent {
 
 /// 私钥真实请求已排空；资源所有者立即清屏/清零，不携带私钥或认证结果。
 final class CitizenSdkPrivateKeyClosed extends CitizenSdkEvent {
-  const CitizenSdkPrivateKeyClosed({required super.sequence, required this.resourceId});
+  const CitizenSdkPrivateKeyClosed({
+    required super.sequence,
+    required this.resourceId,
+  });
   final String resourceId;
 }
 

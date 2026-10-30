@@ -36,21 +36,17 @@ int main() {
     const std::string header((std::istreambuf_iterator<char>(stream)),
                              std::istreambuf_iterator<char>());
     for (const char *forbidden : {
-             "plaintext_dek", "unlock_password",
-             "mnemonic_utf8", "signed_extrinsic", "getAccountPrivateKey",
+             "citizensdk_get_private_key", "citizensdk_result_get_private_key",
+             "citizensdk_get_mnemonic", "citizensdk_host_sign_payload",
          }) {
       assert(header.find(forbidden) == std::string::npos);
     }
     headers.insert(entry.path().filename().string());
   }
   const std::set<std::string> expected_headers{
+      "citizensdk.h",
+      "citizensdk_types.h",
       "citizensdk_host.h",
-      "citizen_sdk.hpp",
-      "citizen_sdk_config.hpp",
-      "citizen_sdk_error.hpp",
-      "citizen_sdk_events.hpp",
-      "citizen_sdk_models.hpp",
-      "citizen_sdk_plugin.h",
   };
   assert(headers == expected_headers);
 
@@ -58,7 +54,7 @@ int main() {
   try {
     (void)copy_view({nullptr, 1}, 8, "null fixture");
   } catch (const HostError &error) {
-    null_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    null_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(null_rejected);
 
@@ -69,7 +65,7 @@ int main() {
   try {
     (void)copy_view({fixture, 3}, 2, "oversized fixture");
   } catch (const HostError &error) {
-    oversized_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    oversized_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(oversized_rejected);
 

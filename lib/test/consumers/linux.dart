@@ -52,7 +52,7 @@ Future<void> _until(bool Function() condition) async {
 
 Future<void> _emptyWallet(CitizenSdk sdk) async {
   // 只回读隔离目录的公开快照；空热资料与空账户目录必须同时成立。
-  final state = await sdk.wallet.getState().result.timeout(_timeout);
+  final state = await sdk.getWalletState().result.timeout(_timeout);
   _require(state.hotProfile == null && state.accounts.isEmpty);
 }
 
@@ -74,10 +74,10 @@ Future<void> _verify() async {
     final opened = sdk;
     _require(opened.lifecycle == CitizenSdkLifecycle.created);
     // 创世身份可在 start 前直接读取；空批量查询不能绕过 Core 的生命周期门。
-    final genesisHash = await opened.chain.getGenesisHash().timeout(_timeout);
+    final genesisHash = await opened.getGenesisHash().timeout(_timeout);
     _require(RegExp(r'^0x[0-9a-f]{64}$').hasMatch(genesisHash));
     await _expectError(
-      () => opened.chain.getAccountBalances(const <String>[]),
+      () => opened.getAccountBalances(const <String>[]),
       CitizenSdkErrorCode.notReady,
     );
     final lifecycleEvents = <CitizenSdkLifecycle>[];
@@ -117,10 +117,7 @@ Future<void> _verify() async {
     final initial = await opened.getCapabilities().timeout(_timeout);
     _capabilities(initial);
     _require(!initial[CitizenCapabilityName.chainRead].ready);
-    await _expectError(
-      opened.chain.getFinalizedHead,
-      CitizenSdkErrorCode.notReady,
-    );
+    await _expectError(opened.getFinalizedHead, CitizenSdkErrorCode.notReady);
     // 只读新数据空间的公开 profile，不显示、创建、导入或签名任何账户。
     await _emptyWallet(opened);
     await opened.start().timeout(_timeout);

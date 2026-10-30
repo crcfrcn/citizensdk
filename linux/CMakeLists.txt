@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(CitizenSDKHost VERSION 1.0.0 LANGUAGES C CXX)
+project(CitizenSDKHost VERSION 2.0.0 LANGUAGES C CXX)
 
 # 使用标准 C++，避免 GNU 扩展模式预定义的 linux 宏改写内部命名空间；
 # 同时约束 Host 与下级测试目标，不依赖调用方的默认编译方言。
@@ -50,7 +50,8 @@ if(NOT IS_ABSOLUTE "${CITIZENSDK_CORE_LIBRARY}" OR NOT EXISTS "${CITIZENSDK_CORE
   message(FATAL_ERROR "CITIZENSDK_CORE_LIBRARY must be an existing absolute libcitizensdk.so path")
 endif()
 if(NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk.h" OR
-   NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h")
+   NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h"
+  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_host.h")
   message(FATAL_ERROR "CITIZENSDK_CORE_INCLUDE_DIR must contain citizensdk.h and citizensdk_types.h")
 endif()
 get_filename_component(_citizensdk_core_name "${CITIZENSDK_CORE_LIBRARY}" NAME)
@@ -105,9 +106,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../image"
 
 add_library(citizensdk_host SHARED
   src/citizen_sdk_assets.cc
-  src/citizen_sdk_host_api.cc
-  src/citizen_sdk_host_bridge.cc
-  src/citizen_sdk_lifecycle.cc
+  "${CMAKE_CURRENT_LIST_DIR}/../core/cpp/host.cc"
+  "${CMAKE_CURRENT_LIST_DIR}/../core/cpp/resource.cc"
   src/citizen_sdk_secret_vault.cc
   src/citizen_sdk_sqlite.cc
   src/citizen_sdk_tpm2.cc
@@ -115,21 +115,13 @@ add_library(citizensdk_host SHARED
   src/citizen_sdk_qr_camera.cc
 )
 add_library(CitizenSDK::Host ALIAS citizensdk_host)
+target_include_directories(citizensdk_host PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../core/cpp")
 
-# 构建视图提供既有公共 include 名称，源码目录不产生复制文件。
+# Flutter注册器的命名空间头只在生成目录提供；第一方实际源码归src。
 set(_citizensdk_headers "${CMAKE_CURRENT_BINARY_DIR}/public/citizen_sdk")
 file(MAKE_DIRECTORY "${_citizensdk_headers}")
-file(GLOB _citizensdk_platform_headers "${CMAKE_CURRENT_LIST_DIR}/citizen_sdk/*")
-foreach(_header IN LISTS _citizensdk_platform_headers)
-  get_filename_component(_name "${_header}" NAME)
-  configure_file("${_header}" "${_citizensdk_headers}/${_name}" COPYONLY)
-endforeach()
-configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk.hpp" "${_citizensdk_headers}/citizen_sdk.hpp" COPYONLY)
-configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_error.hpp" "${_citizensdk_headers}/citizen_sdk_error.hpp" COPYONLY)
-configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_events.hpp" "${_citizensdk_headers}/citizen_sdk_events.hpp" COPYONLY)
-configure_file("${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_models.hpp" "${_citizensdk_headers}/citizen_sdk_models.hpp" COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/src/citizen_sdk_plugin.h" "${_citizensdk_headers}/citizen_sdk_plugin.h" COPYONLY)
 target_include_directories(citizensdk_host PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/public>)
-
 
 target_compile_features(citizensdk_host PUBLIC cxx_std_17)
 target_compile_definitions(citizensdk_host PRIVATE
@@ -199,19 +191,10 @@ install(FILES "${CITIZENSDK_CORE_LIBRARY}"
 install(FILES
   "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk.h"
   "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h"
+  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_host.h"
   "${CMAKE_CURRENT_LIST_DIR}/../image/citizensdk_qr_image.h"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
-# 注册头仅由 Flutter generated registrant 使用，原生 C/C++ 安装不依赖 Flutter。
-# 源码公共头由本平台与唯一共享 include/ 合并投影，安装路径保持 citizen_sdk/。
-install(DIRECTORY citizen_sdk/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/citizen_sdk"
-  PATTERN "citizen_sdk_plugin.h" EXCLUDE)
-install(FILES
-  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk.hpp"
-  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_error.hpp"
-  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_events.hpp"
-  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizen_sdk_models.hpp"
-  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/citizen_sdk")
 install(FILES
   "${CITIZENSDK_ASSET_DIR}/manifest.json"
   "${CITIZENSDK_ASSET_DIR}/chainspec.json"

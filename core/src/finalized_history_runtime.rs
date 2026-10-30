@@ -4,26 +4,31 @@
 //! 每批最多处理 32 条持久执行记录，核验准确区块体和同索引 System 结果；
 //! 每个运行中的 Engine 代次，至多重新广播每条原始签名 extrinsic 一次。
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
-use citizen_sdk_contracts::{
-    validated_finalized_block_range_len, ChainSigner, ContractErrorCode, ExecutionConclusion,
-    HistoryTransactionStatus, SignedExtrinsic, TransactionExecutionId, TransactionHistoryIndex,
-    VerifiedChainClient, MAX_FINALIZED_BLOCKS_PER_BATCH, MAX_TRANSACTION_HISTORY_SYNC_BATCH,
-};
+use crate::types::validated_finalized_block_range_len;
 
-use crate::{
-    account_state::{verified_identity, verified_runtime_context},
-    error::EngineError,
-    signed_extrinsic_hash,
-    system_events::SYSTEM_EVENTS_STORAGE_KEY,
-    transaction_history::TransactionHistoryService,
-    transaction_outcome::{verify_transaction_outcome, TransactionEvidence},
-    transaction_prepare::validate_persisted_transaction_execution,
-};
+use crate::types::ContractErrorCode;
+use crate::types::ExecutionConclusion;
+use crate::types::HistoryTransactionStatus;
+use crate::types::SignedExtrinsic;
+use crate::types::TransactionExecutionId;
+use crate::types::TransactionHistoryIndex;
+use crate::types::VerifiedChainClient;
+use crate::types::MAX_FINALIZED_BLOCKS_PER_BATCH;
+use crate::types::MAX_TRANSACTION_HISTORY_SYNC_BATCH;
+
+use crate::account_state::verified_identity;
+use crate::account_state::verified_runtime_context;
+use crate::error::EngineError;
+use crate::signed_extrinsic_hash;
+use crate::system_events::SYSTEM_EVENTS_STORAGE_KEY;
+use crate::transaction_history::TransactionHistoryService;
+use crate::transaction_outcome::verify_transaction_outcome;
+use crate::transaction_outcome::TransactionEvidence;
+use crate::transaction_prepare::validate_persisted_transaction_execution;
 
 /// Engine lifecycle fence; every external await is followed by this check.
 pub(crate) trait FinalizedHistoryRunGuard: Send + Sync {
@@ -70,7 +75,7 @@ impl FinalizedHistoryRuntime {
         &self,
         positions: &mut BTreeMap<TransactionExecutionId, u64>,
         rebroadcasted: &mut BTreeSet<TransactionExecutionId>,
-        signer: &dyn ChainSigner,
+
         guard: &dyn FinalizedHistoryRunGuard,
     ) -> Result<TransactionHistoryIndex, EngineError> {
         guard.ensure_current()?;
@@ -165,7 +170,7 @@ impl FinalizedHistoryRuntime {
                 guard,
             )
             .await??;
-            validate_persisted_transaction_execution(&record, &identity, &runtime, signer).await?;
+            validate_persisted_transaction_execution(&record, &identity, &runtime)?;
             if signed_extrinsic_hash(&runtime, record.signed_extrinsic())?
                 != record.transaction_hash()
             {
@@ -190,7 +195,7 @@ impl FinalizedHistoryRuntime {
 
     async fn reconcile_block(
         &self,
-        block: citizen_sdk_contracts::FinalizedBlockRef,
+        block: crate::types::FinalizedBlockRef,
         candidates: &BTreeSet<TransactionExecutionId>,
         guard: &dyn FinalizedHistoryRunGuard,
     ) -> Result<(), EngineError> {

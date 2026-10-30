@@ -1,4 +1,6 @@
-use citizen_sdk_contracts::{ChainIdentity, ExportedChainState, FinalizedBlockRef};
+use crate::types::ChainIdentity;
+use crate::types::ExportedChainState;
+use crate::types::FinalizedBlockRef;
 
 /// CitizenSDK 当前公开链数据库信封格式。
 pub const CHAIN_STATE_FORMAT_VERSION: u32 = 1;

@@ -17,7 +17,7 @@
 #include <string>
 #include <utility>
 
-#include "citizen_sdk_flutter_codec.hpp"
+#include "value.hpp"
 
 #ifdef NDEBUG
 #error "CitizenSDK Flutter contract assertions must remain enabled"

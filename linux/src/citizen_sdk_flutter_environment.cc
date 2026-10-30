@@ -5,7 +5,7 @@
 #include <array>
 #include <unistd.h>
 
-#include "citizen_sdk_flutter_codec.hpp"
+#include "value.hpp"
 
 namespace citizen_sdk::flutter {
 namespace {
@@ -148,7 +148,7 @@ OpenEnvironment FlutterEnvironment::open(uint32_t modules) const {
               "CitizenSDK Flutter parent belongs to another application");
       result.ui_parent_lease = std::shared_ptr<void>(
           g_object_ref(top), [](void *window) { g_object_unref(window); });
-      result.config.gtk_parent_window = top;
+      result.config.parent = top;
     }
   }
   // No view/window is valid for read-only chain work. Host's native wallet UI

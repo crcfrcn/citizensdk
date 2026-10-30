@@ -1,13 +1,13 @@
 package org.citizen.sdk
 
-import org.citizen.sdk.internal.CitizenSdkNative
+import org.citizen.sdk.CitizenSdk
 
 /**
  * 无窗口的一次性准备资源；Core句柄只留在JNI，宿主只能取得受控显示副本或提交。
  * 接纳前失败可重试；Core接纳后即消费准备资源，与提交最终成功或失败无关。
  */
 class CitizenSdkPreparedWallet private constructor(
-    private val native: CitizenSdkNative,
+    private val native: CitizenSdk,
     private val token: Long,
     private val commitAction: (CitizenSdkPreparedWallet) -> CitizenSdkOperation<CitizenWalletProfile>,
     private val released: (CitizenSdkPreparedWallet) -> Unit,
@@ -45,7 +45,7 @@ class CitizenSdkPreparedWallet private constructor(
 
     companion object {
         internal fun create(
-            native: CitizenSdkNative,
+            native: CitizenSdk,
             token: Long,
             commit: (CitizenSdkPreparedWallet) -> CitizenSdkOperation<CitizenWalletProfile>,
             released: (CitizenSdkPreparedWallet) -> Unit,

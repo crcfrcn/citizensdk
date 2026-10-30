@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "citizen_sdk_flutter_codec.hpp"
+#include "value.hpp"
 
 #ifndef CITIZENSDK_APPLICATION_ID
 #error "Windows Flutter requires the embedding application's CITIZENSDK_APPLICATION_ID"
@@ -228,7 +228,7 @@ OpenEnvironment FlutterEnvironment::open(const NativeEnvironmentInputs &inputs, 
           CITIZENSDK_ERROR_INVALID_STATE, "CitizenSDK Flutter parent is no longer available");
   auto config = resolve(inputs, modules);
   // 初始无 view 可以明确 rootless；曾经拥有的 view/父窗口销毁后必须拒绝，不能改成 rootless。
-  config.hwnd = (modules & (CITIZENSDK_MODULE_WALLET | CITIZENSDK_MODULE_SIGNING | CITIZENSDK_MODULE_QR)) != 0
+  config.parent = (modules & (CITIZENSDK_MODULE_WALLET | CITIZENSDK_MODULE_SIGNING | CITIZENSDK_MODULE_QR)) != 0
       ? state_->parent : nullptr;
   return {std::move(config), state_};
 }

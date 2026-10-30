@@ -65,6 +65,6 @@ final class CitizenSDKSensitiveBufferTests: XCTestCase {
     }
 
     func testSensitiveTextRejectsOversizedUtf8() {
-        XCTAssertEqual(try? CitizenSDKNative.validateWalletInput(String(repeating: "a", count: 1_025), kind: 1, wordCount: 0).reason, .inputTooLong)
+        XCTAssertEqual(try? CitizenSDKCore.validateWalletInput(String(repeating: "a", count: 1_025), kind: 1, wordCount: 0).reason, .inputTooLong)
     }
 }

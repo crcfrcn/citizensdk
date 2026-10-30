@@ -1,6 +1,6 @@
 name: citizen_sdk
 description: Citizenchain light client, rootless hot wallet, sr25519 signing, and on-chain transaction SDK.
-version: 1.0.0
+version: 2.0.0
 repository: https://github.com/crcfrcn/citizensdk
 
 environment:
@@ -26,8 +26,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: org.citizen.sdk
-        pluginClass: CitizenSdkPlugin
+        ffiPlugin: true
       ios:
         pluginClass: CitizenSdkPlugin
         sharedDarwinSource: true

@@ -1,6 +1,4 @@
-import 'dart:typed_data';
-
-import 'citizen_chain_state.dart';
+part of '../citizen_sdk.dart';
 
 enum CitizenTransactionResolution {
   finalizedSuccess,

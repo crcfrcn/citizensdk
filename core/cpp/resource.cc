@@ -1,0 +1,1150 @@
+// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+#include "citizen_sdk_qr_camera.hpp"
+#include "host.hpp"
+
+#include <algorithm>
+#if defined(_WIN32) // 系统差异
+#include <cstdio>
+#endif
+#include "input.hpp"
+#include <cstring>
+#include <exception>
+#include <iterator>
+#include <limits>
+#include <thread>
+#include <utility>
+
+#if defined(_WIN32) // 系统差异
+namespace citizen_sdk::windows {
+namespace {
+#else // 系统差异
+#if CITIZENSDK_ENABLE_QR_CAPTURE
+#include <gtk/gtk.h>
+#endif
+#endif // 系统差异
+
+#if defined(_WIN32) // 系统差异
+void test_create_diagnostic(const char *stage,
+                            citizensdk_error_code_t code) noexcept {
+#if defined(CITIZENSDK_HOST_TEST_DIAGNOSTICS)
+  // 测试只报告固定阶段与公开错误码，不打印资产、路径或Core返回正文。
+  std::fprintf(stderr, "CitizenSDK Windows Host create stage=%s code=%u\n",
+               stage, static_cast<unsigned>(code));
+#else
+  (void)stage;
+  (void)code;
+#endif
+}
+#else // 系统差异
+namespace citizen_sdk::linux {
+
+struct GtkParentRef::Impl final {
+  std::mutex lock;
+#if CITIZENSDK_ENABLE_QR_CAPTURE
+  GWeakRef weak{};
+  bool initialized{false};
+#endif
+};
+
+GtkParentLease::GtkParentLease(void *window, std::thread::id ui_thread) noexcept
+    : window_(window), ui_thread_(ui_thread) {}
+
+GtkParentLease::GtkParentLease(GtkParentLease &&other) noexcept
+    : window_(other.window_), ui_thread_(other.ui_thread_) {
+  other.window_ = nullptr;
+}
+
+GtkParentLease &GtkParentLease::operator=(GtkParentLease &&other) noexcept {
+  if (this != &other) {
+    clear();
+    window_ = other.window_;
+    ui_thread_ = other.ui_thread_;
+    other.window_ = nullptr;
+  }
+  return *this;
+}
+
+GtkParentLease::~GtkParentLease() { clear(); }
+
+void GtkParentLease::clear() noexcept {
+#if CITIZENSDK_ENABLE_QR_CAPTURE
+  if (window_ != nullptr) {
+    if (std::this_thread::get_id() != ui_thread_)
+      std::terminate();
+    g_object_unref(window_);
+    window_ = nullptr;
+  }
+#else
+  window_ = nullptr;
+#endif
+}
+#endif // 系统差异
+#if !defined(_WIN32)
+
+GtkParentRef::GtkParentRef(void *window, std::thread::id ui_thread)
+    : impl_(std::make_unique<Impl>()), ui_thread_(ui_thread) {
+#if CITIZENSDK_ENABLE_QR_CAPTURE
+  g_weak_ref_init(&impl_->weak, nullptr);
+  impl_->initialized = true;
+#endif
+  const citizensdk_error_code_t code = set(window);
+  if (code != CITIZENSDK_OK) {
+    throw HostError(code, "CitizenSDK GTK parent window is invalid");
+  }
+}
+
+GtkParentRef::~GtkParentRef() {
+#if CITIZENSDK_ENABLE_QR_CAPTURE
+  if (impl_ && impl_->initialized) {
+    std::lock_guard<std::mutex> guard(impl_->lock);
+    g_weak_ref_clear(&impl_->weak);
+    impl_->initialized = false;
+  }
+#endif
+}
+
+citizensdk_error_code_t GtkParentRef::set(void *window) noexcept {
+  if (!on_ui_thread())
+    return CITIZENSDK_ERROR_BUSY;
+#if !CITIZENSDK_ENABLE_QR_CAPTURE
+  return window == nullptr ? CITIZENSDK_OK : CITIZENSDK_ERROR_UNSUPPORTED;
+#else
+  if (window != nullptr && (!GTK_IS_WINDOW(window) ||
+                            gtk_widget_in_destruction(GTK_WIDGET(window)))) {
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  }
+  try {
+    std::lock_guard<std::mutex> guard(impl_->lock);
+    g_weak_ref_set(&impl_->weak,
+                   window == nullptr ? nullptr : G_OBJECT(window));
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return CITIZENSDK_ERROR_INTERNAL;
+  }
+#endif
+}
+
+GtkParentLease GtkParentRef::acquire() const noexcept {
+  if (!on_ui_thread())
+    return {};
+#if !CITIZENSDK_ENABLE_QR_CAPTURE
+  return {};
+#else
+  try {
+    std::lock_guard<std::mutex> guard(impl_->lock);
+    GObject *object = static_cast<GObject *>(g_weak_ref_get(&impl_->weak));
+    if (object == nullptr)
+      return {};
+    if (!GTK_IS_WINDOW(object) ||
+        gtk_widget_in_destruction(GTK_WIDGET(object))) {
+      g_object_unref(object);
+      return {};
+    }
+    return GtkParentLease(object, ui_thread_);
+  } catch (...) {
+    return {};
+  }
+#endif
+}
+
+bool GtkParentRef::on_ui_thread() const noexcept {
+  return std::this_thread::get_id() == ui_thread_;
+}
+
+namespace {
+#endif
+
+std::array<uint8_t, 16> id16(citizensdk_host_id128_t value) {
+  std::array<uint8_t, 16> result{};
+  std::copy(std::begin(value.bytes), std::end(value.bytes), result.begin());
+  return result;
+}
+
+WalletKey wallet_key(citizensdk_host_wallet_key_ref_v1_t value) {
+  require(value.struct_size >= sizeof(value) &&
+              value.abi_version == CITIZENSDK_ABI_VERSION &&
+              value.wallet_index == 0 && value.reserved == 0,
+          CITIZENSDK_ERROR_INVALID_ARGUMENT,
+          "wallet key reference ABI is invalid");
+  return {value.wallet_index, id16(value.generation)};
+}
+
+void complete_status(uint64_t operation_id, void *sdk_context,
+                     citizensdk_host_status_completion_v1_t completion,
+                     citizensdk_error_code_t code) {
+  citizensdk_host_status_result_v1_t result{};
+  result.struct_size = sizeof(result);
+  result.abi_version = CITIZENSDK_ABI_VERSION;
+  result.host_operation_id = operation_id;
+  result.error_code = code;
+  completion(sdk_context, &result);
+}
+
+Host &host(void *context) {
+  require(context != nullptr, CITIZENSDK_ERROR_INVALID_ARGUMENT,
+          "CitizenSDK Host context is missing");
+  return *static_cast<Host *>(context);
+}
+
+citizensdk_error_code_t vault_availability(
+    void *context, uint64_t operation_id, void *sdk_context,
+    citizensdk_host_vault_availability_completion_v1_t completion) {
+  if (context == nullptr || completion == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  citizensdk_host_vault_availability_result_v1_t result{};
+  result.struct_size = sizeof(result);
+  result.abi_version = CITIZENSDK_ABI_VERSION;
+  result.host_operation_id = operation_id;
+  result.error_code = CITIZENSDK_OK;
+  result.availability = static_cast<Host *>(context)->vault_availability();
+  completion(sdk_context, &result);
+  return CITIZENSDK_OK;
+}
+
+// 该入口只完成本次追加认证，持久事务和目标账户集合由Core唯一管理。
+citizensdk_error_code_t vault_authorize_add_accounts(
+    void *context, uint64_t operation_id,
+    citizensdk_host_wallet_key_ref_v1_t key,
+    citizensdk_host_id128_t provisioning_id, void *sdk_context,
+    citizensdk_host_status_completion_v1_t completion) {
+  if (completion == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    host(context).vault_authorize_add_accounts(operation_id, wallet_key(key),
+                                               id16(provisioning_id));
+    complete_status(operation_id, sdk_context, completion, CITIZENSDK_OK);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+vault_ensure(void *context, uint64_t operation_id,
+             citizensdk_host_wallet_key_ref_v1_t key,
+             citizensdk_host_id128_t provisioning_id, void *sdk_context,
+             citizensdk_host_status_completion_v1_t completion) {
+  if (completion == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    host(context).vault_ensure(operation_id, wallet_key(key),
+                               id16(provisioning_id));
+    complete_status(operation_id, sdk_context, completion, CITIZENSDK_OK);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+vault_has(void *context, uint64_t operation_id,
+          citizensdk_host_wallet_key_ref_v1_t key, void *sdk_context,
+          citizensdk_host_bool_completion_v1_t completion) {
+  if (completion == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    citizensdk_host_bool_result_v1_t result{};
+    result.struct_size = sizeof(result);
+    result.abi_version = CITIZENSDK_ABI_VERSION;
+    result.host_operation_id = operation_id;
+    result.error_code = CITIZENSDK_OK;
+    result.value = host(context).vault_has(wallet_key(key)) ? 1 : 0;
+    completion(sdk_context, &result);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+wallet_key_presence(void *context, uint64_t operation_id, uint32_t wallet_index,
+                    void *sdk_context,
+                    citizensdk_host_bool_completion_v1_t completion) {
+  if (!completion)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    citizensdk_host_bool_result_v1_t result{};
+    result.struct_size = sizeof(result);
+    result.abi_version = CITIZENSDK_ABI_VERSION;
+    result.host_operation_id = operation_id;
+    result.error_code = CITIZENSDK_OK;
+    result.value = host(context).has_any_wallet_key(wallet_index) ? 1 : 0;
+    completion(sdk_context, &result);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+vault_wrap(void *context, uint64_t operation_id,
+           citizensdk_host_wallet_key_ref_v1_t key,
+           citizensdk_host_id128_t provisioning_id,
+           citizensdk_bytes_view_t plaintext, void *sdk_context,
+           citizensdk_host_bytes_completion_v1_t completion) {
+  if (completion == nullptr || plaintext.data == nullptr ||
+      plaintext.len != CITIZENSDK_HOST_DEK_BYTES)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    const Bytes wrapped = host(context).vault_wrap(
+        operation_id, wallet_key(key), id16(provisioning_id), plaintext.data);
+    citizensdk_host_bytes_result_v1_t result{};
+    result.struct_size = sizeof(result);
+    result.abi_version = CITIZENSDK_ABI_VERSION;
+    result.host_operation_id = operation_id;
+    result.error_code = CITIZENSDK_OK;
+    result.kind = CITIZENSDK_HOST_BYTES_WRAPPED_DEK;
+    result.bytes = {wrapped.data(), static_cast<uint64_t>(wrapped.size())};
+    completion(sdk_context, &result);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+vault_unwrap(void *context, uint64_t operation_id,
+             citizensdk_host_wallet_key_ref_v1_t key,
+             citizensdk_bytes_view_t wrapped,
+             citizensdk_mutable_bytes_view_t output, void *sdk_context,
+             citizensdk_host_status_completion_v1_t completion) {
+  if (completion == nullptr || output.data == nullptr ||
+      output.len != CITIZENSDK_HOST_DEK_BYTES)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    host(context).vault_unwrap(
+        operation_id, wallet_key(key),
+        copy_view(wrapped, 4096, "wrapped wallet DEK is malformed"),
+        output.data);
+    complete_status(operation_id, sdk_context, completion, CITIZENSDK_OK);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    secure_zero(output.data, static_cast<std::size_t>(output.len));
+    return map_exception();
+  }
+}
+
+citizensdk_error_code_t
+vault_retire(void *context, uint64_t operation_id,
+             citizensdk_host_wallet_key_ref_v1_t key,
+             citizensdk_host_id128_t cleanup_id, void *sdk_context,
+             citizensdk_host_status_completion_v1_t completion) {
+  if (completion == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  try {
+    host(context).vault_retire(wallet_key(key), id16(cleanup_id));
+    complete_status(operation_id, sdk_context, completion, CITIZENSDK_OK);
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return map_exception();
+  }
+}
+
+} // namespace
+
+Host::Host(std::filesystem::path storage_root, std::filesystem::path asset_root,
+#if defined(_WIN32) // 系统差异
+           std::string application_id, void *hwnd,
+#else  // 系统差异
+           std::string application_id, void *parent,
+#endif // 系统差异
+           uint32_t modules)
+    : ui_thread_(std::this_thread::get_id()),
+#if defined(_WIN32) // 系统差异
+      parent_window_(
+          hwnd, ui_thread_,
+          (modules & (CITIZENSDK_MODULE_WALLET | CITIZENSDK_MODULE_SIGNING |
+                      CITIZENSDK_MODULE_QR)) != 0),
+#else  // 系统差异
+      parent_window_(parent, ui_thread_),
+#endif // 系统差异
+      asset_root_(std::move(asset_root)), modules_(modules) {
+  // 未选链/历史时不创建公开数据库，钱包独立运行完全不触碰链资产和存储。
+  if ((modules & (CITIZENSDK_MODULE_CHAIN | CITIZENSDK_MODULE_HISTORY)) != 0) {
+    database_ = std::make_unique<citizen_sdk::Database<SQLiteStore, HostError>>(
+        storage_root / application_id / "citizensdk" / "v1" / "public");
+  }
+  const auto secure_root =
+      storage_root / application_id / "citizensdk" / "v1" / "secure";
+  if ((modules & (CITIZENSDK_MODULE_WALLET | CITIZENSDK_MODULE_SIGNING)) != 0) {
+    secure_database_ =
+        std::make_unique<citizen_sdk::Database<SQLiteStore, HostError>>(
+            secure_root, true);
+    metadata_ = std::make_unique<VaultStore>(secure_database_->config());
+#if defined(_WIN32) // 系统差异
+    vault_ = std::make_unique<SecretVault>(*metadata_, parent_window_);
+#else  // 系统差异
+    vault_ = std::make_unique<SecretVault>(*metadata_);
+#endif // 系统差异
+  }
+  configure_vtables();
+}
+
+Host::~Host() = default;
+
+// 采集与图像解码沿用同一服务租约；租约拥有Host，排空前Core/存储不能被释放。
+struct Host::CaptureOwner final {
+  std::shared_ptr<Host> host;
+  ServiceLease service;
+  explicit CaptureOwner(std::shared_ptr<Host> value)
+      : host(std::move(value)), service(*host) {}
+};
+
+citizensdk_error_code_t
+Host::open_qr_capture(uint32_t purpose,
+                      const citizensdk_qr_capture_callbacks_v1_t &callbacks,
+                      uint64_t *out_resource) {
+  require(out_resource != nullptr, CITIZENSDK_ERROR_INVALID_ARGUMENT,
+          "采集输出不能为空");
+  std::shared_ptr<QrCapture> capture;
+  uint64_t id = 0;
+  {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    require(!teardown_started_ && !close_in_progress_ && !create_in_progress_ &&
+                !services_retired_ && sdk_ != 0,
+            CITIZENSDK_ERROR_INVALID_STATE, "Host尚未就绪或正在关闭");
+    require((modules_ & CITIZENSDK_MODULE_QR) != 0,
+            CITIZENSDK_ERROR_UNSUPPORTED, "未启用二维码模块");
+    require(captures_.size() < 4, CITIZENSDK_ERROR_QUEUE_FULL,
+            "采集资源已达上限");
+    require(!capture_ids_exhausted_, CITIZENSDK_ERROR_UNAVAILABLE,
+            "采集资源编号已耗尽");
+    auto owner = std::make_shared<CaptureOwner>(shared_from_this());
+    id = next_capture_;
+    if (next_capture_ == UINT64_MAX)
+      capture_ids_exhausted_ = true;
+    else
+      ++next_capture_;
+    std::weak_ptr<Host> weak = shared_from_this();
+    capture = std::make_shared<QrCapture>(
+        sdk_, id, purpose, callbacks, owner, [weak](uint64_t resource) {
+          const auto host = weak.lock();
+          if (!host)
+            std::terminate(); // CaptureOwner在terminal返回前必须仍拥有Host。
+          std::lock_guard<std::recursive_mutex> guard(host->call_lock_);
+          host->captures_.erase(resource);
+        });
+    captures_.emplace(id, capture);
+  }
+  try {
+    capture->start();
+  } catch (...) {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    captures_.erase(id);
+    throw;
+  }
+  *out_resource = id;
+  return CITIZENSDK_OK;
+}
+citizensdk_error_code_t Host::control_qr_capture(uint64_t resource,
+                                                 uint64_t operation,
+                                                 uint32_t action,
+                                                 uint8_t enabled) {
+  std::shared_ptr<QrCapture> capture;
+  {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    const auto found = captures_.find(resource);
+    if (found == captures_.end())
+      return CITIZENSDK_ERROR_NOT_FOUND;
+    capture = found->second;
+  }
+  // 不持Host锁进入资源门，避免回调重入控制时形成反向锁序。
+  return capture->control(operation, action, enabled);
+}
+void Host::close_qr_captures() {
+  std::vector<std::shared_ptr<QrCapture>> captures;
+  {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    for (const auto &entry : captures_)
+      captures.push_back(entry.second);
+  }
+  for (const auto &capture : captures)
+    capture->request_close();
+}
+Bytes Host::decode_qr_image(citizensdk_bytes_view_t encoded, uint32_t purpose) {
+  citizensdk_handle_t sdk = 0;
+  std::shared_ptr<CaptureOwner> owner;
+  {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    require(!teardown_started_ && !close_in_progress_ && !services_retired_ &&
+                sdk_ != 0,
+            CITIZENSDK_ERROR_INVALID_STATE, "Host尚未就绪或正在关闭");
+    require((modules_ & CITIZENSDK_MODULE_QR) != 0,
+            CITIZENSDK_ERROR_UNSUPPORTED, "未启用二维码模块");
+    owner = std::make_shared<CaptureOwner>(shared_from_this());
+    sdk = sdk_;
+  }
+  return decode_qr_image_documents(sdk, encoded, purpose);
+}
+
+void Host::configure_vtables() noexcept {
+  vault_vtable_ = {sizeof(vault_vtable_),
+                   CITIZENSDK_ABI_VERSION,
+                   this,
+#if defined(_WIN32) // 系统差异
+                   ::citizen_sdk::windows::vault_availability,
+                   ::citizen_sdk::windows::vault_ensure,
+                   ::citizen_sdk::windows::vault_has,
+                   ::citizen_sdk::windows::vault_wrap,
+                   ::citizen_sdk::windows::vault_unwrap,
+                   ::citizen_sdk::windows::vault_retire,
+                   ::citizen_sdk::windows::vault_authorize_add_accounts,
+                   wallet_key_presence};
+#else  // 系统差异
+                   ::citizen_sdk::linux::vault_availability,
+                   ::citizen_sdk::linux::vault_ensure,
+                   ::citizen_sdk::linux::vault_has,
+                   ::citizen_sdk::linux::vault_wrap,
+                   ::citizen_sdk::linux::vault_unwrap,
+                   ::citizen_sdk::linux::vault_retire,
+                   ::citizen_sdk::linux::vault_authorize_add_accounts,
+                   wallet_key_presence};
+#endif // 系统差异
+}
+
+citizensdk_error_code_t Host::create_sdk(citizensdk_handle_t *out_sdk) {
+  if (out_sdk == nullptr)
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  *out_sdk = 0;
+#if defined(_WIN32) // 系统差异
+  const char *stage = "assets";
+#endif
+  {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    if (sdk_ != 0 || teardown_started_ || create_in_progress_ ||
+        close_in_progress_ || services_retired_) {
+      return CITIZENSDK_ERROR_INVALID_STATE;
+    }
+    create_in_progress_ = true;
+  }
+  try {
+    const Assets assets = (modules_ & CITIZENSDK_MODULE_CHAIN) != 0
+                              ? Assets::load(asset_root_)
+                              : Assets{};
+    const std::string name = "CitizenSDK";
+    const std::string version = CITIZENSDK_HOST_VERSION;
+    citizensdk_create_options_t options{};
+    options.struct_size = sizeof(options);
+    options.abi_version = CITIZENSDK_ABI_VERSION;
+    options.asset_manifest = {assets.manifest.data(),
+                              static_cast<uint64_t>(assets.manifest.size())};
+    options.chain_spec = {assets.chain_spec.data(),
+                          static_cast<uint64_t>(assets.chain_spec.size())};
+    options.light_sync_state = {
+        assets.light_sync_state.data(),
+        static_cast<uint64_t>(assets.light_sync_state.size())};
+    options.system_name = {reinterpret_cast<const uint8_t *>(name.data()),
+                           name.size()};
+    options.system_version = {reinterpret_cast<const uint8_t *>(version.data()),
+                              version.size()};
+    citizensdk_store_v1_t public_config{}, secure_config{};
+    citizensdk_stores_v1_t stores{};
+    stores.struct_size = sizeof(stores);
+    stores.abi_version = CITIZENSDK_ABI_VERSION;
+    if (database_) {
+      public_config = database_->config();
+      stores.public_store = &public_config;
+    }
+    if (secure_database_) {
+      secure_config = secure_database_->config();
+      stores.secure_store = &secure_config;
+      stores.secret_vault = &vault_vtable_;
+    }
+    citizensdk_handle_t created = 0;
+    auto code = citizensdk_create(&options, modules_, &stores, &created);
+    if (code != CITIZENSDK_OK) {
+#if defined(_WIN32) // 系统差异
+      test_create_diagnostic(stage, code);
+#endif
+      // A nonzero error handle is a destroy-only Core instance. Preserve it so
+      // close()/abandon can reclaim all Rust and provider ownership safely.
+      if (created != 0) {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        sdk_ = created;
+        teardown_started_ = true;
+      }
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      create_in_progress_ = false;
+      return code;
+    }
+    if (created == 0) {
+#if defined(_WIN32) // 系统差异
+      test_create_diagnostic(stage, CITIZENSDK_ERROR_INTEGRITY);
+#endif
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      create_in_progress_ = false;
+      return CITIZENSDK_ERROR_INTEGRITY;
+    }
+    {
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      sdk_ = created;
+    }
+#if defined(_WIN32) // 系统差异
+    stage = "provider-setup";
+#endif
+    if (code == CITIZENSDK_OK)
+      code = citizensdk_set_event_callback(created, receive_core_event, this);
+    if (code == CITIZENSDK_OK) {
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      callback_installed_ = true;
+    }
+    if (code == CITIZENSDK_OK) {
+      code = citizensdk_subscribe_capability_changes(created);
+      if (code == CITIZENSDK_OK) {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        capability_subscribed_ = true;
+      }
+    }
+    if (code != CITIZENSDK_OK) {
+#if defined(_WIN32) // 系统差异
+      test_create_diagnostic(stage, code);
+#endif
+      bool callback_installed = false;
+      {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        teardown_started_ = true;
+        callback_installed = callback_installed_;
+      }
+      if (callback_installed &&
+          citizensdk_set_event_callback(created, nullptr, nullptr) ==
+              CITIZENSDK_OK) {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        callback_installed_ = false;
+        callback_installed = false;
+      }
+      if (!callback_installed && citizensdk_destroy(created) == CITIZENSDK_OK) {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        sdk_ = 0;
+      }
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      create_in_progress_ = false;
+      return code;
+    }
+    {
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      create_in_progress_ = false;
+      *out_sdk = sdk_;
+    }
+    return CITIZENSDK_OK;
+  } catch (...) {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    create_in_progress_ = false;
+#if defined(_WIN32) // 系统差异
+    const auto code = map_exception();
+    test_create_diagnostic(stage, code);
+    return code;
+#else  // 系统差异
+    return map_exception();
+#endif // 系统差异
+  }
+}
+
+citizensdk_handle_t Host::sdk() const noexcept {
+  std::lock_guard<std::recursive_mutex> guard(call_lock_);
+  return sdk_;
+}
+
+citizensdk_handle_t Host::public_sdk() const noexcept {
+  std::lock_guard<std::recursive_mutex> guard(call_lock_);
+  return sdk_ != 0 && !teardown_started_ && !create_in_progress_ &&
+                 !close_in_progress_ && !services_retired_ &&
+                 callback_installed_ && capability_subscribed_
+             ? sdk_
+             : 0;
+}
+
+citizensdk_error_code_t
+Host::set_event_callback(citizensdk_event_callback_t callback, void *context) {
+  if (callback == nullptr) {
+    std::lock_guard<std::mutex> guard(callback_lock_);
+    if (callback_thread_ == std::this_thread::get_id()) {
+      // A foreign setter may be waiting for this exact callback to return.
+      // Self-retirement must not wait for that setter or reject the only safe
+      // C++ destructor barrier. The setter owns its replacement context; an
+      // abandoned Host's supervisor retires that replacement after its lease.
+      public_callback_ = nullptr;
+      public_callback_context_ = nullptr;
+      return CITIZENSDK_OK;
+    }
+  }
+  {
+    std::lock_guard<std::recursive_mutex> call(call_lock_);
+    if ((teardown_started_ || close_in_progress_ || services_retired_) &&
+        callback != nullptr) {
+      return CITIZENSDK_ERROR_INVALID_STATE;
+    }
+    if (callback_update_in_progress_)
+      return CITIZENSDK_ERROR_BUSY;
+    callback_update_in_progress_ = true;
+  }
+  citizensdk_error_code_t result = CITIZENSDK_OK;
+  try {
+    std::unique_lock<std::mutex> guard(callback_lock_);
+    if (callback_thread_ == std::this_thread::get_id()) {
+      if (callback != nullptr) {
+        result = CITIZENSDK_ERROR_BUSY;
+      } else {
+        public_callback_ = nullptr;
+        public_callback_context_ = nullptr;
+      }
+    } else {
+      callback_idle_.wait(guard, [&] { return callbacks_active_ == 0; });
+      public_callback_ = callback;
+      public_callback_context_ = callback ? context : nullptr;
+    }
+  } catch (...) {
+    result = map_exception();
+  }
+  {
+    std::lock_guard<std::recursive_mutex> call(call_lock_);
+    callback_update_in_progress_ = false;
+  }
+  return result;
+}
+
+void Host::receive_core_event(void *context,
+                              const citizensdk_event_t *event) noexcept {
+  if (context != nullptr && event != nullptr) {
+    static_cast<Host *>(context)->dispatch_core_event(*event);
+  }
+}
+
+void Host::dispatch_core_event(const citizensdk_event_t &event) noexcept {
+  if (event.event_type == CITIZENSDK_EVENT_REQUEST_COMPLETED) {
+    // Core guarantees one dedicated dispatch thread per instance. Holding an
+    // early completion here preserves that thread identity while the caller
+    // publishes the request route; it neither buffers nor caps events.
+    completion_admission_.await_route(event.request_id);
+  }
+  dispatch_routed_event(event);
+}
+
+void Host::dispatch_routed_event(const citizensdk_event_t &event) noexcept {
+  RequestRouter::Handler private_handler;
+  try {
+    private_handler = private_requests_.take(event);
+  } catch (...) {
+    if (event.result != 0)
+      (void)citizensdk_result_release(event.result);
+    return;
+  }
+  if (private_handler) {
+    // Ownership transfers to the registered private handler before the call.
+    // All production handlers are noexcept and release exactly once. If a
+    // future handler violates that contract, re-releasing here could double
+    // release a handle already consumed immediately before the exception.
+    try {
+      private_handler(event.result);
+    } catch (...) {
+    }
+    return;
+  }
+  citizensdk_event_callback_t callback = nullptr;
+  void *context = nullptr;
+  {
+    std::lock_guard<std::mutex> guard(callback_lock_);
+    callback = public_callback_;
+    context = public_callback_context_;
+    if (callback != nullptr) {
+      ++callbacks_active_;
+      callback_thread_ = std::this_thread::get_id();
+    }
+  }
+  if (callback != nullptr) {
+    try {
+      // Raw C callback ownership transfers here. It must not throw and must
+      // release a nonzero result exactly once; Host cannot safely infer
+      // whether a callback that violates that contract already released it.
+      callback(context, &event);
+    } catch (...) {
+    }
+  } else if (event.result != 0) {
+    (void)citizensdk_result_release(event.result);
+  }
+  {
+    std::lock_guard<std::mutex> guard(callback_lock_);
+    if (callback != nullptr) {
+      --callbacks_active_;
+      callback_thread_ = {};
+      callback_idle_.notify_all();
+    }
+  }
+}
+
+citizensdk_error_code_t Host::set_parent_window(void *window) noexcept {
+  std::lock_guard<std::recursive_mutex> call(call_lock_);
+  if (teardown_started_ || create_in_progress_ || close_in_progress_ ||
+      services_retired_) {
+    return CITIZENSDK_ERROR_INVALID_STATE;
+  }
+  return parent_window_.set(window);
+}
+#if defined(_WIN32) // 系统差异
+WindowLease Host::acquire_parent_window() const noexcept {
+#else  // 系统差异
+GtkParentLease Host::acquire_parent_window() const noexcept {
+#endif // 系统差异
+  return parent_window_.acquire();
+}
+citizensdk_host_vault_availability_t Host::vault_availability() noexcept {
+  try {
+    return service_call([&] {
+      return vault_ ? vault_->availability()
+                    : CITIZENSDK_HOST_VAULT_UNSUPPORTED;
+    });
+  } catch (...) {
+    return CITIZENSDK_HOST_VAULT_UNAVAILABLE;
+  }
+}
+
+citizensdk_error_code_t Host::set_credential_provider(
+    const citizensdk_credential_provider_v1_t *provider) {
+  std::lock_guard<std::recursive_mutex> guard(call_lock_);
+  // 创建Core后不替换凭据归属；避免请求过程中改宿主、悬空context或改变认证事实。
+  if (sdk_ != 0 || create_in_progress_ || close_in_progress_ ||
+      services_retired_)
+    return CITIZENSDK_ERROR_INVALID_STATE;
+  return vault_ ? vault_->set_credential_provider(provider)
+                : CITIZENSDK_ERROR_UNSUPPORTED;
+}
+citizensdk_error_code_t
+Host::respond_credential(uint64_t host_operation_id,
+                         citizensdk_bytes_view_t credential) {
+  return service_call([&] {
+    return vault_ ? vault_->respond_credential(host_operation_id, credential)
+                  : CITIZENSDK_ERROR_UNSUPPORTED;
+  });
+}
+citizensdk_error_code_t Host::cancel_credential(uint64_t host_operation_id) {
+  return service_call([&] {
+    return vault_ ? vault_->cancel_credential(host_operation_id)
+                  : CITIZENSDK_ERROR_UNSUPPORTED;
+  });
+}
+
+citizensdk_error_code_t Host::close() {
+  bool teardown_started = false;
+  const auto cancel_close = [&](citizensdk_error_code_t code) noexcept {
+    std::lock_guard<std::recursive_mutex> guard(call_lock_);
+    close_in_progress_ = false;
+    cancel_service_close(teardown_started_);
+    return code;
+  };
+  try {
+    // 无UI资源自行结束Core租约；仅发取消请求，不清空真实终态路由。
+    close_qr_captures();
+    private_requests_.cancel_all();
+    // 回调不持有Host锁；租约防止其他关闭线程在取消期间释放金库。
+    // 已进入单向拆卸的重试不重新接纳服务，也不妨碍原关闭状态机继续收敛。
+    std::unique_ptr<ServiceLease> credential_lease;
+    {
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      if (close_in_progress_ || create_in_progress_)
+        return CITIZENSDK_ERROR_BUSY;
+      if (!teardown_started_ && !services_retired_)
+        credential_lease = std::make_unique<ServiceLease>(*this);
+    }
+    if (credential_lease && vault_)
+      vault_->cancel_credentials();
+    credential_lease.reset();
+    citizensdk_handle_t sdk = 0;
+    bool subscribed = false;
+    bool callback_installed = false;
+    {
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      if (close_in_progress_ || create_in_progress_) {
+        return CITIZENSDK_ERROR_BUSY;
+      }
+      if (!begin_service_close())
+        return CITIZENSDK_OK;
+      close_in_progress_ = true;
+      teardown_started = teardown_started_;
+      if (!completion_admission_.idle()) {
+        return cancel_close(CITIZENSDK_ERROR_BUSY);
+      }
+      if (callback_update_in_progress_ || !private_requests_.empty() ||
+          (vault_ && !vault_->idle())) {
+        return cancel_close(CITIZENSDK_ERROR_BUSY);
+      }
+      sdk = sdk_;
+      subscribed = capability_subscribed_;
+      callback_installed = callback_installed_;
+    }
+
+    {
+      std::lock_guard<std::mutex> callback_guard(callback_lock_);
+      if (callback_thread_ == std::this_thread::get_id()) {
+        return cancel_close(CITIZENSDK_ERROR_BUSY);
+      }
+    }
+    // Root calls can synchronously or concurrently re-enter Host callbacks.
+    // Never hold call_lock_ across that foreign boundary.
+    if (sdk != 0 && !teardown_started) {
+      citizensdk_lifecycle_t core_lifecycle = 0;
+      const auto lifecycle_code =
+          citizensdk_get_lifecycle(sdk, &core_lifecycle);
+      if (lifecycle_code != CITIZENSDK_OK) {
+        return cancel_close(lifecycle_code);
+      }
+      if (core_lifecycle == CITIZENSDK_LIFECYCLE_RUNNING ||
+          core_lifecycle == CITIZENSDK_LIFECYCLE_STARTING ||
+          core_lifecycle == CITIZENSDK_LIFECYCLE_IMPORTING_STATE) {
+        return cancel_close(CITIZENSDK_ERROR_BUSY);
+      }
+    }
+
+    // Do not clear the application's observer until the cheap lifecycle gate
+    // proves teardown can progress. A BUSY close therefore leaves an otherwise
+    // open Host fully observable and retryable.
+    const auto public_callback_code = set_event_callback(nullptr, nullptr);
+    if (public_callback_code != CITIZENSDK_OK) {
+      return cancel_close(public_callback_code);
+    }
+
+    if (sdk != 0 && subscribed) {
+      {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        teardown_started_ = true;
+        teardown_started = true;
+      }
+      const auto code = citizensdk_unsubscribe_capability_changes(sdk);
+      if (code != CITIZENSDK_OK)
+        return cancel_close(code);
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      capability_subscribed_ = false;
+    }
+    if (sdk != 0 && callback_installed) {
+      {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        teardown_started_ = true;
+        teardown_started = true;
+      }
+      const auto code = citizensdk_set_event_callback(sdk, nullptr, nullptr);
+      if (code != CITIZENSDK_OK)
+        return cancel_close(code);
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      callback_installed_ = false;
+    }
+    if (sdk != 0) {
+      {
+        std::lock_guard<std::recursive_mutex> guard(call_lock_);
+        teardown_started_ = true;
+        teardown_started = true;
+      }
+      const auto code = citizensdk_destroy(sdk);
+      if (code != CITIZENSDK_OK)
+        return cancel_close(code);
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      sdk_ = 0;
+    }
+
+#if defined(_WIN32) // 系统差异
+    // Core 已释放后仍必须等 Win32 所在线程确认 HWND 退休；BUSY 保留整个
+    // Host/store/vault 所有权供 supervisor 重试，禁止跨线程 DestroyWindow。
+    const auto window_code = parent_window_.retire();
+    if (window_code != CITIZENSDK_OK)
+      return cancel_close(window_code);
+
+#endif
+    {
+      // A successful Core destroy guarantees its host-service borrows and
+      // callbacks have ended. begin_close() has already rejected active service
+      // leases and closed new service admission. The call lock now commits
+#if defined(_WIN32) // 系统差异
+      // resource retirement without ever waiting for a Win32 provider callback.
+#else  // 系统差异
+       // resource retirement without ever waiting for a GTK provider callback.
+#endif // 系统差异
+      std::lock_guard<std::recursive_mutex> guard(call_lock_);
+      services_retired_ = true;
+      vault_.reset();
+      if (secure_database_)
+        secure_database_->close();
+      metadata_.reset();
+      secure_database_.reset();
+      if (database_)
+        database_->close();
+      close_in_progress_ = false;
+      commit_service_closed();
+    }
+    return CITIZENSDK_OK;
+  } catch (...) {
+    return cancel_close(map_exception());
+  }
+}
+
+citizensdk_error_code_t Host::submit_private(
+    const std::function<citizensdk_error_code_t(citizensdk_request_id_t *)>
+        &accept,
+    RequestRouter::Handler handler, citizensdk_request_id_t *out_request,
+    RequestRouter::Cancellation cancel) {
+  if (!accept || !handler || out_request == nullptr) {
+    return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  }
+  *out_request = 0;
+  std::lock_guard<std::mutex> submission(private_submit_lock_);
+  {
+    std::lock_guard<std::recursive_mutex> call(call_lock_);
+    if (sdk_ == 0 || teardown_started_ || create_in_progress_ ||
+        close_in_progress_ || services_retired_) {
+      return CITIZENSDK_ERROR_INVALID_STATE;
+    }
+  }
+  try {
+    private_requests_.prime(std::move(handler), std::move(cancel));
+    try {
+      completion_admission_.begin();
+    } catch (...) {
+      private_requests_.cancel_primed();
+      throw;
+    }
+  } catch (...) {
+    return map_exception();
+  }
+  citizensdk_request_id_t request = 0;
+  citizensdk_error_code_t code = CITIZENSDK_ERROR_INTERNAL;
+  try {
+    code = accept(&request);
+  } catch (...) {
+    code = map_exception();
+  }
+  if (request == 0) {
+    private_requests_.cancel_primed();
+    completion_admission_.publish_route();
+    *out_request = request;
+    return code == CITIZENSDK_OK ? CITIZENSDK_ERROR_INTEGRITY : code;
+  }
+  // The handler was fully allocated before accept(). Binding the integer ID is
+  // non-allocating, so every accepted result—including a successful prepared
+  // wallet hidden inside an error-returning acceptance—has a cleanup owner.
+  private_requests_.bind(request);
+  // 发布屏障前写出真实编号，早到终态回调可安全观察已绑定请求。
+  *out_request = request;
+  completion_admission_.publish_route();
+  return code;
+}
+
+bool Host::has_any_wallet_key(uint32_t index) {
+  return service_call([&] { return vault_->has_any_wallet_key(index); });
+}
+void Host::vault_authorize_add_accounts(
+    uint64_t host_operation_id, const WalletKey &key,
+    const std::array<uint8_t, 16> &operation_id) {
+  service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    vault_->authorize_add_accounts(host_operation_id, key, operation_id);
+  });
+}
+void Host::vault_ensure(uint64_t host_operation_id, const WalletKey &key,
+                        const std::array<uint8_t, 16> &operation_id) {
+  service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    vault_->ensure_wallet_kek(host_operation_id, key, operation_id);
+  });
+}
+bool Host::vault_has(const WalletKey &key) {
+  return service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    return vault_->has_wallet_kek(key);
+  });
+}
+Bytes Host::vault_wrap(uint64_t host_operation_id, const WalletKey &key,
+                       const std::array<uint8_t, 16> &operation_id,
+                       const uint8_t plaintext_dek[32]) {
+  return service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    return vault_->wrap_dek(host_operation_id, key, operation_id,
+                            plaintext_dek);
+  });
+}
+void Host::vault_unwrap(uint64_t host_operation_id, const WalletKey &key,
+                        const Bytes &wrapped_dek,
+                        uint8_t plaintext_dek_out[32]) {
+  service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    vault_->unwrap_dek(host_operation_id, key, wrapped_dek, plaintext_dek_out);
+  });
+}
+void Host::vault_retire(const WalletKey &key,
+                        const std::array<uint8_t, 16> &operation_id) {
+  service_call([&] {
+    require(vault_ != nullptr, CITIZENSDK_ERROR_UNSUPPORTED,
+            "wallet host is disabled");
+    vault_->retire_wallet_kek(key, operation_id);
+  });
+}
+
+#if defined(_WIN32) // 系统差异
+} // namespace citizen_sdk::windows
+#else  // 系统差异
+} // namespace citizen_sdk::linux
+#endif // 系统差异
+
+#include "host.hpp"
+
+#include <exception>
+#include <limits>
+
+#if defined(_WIN32) // 系统差异
+namespace citizen_sdk::windows {
+#else  // 系统差异
+namespace citizen_sdk::linux {
+#endif // 系统差异
+
+void Host::begin_service() {
+  std::lock_guard<std::mutex> guard(service_lock_);
+  if (service_state_ == ServiceState::kClosing ||
+      service_state_ == ServiceState::kClosed) {
+    throw HostError(CITIZENSDK_ERROR_INVALID_STATE,
+                    "CitizenSDK Host services are closing or closed");
+  }
+  if (service_count_ == std::numeric_limits<uint64_t>::max()) {
+    throw HostError(CITIZENSDK_ERROR_UNAVAILABLE,
+                    "CitizenSDK Host service lease capacity is exhausted");
+  }
+  ++service_count_;
+}
+
+void Host::finish_service() noexcept {
+  std::lock_guard<std::mutex> guard(service_lock_);
+  if (service_count_ == 0)
+    std::terminate();
+  --service_count_;
+}
+
+bool Host::begin_service_close() {
+  std::lock_guard<std::mutex> guard(service_lock_);
+  if (service_state_ == ServiceState::kClosed)
+    return false;
+  if (service_close_active_ || service_count_ != 0) {
+    throw HostError(CITIZENSDK_ERROR_BUSY,
+                    "CitizenSDK Host still owns a service or close attempt");
+  }
+  service_state_ = ServiceState::kClosing;
+  service_close_active_ = true;
+  return true;
+}
+
+void Host::cancel_service_close(bool teardown_started) noexcept {
+  std::lock_guard<std::mutex> guard(service_lock_);
+  service_close_active_ = false;
+  if (service_state_ == ServiceState::kClosing && !teardown_started)
+    service_state_ = ServiceState::kOpen;
+}
+
+void Host::commit_service_closed() noexcept {
+  std::lock_guard<std::mutex> guard(service_lock_);
+  service_close_active_ = false;
+  service_state_ = ServiceState::kClosed;
+}
+
+#if defined(_WIN32) // 系统差异
+} // namespace citizen_sdk::windows
+#else  // 系统差异
+} // namespace citizen_sdk::linux
+#endif // 系统差异

@@ -5,30 +5,54 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use crate::{
-    error::EngineError,
-    wallet_derivation::{WalletEntropySource, WalletWordCount},
-    wallet_service::{SigningService, WalletClock, WalletService},
-};
-use citizen_sdk_contracts::{
-    store::{EncryptedSecretBlobStore, WalletProfileStore},
-    AccountId32, ChainSigner, ContractError, ContractErrorCode, ContractFuture, ContractResult,
-    EncryptedSecretBlobSnapshot, EncryptedSecretBlobState, EncryptedSecretEnvelope, Hash32Bytes,
-    SecretBuffer, SecretOwner, SecretRef, SecretVault, SigningIntent, SigningTransform,
-    Sr25519PublicKey, Sr25519Signature, VaultAvailability, VaultGeneration, WalletCleanupPlan,
-    WalletDiagnosticReason, WalletOrigin, WalletProvisioningPlan, WalletRecord, WalletSignMode,
-    WalletState, MAX_WALLET_ACCOUNT_INDEX,
-};
-use citizen_signer::Sr25519SoftwareSigner;
-use futures::{executor::block_on, join};
+use crate::error::EngineError;
+use crate::types::store::EncryptedSecretBlobStore;
+use crate::types::store::WalletProfileStore;
+use crate::types::AccountId32;
+use crate::wallet_derivation::WalletEntropySource;
+use crate::wallet_derivation::WalletWordCount;
+use crate::wallet_service::SigningService;
+use crate::wallet_service::WalletClock;
+use crate::wallet_service::WalletService;
+
+use crate::types::ContractError;
+use crate::types::ContractErrorCode;
+use crate::types::ContractFuture;
+use crate::types::ContractResult;
+use crate::types::EncryptedSecretBlobSnapshot;
+use crate::types::EncryptedSecretBlobState;
+use crate::types::EncryptedSecretEnvelope;
+use crate::types::Hash32Bytes;
+use crate::types::SecretBuffer;
+use crate::types::SecretOwner;
+use crate::types::SecretRef;
+use crate::types::SecretVault;
+use crate::types::SigningIntent;
+use crate::types::SigningTransform;
+use crate::types::Sr25519PublicKey;
+use crate::types::Sr25519Signature;
+use crate::types::VaultAvailability;
+use crate::types::VaultGeneration;
+use crate::types::WalletCleanupPlan;
+use crate::types::WalletDiagnosticReason;
+use crate::types::WalletOrigin;
+use crate::types::WalletProvisioningPlan;
+use crate::types::WalletRecord;
+use crate::types::WalletSignMode;
+use crate::types::WalletState;
+use crate::types::MAX_WALLET_ACCOUNT_INDEX;
+
+use futures::executor::block_on;
+use futures::join;
 use zeroize::Zeroizing;
 
 const KNOWN_MNEMONIC: &str =
@@ -504,7 +528,7 @@ impl WalletClock for IncrementingClock {
 
 struct Harness {
     service: WalletService,
-    signer: Arc<Sr25519SoftwareSigner>,
+
     vault: Arc<MemorySecretVault>,
     profiles: Arc<MemoryWalletProfileStore>,
     secrets: Arc<MemoryEncryptedSecretStore>,
@@ -514,14 +538,12 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
-        let signer = Arc::new(Sr25519SoftwareSigner);
         let vault = Arc::new(MemorySecretVault::default());
         let profiles = Arc::new(MemoryWalletProfileStore::default());
         let secrets = Arc::new(MemoryEncryptedSecretStore::default());
         let entropy = Arc::new(CountingEntropy::default());
         let clock = Arc::new(IncrementingClock::default());
         let service = WalletService::new(
-            signer.clone(),
             vault.clone(),
             profiles.clone(),
             secrets.clone(),
@@ -530,7 +552,7 @@ impl Harness {
         );
         Self {
             service,
-            signer,
+
             vault,
             profiles,
             secrets,
@@ -541,30 +563,26 @@ impl Harness {
 
     fn signing_service(&self) -> SigningService {
         SigningService::new(
-            self.signer.clone(),
             self.vault.clone(),
             self.profiles.clone(),
             self.secrets.clone(),
         )
     }
 
-    fn engine(&self, modules: citizen_sdk_contracts::Modules) -> crate::CitizenEngine {
+    fn engine(&self, modules: crate::types::Modules) -> crate::CitizenEngine {
         let engine = crate::CitizenEngine::new(
-            crate::EngineComponents::new(
-                None,
-                Some(self.signer.clone()),
-                Some(self.vault.clone()),
-                None,
-                None,
-                Some(self.profiles.clone()),
-                None,
-                Some(self.secrets.clone()),
-            )
-            .with_modules(modules),
-        );
+            None,
+            Some(self.vault.clone()),
+            None,
+            None,
+            Some(self.profiles.clone()),
+            None,
+            Some(self.secrets.clone()),
+        )
+        .with_modules(modules);
         engine
             .update_capabilities(
-                citizen_sdk_contracts::CapabilityName::ALL
+                crate::types::CapabilityName::ALL
                     .into_iter()
                     .map(crate::CapabilityProbe::ready)
                     .collect(),
@@ -575,7 +593,6 @@ impl Harness {
 
     fn second_service(&self) -> WalletService {
         WalletService::new(
-            self.signer.clone(),
             self.vault.clone(),
             self.profiles.clone(),
             self.secrets.clone(),
@@ -598,7 +615,7 @@ fn cold_accounts_share_one_order_and_never_call_the_secret_vault() {
             .import_cold_account(first_id, " 冷钱包1 ")
             .await
             .expect("AccountId 导入冷账户");
-        let second_address = citizen_sdk_contracts::citizen_ss58_address(second_id);
+        let second_address = crate::types::citizen_ss58_address(second_id);
         let second = harness
             .service
             .import_cold_ss58_account(&second_address, "冷钱包2")
@@ -1017,86 +1034,56 @@ fn diagnostic_changes_handle_cas_failures_and_plain_wipe_without_losing_pending_
     });
 }
 
-struct ProofSigner {
-    inner: Sr25519SoftwareSigner,
-    messages: Mutex<Vec<Vec<u8>>>,
-    reject_verification: bool,
-}
-impl ChainSigner for ProofSigner {
-    fn derive_hard<'a>(
-        &'a self,
-        parent: &'a SecretBuffer,
-        junction: citizen_sdk_contracts::DerivationJunction,
-    ) -> ContractFuture<'a, SecretBuffer> {
-        self.inner.derive_hard(parent, junction)
-    }
-    fn public_key<'a>(&'a self, secret: &'a SecretBuffer) -> ContractFuture<'a, Sr25519PublicKey> {
-        self.inner.public_key(secret)
-    }
-    fn sign<'a>(
-        &'a self,
-        secret: &'a SecretBuffer,
-        message: Vec<u8>,
-    ) -> ContractFuture<'a, Sr25519Signature> {
-        self.messages.lock().unwrap().push(message.clone());
-        self.inner.sign(secret, message)
-    }
-    fn verify(
-        &self,
-        public_key: Sr25519PublicKey,
-        message: Vec<u8>,
-        signature: Sr25519Signature,
-    ) -> ContractFuture<'_, bool> {
-        if self.reject_verification {
-            return Box::pin(async { Ok(false) });
-        }
-        self.inner.verify(public_key, message, signature)
-    }
-}
-
 #[test]
-fn hot_mode_proof_uses_original_0x23_scale_domain_and_failed_verification_never_commits() {
+fn hot_mode_proof_uses_original_domain_and_wrong_secret_never_commits() {
     block_on(async {
-        for reject in [false, true] {
+        for wrong_secret in [false, true] {
             let harness = Harness::new();
             let profile = harness.service.import(&known_mnemonic(), "").await.unwrap();
             let raw = broken_mode(WalletRecord::from_profile(&profile));
             let before = seed_diagnostic(&harness, raw.clone());
-            let signer = Arc::new(ProofSigner {
-                inner: Sr25519SoftwareSigner,
-                messages: Mutex::new(Vec::new()),
-                reject_verification: reject,
-            });
-            let service = WalletService::new(
-                signer.clone(),
-                harness.vault.clone(),
-                harness.profiles.clone(),
-                harness.secrets.clone(),
-                harness.entropy.clone(),
-                harness.clock.clone(),
-            );
-            let next_entropy = harness.entropy.0.load(Ordering::SeqCst);
-            let result = service.repair_hot_wallet(before.revision(), &raw).await;
-            let mut challenge = [0u8; 32];
-            // 同一有限熵源规则仅用于构造公开期望；正式签名仍是Sr25519SoftwareSigner。
-            CountingEntropy(AtomicU64::new(next_entropy))
-                .fill(&mut challenge)
-                .unwrap();
-            let mut scale = citizen_sdk_contracts::CITIZENCHAIN_GENESIS_HASH
-                .as_bytes()
-                .to_vec();
+            let challenge = [0x55; 32];
+            let mut scale = crate::types::CITIZENCHAIN_GENESIS_HASH.as_bytes().to_vec();
             scale.extend_from_slice(profile.master_account_id().as_bytes());
             scale.extend_from_slice(b"\x0chot");
             scale.extend_from_slice(&challenge);
-            let expected = citizen_sdk_contracts::encode_signing_payload(
-                citizen_sdk_contracts::SigningPayload::Message {
+            let expected =
+                crate::types::encode_signing_payload(crate::types::SigningPayload::Message {
                     op_tag: 0x23,
                     scale_payload: &scale,
-                },
-            )
-            .unwrap();
-            assert_eq!(*signer.messages.lock().unwrap(), vec![expected]);
-            if reject {
+                })
+                .unwrap();
+            assert_eq!(
+                crate::wallet_service::hot_mode_payload(profile.master_account_id(), &challenge)
+                    .unwrap(),
+                expected
+            );
+            if wrong_secret {
+                let reference = profile.accounts()[0].secret_ref();
+                let envelope = EncryptedSecretEnvelope::try_new(
+                    1,
+                    Hash32Bytes::from_bytes(secret_ref_digest(reference)),
+                    vec![13; 32],
+                )
+                .unwrap();
+                let snapshot = EncryptedSecretBlobSnapshot::empty()
+                    .try_advance(EncryptedSecretBlobState::Sealed {
+                        provisioning_operation_id: [0x55; 16],
+                        envelope,
+                    })
+                    .unwrap();
+                harness
+                    .secrets
+                    .entries
+                    .lock()
+                    .unwrap()
+                    .insert(reference, snapshot);
+            }
+            let result = harness
+                .service
+                .repair_hot_wallet(before.revision(), &raw)
+                .await;
+            if wrong_secret {
                 assert_contract_code(result.unwrap_err(), ContractErrorCode::Integrity);
                 assert_eq!(harness.profiles.snapshot(), before);
             } else {
@@ -1168,7 +1155,7 @@ fn ordinary_account_and_metadata_changes_keep_unrelated_diagnostics_byte_for_byt
 
 #[test]
 fn engine_internal_cold_wallet_surface_uses_the_same_catalog_state() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
@@ -1204,7 +1191,7 @@ fn engine_internal_cold_wallet_surface_uses_the_same_catalog_state() {
 
 #[test]
 fn public_catalog_reorder_uses_revision_and_cannot_change_the_default_account() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
@@ -1265,7 +1252,7 @@ fn public_catalog_reorder_uses_revision_and_cannot_change_the_default_account() 
 
 #[test]
 fn generic_signing_intent_routes_hot_and_cold_accounts_without_business_payload_knowledge() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
@@ -1290,15 +1277,12 @@ fn generic_signing_intent_routes_hot_and_cold_accounts_without_business_payload_
         let completion = engine.sign_wallet_intent(intent).await.unwrap();
         assert_eq!(completion.account_id(), hot);
         assert_eq!(completion.payload_hash(), payload_hash);
-        assert!(harness
-            .signer
-            .verify(
-                Sr25519PublicKey::from_bytes(hot.into_bytes()),
-                signing_message,
-                completion.signature(),
-            )
-            .await
-            .unwrap());
+        assert!(crate::sign::verify(
+            Sr25519PublicKey::from_bytes(hot.into_bytes()),
+            signing_message,
+            completion.signature(),
+        )
+        .unwrap());
 
         let vault_calls = harness.vault.open_calls.load(Ordering::SeqCst);
         let failure = engine
@@ -1319,7 +1303,7 @@ fn generic_signing_intent_routes_hot_and_cold_accounts_without_business_payload_
 
 #[test]
 fn hot_default_account_change_signs_the_frozen_order_and_commits_once() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
@@ -1353,12 +1337,12 @@ fn hot_default_account_change_signs_the_frozen_order_and_commits_once() {
 
 #[test]
 fn external_signature_can_authorize_cold_default_change_without_opening_the_sdk_vault() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
         let external_secret = SecretBuffer::try_new(vec![0x41; 32]).unwrap();
-        let external_public = harness.signer.public_key(&external_secret).await.unwrap();
+        let external_public = crate::sign::public_key(&external_secret).unwrap();
         let current = AccountId32::from_bytes(*external_public.as_bytes());
         let next = AccountId32::from_bytes([0xb1; 32]);
         harness
@@ -1377,18 +1361,15 @@ fn external_signature_can_authorize_cold_default_change_without_opening_the_sdk_
             .prepare_default_wallet_account_change(before.revision(), vec![next, current], 120)
             .await
             .unwrap();
-        let signature = harness
-            .signer
-            .sign(
-                &external_secret,
-                authorization
-                    .signing_intent()
-                    .unwrap()
-                    .signing_message()
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let signature = crate::sign::sign(
+            &external_secret,
+            authorization
+                .signing_intent()
+                .unwrap()
+                .signing_message()
+                .unwrap(),
+        )
+        .unwrap();
         let committed = engine
             .commit_default_wallet_account_change(&authorization, signature)
             .await
@@ -1402,7 +1383,7 @@ fn external_signature_can_authorize_cold_default_change_without_opening_the_sdk_
 
 #[test]
 fn default_account_authorization_rejects_stale_or_expired_snapshots() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
 
     block_on(async {
         let harness = Harness::new();
@@ -1861,15 +1842,12 @@ fn create_add_accounts_usability_and_local_signing_form_one_complete_lifecycle()
             .sign(master, message.clone())
             .await
             .expect("账户0本地签名");
-        assert!(harness
-            .signer
-            .verify(
-                citizen_sdk_contracts::Sr25519PublicKey::from_bytes(*master.as_bytes()),
-                message,
-                signature,
-            )
-            .await
-            .unwrap());
+        assert!(crate::sign::verify(
+            crate::types::Sr25519PublicKey::from_bytes(*master.as_bytes()),
+            message,
+            signature,
+        )
+        .unwrap());
 
         let added = harness
             .service
@@ -2686,7 +2664,7 @@ async fn create_confirmed(
     service: &WalletService,
     word_count: WalletWordCount,
     password: &str,
-) -> (citizen_sdk_contracts::WalletProfile, SecretBuffer) {
+) -> (crate::types::WalletProfile, SecretBuffer) {
     let prepared = service
         .prepare_create(word_count, Zeroizing::new(password.to_owned()))
         .await
@@ -2747,7 +2725,7 @@ fn decode_fixed_hex<const N: usize>(encoded: &str) -> [u8; N] {
 #[cfg(feature = "wallet")]
 #[test]
 fn private_key_view_requires_confirmation_and_holds_wallet_until_ui_and_notification_finish() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
     block_on(async {
         let harness = Harness::new();
         harness.entropy.0.store(160, Ordering::SeqCst);
@@ -2811,7 +2789,7 @@ fn private_key_view_requires_confirmation_and_holds_wallet_until_ui_and_notifica
 #[cfg(feature = "wallet")]
 #[test]
 fn private_key_view_cancel_and_finish_do_not_drop_pending_authentication_or_allow_late_display() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
     block_on(async {
         let harness = Harness::new();
         harness.entropy.0.store(176, Ordering::SeqCst);
@@ -2875,7 +2853,7 @@ fn private_key_view_cancel_and_finish_do_not_drop_pending_authentication_or_allo
 #[cfg(feature = "wallet")]
 #[test]
 fn private_key_view_cancel_before_work_never_loads_a_secret_and_missing_account_settles_once() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
     block_on(async {
         let harness = Harness::new();
         let engine = harness.engine(Modules::try_new(Modules::WALLET).unwrap());
@@ -2919,7 +2897,7 @@ fn private_key_view_cancel_before_work_never_loads_a_secret_and_missing_account_
 #[cfg(feature = "wallet")]
 #[test]
 fn private_key_view_rechecks_generation_after_pending_authorization() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
     block_on(async {
         let harness = Harness::new();
         harness.entropy.0.store(192, Ordering::SeqCst);
@@ -2961,7 +2939,7 @@ fn private_key_view_rechecks_generation_after_pending_authorization() {
 #[cfg(feature = "wallet")]
 #[test]
 fn private_key_view_rejects_missing_ciphertext_invalidated_key_and_wrong_account_public_key() {
-    use citizen_sdk_contracts::Modules;
+    use crate::types::Modules;
     block_on(async {
         let harness = Harness::new();
         harness.entropy.0.store(224, Ordering::SeqCst);
@@ -3054,7 +3032,7 @@ fn private_key_view_rejects_missing_ciphertext_invalidated_key_and_wrong_account
 #[cfg(all(feature = "wallet", feature = "signing"))]
 #[test]
 fn wallet_and_signing_modules_are_independent_without_a_chain_or_history() {
-    use citizen_sdk_contracts::{CapabilityName, Modules, Sr25519PublicKey};
+    use crate::types::{CapabilityName, Modules, Sr25519PublicKey};
     block_on(async {
         let harness = Harness::new();
         let wallet = harness.engine(Modules::try_new(Modules::WALLET).unwrap());
@@ -3108,15 +3086,12 @@ fn wallet_and_signing_modules_are_independent_without_a_chain_or_history() {
             .sign_wallet_payload(account_id, message.clone())
             .await
             .expect("签名模块读取已有安全账户");
-        assert!(harness
-            .signer
-            .verify(
-                Sr25519PublicKey::from_bytes(*account_id.as_bytes()),
-                message,
-                signature,
-            )
-            .await
-            .unwrap());
+        assert!(crate::sign::verify(
+            Sr25519PublicKey::from_bytes(*account_id.as_bytes()),
+            message,
+            signature,
+        )
+        .unwrap());
         let before = harness.profiles.snapshot();
         assert!(
             signing
@@ -3330,7 +3305,6 @@ fn append_rejects_late_authorization_after_cancellation_or_state_replacement() {
             let before = h.profiles.snapshot();
             let cancelled = Arc::new(AtomicBool::new(false));
             let service = WalletService::new(
-                h.signer.clone(),
                 h.vault.clone(),
                 h.profiles.clone(),
                 h.secrets.clone(),

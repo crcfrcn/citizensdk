@@ -4,19 +4,23 @@
 //! mini-secret。调用者只能取得公开公钥和仍由 [`SecretBuffer`] 拥有的 child；任何
 //! Dart、Kotlin 或公共 C ABI 都不得直接调用这些内部函数导出秘密。
 
-use std::sync::Arc;
+use bip39::Language;
+use bip39::Mnemonic;
 
-use bip39::{Language, Mnemonic};
-use citizen_sdk_contracts::{
-    ChainSigner, ContractError, ContractErrorCode, ContractResult, DerivationJunction,
-    SecretBuffer, Sr25519PublicKey, MAX_WALLET_ACCOUNT_INDEX,
-};
+use crate::types::ContractError;
+use crate::types::ContractErrorCode;
+use crate::types::ContractResult;
+use crate::types::DerivationJunction;
+use crate::types::SecretBuffer;
+use crate::types::Sr25519PublicKey;
+use crate::types::MAX_WALLET_ACCOUNT_INDEX;
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::EngineError;
 
@@ -121,8 +125,7 @@ pub fn generate_mnemonic(
 }
 
 /// 从助记词派生多个 child mini-secret；输出顺序与输入 index 完全一致。
-pub async fn derive_wallet_accounts(
-    signer: Arc<dyn ChainSigner>,
+pub fn derive_wallet_accounts(
     mnemonic: &SecretBuffer,
     password: &str,
     indices: &[u32],
@@ -150,8 +153,8 @@ pub async fn derive_wallet_accounts(
     let mut accounts = Vec::with_capacity(indices.len());
     for index in indices {
         let junction = DerivationJunction::from_chain_code(hard_junction_chain_code(*index));
-        let child = signer.derive_hard(&master, junction).await?;
-        let public_key = signer.public_key(&child).await?;
+        let child = crate::sign::derive_hard(&master, junction)?;
+        let public_key = crate::sign::public_key(&child)?;
         accounts.push(DerivedWalletAccount {
             index: *index,
             public_key,
@@ -199,13 +202,12 @@ fn validate_password_form(value: &str) -> Result<(), crate::wallet_input::Wallet
         return Err(WalletInputReason::PasswordLength);
     }
     if graphemes.iter().any(|grapheme| {
-            let mut chars = grapheme.chars();
-            let Some(character) = chars.next() else {
-                return true;
-            };
-            chars.next().is_some() || !(character.is_ascii_graphic() || is_han_character(character))
-        })
-    {
+        let mut chars = grapheme.chars();
+        let Some(character) = chars.next() else {
+            return true;
+        };
+        chars.next().is_some() || !(character.is_ascii_graphic() || is_han_character(character))
+    }) {
         return Err(WalletInputReason::PasswordFormat);
     }
     Ok(())

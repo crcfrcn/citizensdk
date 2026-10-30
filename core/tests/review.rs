@@ -1,25 +1,34 @@
 //! 固定公开向量只用于回归；生产审阅仅接受 VerifiedChainClient 提供的 Runtime。
 #![allow(clippy::unwrap_used)]
 
-use citizen_sdk_contracts::{
-    ChainIdentity, ContractErrorCode, FinalizedBlockRef, Hash32, RuntimeContext, RuntimeVersion,
-    Sr25519PublicKey,
-};
-use citizen_sdk_qr::SignRequest;
-use subxt_core::ext::codec::{Compact, Encode};
+use crate::qr::SignRequest;
+use crate::types::ChainIdentity;
+use crate::types::ContractErrorCode;
+use crate::types::FinalizedBlockRef;
+use crate::types::Hash32;
+use crate::types::RuntimeContext;
+use crate::types::RuntimeVersion;
+use crate::types::Sr25519PublicKey;
+use subxt_core::ext::codec::Compact;
+use subxt_core::ext::codec::Encode;
 
-use crate::{
-    error::EngineError,
-    qr_review::{decode_review, QrReview},
-};
-use citizen_sdk_contracts::{
-    ContractError, ContractFuture, ContractStream, ExportedChainState, ExtrinsicWatchEvent,
-    SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic, VerifiedBlockRef, VerifiedChainClient,
-};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
-};
+use crate::error::EngineError;
+use crate::qr_review::decode_review;
+use crate::qr_review::QrReview;
+use crate::types::ContractError;
+use crate::types::ContractFuture;
+use crate::types::ContractStream;
+use crate::types::ExportedChainState;
+use crate::types::ExtrinsicWatchEvent;
+use crate::types::SignedExtrinsic;
+use crate::types::StateImportReceipt;
+use crate::types::SubmittedExtrinsic;
+use crate::types::VerifiedBlockRef;
+use crate::types::VerifiedChainClient;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 const METADATA: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 const VECTOR: &str = include_str!("citizenchain-transfer-build-v1.json");
@@ -295,22 +304,14 @@ fn runtime_from_another_block_is_rejected_before_scale_review() {
 
 #[test]
 fn qr_chain_review_requires_running_and_holds_lifecycle_until_real_work_drains() {
-    use citizen_sdk_contracts::{CapabilityName, Modules};
+    use crate::types::{CapabilityName, Modules};
     futures::executor::block_on(async {
         let (request, context, _) = fixture();
         let provider = Arc::new(client(context));
-        let components = crate::EngineComponents::new(
-            Some(provider.clone()),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .with_modules(Modules::try_new(Modules::QR | Modules::CHAIN).unwrap());
-        let engine = crate::CitizenEngine::new(components);
+        let components =
+            crate::CitizenEngine::new(Some(provider.clone()), None, None, None, None, None, None)
+                .with_modules(Modules::try_new(Modules::QR | Modules::CHAIN).unwrap());
+        let engine = components;
         engine
             .update_capabilities(
                 CapabilityName::ALL

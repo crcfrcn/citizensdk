@@ -34,7 +34,7 @@ internal final class CitizenSDKDatabase: @unchecked Sendable {
     func config() -> citizensdk_store_v1_t {
         var value = citizensdk_store_v1_t()
         value.struct_size = UInt32(MemoryLayout<citizensdk_store_v1_t>.size)
-        value.abi_version = 1; value.context = Unmanaged.passUnretained(self).toOpaque()
+        value.abi_version = CITIZENSDK_ABI_VERSION; value.context = Unmanaged.passUnretained(self).toOpaque()
         value.run = databaseRun; value.execute = databaseExecute; value.query = databaseQuery
         value.begin = databaseBegin; value.end = databaseEnd; value.wal = databaseWal
         return value
@@ -83,7 +83,7 @@ internal final class CitizenSDKDatabase: @unchecked Sendable {
     func close() {lock.lock();defer{lock.unlock()};owner?.close();failed=true}
     private func key(_ index: UInt32,_ generation: Data) throws -> citizensdk_host_wallet_key_ref_v1_t {
         guard generation.count==16 else{throw CitizenSDKError(.invalidArgument,"vault generation length differs")}
-        var value=citizensdk_host_wallet_key_ref_v1_t();value.struct_size=UInt32(MemoryLayout<citizensdk_host_wallet_key_ref_v1_t>.size);value.abi_version=1;value.wallet_index=index
+        var value=citizensdk_host_wallet_key_ref_v1_t();value.struct_size=UInt32(MemoryLayout<citizensdk_host_wallet_key_ref_v1_t>.size);value.abi_version = CITIZENSDK_ABI_VERSION;value.wallet_index=index
         _ = withUnsafeMutableBytes(of:&value.generation.bytes){generation.copyBytes(to:$0)};return value
     }
     private func generation(_ action:UInt32,_ index:UInt32,_ generation:Data,_ operation:Data=Data(repeating:0,count:16)) throws -> Bool {
@@ -101,12 +101,7 @@ internal final class CitizenSDKDatabase: @unchecked Sendable {
         try CitizenSDKChecks.requireOK(code,"Rust vault generation query failed");guard count<=65536 else{throw CitizenSDKError(.integrity,"vault generation count differs")}
         return values.prefix(Int(count)).map{value in let bytes=value.generation.bytes;return(value.wallet_index,withUnsafeBytes(of:bytes){Data($0)})}
     }
-    func hasAccountSecret(accountID:Data)throws->Bool {
-        guard accountID.count==32 else{throw CitizenSDKError(.invalidArgument,"accountId length differs")}
-        var account=citizensdk_account_id_t(),resource=config();var value:UInt8=0
-        _ = withUnsafeMutableBytes(of:&account.bytes){accountID.copyBytes(to:$0)}
-        try CitizenSDKChecks.requireOK(citizensdk_store_has_secret(&resource,&account,&value),"Rust secret presence failed");return value != 0
-    }
+
     fileprivate func prepare(_ sql: citizensdk_bytes_view_t, _ values: UnsafePointer<citizensdk_sql_value_t>?, _ count: UInt64) throws -> OpaquePointer {
         guard let active, let bytes=sql.data, sql.len > 0, sql.len <= 65536, count <= 16, count == 0 || values != nil else { throw databaseError() }
         let text=Data(bytes: bytes, count: Int(sql.len))
