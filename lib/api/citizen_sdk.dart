@@ -3,8 +3,9 @@ part of '../citizen_sdk.dart';
 final c.Bindings _api = c.Bindings.fromLookup(<T extends NativeType>(
   String name,
 ) {
-  if (Platform.isIOS || Platform.isMacOS)
+  if (Platform.isIOS || Platform.isMacOS) {
     return DynamicLibrary.process().lookup<T>(name);
+  }
   if (name.startsWith('citizensdk_qr_image_') ||
       name.startsWith('citizensdk_dart_')) {
     return DynamicLibrary.open(
@@ -53,8 +54,9 @@ final class CitizenSdk with WidgetsBindingObserver {
   static void _checkAbi() {
     try {
       if (_api.citizensdk_abi_version() != c.CITIZENSDK_ABI_VERSION ||
-          _api.citizensdk_dart_api_major() != NativeApi.majorVersion)
+          _api.citizensdk_dart_api_major() != NativeApi.majorVersion) {
         throw _failure(4);
+      }
     } on ArgumentError {
       throw _failure(4, 'CitizenSDK原生库不可用');
     }
@@ -66,8 +68,9 @@ final class CitizenSdk with WidgetsBindingObserver {
     credentialProvider,
   }) async {
     if (Platform.isFuchsia ||
-        Platform.isLinux && Abi.current() != Abi.linuxArm64)
+        Platform.isLinux && Abi.current() != Abi.linuxArm64) {
       throw _failure(4);
+    }
     if (_channelError != null) throw _channelError!;
     _nativeSubscription ??= _nativeEvents
         .receiveBroadcastStream(const [2])
@@ -96,14 +99,17 @@ final class CitizenSdk with WidgetsBindingObserver {
           raw.length != 4 ||
           raw[0] != 2 ||
           raw[1] is! String ||
-          raw[2] != 0)
+          raw[2] != 0) {
         throw _failure(9);
+      }
       id = raw[1]! as String;
-      if (id.isEmpty || id.length > 128 || _instances.containsKey(id))
+      if (id.isEmpty || id.length > 128 || _instances.containsKey(id)) {
         throw _failure(9);
+      }
       final value = raw[3];
-      if (value is! List<Object?> || value.length != 3 || value[2] is! String)
+      if (value is! List<Object?> || value.length != 3 || value[2] is! String) {
         throw _failure(9);
+      }
       final handle = _nativeId(value[2]! as String);
       if (handle == 0) throw _failure(9);
       _checkAbi();
@@ -146,8 +152,9 @@ final class CitizenSdk with WidgetsBindingObserver {
       rethrow;
     } finally {
       _opening--;
-      if (_opening == 0)
+      if (_opening == 0) {
         _early.removeWhere((id, _) => !_instances.containsKey(id));
+      }
     }
   }
 
@@ -166,16 +173,18 @@ final class CitizenSdk with WidgetsBindingObserver {
           data[0] != 2 ||
           data[3] is! int ||
           data[4] is! int ||
-          data[5] != method)
+          data[5] != method) {
         throw _failure(9);
+      }
       final code = data[3]! as int, stage = data[4]! as int;
       if (code < 1 ||
           code > 22 ||
           stage < 1 ||
           stage > 8 ||
           error.code !=
-              'citizensdk.${CitizenSdkErrorCode.values[code - 1].name}')
+              'citizensdk.${CitizenSdkErrorCode.values[code - 1].name}') {
         throw _failure(9);
+      }
       throw CitizenSdkException(
         code: CitizenSdkErrorCode.values[code - 1],
         stage: CitizenSdkFailureStage.values[stage - 1],
@@ -198,8 +207,9 @@ final class CitizenSdk with WidgetsBindingObserver {
         raw[0] != 2 ||
         raw[1] != _hostId ||
         raw[2] != sequence ||
-        raw[3] is! List<Object?>)
+        raw[3] is! List<Object?>) {
       throw _failure(9);
+    }
     final value = raw[3]! as List<Object?>;
     if (const {
           'closePrivateKey',
@@ -210,10 +220,12 @@ final class CitizenSdk with WidgetsBindingObserver {
           'respondCredential',
           'cancelCredential',
         }.contains(method) &&
-        value.isNotEmpty)
+        value.isNotEmpty) {
       throw _failure(9);
-    if (method == 'close' && (value.length != 1 || value[0] != 'disposed'))
+    }
+    if (method == 'close' && (value.length != 1 || value[0] != 'disposed')) {
       throw _failure(9);
+    }
     return value;
   }
 
@@ -551,8 +563,9 @@ final class CitizenSdk with WidgetsBindingObserver {
     final value = await _resource('readDiagnostics', const []);
     if (value.length != 1 ||
         value[0] is! List<Object?> ||
-        (value[0]! as List<Object?>).length > 128)
+        (value[0]! as List<Object?>).length > 128) {
       throw _failure(9);
+    }
     return List.unmodifiable(
       (value[0]! as List<Object?>).map(CitizenSdkDiagnostic.decode),
     );
@@ -756,8 +769,9 @@ final class CitizenSdk with WidgetsBindingObserver {
       } on UnsupportedError {
         /* 宿主只读副本。 */
       }
-      if (identical(_credentials[pending.id], pending))
+      if (identical(_credentials[pending.id], pending)) {
         _credentials.remove(pending.id);
+      }
     }
   }
 
@@ -803,8 +817,9 @@ final class CitizenSdk with WidgetsBindingObserver {
           if (payload.length != 3 ||
               payload[0] is! String ||
               payload[1] is! String ||
-              payload[2] != null && payload[2] is! String)
+              payload[2] != null && payload[2] is! String) {
             throw _failure(9);
+          }
           _receiveCredential(
             CitizenSdkCredentialRequest(
               sequence: sequence,
@@ -847,8 +862,9 @@ final class CitizenSdk with WidgetsBindingObserver {
           if (payload.length != 3 ||
               payload[0] is! String ||
               payload[1] is! int ||
-              payload[2] is! String)
+              payload[2] is! String) {
             throw _failure(9);
+          }
           final purpose = CitizenQrScanPurpose.values.firstWhere(
             (p) => p.value == payload[1],
           );
@@ -866,8 +882,9 @@ final class CitizenSdk with WidgetsBindingObserver {
           if (payload.length != 4 ||
               payload[0] is! String ||
               payload[1] is! int ||
-              payload[3] is! int)
+              payload[3] is! int) {
             throw _failure(9);
+          }
           _events.add(
             CitizenSdkQrCaptureEvent(
               sequence: sequence,

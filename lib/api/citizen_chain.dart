@@ -85,8 +85,10 @@ extension Chain on CitizenSdk {
         sizeOf<c.citizensdk_block_body_info>(),
       );
       _status(_api.citizensdk_result_get_block_body_info(r, p));
-      if (p.ref.extrinsic_count > 16384 || p.ref.total_bytes > 64 * 1024 * 1024)
+      if (p.ref.extrinsic_count > 16384 ||
+          p.ref.total_bytes > 64 * 1024 * 1024) {
         throw _failure(9);
+      }
       var remaining = p.ref.total_bytes;
       final values = List<Uint8List>.generate(p.ref.extrinsic_count, (i) {
         final value = m.borrow(

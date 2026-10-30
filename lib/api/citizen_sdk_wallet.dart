@@ -32,8 +32,10 @@ extension Wallet on CitizenSdk {
         );
         final reason = _enum(CitizenWalletInputReason.values, p.ref.reason),
             position = p.ref.position == 0xffffffff ? null : p.ref.position;
-        if (position != null && reason != CitizenWalletInputReason.unknownWord)
+        if (position != null &&
+            reason != CitizenWalletInputReason.unknownWord) {
           throw _failure(9);
+        }
         return CitizenWalletInputValidation(reason: reason, position: position);
       });
   Future<List<String>> wordSuggestions(String prefix) async => _withMemory((m) {
@@ -364,8 +366,9 @@ CitizenWalletProfile? _readProfile(_Memory m, int result) {
         n,
       ),
     );
-    if (a.value < 0 || a.value > 128 || n.value < 0 || n.value > 120)
+    if (a.value < 0 || a.value > 128 || n.value < 0 || n.value > 120) {
       throw _failure(9);
+    }
     final address = m.alloc<Uint8>(a.value), name = m.alloc<Uint8>(n.value);
     _status(
       _api.citizensdk_result_get_wallet_account(
@@ -432,8 +435,9 @@ CitizenWalletState _readWallet(_Memory m, int result) {
           n,
         ),
       );
-      if (a.value < 0 || a.value > 128 || n.value < 0 || n.value > 120)
+      if (a.value < 0 || a.value > 128 || n.value < 0 || n.value > 120) {
         throw _failure(9);
+      }
       final address = m.alloc<Uint8>(a.value), name = m.alloc<Uint8>(n.value);
       _status(
         _api.citizensdk_result_get_wallet_state_account(
@@ -588,8 +592,9 @@ CitizenSigningOutcome _readSigning(_Memory m, int result) {
       sn.value < 0 ||
       sn.value > 128 ||
       rn.value < 0 ||
-      rn.value > 2331)
+      rn.value > 2331) {
     throw _failure(9);
+  }
   if (v.status == 1) {
     if (bn.value != 64) throw _failure(9);
     return CitizenSigningCompleted(
@@ -630,14 +635,16 @@ CitizenDefaultAccountChangeOutcome _readDefaultChange(_Memory m, int result) {
     ),
   );
   final v = p.ref;
-  if (sn.value < 0 || sn.value > 128 || rn.value < 0 || rn.value > 2331)
+  if (sn.value < 0 || sn.value > 128 || rn.value < 0 || rn.value > 2331) {
     throw _failure(9);
-  if (v.status == 1)
+  }
+  if (v.status == 1) {
     return CitizenDefaultAccountChangeCompleted(
       currentDefaultAccountId: _hex(v.current_default_account_id.bytes, 32),
       payloadHash: _hex(v.payload_hash, 32),
       committedRevision: _unsigned(v.committed_revision),
     );
+  }
   if (v.status != 2 || v.transport != 1) throw _failure(9);
   return CitizenDefaultAccountChangePending(
     currentDefaultAccountId: _hex(v.current_default_account_id.bytes, 32),
@@ -811,8 +818,9 @@ final class CitizenWalletInspection {
     if (_released) return;
     final elapsed = Stopwatch()..start();
     try {
-      if (!_sdk._closed && !_sdk._detached)
+      if (!_sdk._closed && !_sdk._detached) {
         _status(_api.citizensdk_result_release(_result));
+      }
       _released = true;
       _sdk._forget(release);
       unawaited(_sdk._diagnose('releaseWalletInspection', 'COMPLETE', elapsed));

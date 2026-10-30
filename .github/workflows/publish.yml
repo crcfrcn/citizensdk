@@ -30,16 +30,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - id: bootstrap
-        name: 从本产品声明读取Node版本
-        shell: bash
-        run: |
-          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
-          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.bootstrap.outputs.node }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           artifact-ids: ${{ inputs.artifact }}

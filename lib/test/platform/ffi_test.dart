@@ -101,8 +101,9 @@ void main() {
             var status = 18;
             for (var i = 0; i < 200 && status == 18; i++) {
               status = close(handle);
-              if (status == 18)
+              if (status == 18) {
                 await Future<void>.delayed(const Duration(milliseconds: 5));
+              }
             }
             expect(status, 0);
             handles.remove(id);
@@ -114,8 +115,9 @@ void main() {
             ];
           }
           if (call.method == 'diagnose') {
-            if (rejectDiagnostic)
+            if (rejectDiagnostic) {
               throw StateError('finite diagnostic IO failure');
+            }
             final row = List<Object?>.of(args[2]! as List<Object?>);
             CitizenSdkDiagnostic.decode(row);
             diagnosticRows.add(row);
@@ -220,7 +222,7 @@ void main() {
   test('只打开QR真实Core，无钱包/链资源', () async {
     final sdk = await CitizenSdk.open(modules: CitizenSdkModules.qr);
     try {
-      expect(await sdk.lifecycle, CitizenSdkLifecycle.created);
+      expect(sdk.lifecycle, CitizenSdkLifecycle.created);
       final snapshot = await sdk.getCapabilities();
       expect(snapshot.statuses, hasLength(10));
       final wire = await sdk.encodeAccountId(account(1));
@@ -595,8 +597,9 @@ void main() {
       await closing;
       await key.closed;
     } finally {
-      if (revealBytes != null && !revealBytes!.isCompleted)
+      if (revealBytes != null && !revealBytes!.isCompleted) {
         revealBytes!.complete(Uint8List(32));
+      }
       await sdk.close();
     }
   });
@@ -614,8 +617,9 @@ void main() {
       expect(borrowed.every((b) => b == 0), isTrue);
       await key.close();
     } finally {
-      if (revealBytes != null && !revealBytes!.isCompleted)
+      if (revealBytes != null && !revealBytes!.isCompleted) {
         revealBytes!.complete(Uint8List(32));
+      }
       await sdk.close();
     }
   });
@@ -640,8 +644,9 @@ void main() {
       await closing;
       await subscription.cancel();
     } finally {
-      if (cameraDrain != null && !cameraDrain!.isCompleted)
+      if (cameraDrain != null && !cameraDrain!.isCompleted) {
         cameraDrain!.complete();
+      }
       await sdk.close();
     }
   });

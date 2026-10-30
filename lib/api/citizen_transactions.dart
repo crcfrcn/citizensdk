@@ -25,8 +25,9 @@ extension Transactions on CitizenSdk {
           final source = _array(v.source_account_id.bytes, 32);
           if (!_bytesEqual(source, expected) ||
               v.prepared_transaction == 0 ||
-              _preparedTransactions.containsKey(id))
+              _preparedTransactions.containsKey(id)) {
             throw _failure(9);
+          }
           final value = CitizenPreparedTransaction(
             preparationId: id,
             sourceAccountId: source,
@@ -39,11 +40,12 @@ extension Transactions on CitizenSdk {
           _preparedTransactions[id] = v.prepared_transaction;
           return value;
         } on Object {
-          if (v.prepared_transaction != 0)
+          if (v.prepared_transaction != 0) {
             _api.citizensdk_prepared_transaction_release(
               _handle,
               v.prepared_transaction,
             );
+          }
           rethrow;
         }
       },
@@ -148,8 +150,9 @@ CitizenTransactionExecution _readTransaction(_Memory m, int result) {
       rn.value < 0 ||
       rn.value > 2331 ||
       en.value < 0 ||
-      en.value > 4096)
+      en.value > 4096) {
     throw _failure(9);
+  }
   final id = _hex(v.execution_id, 16),
       source = _array(v.source_account_id.bytes, 32),
       hash = _array(v.call_data_hash, 32);
@@ -170,8 +173,9 @@ CitizenTransactionExecution _readTransaction(_Memory m, int result) {
   if (v.status < 2 || v.status > 4) throw _failure(9);
   CitizenExecution? execution;
   if (v.status == 2 || v.status == 3) {
-    if (!_boolean(v.has_block) || !_boolean(v.has_extrinsic_index))
+    if (!_boolean(v.has_block) || !_boolean(v.has_extrinsic_index)) {
       throw _failure(9);
+    }
     execution = CitizenExecution(
       status: v.status == 2
           ? CitizenExecutionStatus.success
@@ -205,8 +209,9 @@ CitizenExecution _execution(c.citizensdk_execution_info v) {
   if (v.status < 1 ||
       v.status > 2 ||
       !_boolean(v.has_block) ||
-      !_boolean(v.has_extrinsic_index))
+      !_boolean(v.has_extrinsic_index)) {
     throw _failure(9);
+  }
   return CitizenExecution(
     status: _enum(CitizenExecutionStatus.values, v.status, 1),
     block: _block(v.block),

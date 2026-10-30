@@ -3,9 +3,9 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:citizen_sdk/citizen_sdk.dart';
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ss58/ss58.dart' show Address;
 

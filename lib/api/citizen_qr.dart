@@ -579,8 +579,9 @@ extension Qr on CitizenSdk {
     _requireOpen();
     return _ownUi(() async {
       final value = await _resource('openQrCapture', [purpose.value]);
-      if (value.length != 5 || value[0] is! String || value[1] is! int)
+      if (value.length != 5 || value[0] is! String || value[1] is! int) {
         throw _failure(9);
+      }
       final capture = CitizenQrCapture._(
         this,
         value[0]! as String,
@@ -624,8 +625,9 @@ extension Qr on CitizenSdk {
           if (document.kind != CitizenQrKind.signRequest ||
               document.signerAccountId == null ||
               document.requestId == null ||
-              document.expiresAt == null)
+              document.expiresAt == null) {
             throw _failure(9);
+          }
           final review = CitizenQrReview._(
             this,
             result,
@@ -640,8 +642,11 @@ extension Qr on CitizenSdk {
         },
       );
   CitizenSdkOperation<CitizenQrSigned> signQrRequest(CitizenQrReview review) {
-    if (!identical(review._sdk, this) || review._released || review._submitted)
+    if (!identical(review._sdk, this) ||
+        review._released ||
+        review._submitted) {
       throw _failure(1);
+    }
     final operation = _operation(
       (m, out) => _api.citizensdk_sign_qr_request(_handle, review._result, out),
       (m, result) {
@@ -654,8 +659,9 @@ extension Qr on CitizenSdk {
             document.requestId == null ||
             document.signerAccountId == null ||
             document.signature == null ||
-            document.signRequest == null)
+            document.signRequest == null) {
           throw _failure(9);
+        }
         return CitizenQrSigned(
           canonicalText: document.canonicalText,
           qrImage: _encodeQr(m, document.canonicalText, 4),
@@ -682,8 +688,9 @@ Map<String, Object?> _json(String text) {
 }
 
 String _jsonString(Object? value, int maximum) {
-  if (value is! String || utf8.encode(value).length > maximum)
+  if (value is! String || utf8.encode(value).length > maximum) {
     throw _failure(9);
+  }
   return value;
 }
 
@@ -694,8 +701,9 @@ int _jsonInt(Object? value) {
 
 BigInt _jsonUnsigned(Object? value) {
   final text = value is int ? value.toString() : value;
-  if (text is! String || !RegExp(r'^(0|[1-9][0-9]{0,19})$').hasMatch(text))
+  if (text is! String || !RegExp(r'^(0|[1-9][0-9]{0,19})$').hasMatch(text)) {
     throw _failure(9);
+  }
   final number = BigInt.parse(text);
   if (number.bitLength > 64) throw _failure(9);
   return number;
@@ -717,8 +725,9 @@ CitizenQrDocument _documentMap(Map<String, Object?> value) {
   final expiry = value['expires_at'] == null
       ? null
       : _jsonUnsigned(value['expires_at']);
-  if (expiry != null && expiry > BigInt.from(0x7fffffffffffffff))
+  if (expiry != null && expiry > BigInt.from(0x7fffffffffffffff)) {
     throw _failure(9);
+  }
   final result = CitizenQrDocument(
     kind: kind,
     canonicalText: _jsonString(value['canonical_text'], 2331),
@@ -752,25 +761,29 @@ CitizenQrDocument _documentMap(Map<String, Object?> value) {
       if (result.requestId == null ||
           result.expiresAt == null ||
           result.action == null ||
-          result.reviewPayload == null)
+          result.reviewPayload == null) {
         throw _failure(9);
+      }
     case CitizenQrKind.signResponse:
       if (result.requestId == null ||
           result.expiresAt == null ||
           result.signerAccountId == null ||
-          result.signature?.length != 64)
+          result.signature?.length != 64) {
         throw _failure(9);
+      }
     case CitizenQrKind.userContact:
-      if (result.accountId == null || result.cidNumber == null)
+      if (result.accountId == null || result.cidNumber == null) {
         throw _failure(9);
+      }
     case CitizenQrKind.userTransfer:
       if (result.accountId == null ||
           result.requestId == null ||
           result.expiresAt == null ||
           result.amount == null ||
           result.symbol == null ||
-          result.bankCidNumber == null)
+          result.bankCidNumber == null) {
         throw _failure(9);
+      }
     case CitizenQrKind.accountId:
       if (result.accountId == null) throw _failure(9);
   }
@@ -786,8 +799,9 @@ CitizenQrPreview _preview(List<Object?> fields) {
       width > 4096 ||
       height < 1 ||
       height > 4096 ||
-      ![0, 90, 180, 270].contains(rotation))
+      ![0, 90, 180, 270].contains(rotation)) {
     throw _failure(9);
+  }
   return CitizenQrPreview(
     width: width,
     height: height,
@@ -796,7 +810,7 @@ CitizenQrPreview _preview(List<Object?> fields) {
 }
 
 void _imageStatus(int code) {
-  if (code != 0)
+  if (code != 0) {
     throw _failure(switch (code) {
       1 || 2 => 1,
       3 => 7,
@@ -804,6 +818,7 @@ void _imageStatus(int code) {
       5 => 16,
       _ => 20,
     });
+  }
 }
 
 CitizenQrImage _encodeQr(_Memory m, String text, int scale) {
@@ -827,8 +842,9 @@ CitizenQrImage _encodeQr(_Memory m, String text, int scale) {
   }
   if (count.value < 1 ||
       count.value > 16 * 1024 * 1024 ||
-      width.value * height.value != count.value)
+      width.value * height.value != count.value) {
     throw _failure(9);
+  }
   final size = count.value,
       w = width.value,
       h = height.value,
@@ -845,8 +861,9 @@ CitizenQrImage _encodeQr(_Memory m, String text, int scale) {
       count,
     ),
   );
-  if (count.value != size || width.value != w || height.value != h)
+  if (count.value != size || width.value != w || height.value != h) {
     throw _failure(9);
+  }
   return CitizenQrImage(width: w, height: h, luminance: out.asTypedList(size));
 }
 
@@ -871,8 +888,9 @@ final class CitizenQrReview {
   int get expiresAt => document.expiresAt!;
   Future<void> release() async {
     if (_released) return;
-    if (!_sdk._closed && !_sdk._detached)
+    if (!_sdk._closed && !_sdk._detached) {
       _status(_api.citizensdk_result_release(_result));
+    }
     _released = true;
     _sdk._forget(release);
   }

@@ -16,9 +16,11 @@ void main() {
         return true;
       },
     );
-    operation.result.then((_) {
-      finished = true;
-    });
+    unawaited(
+      operation.result.then((_) {
+        finished = true;
+      }),
+    );
     expect(await operation.cancel(), isTrue);
     expect(cancelled, 1);
     expect(finished, isFalse);

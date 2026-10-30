@@ -155,8 +155,9 @@ bool _boolean(int value) {
 
 Uint8List _unhex(String value, int length) {
   if (value.length != length * 2 + 2 ||
-      !RegExp(r'^0x[0-9a-f]+$').hasMatch(value))
+      !RegExp(r'^0x[0-9a-f]+$').hasMatch(value)) {
     throw _failure(1);
+  }
   return Uint8List.fromList(
     List.generate(
       length,
@@ -169,8 +170,9 @@ Uint8List _hexBytes(String value, int maximum) {
   if (!value.startsWith('0x') ||
       value.length.isOdd ||
       (value.length - 2) ~/ 2 > maximum ||
-      !RegExp(r'^0x[0-9a-f]*$').hasMatch(value))
+      !RegExp(r'^0x[0-9a-f]*$').hasMatch(value)) {
     throw _failure(9);
+  }
   return value.length == 2
       ? Uint8List(0)
       : _unhex(value, (value.length - 2) ~/ 2);

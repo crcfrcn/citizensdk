@@ -50,9 +50,9 @@ if(NOT IS_ABSOLUTE "${CITIZENSDK_CORE_LIBRARY}" OR NOT EXISTS "${CITIZENSDK_CORE
   message(FATAL_ERROR "CITIZENSDK_CORE_LIBRARY must be an existing absolute libcitizensdk.so path")
 endif()
 if(NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk.h" OR
-   NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h"
-  "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_host.h")
-  message(FATAL_ERROR "CITIZENSDK_CORE_INCLUDE_DIR must contain citizensdk.h and citizensdk_types.h")
+   NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_types.h" OR
+   NOT EXISTS "${CITIZENSDK_CORE_INCLUDE_DIR}/citizensdk_host.h")
+  message(FATAL_ERROR "CITIZENSDK_CORE_INCLUDE_DIR must contain citizensdk.h, citizensdk_types.h and citizensdk_host.h")
 endif()
 get_filename_component(_citizensdk_core_name "${CITIZENSDK_CORE_LIBRARY}" NAME)
 if(NOT _citizensdk_core_name STREQUAL "libcitizensdk.so")
