@@ -29,14 +29,30 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - id: bootstrap
+      - id: tools
         name: 读取工具声明
         run: |
           printf 'node=%s\n' "$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      # 保存官方Node版本目录及其完成标记，供每个新Runner直接恢复。
+      - &nodecache
+        id: nodecache
+        name: 恢复官方Node缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
-          node-version: ${{ steps.bootstrap.outputs.node }}
+          path: ${{ runner.tool_cache }}/node/${{ steps.tools.outputs.node }}
+          key: sdk-node-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.node }}
+      - &node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
           check-latest: false
+      # 工具准备成功即保存；后续编译失败不应丢失已经准备好的Node。
+      - &nodesave
+        if: ${{ steps.nodecache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ${{ runner.tool_cache }}/node/${{ steps.tools.outputs.node }}
+          key: ${{ steps.nodecache.outputs.cache-primary-key }}
       - id: version
         name: 计算本次交付版本
         env:
@@ -115,11 +131,9 @@ jobs:
             sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ steps.tools.outputs.node }}-${{ steps.tools.outputs.gradle }}-${{ steps.tools.outputs.cmake }}-${{ steps.tools.outputs.sqlite }}-${{ steps.tools.outputs.openssl }}-${{ steps.tools.outputs.tpm2_tss }}-${{ steps.tools.outputs.zxing }}-
             sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-
           fail-on-cache-miss: false
-      - &node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
-          check-latest: false
+      - *nodecache
+      - *node
+      - *nodesave
       - &rust
         id: rust
         name: 准备官方Rust与二维码源码
@@ -278,26 +292,39 @@ jobs:
           persist-credentials: false
       - *tools
       - *cache
+      - *nodecache
       - *node
+      - *nodesave
       - *rust
-      - name: 准备官方CMake
+      - &cmake
+        name: 准备官方CMake
         env:
           PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
         run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
-            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
-            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
-            *) exit 1 ;;
-          esac
-          package="cmake-$PRODUCT_CMAKE-$machine.$format"
-          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
-          mkdir -p target/cache/cmake
-          if [ ! -x "$binary" ]; then
-            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
+          set -euo pipefail
+          # 已有同版程序直接使用；其它版本不覆盖，缺件才恢复或下载固定官方包。
+          binary="$(command -v cmake || true)"
+          if [ -n "$binary" ]; then
+            version="$("$binary" --version)"
+            if [ "${version%%$'\n'*}" != "cmake version $PRODUCT_CMAKE" ]; then binary=; fi
           fi
-          test -x "$binary"
+          if [ -z "$binary" ]; then
+            case "$RUNNER_OS-$RUNNER_ARCH" in
+              Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
+              macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
+              Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
+              *) exit 1 ;;
+            esac
+            package="cmake-$PRODUCT_CMAKE-$machine.$format"
+            binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
+            if [ ! -x "$binary" ]; then
+              mkdir -p target/cache/cmake
+              curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
+              case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
+            fi
+            test -x "$binary"
+          fi
+          if [ "$RUNNER_OS" = Windows ]; then binary="$(cygpath -m "$binary")"; fi
           printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
       - name: 准备官方Flutter
         env:
@@ -380,27 +407,11 @@ jobs:
           ln -s /usr/bin/clang++-16 "$RUNNER_TEMP/citizensdk-clang/clang++"
           printf '%s/citizensdk-clang\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
           printf '%s/.cargo/bin\n' "$HOME" >> "$GITHUB_PATH"
+      - *nodecache
       - *node
+      - *nodesave
       - *rust
-      - name: 准备官方CMake
-        env:
-          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
-        run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
-            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
-            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
-            *) exit 1 ;;
-          esac
-          package="cmake-$PRODUCT_CMAKE-$machine.$format"
-          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
-          mkdir -p target/cache/cmake
-          if [ ! -x "$binary" ]; then
-            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
-          fi
-          test -x "$binary"
-          printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
+      - *cmake
       - name: 构建锁定静态宿主依赖
         run: |
           set -euo pipefail
@@ -481,27 +492,11 @@ jobs:
           persist-credentials: false
       - *tools
       - *cache
+      - *nodecache
       - *node
+      - *nodesave
       - *rust
-      - name: 准备官方CMake
-        env:
-          PRODUCT_CMAKE: ${{ steps.tools.outputs.cmake }}
-        run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-ARM64) machine=linux-aarch64; format=tar.gz; executable=bin/cmake ;;
-            macOS-ARM64) machine=macos-universal; format=tar.gz; executable=CMake.app/Contents/bin/cmake ;;
-            Windows-X64) machine=windows-x86_64; format=zip; executable=bin/cmake.exe ;;
-            *) exit 1 ;;
-          esac
-          package="cmake-$PRODUCT_CMAKE-$machine.$format"
-          binary="$GITHUB_WORKSPACE/target/cache/cmake/cmake-$PRODUCT_CMAKE-$machine/$executable"
-          mkdir -p target/cache/cmake
-          if [ ! -x "$binary" ]; then
-            curl --fail --location --proto '=https' --tlsv1.2 "https://github.com/Kitware/CMake/releases/download/v$PRODUCT_CMAKE/$package" -o "$RUNNER_TEMP/$package"
-            case "$package" in *.zip) unzip -qo "$RUNNER_TEMP/$package" -d target/cache/cmake ;; *) tar -xzf "$RUNNER_TEMP/$package" -C target/cache/cmake ;; esac
-          fi
-          test -x "$binary"
-          printf '%s\n' "${binary%/*}" >> "$GITHUB_PATH"
+      - *cmake
       - name: 使用Runner官方MSVC开发环境
         shell: pwsh
         run: |
@@ -581,19 +576,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - id: bootstrap
+      - id: tools
         name: 从本产品声明读取Node版本
         run: |
           node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
           [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.bootstrap.outputs.node }}
-      - id: tools
-        name: 读取本产品工具声明
-        run: |
-          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
+      - *nodecache
+      - *node
+      - *nodesave
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: 公民SDK·SDK·v${{ needs.select.outputs.version }}·*
@@ -667,16 +658,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - id: bootstrap
+      - id: tools
         name: 从本产品声明读取Node版本
         shell: bash
         run: |
           node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
           [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: ${{ steps.bootstrap.outputs.node }}
+      - *nodecache
+      - *node
+      - *nodesave
       - name: 按本轮结果保留成功失败记录和最新缓存
         env:
           GH_TOKEN: ${{ github.token }}

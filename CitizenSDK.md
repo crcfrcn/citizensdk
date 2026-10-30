@@ -70,7 +70,7 @@ Core只接受同步SQLite机械资源：run在原线程持有连接/锁并恰好
 
 ## 构建、消费和验证
 
-scripts/config.mjs只声明本产品工具/配置/工作流；scripts/build.mjs是唯一构建与测试实现；工作流负责作业编排。Node25.2.1、Rust1.97.1、Flutter3.47.2、NDK28.2.13676358、Gradle9.1.0、CMake3.31.6和原依赖来源不改变。独立执行与控制台调度使用同一入口，产品不读取控制台依赖库存。
+scripts/config.mjs只声明本产品工具/配置/工作流；scripts/build.mjs是唯一构建与测试实现；工作流负责作业编排。Node25.2.1、Rust1.97.1、Flutter3.47.2、NDK28.2.13676358、Gradle9.1.0、CMake3.31.6和原依赖来源不改变。独立执行与控制台调度使用同一入口，产品不读取控制台依赖库存。工具优先使用已有准确版本，再恢复官方缓存，仍缺件时由官方命令按声明及原锁自动补齐；下载或安装失败原样失败，不升级、不换来源。各作业直接读取同一工具声明，Node完整官方版本目录（含完成标记）按系统、架构和版本缓存，准备成功即保存，不依赖后续编译成功；三宿主复用同一CMake准备步骤，已有准确CMake直接使用，否则复用原缓存或获取同版官方包。Rust目标仍由既有rustup target add按需准备。
 
 同一SDK包含Android arm64-v8a（API24+）、iOS16 arm64、iOS模拟器arm64、macOS13 arm64、LinuxARM64和Windowsx64实际原生件。macOS Framework沿官方Versions/A与五个内部相对链接。完整包、原锁、许可、真实来源及平台原生件不完整时失败，不自动换库或升级。
 
