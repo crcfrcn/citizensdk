@@ -60,7 +60,7 @@ sr25519只有core/src/sign.rs的同步派生、公钥、签名和验签函数；
 
 Core只接受同步SQLite机械资源：run在原线程持有连接/锁并恰好执行一次job；事务固定同一连接，query只借用当前行。未完成事务离开job后连接退休，不自动重开。SQL、schema、CAS、记录域、校验和、历史索引及加密记录语义只归Core Store；平台不提供第二套业务Store/Codec。
 
-公共文件public-state-v1.sqlite3、schema2、七项业务对象，安全文件secure-state-v1.sqlite3、schema1，CSHR/TXR及钱包载荷格式保持所属代码原定义；同版本未知/部分/额外DDL或损坏记录仍拒绝，不迁移、重建或当空。WAL、FULL、外键、trusted_schema和secure_delete按原平台能力应用并回读，Android系统android_metadata不算业务对象。
+公共文件public-state.sqlite3、schema2、七项业务对象，安全文件secure-state.sqlite3、schema1，CSHR/TXR及钱包载荷格式保持所属代码原定义；同版本未知/部分/额外DDL或损坏记录仍拒绝，不迁移、重建或当空。WAL、FULL、外键、trusted_schema和secure_delete按原平台能力应用并回读，Android系统android_metadata不算业务对象。
 
 热派生最大序号19890604，冷账户容量1990，两者和处理批次分别约束；删孔不复用，未提交追加只暴露稳定旧目录。修订、密文信封、provisioning owner和generation必须准确匹配，generation永久退休。历史最多4096条、31MiB耐久权重、页1..100，终态与未知广播事实不被本机重试覆盖。
 

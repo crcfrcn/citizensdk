@@ -45,7 +45,7 @@ pub fn parse_execution(value: &str) -> ContractResult<TransactionExecutionId> {
 
 pub fn secret(reference: crate::types::SecretRef) -> String {
     format!(
-        "v1:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}",
         reference.wallet_index(),
         1,
         hex(reference.generation().as_bytes()),

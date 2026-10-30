@@ -286,7 +286,7 @@ int wmain(int argc,wchar_t **argv){
  assert(argc==1);
  citizen_sdk::windows::test::TempDirectory temporary("sqlite");
  verify_vfs_release_and_growth(temporary.path()/"growth");
- for(const char *file_name:{"public-state-v1.sqlite3","secure-state-v1.sqlite3"}) {
+ for(const char *file_name:{"public-state.sqlite3","secure-state.sqlite3"}) {
   citizen_sdk::windows::test::TempDirectory files("file-security");
   // reparse point 的组件与子目录拒绝由 directory_test 的真实 junction 覆盖。
   const auto database_directory = files.path() / "database-directory";

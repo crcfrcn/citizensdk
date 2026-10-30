@@ -15,7 +15,7 @@ internal class CitizenSdkHostServices(context: Context, private val modules: Int
     private val closed = AtomicBoolean(false)
     // 回调首次使用时才创建资源，核心拒绝非法组合前不得产生数据库或金库副作用。
     private val usesSecrets = modules and (CitizenSdkModules.WALLET or CitizenSdkModules.SIGNING) != 0
-    private val root by lazy { storageRoot ?: File(context.noBackupFilesDir, "citizensdk/v1") }
+    private val root by lazy { storageRoot ?: File(context.noBackupFilesDir, "citizensdk") }
     private val databaseDelegate = lazy {
         check(modules and (CitizenSdkModules.CHAIN or CitizenSdkModules.HISTORY) != 0) {
             "public store is not selected"

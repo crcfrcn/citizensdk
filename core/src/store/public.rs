@@ -38,7 +38,7 @@ use std::sync::Mutex;
 
 const HISTORY_BYTES: usize = 32 * 1024 * 1024;
 const RECORD_COLUMNS: &str =
-    "execution_id, created_at, retention_terminal, chain_terminal, record_data";
+    "execution_id, created_at, retention_terminal, chain_terminal, data";
 
 pub struct PublicStore<D: Database> {
     database: D,
@@ -89,7 +89,7 @@ fn integer(value: u64) -> ContractResult<Value> {
 
 fn chain_snapshot(connection: &mut dyn Connection) -> ContractResult<ChainDatabaseSnapshot> {
     let rows = connection.query(
-        "SELECT record_data FROM chain WHERE row_id = ?",
+        "SELECT data FROM chain WHERE id = ?",
         &[Value::Integer(1)],
         1,
         524288,
@@ -136,7 +136,7 @@ impl<D: Database> ChainDatabaseStore for PublicStore<D> {
                             ));
                         }
                         connection.execute(
-                            "INSERT OR REPLACE INTO chain(row_id, record_data) VALUES(?, ?)",
+                            "INSERT OR REPLACE INTO chain(id, data) VALUES(?, ?)",
                             &[Value::Integer(1), Value::Blob(encoded)],
                         )?;
                         Ok(next)
@@ -153,7 +153,7 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
         Box::pin(async move {
             self.run(|connection| {
                 let rows = connection.query(
-                    "SELECT record_data FROM runtime WHERE block_hash = ?",
+                    "SELECT data FROM runtime WHERE block_hash = ?",
                     &[Value::Text(key::block(block))],
                     1,
                     8 * 1024 * 1024,
@@ -177,7 +177,7 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
                 return Err(invalid("runtime cache record is too large"));
             }
             self.run(|connection| transaction(connection,|connection| {
-                connection.execute("INSERT OR REPLACE INTO runtime(block_hash, record_data) VALUES(?, ?)",
+                connection.execute("INSERT OR REPLACE INTO runtime(block_hash, data) VALUES(?, ?)",
                     &[Value::Text(key::block(context.block().hash())),Value::Blob(record)])?;
                 connection.execute("DELETE FROM runtime WHERE rowid NOT IN (SELECT rowid FROM runtime ORDER BY rowid DESC LIMIT ?)",
                     &[Value::Integer(MAX_PERSISTED_RUNTIME_CONTEXTS as i64)])?;
@@ -202,7 +202,7 @@ impl<D: Database> RuntimeCacheStore for PublicStore<D> {
 
 fn history_index(connection: &mut dyn Connection) -> ContractResult<TransactionHistoryIndex> {
     let rows = connection.query(
-        "SELECT state_rev FROM history WHERE row_id = 1",
+        "SELECT state_rev FROM history WHERE id = 1",
         &[],
         1,
         1024,
@@ -410,14 +410,14 @@ impl<D: Database> TransactionHistoryStore for PublicStore<D> {
                         if let Some(current)=history_record(connection,record.execution_id())? { update_counts(&mut counts,&current,false)?; }
                         update_counts(&mut counts,record,true)?;
                         let _=TransactionHistoryIndex::try_new(current.revision(),counts[0],counts[1],counts[2],counts[3])?;
-                        connection.execute("INSERT OR REPLACE INTO entry(execution_id, created_at, retention_terminal, chain_terminal, record_data) VALUES(?, ?, ?, ?, ?)",
+                        connection.execute("INSERT OR REPLACE INTO entry(execution_id, created_at, retention_terminal, chain_terminal, data) VALUES(?, ?, ?, ?, ?)",
                             &[Value::Text(key::execution(record.execution_id())),integer(record.created_at_millis())?,Value::Integer(i64::from(record.status().is_retention_terminal())),
                               Value::Integer(i64::from(record.status().is_chain_terminal())),Value::Blob(encoded.clone())])?;
                     }
                     let next=mutation.next_index();
                     let computed=TransactionHistoryIndex::try_new(next.revision(),counts[0],counts[1],counts[2],counts[3])?;
                     if computed!=next { return Err(integrity("history mutation aggregate is inconsistent")); }
-                    connection.execute("INSERT OR REPLACE INTO history(row_id, state_rev) VALUES(1, ?)",
+                    connection.execute("INSERT OR REPLACE INTO history(id, state_rev) VALUES(1, ?)",
                         &[integer(next.revision())?])?;
                     Ok(next)
                 },|connection,_| transaction(connection,|connection| recovery_matches(connection,&mutation)))?;

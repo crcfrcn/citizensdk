@@ -13,19 +13,19 @@ use crate::store::sqlite::Value;
 use crate::types::*;
 use std::sync::Mutex;
 pub(crate) const DEVICE: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL)",
-    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), data BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS secret (key TEXT PRIMARY KEY, data BLOB NOT NULL)",
     "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, key_state INTEGER NOT NULL, operation_id BLOB NOT NULL, PRIMARY KEY(wallet_index,key_generation))",
 ];
 pub(crate) const TPM: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 1048576))",
-    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 65536))",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 1048576))",
+    "CREATE TABLE IF NOT EXISTS secret (key TEXT PRIMARY KEY, data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 65536))",
     "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), key_generation BLOB NOT NULL CHECK(typeof(key_generation) = 'blob' AND length(key_generation) = 16), key_state INTEGER NOT NULL CHECK(typeof(key_state) = 'integer' AND key_state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16), PRIMARY KEY(wallet_index,key_generation))",
     "CREATE TABLE IF NOT EXISTS object (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 1 AND 8192), private_blob BLOB NOT NULL CHECK(typeof(private_blob) = 'blob' AND length(private_blob) BETWEEN 1 AND 8192), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) = 34), auth_salt BLOB NOT NULL CHECK(typeof(auth_salt) = 'blob' AND length(auth_salt) = 16), PRIMARY KEY(wallet_index,key_generation), FOREIGN KEY(wallet_index,key_generation) REFERENCES generation(wallet_index,key_generation))",
 ];
 pub(crate) const CNG: &[&str]=&[
-    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 1048576))",
-    "CREATE TABLE IF NOT EXISTS secret (record_key TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 65536))",
+    "CREATE TABLE IF NOT EXISTS wallet (wallet_index INTEGER PRIMARY KEY CHECK(wallet_index = 0), data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 1048576))",
+    "CREATE TABLE IF NOT EXISTS secret (key TEXT PRIMARY KEY, data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 65536))",
     "CREATE TABLE IF NOT EXISTS generation (wallet_index INTEGER NOT NULL CHECK(typeof(wallet_index) = 'integer' AND wallet_index >= 0), key_generation BLOB NOT NULL CHECK(typeof(key_generation) = 'blob' AND length(key_generation) = 16), key_state INTEGER NOT NULL CHECK(typeof(key_state) = 'integer' AND key_state IN (1,2)), operation_id BLOB NOT NULL CHECK(typeof(operation_id) = 'blob' AND length(operation_id) = 16), PRIMARY KEY(wallet_index,key_generation))",
     "CREATE TABLE IF NOT EXISTS object (wallet_index INTEGER NOT NULL, key_generation BLOB NOT NULL, public_blob BLOB NOT NULL CHECK(typeof(public_blob) = 'blob' AND length(public_blob) BETWEEN 281 AND 288), object_name BLOB NOT NULL CHECK(typeof(object_name) = 'blob' AND length(object_name) BETWEEN 1 AND 1024), PRIMARY KEY(wallet_index,key_generation), FOREIGN KEY(wallet_index,key_generation) REFERENCES generation(wallet_index,key_generation))",
 ];
@@ -105,7 +105,7 @@ impl<D: Database> SecureStore<D> {
 }
 fn wallet(conn: &mut dyn Connection) -> ContractResult<WalletState> {
     let rows = conn.query(
-        "SELECT record_data FROM wallet WHERE wallet_index = 0",
+        "SELECT data FROM wallet WHERE wallet_index = 0",
         &[],
         1,
         1048576,
@@ -121,7 +121,7 @@ fn encrypted(
     reference: SecretRef,
 ) -> ContractResult<EncryptedSecretBlobSnapshot> {
     let rows = conn.query(
-        "SELECT record_data FROM secret WHERE record_key = ?",
+        "SELECT data FROM secret WHERE key = ?",
         &[Value::Text(key::secret(reference))],
         1,
         65536,
@@ -164,7 +164,7 @@ impl<D: Database> WalletProfileStore for SecureStore<D> {
                             ));
                         }
                         conn.execute(
-                            "INSERT OR REPLACE INTO wallet(wallet_index, record_data) VALUES(0, ?)",
+                            "INSERT OR REPLACE INTO wallet(wallet_index, data) VALUES(0, ?)",
                             &[Value::Blob(record)],
                         )?;
                         Ok(next)
@@ -202,7 +202,7 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
                             codec::encode_encrypted_secret_blob_snapshot(reference, &candidate)
                                 .map_err(decode_error)?;
                         conn.execute(
-                            "INSERT OR REPLACE INTO secret(record_key, record_data) VALUES(?, ?)",
+                            "INSERT OR REPLACE INTO secret(key, data) VALUES(?, ?)",
                             &[Value::Text(key::secret(reference)), Value::Blob(record)],
                         )?;
                         Ok(candidate)
@@ -223,7 +223,7 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
                 let mut present = false;
                 let mut count = 0;
                 conn.scan(
-                    "SELECT record_data FROM secret LIMIT 65537",
+                    "SELECT data FROM secret LIMIT 65537",
                     &[],
                     65537,
                     65536,

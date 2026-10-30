@@ -117,7 +117,7 @@ fn separate_connections_serialize_cas_and_preserve_reopened_data() {
         }
     }
     let _remove = Remove(directory.clone());
-    let name = std::ffi::CString::new(directory.join("public-state-v1.sqlite3").to_str().unwrap())
+    let name = std::ffi::CString::new(directory.join("public-state.sqlite3").to_str().unwrap())
         .unwrap();
     let first = PublicStore::new(db::Db::named(&name));
     let second = PublicStore::new(db::Db::named(&name));
@@ -193,7 +193,7 @@ fn store_survives_process_exit_and_concurrent_writers() {
         }
     }
     let _remove = Remove(directory.clone());
-    let file = directory.join("public-state-v1.sqlite3");
+    let file = directory.join("public-state.sqlite3");
     let name = std::ffi::CString::new(file.to_str().unwrap()).unwrap();
     block_on(ChainDatabaseStore::load(&PublicStore::new(db::Db::named(
         &name,
@@ -245,7 +245,7 @@ fn malformed_revisions_and_extra_schema_are_rejected_without_overwrite() {
         db.0.lock()
             .unwrap()
             .execute(
-                "UPDATE chain SET record_data=?",
+                "UPDATE chain SET data=?",
                 &[Value::Blob(corrupt.clone())],
             )
             .unwrap();
@@ -254,7 +254,7 @@ fn malformed_revisions_and_extra_schema_are_rejected_without_overwrite() {
         let rows =
             db.0.lock()
                 .unwrap()
-                .query("SELECT record_data FROM chain", &[], 1, 1048576)
+                .query("SELECT data FROM chain", &[], 1, 1048576)
                 .unwrap();
         assert_eq!(rows[0].bytes(0, 1048576).unwrap(), corrupt);
     }
@@ -429,7 +429,7 @@ fn schema_and_record_corruption_never_reset() {
     block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).unwrap();
     db.0.lock()
         .unwrap()
-        .execute("UPDATE chain SET record_data=x'00'", &[])
+        .execute("UPDATE chain SET data=x'00'", &[])
         .unwrap();
     assert!(block_on(ChainDatabaseStore::load(&store)).is_err());
     assert!(block_on(ChainDatabaseStore::compare_and_swap(&store, 1, None)).is_err());

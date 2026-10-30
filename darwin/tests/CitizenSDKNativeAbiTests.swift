@@ -14,7 +14,7 @@ final class CitizenSDKCoreAbiTests: XCTestCase {
             step="walletState"
             let state=try await native.walletState().value()
             XCTAssertEqual(state.revision,0);XCTAssertNil(state.hotProfile);XCTAssertTrue(state.accounts.isEmpty)
-            XCTAssertTrue(FileManager.default.fileExists(atPath:directory.appendingPathComponent("secure/secure-state-v1.sqlite3").path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath:directory.appendingPathComponent("secure/secure-state.sqlite3").path))
             step="close"
             var closed=false
             for _ in 0..<500 {

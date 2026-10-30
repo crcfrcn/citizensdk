@@ -22,7 +22,7 @@ internal class CitizenSdkDatabase(private val directory: File, secure: Boolean =
     init {
         check(directory.exists() || directory.mkdirs()) { "unable to create CitizenSDK storage directory" }
         database = SQLiteDatabase.openDatabase(
-            File(directory, if (secure) "secure-state-v1.sqlite3" else "public-state-v1.sqlite3").absolutePath,
+            File(directory, if (secure) "secure-state.sqlite3" else "public-state.sqlite3").absolutePath,
             null, SQLiteDatabase.CREATE_IF_NECESSARY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
         )
     }

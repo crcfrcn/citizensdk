@@ -96,7 +96,7 @@ internal final class CitizenSDKHostBridge {
     static func storageRoot(applicationSupport: URL, applicationID: String?) throws -> URL {
         let applicationID = try CitizenSDKRecordKey.applicationID(applicationID)
         return applicationSupport.appendingPathComponent(applicationID, isDirectory: true)
-            .appendingPathComponent("citizensdk/v1", isDirectory: true)
+            .appendingPathComponent("citizensdk", isDirectory: true)
     }
 
     private static func defaultRoot(applicationID: String) throws -> URL {

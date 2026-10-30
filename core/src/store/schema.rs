@@ -7,10 +7,10 @@ use crate::store::sqlite::Value;
 use crate::types::ContractResult;
 pub const VERSION: i64 = 2;
 pub const STATEMENTS: &[&str] = &[
-    "CREATE TABLE IF NOT EXISTS chain (row_id INTEGER PRIMARY KEY CHECK(row_id = 1), record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 524288))",
-    "CREATE TABLE IF NOT EXISTS runtime (block_hash TEXT PRIMARY KEY, record_data BLOB NOT NULL CHECK(typeof(record_data) = 'blob' AND length(record_data) <= 8388608))",
-    "CREATE TABLE IF NOT EXISTS history (row_id INTEGER PRIMARY KEY CHECK(row_id = 1), state_rev INTEGER NOT NULL CHECK(state_rev > 0))",
-    "CREATE TABLE IF NOT EXISTS entry (execution_id TEXT PRIMARY KEY CHECK(length(execution_id) = 32 AND execution_id NOT GLOB '*[^0-9a-f]*'), created_at INTEGER NOT NULL CHECK(created_at >= 0), retention_terminal INTEGER NOT NULL CHECK(retention_terminal IN (0,1)), chain_terminal INTEGER NOT NULL CHECK(chain_terminal IN (0,1) AND chain_terminal <= retention_terminal), record_data BLOB NOT NULL CHECK(length(record_data) BETWEEN 1 AND 33554432))",
+    "CREATE TABLE IF NOT EXISTS chain (id INTEGER PRIMARY KEY CHECK(id = 1), data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 524288))",
+    "CREATE TABLE IF NOT EXISTS runtime (block_hash TEXT PRIMARY KEY, data BLOB NOT NULL CHECK(typeof(data) = 'blob' AND length(data) <= 8388608))",
+    "CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY CHECK(id = 1), state_rev INTEGER NOT NULL CHECK(state_rev > 0))",
+    "CREATE TABLE IF NOT EXISTS entry (execution_id TEXT PRIMARY KEY CHECK(length(execution_id) = 32 AND execution_id NOT GLOB '*[^0-9a-f]*'), created_at INTEGER NOT NULL CHECK(created_at >= 0), retention_terminal INTEGER NOT NULL CHECK(retention_terminal IN (0,1)), chain_terminal INTEGER NOT NULL CHECK(chain_terminal IN (0,1) AND chain_terminal <= retention_terminal), data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 33554432))",
     "CREATE INDEX IF NOT EXISTS entry_newest ON entry(created_at DESC, execution_id DESC)",
     "CREATE INDEX IF NOT EXISTS entry_retention ON entry(retention_terminal, created_at, execution_id)",
     "CREATE INDEX IF NOT EXISTS entry_reconcile ON entry(chain_terminal, created_at, execution_id)",

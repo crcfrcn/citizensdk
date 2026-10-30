@@ -123,7 +123,7 @@ private:
       if (!db.owner_)
         db.owner_ = std::make_unique<Owner>(
             db.directory_,
-            db.secure_ ? "secure-state-v1.sqlite3" : "public-state-v1.sqlite3");
+            db.secure_ ? "secure-state.sqlite3" : "public-state.sqlite3");
       return db.owner_->run([&](sqlite3 *connection) {
         db.active_ = connection;
         struct Reset {

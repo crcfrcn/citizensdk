@@ -35,7 +35,7 @@ final class CitizenSDKRecordKeyTests: XCTestCase {
         let first = try CitizenSDKHostBridge.storageRoot(applicationSupport: support, applicationID: "org.example.first")
         let second = try CitizenSDKHostBridge.storageRoot(applicationSupport: support, applicationID: "org.example.second")
         XCTAssertNotEqual(first, second)
-        XCTAssertEqual(first.path, "/example/Application Support/org.example.first/citizensdk/v1")
+        XCTAssertEqual(first.path, "/example/Application Support/org.example.first/citizensdk")
         XCTAssertEqual(first, try CitizenSDKHostBridge.storageRoot(applicationSupport: support, applicationID: "org.example.first"))
         let generation = Data(repeating: 1, count: 16)
         XCTAssertNotEqual(

@@ -43,7 +43,7 @@ internal final class CitizenSDKDatabase: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard !failed else { throw databaseError() }
         guard let job else { throw CitizenSDKError(.invalidArgument, "SQLite job is missing") }
-        if owner == nil { owner = try CitizenSDKSQLite(directory: directory, fileName: secure ? "secure-state-v1.sqlite3" : "public-state-v1.sqlite3", secure: secure) }
+        if owner == nil { owner = try CitizenSDKSQLite(directory: directory, fileName: secure ? "secure-state.sqlite3" : "public-state.sqlite3", secure: secure) }
         return try owner!.read { connection in
             active = connection; defer { active = nil }
             let code = job(context)

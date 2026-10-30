@@ -48,7 +48,7 @@ fn wallet_revision_cas_preserves_records_and_rejects_envelope_tampering() {
     db.0.lock()
         .unwrap()
         .execute(
-            "UPDATE wallet SET record_data=?",
+            "UPDATE wallet SET data=?",
             &[citizensdk::store::sqlite::Value::Blob(corrupt)],
         )
         .unwrap();
@@ -245,7 +245,7 @@ fn corrupt_private_records_fail_without_reset_or_overwrite() {
     let rows =
         db.0.lock()
             .unwrap()
-            .query("SELECT record_data FROM secret", &[], 1, 1024)
+            .query("SELECT data FROM secret", &[], 1, 1024)
             .unwrap();
     assert_eq!(rows[0].bytes(0, 1).unwrap(), [1]);
 }
@@ -300,7 +300,7 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
         .execute("INSERT INTO secret VALUES('bad',x'01')", &[])
         .unwrap();
     assert!(block_on(store.has_account_secret(reference().account_id())).unwrap());
-    assert!(key::secret(reference()).starts_with("v1:7:1:"));
+    assert!(key::secret(reference()).starts_with("7:1:"));
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated
         let rows =
             db.0.lock()
                 .unwrap()
-                .query("SELECT record_data FROM secret", &[], 1, 1024)
+                .query("SELECT data FROM secret", &[], 1, 1024)
                 .unwrap();
         assert_eq!(rows[0].0, vec![Value::Blob(record)]);
     }

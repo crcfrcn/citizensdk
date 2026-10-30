@@ -169,7 +169,7 @@ int main(){
  citizen_sdk::linux::test::TempDirectory temporary("sqlite");
  verify_active_writer(temporary.path()/"public-active-writer",false);
  verify_active_writer(temporary.path()/"secure-active-writer",true);
- for(const char *file_name:{"public-state-v1.sqlite3","secure-state-v1.sqlite3"}) {
+ for(const char *file_name:{"public-state.sqlite3","secure-state.sqlite3"}) {
   citizen_sdk::linux::test::TempDirectory files("file-security");
   const auto symlink_target = files.path() / "symlink-target";
   std::filesystem::create_directory(symlink_target);
