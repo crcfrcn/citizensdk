@@ -410,10 +410,6 @@ void QrCapture::receive(uint64_t generation, QrFrame frame) noexcept {
     bool deliver = false;
     { std::lock_guard<std::mutex> guard(impl_->mutex); deliver = !impl_->closing && !impl_->paused && generation == impl_->generation; }
     if (deliver) impl_->notify([&] { impl_->callbacks.error(impl_->callbacks.context, impl_->id, error.code()); });
-  } catch (const citizen_sdk::Error &error) {
-    bool deliver = false;
-    { std::lock_guard<std::mutex> guard(impl_->mutex); deliver = !impl_->closing && !impl_->paused && generation == impl_->generation; }
-    if (deliver) impl_->notify([&] { impl_->callbacks.error(impl_->callbacks.context, impl_->id, error.code()); });
   } catch (...) { fail(generation, CITIZENSDK_ERROR_INTERNAL); }
 }
 
