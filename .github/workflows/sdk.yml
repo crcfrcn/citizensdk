@@ -297,7 +297,7 @@ jobs:
           CITIZENSDK_TRANSACTION_DIAGNOSTICS: '1'
         run: |
           "$FLUTTER_ROOT/bin/flutter" precache --macos
-          node --test test/build.test.mjs
+          node --test lib/test/build.test.mjs
           node scripts/build.mjs test
       - name: 编译真实内部宿主并汇入累计SDK
         id: build

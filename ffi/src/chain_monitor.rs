@@ -47,10 +47,7 @@ impl FinalizedRetry {
         self.next = now;
         self.delay = Duration::from_secs(1);
     }
-    #[cfg(test)]
-    pub(crate) const fn delay(&self) -> Duration {
-        self.delay
-    }
+
 }
 impl DatabaseRefresh {
     const INTERVAL: Duration = Duration::from_secs(60);
@@ -196,3 +193,7 @@ impl ChainMonitor {
             .map_err(|_| FfiError::internal("chain monitor worker panicked"))
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/monitor.rs"]
+mod tests;

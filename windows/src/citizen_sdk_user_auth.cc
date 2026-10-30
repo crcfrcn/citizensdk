@@ -2,6 +2,7 @@
 
 #include <utility>
 #include <chrono>
+#include <thread>
 #include <windows.h>
 #include <winbio.h>
 #include "citizen_sdk_directory.hpp"
@@ -45,6 +46,7 @@ citizensdk_error_code_t UserAuth::configure(const citizensdk_credential_provider
   {
     std::lock_guard<std::recursive_mutex> callbacks(callback_lock_);
     std::lock_guard<std::mutex> guard(lock_);
+    prune_biometrics_locked();
     if ((!pending_.empty() || !biometric_.empty()) || (provider_ && provider_->value.idle(provider_->value.context) != 1))
       return CITIZENSDK_ERROR_BUSY;
     auto next = provider == nullptr ? std::shared_ptr<Provider>() : std::make_shared<Provider>(*provider);
@@ -65,6 +67,7 @@ bool UserAuth::idle() const noexcept {
     std::shared_ptr<Provider> provider;
     {
       std::lock_guard<std::mutex> guard(lock_);
+      prune_biometrics_locked();
       if ((!pending_.empty() || !biometric_.empty())) return false;
       provider = provider_;
     }
@@ -74,71 +77,102 @@ bool UserAuth::idle() const noexcept {
   } catch (...) { return false; }
 }
 
-// WBF只验证当前进程用户SID；不接受其他用户的指纹、不回退为PIN或凭据密码。
-citizensdk_error_code_t UserAuth::authorize_add_accounts(uint64_t host_operation_id) {
-  if (host_operation_id == 0) return CITIZENSDK_ERROR_INVALID_ARGUMENT;
-  auto cancelled = std::make_shared<std::atomic_bool>(false);
+// WinBioWait是官方回调排空屏障；每个会话最多一个回收线程，不阻塞UI或释放未知context。
+void UserAuth::close_biometric(const std::shared_ptr<Biometric> &state) {
+  std::uintptr_t session=0;
   {
-    std::lock_guard<std::mutex> guard(lock_);
-    if (!biometric_.emplace(host_operation_id, cancelled).second) return CITIZENSDK_ERROR_CONFLICT;
+    std::lock_guard<std::mutex> guard(state->mutex);
+    if(state->session==0 || state->closed || state->close_accepted || state->draining)return;
+    state->draining=true;state->close_completed=false;session=state->session;
+  }
+  try {
+    // 重试只在原回收线程及回调引用已经离开后接纳，沿同一状态复用真实会话。
+    if(state->worker.joinable())state->worker.join();
+    state->worker=std::thread([state,session]{
+      // 不按假定的CANCEL操作枚举/通知次数判断排空；使用同一WBF会话的官方Wait。
+      const HRESULT waited=::WinBioWait(static_cast<WINBIO_SESSION_HANDLE>(session));
+      {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        state->callbacks_drained=SUCCEEDED(waited);
+        if(FAILED(waited)){
+          state->draining=false;state->close_completed=true;state->ready.notify_all();return;
+        }
+        state->close_accepted=true;
+      }
+      const HRESULT code=::WinBioCloseSession(static_cast<WINBIO_SESSION_HANDLE>(session));
+      {
+        std::lock_guard<std::mutex> guard(state->mutex);state->draining=false;
+        if(FAILED(code)){state->close_accepted=false;state->close_completed=true;}
+      }
+      state->ready.notify_all();
+    });
+  } catch (...) {
+    std::lock_guard<std::mutex> guard(state->mutex);
+    state->draining=false;state->close_completed=true;state->ready.notify_all();
+  }
+}
+
+// WBF只验证当前调用用户SID；不接受其他用户的指纹、不回退为PIN或凭据密码。
+citizensdk_error_code_t UserAuth::authorize_add_accounts(uint64_t host_operation_id,
+    const std::function<bool(const std::atomic_bool &)> &foreground) {
+  if(host_operation_id==0||!foreground)return CITIZENSDK_ERROR_INVALID_ARGUMENT;
+  auto state=std::make_shared<Biometric>();
+  {
+    std::lock_guard<std::mutex> guard(lock_);prune_biometrics_locked();
+    // 上一会话排空前不接受另一生物认证，避免失败会话无限积累或复用成功授权。
+    if(!biometric_.empty())return CITIZENSDK_ERROR_BUSY;
+    biometric_.emplace(host_operation_id,state);
   }
   struct Registration {
-    UserAuth *owner; uint64_t id;
-    ~Registration() { std::lock_guard<std::mutex> guard(owner->lock_); owner->biometric_.erase(id); }
-  } registration{this, host_operation_id};
+    UserAuth *owner;
+    ~Registration(){std::lock_guard<std::mutex> guard(owner->lock_);owner->prune_biometrics_locked();}
+  } registration{this};
+  // UI检查也属于本次已登记操作；取消在WBF接纳前到达时不能再弹出生物认证。
+  const bool allowed=foreground(state->cancelled);
+  if(state->cancelled.load())return CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED;
+  if(!allowed)return CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
   WINBIO_IDENTITY identity{};
-  auto sid = current_user_sid();
-  if (sid.size() > sizeof(identity.Value.AccountSid.Data) ||
-      !::CopySid(sizeof(identity.Value.AccountSid.Data), identity.Value.AccountSid.Data, sid.data()))
+  auto sid=current_user_sid();
+  if(sid.size()>sizeof(identity.Value.AccountSid.Data) ||
+      !::CopySid(sizeof(identity.Value.AccountSid.Data),identity.Value.AccountSid.Data,sid.data()))
     return CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
-  identity.Type = WINBIO_ID_TYPE_SID;
-  identity.Value.AccountSid.Size = static_cast<ULONG>(sid.size());
-  struct Result {
-    std::mutex mutex; std::condition_variable ready;
-    bool verified{false}; bool matched{false}; bool closed{false};
-  } result;
-  WINBIO_SESSION_HANDLE session = 0;
-  const HRESULT opened = ::WinBioAsyncOpenSession(WINBIO_TYPE_FINGERPRINT, WINBIO_POOL_SYSTEM,
-      WINBIO_FLAG_DEFAULT, nullptr, 0, nullptr, WINBIO_ASYNC_NOTIFY_CALLBACK, nullptr, 0,
-      [](PWINBIO_ASYNC_RESULT value) {
-        auto &state = *static_cast<Result *>(value->UserData);
-        std::lock_guard<std::mutex> guard(state.mutex);
-        if (value->Operation == WINBIO_OPERATION_VERIFY) {
-          state.matched = SUCCEEDED(value->ApiStatus) && value->Parameters.Verify.Match != FALSE;
-          state.verified = true;
-        } else if (value->Operation == WINBIO_OPERATION_CLOSE) { state.closed = true; }
-        ::WinBioFree(value);
-        state.ready.notify_all();
-      }, &result, FALSE, &session);
-  if (FAILED(opened)) return CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
-  const HRESULT started = cancelled->load() ? E_ABORT :
-      ::WinBioVerify(session, &identity, WINBIO_SUBTYPE_ANY, nullptr, nullptr, nullptr);
-  bool revoked = cancelled->load();
-  if (SUCCEEDED(started)) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
-    std::unique_lock<std::mutex> guard(result.mutex);
-    while (!result.verified && !cancelled->load() && std::chrono::steady_clock::now() < deadline)
-      result.ready.wait_for(guard, std::chrono::milliseconds(25));
-    revoked = cancelled->load() || !result.verified;
-    guard.unlock();
-    if (revoked) (void)::WinBioCancel(session);
-  }
-  // CLOSE是最后一个回调；排空后才销毁栈上context，禁止迟到回调访问已释放内存。
-  const HRESULT closing = ::WinBioCloseSession(session);
-  if (SUCCEEDED(closing)) {
-    std::unique_lock<std::mutex> guard(result.mutex);
-    result.ready.wait(guard, [&] { return result.closed; });
-  } else {
-    (void)::WinBioCancel(session);
-    // 关闭失败仍等待已受理VERIFY完成，不能将成功结果交给Core。
-    if (SUCCEEDED(started)) {
-      std::unique_lock<std::mutex> guard(result.mutex);
-      result.ready.wait(guard, [&] { return result.verified; });
+  identity.Type=WINBIO_ID_TYPE_SID;identity.Value.AccountSid.Size=static_cast<ULONG>(sid.size());
+  WINBIO_SESSION_HANDLE session=0;
+  const HRESULT opened=::WinBioAsyncOpenSession(WINBIO_TYPE_FINGERPRINT,WINBIO_POOL_SYSTEM,
+      WINBIO_FLAG_DEFAULT,nullptr,0,nullptr,WINBIO_ASYNC_NOTIFY_CALLBACK,nullptr,0,
+      [](PWINBIO_ASYNC_RESULT value){
+        // map和本回调共同拥有同一状态；迟到回调不会访问已返回的栈或UserAuth对象。
+        auto callback=static_cast<Biometric *>(value->UserData)->shared_from_this();
+        {
+          std::lock_guard<std::mutex> guard(callback->mutex);
+          if(value->Operation==WINBIO_OPERATION_VERIFY){callback->matched=SUCCEEDED(value->ApiStatus)&&value->Parameters.Verify.Match!=FALSE;callback->verified=true;}
+          else if(value->Operation==WINBIO_OPERATION_CLOSE){callback->closed=SUCCEEDED(value->ApiStatus);callback->close_completed=true;callback->close_accepted=false;}
+        }
+        ::WinBioFree(value);callback->ready.notify_all();
+      },state.get(),FALSE,&session);
+  if(FAILED(opened))return CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
+  {std::lock_guard<std::mutex> guard(state->mutex);state->session=static_cast<std::uintptr_t>(session);}
+  const HRESULT started=state->cancelled.load()?E_ABORT:
+      ::WinBioVerify(session,&identity,WINBIO_SUBTYPE_ANY,nullptr,nullptr,nullptr);
+  bool revoked=state->cancelled.load();
+  {
+    std::unique_lock<std::mutex> guard(state->mutex);state->verify_accepted=SUCCEEDED(started);
+    if(SUCCEEDED(started)){
+      const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(60);
+      while(!state->verified&&!state->cancelled.load()&&std::chrono::steady_clock::now()<deadline)
+        state->ready.wait_for(guard,std::chrono::milliseconds(25));
+      revoked=state->cancelled.load()||!state->verified;
     }
-    return CITIZENSDK_ERROR_UNAVAILABLE;
   }
-  if (revoked || cancelled->load()) return CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED;
-  return SUCCEEDED(started) && result.verified && result.matched ? CITIZENSDK_OK : CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
+  if(revoked)(void)::WinBioCancel(session);
+  close_biometric(state);
+  std::unique_lock<std::mutex> guard(state->mutex);
+  const bool completed=state->ready.wait_for(guard,std::chrono::seconds(30),[&]{
+    return state->drained() || (state->close_completed&&!state->closed);
+  });
+  if(!completed||!state->drained())return CITIZENSDK_ERROR_UNAVAILABLE;
+  if(revoked||state->cancelled.load())return CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED;
+  return SUCCEEDED(started)&&state->verified&&state->matched?CITIZENSDK_OK:CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED;
 }
 
 AuthenticationResult UserAuth::create_vault_password(uint64_t host_operation_id) {
@@ -204,8 +238,9 @@ citizensdk_error_code_t UserAuth::cancel(uint64_t host_operation_id) {
   std::shared_ptr<Provider> provider;
   {
     std::lock_guard<std::mutex> guard(lock_);
+    prune_biometrics_locked();
     if (const auto biometric = biometric_.find(host_operation_id); biometric != biometric_.end()) {
-      biometric->second->store(true);
+      biometric->second->cancelled.store(true);
       return CITIZENSDK_OK;
     }
     const auto found = pending_.find(host_operation_id);
@@ -225,13 +260,20 @@ citizensdk_error_code_t UserAuth::cancel(uint64_t host_operation_id) {
 void UserAuth::cancel_all() {
   std::lock_guard<std::recursive_mutex> callbacks(callback_lock_);
   std::vector<uint64_t> ids;
+  std::vector<std::shared_ptr<Biometric>> retired;
   {
     std::lock_guard<std::mutex> guard(lock_);
     ids.reserve(pending_.size());
     for (const auto &entry : pending_) ids.push_back(entry.first);
-    for (const auto &entry : biometric_) entry.second->store(true);
+    prune_biometrics_locked();
+    for (const auto &entry : biometric_) {
+      entry.second->cancelled.store(true);
+      // 只有认证函数已返回且无回调借用时才重试关闭，不与VERIFY派发竞态。
+      if(entry.second.use_count()==1)retired.push_back(entry.second);
+    }
   }
   for (const auto id : ids) (void)cancel(id);
+  for(const auto &state:retired)close_biometric(state);
 }
 
 }  // namespace citizen_sdk::windows

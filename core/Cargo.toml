@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 publish = false
+autotests = false
 
 [lints]
 workspace = true
@@ -43,3 +44,37 @@ zeroize = "=1.9.0"
 [dev-dependencies]
 citizen-signer = { path = "../sign" }
 serde_json = "=1.0.151"
+
+# 公开合同测试显式登记；其余tests文件由原模块按cfg(test)加载。
+
+[[test]]
+name = "account_state"
+path = "tests/account_state.rs"
+
+[[test]]
+name = "baseline_resource_contract"
+path = "tests/baseline_resource_contract.rs"
+
+[[test]]
+name = "capabilities"
+path = "tests/capabilities.rs"
+
+[[test]]
+name = "chain_access"
+path = "tests/chain_access.rs"
+
+[[test]]
+name = "engine_boundary"
+path = "tests/engine_boundary.rs"
+
+[[test]]
+name = "runtime_context"
+path = "tests/runtime_context.rs"
+
+[[test]]
+name = "state_import"
+path = "tests/state_import.rs"
+
+[[test]]
+name = "transaction_outcome"
+path = "tests/transaction_outcome.rs"

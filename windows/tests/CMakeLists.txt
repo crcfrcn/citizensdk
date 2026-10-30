@@ -107,7 +107,7 @@ foreach(test_name IN LISTS CITIZENSDK_WINDOWS_CONTRACT_TESTS)
 endforeach()
 
 # 两平台运行同一份共同C++行为测试。
-add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../test/cpp.cc")
+add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../lib/test/cpp.cc")
 target_compile_features(cpp PRIVATE cxx_std_17)
 target_link_libraries(cpp PRIVATE citizensdk_windows_test_support)
 target_compile_options(cpp PRIVATE /UNDEBUG /W4 /WX)
@@ -117,3 +117,9 @@ target_include_directories(cpp PRIVATE "${CITIZENSDK_SQLITE_INCLUDE_DIR}" )
 set_tests_properties(CitizenSDK.Windows.cpp PROPERTIES TIMEOUT 120 LABELS "CitizenSDK;WindowsHost;Contract" ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")
 
 add_custom_command(TARGET cpp POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CITIZENSDK_CORE_LIBRARY}" "$<TARGET_FILE_DIR:cpp>")
+
+# 硬件授权必须显式隔离选择；未执行由CTest记为Skipped，不能作为通过。
+add_test(NAME CitizenSDK.Windows.TPM COMMAND citizen_sdk_cng_test --hardware)
+set_tests_properties(CitizenSDK.Windows.TPM PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77
+  LABELS "CitizenSDK;Hardware"
+  ENVIRONMENT "CITIZENSDK_TEST_WORK_DIR=${CITIZENSDK_TEST_WORK_DIR}")

@@ -12,7 +12,7 @@ use citizen_sdk_contracts::{
 };
 use citizen_sdk_engine::{CitizenEngine, EngineComponents};
 #[cfg(feature = "chain")]
-use citizen_sdk_smoldot_provider::{SmoldotProviderConfig, SmoldotVerifiedChainClient};
+use crate::node::{SmoldotProviderConfig, SmoldotVerifiedChainClient};
 #[cfg(feature = "signing")]
 use citizen_signer::Sr25519SoftwareSigner;
 
@@ -215,25 +215,7 @@ impl ProductComposition {
             .and_then(|host| host.private_key_view_vault(authorizing))
     }
 
-    #[cfg(all(test, feature = "chain", feature = "transactions"))]
-    pub(crate) fn public_abi(
-        combined_chain_spec: String,
-        system_name: String,
-        system_version: String,
-    ) -> FfiResult<Self> {
-        let modules = validate_modules(Modules::CHAIN | Modules::TRANSACTIONS)?;
-        // SAFETY: no host vtables are supplied.
-        unsafe {
-            Self::module_abi(
-                Some(combined_chain_spec),
-                system_name,
-                system_version,
-                None,
-                modules,
-                None,
-            )
-        }
-    }
+
 
     /// 所有公开构造最终进入此处；校验不调用宿主回调。
     /// 真实就绪探测留在工作线程执行，避免主线程等待自身认证回调形成死锁。
@@ -390,29 +372,7 @@ impl ProductComposition {
         Ok(composition)
     }
 
-    #[cfg(all(test, feature = "chain"))]
-    pub(crate) fn try_new(
-        provider_config: SmoldotProviderConfig,
-        host: ProductHostProviders,
-    ) -> FfiResult<Self> {
-        let bits = if host.wallet.is_some() {
-            Modules::ALL
-        } else {
-            Modules::CHAIN
-                | Modules::TRANSACTIONS
-                | if host.history.is_some() {
-                    Modules::HISTORY
-                } else {
-                    0
-                }
-        };
-        let modules = validate_modules(bits)?;
-        Self::compose(
-            Some(SmoldotVerifiedChainClient::new(provider_config)?),
-            host,
-            modules,
-        )
-    }
+
 
     pub(crate) fn compose(
         #[cfg(feature = "chain")] provider: Option<Arc<SmoldotVerifiedChainClient>>,
@@ -422,7 +382,7 @@ impl ProductComposition {
         #[cfg(feature = "chain")]
         let chain_client = provider
             .as_ref()
-            .map(|provider| provider.as_verified_chain_client());
+            .map(|provider| Arc::clone(provider) as Arc<dyn citizen_sdk_contracts::VerifiedChainClient>);
         #[cfg(not(feature = "chain"))]
         let chain_client = None;
         #[cfg(feature = "signing")]
@@ -451,7 +411,7 @@ impl ProductComposition {
         .with_modules(modules);
         #[cfg(feature = "chain")]
         if let Some(provider) = provider.as_ref() {
-            components = components.with_account_nonce_source(provider.as_account_nonce_source());
+            components = components.with_account_nonce_source(Arc::clone(provider) as Arc<dyn citizen_sdk_contracts::AccountNonceSource>);
         }
         let composition = Self {
             #[cfg(feature = "chain")]
@@ -553,7 +513,7 @@ impl ProductComposition {
         if let Some(provider) = self.provider.as_ref() {
             if matches!(
                 provider.lifecycle(),
-                Ok(citizen_sdk_smoldot_provider::ProviderLifecycle::Running)
+                Ok(crate::node::ProviderLifecycle::Running)
             ) {
                 provider
                     .drive(provider.drain_finalized_subscriptions())?
@@ -624,3 +584,7 @@ impl ProductComposition {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/composition.rs"]
+mod tests;

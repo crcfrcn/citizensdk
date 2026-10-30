@@ -428,7 +428,7 @@ fn pure_signature_verification_needs_no_wallet_vault_or_chain_instance() {
     }
     // 只读取既有公开交易金标的公钥、消息和签名，不导入或生成私钥。
     let vector: serde_json::Value = serde_json::from_str(include_str!(
-        "../../test/transaction/citizenchain-transfer-build-v1.json"
+        "../../core/tests/citizenchain-transfer-build-v1.json"
     ))
     .expect("公开金标JSON");
     let public_key = bytes(vector["transfer"]["source_account_id"].as_str().unwrap());

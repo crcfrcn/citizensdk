@@ -165,7 +165,7 @@ set_tests_properties(
 )
 
 # 两平台运行同一份共同C++行为测试。
-add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../test/cpp.cc")
+add_executable(cpp "${CMAKE_CURRENT_LIST_DIR}/../../lib/test/cpp.cc")
 target_compile_features(cpp PRIVATE cxx_std_17)
 target_link_libraries(cpp PRIVATE citizensdk_linux_test_support)
 target_compile_options(cpp PRIVATE -UNDEBUG -Wall -Wextra -Werror)

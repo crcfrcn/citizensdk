@@ -275,88 +275,6 @@ struct PrivateKeyViewSlot {
 static NEXT_PRIVATE_KEY_VIEW: AtomicU64 = AtomicU64::new(1);
 static PRIVATE_KEY_VIEWS: OnceLock<Mutex<HashMap<u64, Arc<PrivateKeyViewSlot>>>> = OnceLock::new();
 
-#[cfg(test)]
-mod private_key_view_tests {
-    use super::*;
-
-    #[test]
-    fn private_table_has_exact_layout_and_rejects_invalid_inputs_without_admission() {
-        use std::mem::{offset_of, size_of};
-        if size_of::<usize>() == 8 {
-            assert_eq!(size_of::<CitizenSdkPrivateKeyReceiverV1>(), 40);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, struct_size), 0);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, abi_version), 4);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, context), 8);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, receive), 16);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, settled), 24);
-            assert_eq!(offset_of!(CitizenSdkPrivateKeyReceiverV1, authorizing), 32);
-        }
-        let mut view_id = 91;
-        let mut request_id = 92;
-        let mut table = CitizenSdkPrivateKeyReceiverV1 {
-            struct_size: 8,
-            abi_version: 1,
-            context: ptr::null_mut(),
-            receive: None,
-            settled: None,
-            authorizing: None,
-        };
-        let account = CitizenSdkAccountId { bytes: [0; 32] };
-        let invalid = if cfg!(feature = "wallet") {
-            CitizenSdkErrorCode::InvalidArgument
-        } else {
-            CitizenSdkErrorCode::Unsupported
-        } as i32;
-        unsafe {
-            assert_eq!(
-                citizensdk_private_key_open(
-                    0,
-                    ptr::null(),
-                    ptr::null(),
-                    &mut view_id,
-                    &mut request_id
-                ),
-                invalid
-            );
-            assert_eq!(
-                citizensdk_private_key_open(0, &account, &table, &mut view_id, &mut request_id),
-                invalid
-            );
-            table.struct_size = size_of::<CitizenSdkPrivateKeyReceiverV1>() as u32;
-            table.abi_version = 2;
-            assert_eq!(
-                citizensdk_private_key_open(0, &account, &table, &mut view_id, &mut request_id),
-                CitizenSdkErrorCode::Unsupported as i32
-            );
-            table.abi_version = 1;
-            assert_eq!(
-                citizensdk_private_key_open(0, &account, &table, &mut view_id, &mut request_id),
-                invalid
-            );
-            assert_eq!(
-                citizensdk_private_key_open(0, &account, &table, ptr::null_mut(), &mut request_id),
-                invalid
-            );
-        }
-        assert_eq!((view_id, request_id), (91, 92));
-        if !cfg!(feature = "wallet") {
-            unsafe {
-                assert_eq!(
-                    citizensdk_private_key_reveal(0, 0),
-                    CitizenSdkErrorCode::Unsupported as i32
-                );
-                assert_eq!(
-                    citizensdk_private_key_cancel(0, 0),
-                    CitizenSdkErrorCode::Unsupported as i32
-                );
-                assert_eq!(
-                    citizensdk_private_key_finish(0, 0),
-                    CitizenSdkErrorCode::Unsupported as i32
-                );
-            }
-        }
-    }
-}
 
 fn private_key_views() -> &'static Mutex<HashMap<u64, Arc<PrivateKeyViewSlot>>> {
     PRIVATE_KEY_VIEWS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -3514,59 +3432,10 @@ unsafe fn copy_three(
     Ok(())
 }
 
-#[cfg(all(
-    test,
-    feature = "chain",
-    feature = "wallet",
-    feature = "transactions",
-    feature = "history"
-))]
-#[path = "wallet_abi_tests.rs"]
+#[cfg(test)]
+#[path = "../tests/wallet.rs"]
 mod tests;
 
 #[cfg(all(test, not(feature = "chain")))]
-mod no_chain_tests {
-    use super::*;
-
-    #[test]
-    fn chain_symbols_reject_without_dereferencing_host_pointers() {
-        // 没有链模块时，无效指针不会被读取；公开符号仍返回统一 Unsupported。
-        let unsupported = CitizenSdkErrorCode::Unsupported.as_i32();
-        unsafe {
-            assert_eq!(citizensdk_get_genesis_hash(0, ptr::null_mut()), unsupported);
-            assert_eq!(
-                citizensdk_get_finalized_account_balances(
-                    0,
-                    ptr::null(),
-                    u32::MAX,
-                    ptr::null_mut()
-                ),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_get_finalized_account_balance(0, ptr::null(), ptr::null_mut()),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_get_account_nonce(0, ptr::null(), ptr::null_mut()),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_get_best_fee_snapshot(0, ptr::null_mut()),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_get_transaction_history(0, ptr::null(), 100, ptr::null_mut()),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_sync_transaction_history(0, ptr::null_mut()),
-                unsupported
-            );
-            assert_eq!(
-                citizensdk_result_get_fee_snapshot(0, ptr::null_mut()),
-                unsupported
-            );
-        }
-    }
-}
+#[path = "../tests/disabled.rs"]
+mod no_chain_tests;

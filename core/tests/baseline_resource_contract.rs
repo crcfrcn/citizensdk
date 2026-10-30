@@ -737,3 +737,73 @@ fn runtime_metadata_above_persistent_capacity_remains_memory_usable() {
         .contexts
         .is_empty());
 }
+
+/// Engine缓存/并发基线使用明确的内存替身；只测本机调度，不代表网络或Wasm执行。
+#[test]
+fn runtime_dispatch_baseline() {
+    let (client, requests) = BaselineClient::with_metadata_bytes(1024);
+    let engine = CitizenEngine::new(
+        EngineComponents::new(
+            Some(Arc::new(client)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .with_modules(Modules::try_new(Modules::CHAIN).unwrap()),
+    );
+    engine
+        .update_capabilities(
+            CapabilityName::ALL
+                .into_iter()
+                .map(CapabilityProbe::ready)
+                .collect(),
+        )
+        .unwrap();
+    engine.begin_provider_start().unwrap();
+    futures::executor::block_on(engine.complete_provider_start()).unwrap();
+    let mut first = Vec::new();
+    let mut hit = Vec::new();
+    let mut concurrent = Vec::new();
+    for ordinal in 1u64..=20 {
+        let mut bytes = [0; 32];
+        bytes[..8].copy_from_slice(&ordinal.to_le_bytes());
+        let block = VerifiedBlockRef::finalized(Hash32::from_bytes(bytes), ordinal);
+        let now = Instant::now();
+        assert_eq!(
+            futures::executor::block_on(engine.runtime_context_at(block))
+                .unwrap()
+                .block(),
+            block
+        );
+        first.push(now.elapsed().as_nanos());
+        let now = Instant::now();
+        assert_eq!(
+            futures::executor::block_on(engine.runtime_context_at(block))
+                .unwrap()
+                .block(),
+            block
+        );
+        hit.push(now.elapsed().as_nanos());
+        let now = Instant::now();
+        let values = futures::executor::block_on(futures::future::join_all(
+            (0..32).map(|_| engine.runtime_context_at(block)),
+        ));
+        assert!(values
+            .into_iter()
+            .all(|value| value.unwrap().block() == block));
+        concurrent.push(now.elapsed().as_nanos());
+    }
+    assert_eq!(requests.load(Ordering::SeqCst), 20);
+    for (name, samples) in [
+        ("first_different_blocks", first),
+        ("cache_hit", hit),
+        ("concurrent32_cached", concurrent),
+    ] {
+        let (p50, p95, max, _) = timing_summary(&samples);
+        println!("sdk-baseline engine_memory_fixture operation={name} rounds=20 p50_ns={p50} p95_ns={p95} max_ns={max}");
+    }
+}

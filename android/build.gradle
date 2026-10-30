@@ -1,3 +1,6 @@
+// JVM与设备共用唯一测试目录；设备文件集合只归本声明。
+rootProject.ext.citizenSdkDeviceTests = ['CitizenSdkHardwareVaultTest.kt', 'CitizenSdkLifecycleTest.kt', 'CitizenSdkNativeAbiTest.kt', 'CitizenSdkStateStoreTest.kt', 'CitizenSdkWalletFlowCancellationTest.kt', 'CitizenSdkWalletFlowSecretBoundaryTest.kt', 'CitizenSdkWalletInputTest.kt']
+
 group = 'org.citizen.sdk'
 version = '1.0.0'
 
@@ -119,6 +122,10 @@ android {
             // 源码按类型从同一平面目录读取；package 声明保持原有 JVM/JNI 身份。
             sourceSet.java.srcDirs = [sourceRoot]
             sourceSet.kotlin.srcDirs = [sourceRoot]
+        }
+        test {
+            java.exclude(rootProject.ext.citizenSdkDeviceTests)
+            kotlin.exclude(rootProject.ext.citizenSdkDeviceTests)
         }
         main {
             manifest.srcFile(new File(androidSourceRoot, 'flutter/AndroidManifest.xml'))

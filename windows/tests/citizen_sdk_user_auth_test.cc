@@ -1,3 +1,48 @@
+// 平台无关部分直接验证生产UserAuth的回调状态所有权；不冒充WBF/TPM实机。
+#include "../src/citizen_sdk_user_auth.hpp"
+#include <cassert>
+#include <future>
+#include <chrono>
+namespace citizen_sdk::windows {
+struct UserAuthTest {
+  static int ownership() {
+    UserAuth owner;
+    auto state=std::make_shared<UserAuth::Biometric>();
+    std::weak_ptr<UserAuth::Biometric> lifetime=state;
+    state->session=1;state->verify_accepted=true;
+    owner.biometric_.emplace(71,state);
+    state.reset(); // 模拟认证调用栈已经返回，仅实际UserAuth容器保有OS借用。
+    owner.prune_biometrics_locked();assert(!lifetime.expired());
+    auto callback=owner.biometric_.at(71)->shared_from_this();
+    callback->verified=true;callback->matched=true;
+    callback->close_completed=true;callback->closed=false; // CLOSE失败不能变成idle。
+    callback.reset();owner.prune_biometrics_locked();assert(!lifetime.expired());
+    callback=owner.biometric_.at(71)->shared_from_this();
+    callback->closed=true; // CLOSE成功也不能覆盖尚未确认的Wait排空屏障。
+    callback.reset();owner.prune_biometrics_locked();assert(!lifetime.expired());
+    callback=owner.biometric_.at(71)->shared_from_this();callback->callbacks_drained=true;
+    owner.prune_biometrics_locked();assert(!lifetime.expired()); // 回调本身仍在借用。
+    callback.reset();
+    std::promise<void> release;auto permit=release.get_future().share();
+    std::atomic_bool entered{false},exited{false};
+    owner.biometric_.at(71)->worker=std::thread([held=owner.biometric_.at(71),permit,&entered,&exited]{
+      entered.store(true);permit.wait();exited.store(true);
+    });
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    while(!entered.load()){assert(std::chrono::steady_clock::now()<deadline);std::this_thread::yield();}
+    owner.prune_biometrics_locked();assert(!lifetime.expired()); // 不能join仍在等待OS排空的线程。
+    release.set_value();
+    while(lifetime.use_count()!=1){assert(std::chrono::steady_clock::now()<deadline);std::this_thread::yield();}
+    owner.prune_biometrics_locked();assert(lifetime.expired()&&exited.load());
+    // 无会话接纳的失败可直接回收，不留下永久busy。
+    owner.biometric_.emplace(72,std::make_shared<UserAuth::Biometric>());
+    owner.prune_biometrics_locked();assert(owner.biometric_.empty());
+    return 0;
+  }
+};
+}
+
+#ifndef CITIZENSDK_WBF_STATE_ONLY
 // 非UI凭据与真实Win32隐藏消息派发合同；合成凭据不冒充真实TPM验收。
 #include <windows.h>
 #include <array>
@@ -36,6 +81,7 @@ HWND parent_window() {
 }  // namespace
 
 int main() {
+  assert(csw::UserAuthTest::ownership()==0);
   const auto ui = std::this_thread::get_id();
   {
     csw::WindowRef inert(nullptr, ui, false);
@@ -44,6 +90,24 @@ int main() {
     assert(auth.unlock_vault_password(71).code == CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED);
     std::thread worker([&] { assert(inert.retire() == CITIZENSDK_OK); });
     worker.join();
+  }
+  // 前台派发前已经登记取消，拒绝后不打开WBF会话、不产生系统提示。
+  {
+    csw::UserAuth foreground;
+    std::promise<void> entered;auto started=entered.get_future();
+    auto request=std::async(std::launch::async,[&]{
+      return foreground.authorize_add_accounts(73,[&](const std::atomic_bool &cancelled){
+        entered.set_value();
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while(!cancelled.load()&&std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
+        return false;
+      });
+    });
+    assert(started.wait_for(std::chrono::seconds(2))==std::future_status::ready);
+    assert(!foreground.idle());assert(foreground.cancel(73)==CITIZENSDK_OK);
+    assert(request.get()==CITIZENSDK_ERROR_AUTHENTICATION_CANCELLED);assert(foreground.idle());
+    assert(foreground.authorize_add_accounts(74,[](const std::atomic_bool &){return false;})==CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED);
+    assert(foreground.idle());
   }
   HWND parent = parent_window();
   csw::WindowRef reference(parent, ui);
@@ -144,3 +208,5 @@ int main() {
   assert(!reference.invoke([] {}));
   return 0;
 }
+
+#endif // CITIZENSDK_WBF_STATE_ONLY

@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import XCTest
 @testable import CitizenSDK
 
@@ -23,6 +24,20 @@ final class CitizenSDKSecretVaultTests: XCTestCase {
         rejected()
         XCTAssertFalse(try store.isGenerationActive(walletIndex: 0, generation: generation))
         XCTAssertTrue(try store.ensureGeneration(walletIndex: 0, generation: generation, operationID: original))
+        #if targetEnvironment(simulator)
+        // 逻辑XCTest代理可能没有Keychain entitlement；只有系统确认此条件才跳过，
+        // 不能把任意internalFailure或权限失败当成物理钥不存在。
+        var reference: CFTypeRef?
+        let status = SecItemCopyMatching([
+            kSecClass: kSecClassKey,
+            kSecAttrApplicationTag: Data(UUID().uuidString.utf8),
+            kSecReturnRef: true,
+            kSecMatchLimit: kSecMatchLimitOne,
+        ] as CFDictionary, &reference)
+        if status == errSecMissingEntitlement {
+            throw XCTSkip("逻辑XCTest代理缺少Keychain entitlement；活动代际的缺物理钥分支未运行")
+        }
+        #endif
         rejected() // 只有活动记录，没有物理钥，仍不得补造。
         XCTAssertTrue(try store.ensureGeneration(walletIndex: 0, generation: generation, operationID: original))
         XCTAssertFalse(try store.ensureGeneration(walletIndex: 0, generation: generation, operationID: append))
@@ -101,9 +116,8 @@ final class CitizenSDKSecretVaultTests: XCTestCase {
         XCTAssertTrue([.available, .noStrongUserAuthentication, .unsupported, .unavailable].contains(value))
     }
 
-    /// Secure Enclave key creation, biometric prompt outcome and this-device-
-    /// only Keychain persistence are executed only by the canonical real-device
-    /// fixture; simulators must never claim that hardware coverage.
+    /// 模拟器只验证不可用事实；Secure Enclave创建、用户认证和设备绑定持久化
+    /// 必须由签名真机宿主另行验收，当前环境不能声称具备这项覆盖。
     func testSimulatorDoesNotClaimSecureEnclaveHardware() throws {
         #if targetEnvironment(simulator)
         let directory = FileManager.default.temporaryDirectory
@@ -113,7 +127,7 @@ final class CitizenSDKSecretVaultTests: XCTestCase {
         defer { store.close() }
         XCTAssertEqual(try CitizenSDKSecretVault(secureStore: store, applicationID: "org.example.vault").availability(), .unsupported)
         #else
-        throw XCTSkip("Hardware vault behavior is covered by the signed device fixture")
+        throw XCTSkip("当前环境未运行签名真机Secure Enclave验收")
         #endif
     }
 }

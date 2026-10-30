@@ -55,6 +55,14 @@ class InspectableSQLiteStore final : public citizen_sdk::linux::SQLiteStore {
     });
   }
 
+  sqlite3_file *borrowed_file_for_test() {
+    return read([](sqlite3 *database) {
+      sqlite3_file *file = nullptr;
+      assert(sqlite3_file_control(database, "main", SQLITE_FCNTL_FILE_POINTER, &file) == SQLITE_OK && file);
+      return file;
+    });
+  }
+
   void write_blob(const citizen_sdk::Bytes &value) {
     (void)transaction([&](sqlite3 *database) {
       Statement query(database,"INSERT OR REPLACE INTO contract_record(identity,value) VALUES(1,?)");
@@ -237,6 +245,18 @@ int main(){
   }
 
 
+ }
+ // 生产VFS的第64页仅约2MiB，不能被任意页数上限拒绝；两连接真实共享字节。
+ { InspectableSQLiteStore first(temporary.path()/"growth",false),second(temporary.path()/"growth",false);
+   auto *left=first.borrowed_file_for_test(), *right=second.borrowed_file_for_test();
+   void volatile *mapped=nullptr,*shared=nullptr;
+   assert(left->pMethods->xShmMap(left,64,32768,1,&mapped)==SQLITE_OK&&mapped);
+   *static_cast<volatile uint8_t *>(mapped)=37;
+   assert(right->pMethods->xShmMap(right,64,32768,0,&shared)==SQLITE_OK&&shared);
+   assert(*static_cast<volatile uint8_t *>(shared)==37);
+   assert(left->pMethods->xShmMap(left,-1,32768,1,&mapped)==SQLITE_IOERR_SHMMAP&&!mapped);
+   assert(left->pMethods->xShmMap(left,65,0,1,&mapped)==SQLITE_IOERR_SHMMAP&&!mapped);
+   assert(left->pMethods->xShmMap(left,std::numeric_limits<int>::max(),32768,0,&mapped)==SQLITE_OK&&!mapped);
  }
  // 真实事务跨越首个WAL-index页，不能只模拟内存映射调用。
  { InspectableSQLiteStore first(temporary.path()/"large",false),second(temporary.path()/"large",false);

@@ -797,11 +797,9 @@ class OpenAtSQLiteVfs final {
   static int shared_memory_map_impl(sqlite3_file *value, int page,
                                     int page_size, int extend,
                                     void volatile **out_mapping) noexcept {
-    if (out_mapping == nullptr || page < 0 || page_size <= 0 ||
-        page_size > 1024 * 1024 || page >= 64) {
-      return SQLITE_IOERR_SHMMAP;
-    }
+    if (out_mapping == nullptr) return SQLITE_IOERR_SHMMAP;
     *out_mapping = nullptr;
+    if (page < 0 || page_size <= 0) return SQLITE_IOERR_SHMMAP;
     try {
       FileState *state = file(value)->state;
       if (state == nullptr || state->owner == nullptr || state->name.empty()) {
@@ -833,28 +831,28 @@ class OpenAtSQLiteVfs final {
 #endif
         return SQLITE_IOERR_SHMSIZE;
       }
-      if (state->mappings.size() <= static_cast<std::size_t>(page)) {
-        state->mappings.resize(static_cast<std::size_t>(page) + 1);
+      // 长期读事务可使合法WAL-index超过64页；只按容器和off_t范围核验。
+      const uint64_t pages = static_cast<uint64_t>(page) + 1;
+      if (pages > state->mappings.max_size() ||
+          pages > static_cast<uint64_t>(std::numeric_limits<off_t>::max()) /
+                      static_cast<uint64_t>(page_size)) return SQLITE_IOERR_SHMSIZE;
+      const off_t required = static_cast<off_t>(pages * static_cast<uint64_t>(page_size));
+      struct stat status {};
+      if (::fstat(state->shared_memory_descriptor, &status) != 0 || status.st_size < 0) {
+        sqlite_test_shm_diagnostic("map-fstat", errno);
+        return SQLITE_IOERR_SHMSIZE;
       }
-      Mapping &mapping = state->mappings[static_cast<std::size_t>(page)];
-      if (mapping.address == nullptr) {
-        const sqlite3_int64 required =
-            static_cast<sqlite3_int64>(page + 1) * page_size;
-        struct stat status {};
-        if (::fstat(state->shared_memory_descriptor, &status) != 0) {
-          const int error = errno;
-          sqlite_test_shm_diagnostic("map-fstat", error);
+      if (status.st_size < required) {
+        // 不扩展且页面不存在时返回空视图，不为任意高页号预分配内存。
+        if (extend == 0) return SQLITE_OK;
+        if (::ftruncate(state->shared_memory_descriptor, required) != 0) {
+          sqlite_test_shm_diagnostic("map-ftruncate", errno);
           return SQLITE_IOERR_SHMSIZE;
         }
-        if (status.st_size < required) {
-          if (extend == 0) return SQLITE_OK;
-          if (::ftruncate(state->shared_memory_descriptor,
-                          static_cast<off_t>(required)) != 0) {
-            const int error = errno;
-            sqlite_test_shm_diagnostic("map-ftruncate", error);
-            return SQLITE_IOERR_SHMSIZE;
-          }
-        }
+      }
+      if (state->mappings.size() < pages) state->mappings.resize(static_cast<std::size_t>(pages));
+      Mapping &mapping = state->mappings[static_cast<std::size_t>(page)];
+      if (mapping.address == nullptr) {
         void *address = ::mmap(nullptr, static_cast<std::size_t>(page_size),
                                PROT_READ | PROT_WRITE, MAP_SHARED,
                                state->shared_memory_descriptor,

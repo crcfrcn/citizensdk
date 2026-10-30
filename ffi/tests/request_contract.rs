@@ -10,9 +10,10 @@ use std::{
 };
 
 use citizensdk::{
-    citizensdk_accept_request_sequence, citizensdk_create_with_modules, citizensdk_destroy, citizensdk_get_lifecycle,
-    citizensdk_set_event_callback, CitizenSdkBytesView, CitizenSdkCreateOptions,
-    CitizenSdkErrorCode, CitizenSdkEvent, CitizenSdkLifecycle, CITIZENSDK_ABI_VERSION,
+    citizensdk_accept_request_sequence, citizensdk_create_with_modules, citizensdk_destroy,
+    citizensdk_get_lifecycle, citizensdk_set_event_callback, CitizenSdkBytesView,
+    CitizenSdkCreateOptions, CitizenSdkErrorCode, CitizenSdkEvent, CitizenSdkLifecycle,
+    CITIZENSDK_ABI_VERSION,
 };
 
 const MANIFEST: &[u8] = include_bytes!("../../chain/manifest.json");
@@ -54,18 +55,48 @@ fn channel_sequence_crosses_public_abi_without_creating_native_requests() {
     let mut handles = [0_u64; 2];
     for handle in &mut handles {
         // 只创建未启动的链实例；不使用用户状态、密钥或网络。
-        assert_eq!(unsafe { citizensdk_create_with_modules(&options(), std::ptr::null(),
-            citizen_sdk_contracts::Modules::CHAIN, handle) }, CitizenSdkErrorCode::Ok.as_i32());
+        assert_eq!(
+            unsafe {
+                citizensdk_create_with_modules(
+                    &options(),
+                    std::ptr::null(),
+                    citizen_sdk_contracts::Modules::CHAIN,
+                    handle,
+                )
+            },
+            CitizenSdkErrorCode::Ok.as_i32()
+        );
     }
     for handle in handles {
-        assert_eq!(citizensdk_accept_request_sequence(handle, 1), CitizenSdkErrorCode::Ok.as_i32());
-        assert_eq!(citizensdk_accept_request_sequence(handle, 1), CitizenSdkErrorCode::Conflict.as_i32());
-        assert_eq!(citizensdk_accept_request_sequence(handle, 3), CitizenSdkErrorCode::Conflict.as_i32());
-        assert_eq!(citizensdk_accept_request_sequence(handle, 2), CitizenSdkErrorCode::Ok.as_i32());
-        assert_eq!(unsafe { citizensdk_destroy(handle) }, CitizenSdkErrorCode::Ok.as_i32());
-        assert_eq!(citizensdk_accept_request_sequence(handle, 3), CitizenSdkErrorCode::InvalidHandle.as_i32());
+        assert_eq!(
+            citizensdk_accept_request_sequence(handle, 1),
+            CitizenSdkErrorCode::Ok.as_i32()
+        );
+        assert_eq!(
+            citizensdk_accept_request_sequence(handle, 1),
+            CitizenSdkErrorCode::Conflict.as_i32()
+        );
+        assert_eq!(
+            citizensdk_accept_request_sequence(handle, 3),
+            CitizenSdkErrorCode::Conflict.as_i32()
+        );
+        assert_eq!(
+            citizensdk_accept_request_sequence(handle, 2),
+            CitizenSdkErrorCode::Ok.as_i32()
+        );
+        assert_eq!(
+            unsafe { citizensdk_destroy(handle) },
+            CitizenSdkErrorCode::Ok.as_i32()
+        );
+        assert_eq!(
+            citizensdk_accept_request_sequence(handle, 3),
+            CitizenSdkErrorCode::InvalidHandle.as_i32()
+        );
     }
-    assert_eq!(citizensdk_accept_request_sequence(0, 1), CitizenSdkErrorCode::InvalidHandle.as_i32());
+    assert_eq!(
+        citizensdk_accept_request_sequence(0, 1),
+        CitizenSdkErrorCode::InvalidHandle.as_i32()
+    );
 }
 
 #[test]

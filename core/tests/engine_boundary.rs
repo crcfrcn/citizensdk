@@ -17,10 +17,8 @@ use citizen_sdk_engine::{
     CHAIN_STATE_FORMAT_VERSION,
 };
 
-const METADATA_HEX: &str =
-    include_str!("../../test/transaction/citizenchain-runtime-v14-metadata.hex");
-const EVENTS_HEX: &str =
-    include_str!("../../test/transaction/citizenchain-runtime-system-events.hex");
+const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
+const EVENTS_HEX: &str = include_str!("citizenchain-runtime-system-events.hex");
 const SYSTEM_EVENTS_STORAGE_KEY: [u8; 32] = [
     0x26, 0xaa, 0x39, 0x4e, 0xea, 0x56, 0x30, 0xe0, 0x7c, 0x48, 0xae, 0x0c, 0x95, 0x58, 0xce, 0xf7,
     0x80, 0xd4, 0x1e, 0x5e, 0x16, 0x05, 0x67, 0x65, 0xbc, 0x84, 0x61, 0x85, 0x10, 0x72, 0xc9, 0xd7,

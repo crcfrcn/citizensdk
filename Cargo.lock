@@ -433,22 +433,34 @@ dependencies = [
  "aes",
  "aes-gcm",
  "blake2",
+ "blake2-rfc",
+ "bytes",
  "citizen-sdk-contracts",
  "citizen-sdk-engine",
  "citizen-sdk-qr",
- "citizen-sdk-smoldot-provider",
  "citizen-sdk-store",
  "citizen-signer",
+ "futures",
  "futures-channel",
  "futures-executor",
  "futures-util",
  "getrandom 0.3.4",
  "ghash",
+ "hex",
+ "http",
+ "http-body-util",
+ "hyper-rustls",
+ "hyper-util",
  "jni",
+ "parking_lot",
+ "rustls",
  "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "smoldot-light",
+ "tokio",
+ "url",
  "zeroize",
 ]
 
@@ -462,29 +474,6 @@ dependencies = [
  "getrandom 0.3.4",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "citizen-sdk-smoldot-provider"
-version = "1.0.0"
-dependencies = [
- "blake2-rfc",
- "bytes",
- "citizen-sdk-contracts",
- "futures",
- "futures-channel",
- "futures-util",
- "hex",
- "http",
- "http-body-util",
- "hyper-rustls",
- "hyper-util",
- "parking_lot",
- "rustls",
- "serde_json",
- "smoldot-light",
- "tokio",
- "url",
 ]
 
 [[package]]

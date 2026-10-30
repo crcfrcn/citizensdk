@@ -6,9 +6,8 @@ members = [
     "ffi",
     "qr",
     "sign",
-    "net",
 ]
-# smoldot 的收编快照继续由其既有嵌套 workspace/锁文件管理；provider 只把
+# smoldot 的收编快照继续由其既有嵌套 workspace/锁文件管理；FFI接入只把
 # `light-base` 当作路径依赖，不能让根 workspace 重新认领并改变已验证依赖闭包。
 exclude = [
     "smoldot/lib",

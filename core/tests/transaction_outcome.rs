@@ -12,10 +12,8 @@ use subxt_core::{
     Metadata,
 };
 
-const METADATA_HEX: &str =
-    include_str!("../../test/transaction/citizenchain-runtime-v14-metadata.hex");
-const EVENTS_HEX: &str =
-    include_str!("../../test/transaction/citizenchain-runtime-system-events.hex");
+const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
+const EVENTS_HEX: &str = include_str!("citizenchain-runtime-system-events.hex");
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     let value = value.trim();

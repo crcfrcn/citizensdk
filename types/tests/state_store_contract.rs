@@ -1,8 +1,8 @@
 //! 五类数据仓储的强类型、对象安全和钱包公开状态合同。
 
 use std::{
-    future::Future,
     collections::HashMap,
+    future::Future,
     sync::Mutex,
     task::{Context, Poll, Waker},
 };
@@ -15,10 +15,10 @@ use citizen_sdk_contracts::{
     RuntimeVersion, SecretOwner, SecretRef, TransactionExecutionId, TransactionHistoryCursor,
     TransactionHistoryIndex, TransactionHistoryMutation, TransactionHistoryQueryKind,
     TransactionHistoryRecordBatch, TransactionHistoryRecordSnapshot, TransactionHistoryStore,
-    VaultGeneration, VerifiedBlockRef, WalletAccount, WalletCleanupPlan, WalletOrigin,
-    WalletProfile, WalletProfileStore, WalletProvisioningPlan, WalletSignMode, WalletState,
-    WalletRecord, WalletDiagnosticReason,
-    MAX_WALLET_ACCOUNT_INDEX, MAX_COLD_WALLET_ACCOUNTS, MAX_PERSISTED_RUNTIME_CONTEXTS, MAX_PERSISTED_RUNTIME_METADATA_BYTES,
+    VaultGeneration, VerifiedBlockRef, WalletAccount, WalletCleanupPlan, WalletDiagnosticReason,
+    WalletOrigin, WalletProfile, WalletProfileStore, WalletProvisioningPlan, WalletRecord,
+    WalletSignMode, WalletState, MAX_COLD_WALLET_ACCOUNTS, MAX_PERSISTED_RUNTIME_CONTEXTS,
+    MAX_PERSISTED_RUNTIME_METADATA_BYTES, MAX_WALLET_ACCOUNT_INDEX,
 };
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -141,16 +141,36 @@ struct MemoryEncryptedBlobs {
 impl EncryptedSecretBlobStore for MemoryEncryptedBlobs {
     fn has_account_secret(&self, account_id: AccountId32) -> ContractFuture<'_, bool> {
         Box::pin(async move {
-            if let Some(code) = *self.query_error.lock().unwrap_or_else(|_| panic!("合成测试锁不可用")) {
-                return Err(citizen_sdk_contracts::ContractError::new(code, "合成存在性查询失败"));
+            if let Some(code) = *self
+                .query_error
+                .lock()
+                .unwrap_or_else(|_| panic!("合成测试锁不可用"))
+            {
+                return Err(citizen_sdk_contracts::ContractError::new(
+                    code,
+                    "合成存在性查询失败",
+                ));
             }
-            Ok(self.entries.lock().unwrap_or_else(|_| panic!("合成测试锁不可用")).iter().any(|(reference, value)|
-                reference.account_id() == account_id && value.envelope().is_some()))
+            Ok(self
+                .entries
+                .lock()
+                .unwrap_or_else(|_| panic!("合成测试锁不可用"))
+                .iter()
+                .any(|(reference, value)| {
+                    reference.account_id() == account_id && value.envelope().is_some()
+                }))
         })
     }
     fn load(&self, secret_ref: SecretRef) -> ContractFuture<'_, EncryptedSecretBlobSnapshot> {
-        Box::pin(async move { Ok(self.entries.lock().unwrap_or_else(|_| panic!("合成测试锁不可用")).get(&secret_ref).cloned()
-            .unwrap_or_else(EncryptedSecretBlobSnapshot::empty)) })
+        Box::pin(async move {
+            Ok(self
+                .entries
+                .lock()
+                .unwrap_or_else(|_| panic!("合成测试锁不可用"))
+                .get(&secret_ref)
+                .cloned()
+                .unwrap_or_else(EncryptedSecretBlobSnapshot::empty))
+        })
     }
 
     fn compare_and_swap(
@@ -160,8 +180,14 @@ impl EncryptedSecretBlobStore for MemoryEncryptedBlobs {
         next: EncryptedSecretBlobState,
     ) -> ContractFuture<'_, EncryptedSecretBlobSnapshot> {
         Box::pin(async move {
-            let mut entries = self.entries.lock().unwrap_or_else(|_| panic!("合成测试锁不可用"));
-            let current = entries.get(&secret_ref).cloned().unwrap_or_else(EncryptedSecretBlobSnapshot::empty);
+            let mut entries = self
+                .entries
+                .lock()
+                .unwrap_or_else(|_| panic!("合成测试锁不可用"));
+            let current = entries
+                .get(&secret_ref)
+                .cloned()
+                .unwrap_or_else(EncryptedSecretBlobSnapshot::empty);
             if current.revision() != expected_revision {
                 return Err(citizen_sdk_contracts::ContractError::new(
                     citizen_sdk_contracts::ContractErrorCode::Conflict,
@@ -373,8 +399,7 @@ fn unified_wallet_catalog_requires_exact_unique_hot_and_cold_order() {
             Vec::new(),
         )
         .is_err());
-}
-
+    }
 
     let duplicates_hot = value_or_panic(ColdWalletAccount::try_new(
         1,
@@ -783,7 +808,14 @@ fn cleanup_contract_requires_exact_nonempty_bounded_plans() {
     )
     .is_err());
 
-    assert!(WalletCleanupPlan::try_new([1; 16], 0, VaultGeneration::from_bytes([2; 16]), Vec::new(), false).is_err());
+    assert!(WalletCleanupPlan::try_new(
+        [1; 16],
+        0,
+        VaultGeneration::from_bytes([2; 16]),
+        Vec::new(),
+        false
+    )
+    .is_err());
 
     let without_wallet_key = value_or_panic(WalletCleanupPlan::try_new(
         [2; 16],
@@ -855,13 +887,17 @@ fn encrypted_secret_tombstone_is_a_permanent_late_writer_fence() {
         .is_err());
 }
 
-
 #[test]
 fn diagnostic_records_are_not_accounts_and_keep_original_mode_and_independent_name() {
     let profile = wallet_profile(vec![wallet_account(0, 2, 4)]);
     let mut record = WalletRecord::from_profile(&profile);
-    if let WalletRecord::Profile { sign_mode, .. } = &mut record { *sign_mode = "unsupported-mode".to_owned(); }
-    assert_eq!(record.diagnostic_reason(), Some(WalletDiagnosticReason::InvalidSignMode));
+    if let WalletRecord::Profile { sign_mode, .. } = &mut record {
+        *sign_mode = "unsupported-mode".to_owned();
+    }
+    assert_eq!(
+        record.diagnostic_reason(),
+        Some(WalletDiagnosticReason::InvalidSignMode)
+    );
     assert_eq!(value_or_panic(record.validate_profile_identity()), profile);
     let state = value_or_panic(WalletState::try_from_parts(1, None, None, None, Vec::new()));
     let state = value_or_panic(state.try_with_diagnostics(vec![record.clone()]));
@@ -869,77 +905,172 @@ fn diagnostic_records_are_not_accounts_and_keep_original_mode_and_independent_na
     assert!(state.has_hot_wallet_record() && state.contains_wallet(0));
     assert!(state.profile().is_none() && state.default_account_id().is_none());
     assert_eq!(state.account_sign_mode(record.account_id()), None);
-    assert_eq!(state.diagnostic_for_account(record.account_id()), Some(&record));
+    assert_eq!(
+        state.diagnostic_for_account(record.account_id()),
+        Some(&record)
+    );
     let renamed = value_or_panic(record.try_with_wallet_name("另一个钱包名"));
     assert_eq!(renamed.sign_mode(), "unsupported-mode");
     assert_eq!(renamed.wallet_name(), "另一个钱包名");
-    if let WalletRecord::Profile { accounts, .. } = &renamed { assert_eq!(accounts[0].name, profile.accounts()[0].name()); }
+    if let WalletRecord::Profile { accounts, .. } = &renamed {
+        assert_eq!(accounts[0].name, profile.accounts()[0].name());
+    }
     assert!(state.try_with_diagnostics(Vec::new()).is_err()); // 已选择的异常槽不能被无声丢弃。
-    assert!(state.try_with_diagnostics(vec![record.clone(), record.clone()]).is_err());
-    assert!(WalletState::empty().try_with_diagnostics(vec![WalletRecord::from_profile(&profile)]).is_err());
-    let valid = value_or_panic(WalletState::try_from_parts(1, Some(profile), None, None, Vec::new()));
+    assert!(state
+        .try_with_diagnostics(vec![record.clone(), record.clone()])
+        .is_err());
+    assert!(WalletState::empty()
+        .try_with_diagnostics(vec![WalletRecord::from_profile(&profile)])
+        .is_err());
+    let valid = value_or_panic(WalletState::try_from_parts(
+        1,
+        Some(profile),
+        None,
+        None,
+        Vec::new(),
+    ));
     assert!(valid.try_with_diagnostics(vec![record]).is_err()); // 正常与异常不可占用同一槽。
 }
 
 #[test]
 fn diagnostic_identity_is_nullable_not_fabricated_and_cleanup_never_crosses_lifecycles() {
     let mut record = WalletRecord::from_profile(&wallet_profile(vec![wallet_account(0, 2, 4)]));
-    if let WalletRecord::Profile { accounts, .. } = &mut record { accounts[0].ss58_address = "invalid-address".to_owned(); }
-    assert_eq!(record.diagnostic_reason(), Some(WalletDiagnosticReason::InvalidIdentity));
+    if let WalletRecord::Profile { accounts, .. } = &mut record {
+        accounts[0].ss58_address = "invalid-address".to_owned();
+    }
+    assert_eq!(
+        record.diagnostic_reason(),
+        Some(WalletDiagnosticReason::InvalidIdentity)
+    );
     assert!(record.validate_profile_identity().is_err());
     assert_eq!(value_or_panic(record.cleanup_refs()).len(), 1);
     if let WalletRecord::Profile { accounts, .. } = &mut record {
         accounts[0].secret_ref = secret_ref_for(9, 2, 4);
     }
     assert!(record.cleanup_refs().is_err());
-    if let WalletRecord::Profile { accounts, .. } = &mut record { accounts.clear(); }
+    if let WalletRecord::Profile { accounts, .. } = &mut record {
+        accounts.clear();
+    }
     assert_eq!(record.ss58_address(), None);
-    assert_eq!(record.diagnostic_reason(), Some(WalletDiagnosticReason::InvalidStructure));
+    assert_eq!(
+        record.diagnostic_reason(),
+        Some(WalletDiagnosticReason::InvalidStructure)
+    );
     assert!(record.cleanup_refs().is_err());
     assert!(record.cleanup_targets().is_err());
-    if let WalletRecord::Profile { sign_mode, .. } = &mut record { *sign_mode = "x".repeat(33); }
+    if let WalletRecord::Profile { sign_mode, .. } = &mut record {
+        *sign_mode = "x".repeat(33);
+    }
     assert!(record.validate_shape().is_err());
-    assert!(WalletState::empty().try_with_diagnostics(vec![record]).is_err());
+    assert!(WalletState::empty()
+        .try_with_diagnostics(vec![record])
+        .is_err());
 }
 
 #[test]
 fn diagnostic_cleanup_targets_share_exact_validation_and_never_expand_from_display_facts() {
-    let mut record = WalletRecord::from_profile(&wallet_profile(vec![wallet_account(0, 2, 4), wallet_account(1, 3, 5)]));
-    assert_eq!(record.known_sign_mode(), Some(citizen_sdk_contracts::WalletSignMode::Hot));
-    let expected = vec![AccountId32::from_bytes([4; 32]), AccountId32::from_bytes([5; 32])];
-    assert_eq!(value_or_panic(record.cleanup_targets()), (expected.clone(), true));
-    if let WalletRecord::Profile { sign_mode, accounts, .. } = &mut record {
+    let mut record = WalletRecord::from_profile(&wallet_profile(vec![
+        wallet_account(0, 2, 4),
+        wallet_account(1, 3, 5),
+    ]));
+    assert_eq!(
+        record.known_sign_mode(),
+        Some(citizen_sdk_contracts::WalletSignMode::Hot)
+    );
+    let expected = vec![
+        AccountId32::from_bytes([4; 32]),
+        AccountId32::from_bytes([5; 32]),
+    ];
+    assert_eq!(
+        value_or_panic(record.cleanup_targets()),
+        (expected.clone(), true)
+    );
+    if let WalletRecord::Profile {
+        sign_mode,
+        accounts,
+        ..
+    } = &mut record
+    {
         *sign_mode = "cold".into();
         accounts[0].ss58_address = citizen_ss58_address(AccountId32::from_bytes([9; 32]));
     }
-    assert_eq!(record.known_sign_mode(), Some(citizen_sdk_contracts::WalletSignMode::Cold));
+    assert_eq!(
+        record.known_sign_mode(),
+        Some(citizen_sdk_contracts::WalletSignMode::Cold)
+    );
     assert_eq!(value_or_panic(record.cleanup_targets()), (expected, true)); // 颜色事实不改变原清理范围。
-    if let WalletRecord::Profile { sign_mode, accounts, .. } = &mut record {
+    if let WalletRecord::Profile {
+        sign_mode,
+        accounts,
+        ..
+    } = &mut record
+    {
         *sign_mode = "unknown".into();
         accounts[1].secret_ref = secret_ref_for(7, 3, 5);
     }
     assert_eq!(record.known_sign_mode(), None);
     assert!(record.cleanup_targets().is_err());
-    let cold = WalletRecord::Account { wallet_index: 1, sign_mode: "unknown".into(),
-        account_id: AccountId32::from_bytes([4; 32]), ss58_address: citizen_ss58_address(AccountId32::from_bytes([9; 32])),
-        name: "异常".into(), created_at_millis: 1 };
-    assert_eq!(value_or_panic(cold.cleanup_targets()), (vec![AccountId32::from_bytes([4; 32])], false));
+    let cold = WalletRecord::Account {
+        wallet_index: 1,
+        sign_mode: "unknown".into(),
+        account_id: AccountId32::from_bytes([4; 32]),
+        ss58_address: citizen_ss58_address(AccountId32::from_bytes([9; 32])),
+        name: "异常".into(),
+        created_at_millis: 1,
+    };
+    assert_eq!(
+        value_or_panic(cold.cleanup_targets()),
+        (vec![AccountId32::from_bytes([4; 32])], false)
+    );
 }
 
 #[test]
 fn cold_diagnostic_index_counter_and_cross_record_identity_remain_strict() {
-    let account = value_or_panic(ColdWalletAccount::try_new(1, AccountId32::from_bytes([9; 32]),
-        citizen_ss58_address(AccountId32::from_bytes([9; 32])), "冷钱包", 7));
+    let account = value_or_panic(ColdWalletAccount::try_new(
+        1,
+        AccountId32::from_bytes([9; 32]),
+        citizen_ss58_address(AccountId32::from_bytes([9; 32])),
+        "冷钱包",
+        7,
+    ));
     let mut record = WalletRecord::from_cold_account(&account);
-    if let WalletRecord::Account { sign_mode, .. } = &mut record { *sign_mode = "".to_owned(); }
-    let base = value_or_panic(WalletState::try_from_catalog_parts(1, None, vec![], vec![], 2, None, None, vec![]));
+    if let WalletRecord::Account { sign_mode, .. } = &mut record {
+        *sign_mode = "".to_owned();
+    }
+    let base = value_or_panic(WalletState::try_from_catalog_parts(
+        1,
+        None,
+        vec![],
+        vec![],
+        2,
+        None,
+        None,
+        vec![],
+    ));
     let state = value_or_panic(base.try_with_diagnostics(vec![record.clone()]));
     assert_eq!(state.last_wallet_index(), Some(1));
     assert!(state.cold_accounts().is_empty());
     assert_eq!(value_or_panic(record.validate_cold_identity()), account);
-    assert!(WalletState::empty().try_with_diagnostics(vec![record.clone()]).is_err()); // 计数器不能复用该索引。
-    let other = value_or_panic(ColdWalletAccount::try_new(2, account.account_id(), account.ss58_address(), "正常", 8));
-    let valid = value_or_panic(WalletState::try_from_catalog_parts(2, None, vec![other], vec![account.account_id()], 3, None, None, vec![]));
+    assert!(WalletState::empty()
+        .try_with_diagnostics(vec![record.clone()])
+        .is_err()); // 计数器不能复用该索引。
+    let other = value_or_panic(ColdWalletAccount::try_new(
+        2,
+        account.account_id(),
+        account.ss58_address(),
+        "正常",
+        8,
+    ));
+    let valid = value_or_panic(WalletState::try_from_catalog_parts(
+        2,
+        None,
+        vec![other],
+        vec![account.account_id()],
+        3,
+        None,
+        None,
+        vec![],
+    ));
     assert!(valid.try_with_diagnostics(vec![record]).is_err());
 }
 
@@ -955,18 +1086,43 @@ fn account_secret_presence_covers_generations_and_ignores_tombstones_without_hid
     assert!(!value_or_panic(block_on(store.has_account_secret(account))));
     let sealed = || EncryptedSecretBlobState::Sealed {
         provisioning_operation_id: [1; 16],
-        envelope: value_or_panic(EncryptedSecretEnvelope::try_new(1, Hash32Bytes::from_bytes([2; 32]), vec![3; 48])),
+        envelope: value_or_panic(EncryptedSecretEnvelope::try_new(
+            1,
+            Hash32Bytes::from_bytes([2; 32]),
+            vec![3; 48],
+        )),
     };
     value_or_panic(block_on(store.compare_and_swap(foreign, 0, sealed())));
     assert!(!value_or_panic(block_on(store.has_account_secret(account))));
-    for reference in [first, second] { value_or_panic(block_on(store.compare_and_swap(reference, 0, sealed()))); }
+    for reference in [first, second] {
+        value_or_panic(block_on(store.compare_and_swap(reference, 0, sealed())));
+    }
     assert!(value_or_panic(block_on(store.has_account_secret(account))));
-    value_or_panic(block_on(store.compare_and_swap(first, 1, EncryptedSecretBlobState::Tombstone { cleanup_operation_id: [5; 16] })));
+    value_or_panic(block_on(store.compare_and_swap(
+        first,
+        1,
+        EncryptedSecretBlobState::Tombstone {
+            cleanup_operation_id: [5; 16],
+        },
+    )));
     assert!(value_or_panic(block_on(store.has_account_secret(account))));
-    value_or_panic(block_on(store.compare_and_swap(second, 1, EncryptedSecretBlobState::Tombstone { cleanup_operation_id: [6; 16] })));
+    value_or_panic(block_on(store.compare_and_swap(
+        second,
+        1,
+        EncryptedSecretBlobState::Tombstone {
+            cleanup_operation_id: [6; 16],
+        },
+    )));
     assert!(!value_or_panic(block_on(store.has_account_secret(account))));
-    for code in [ContractErrorCode::Storage, ContractErrorCode::PermissionDenied, ContractErrorCode::AuthenticationCancelled] {
-        *store.query_error.lock().unwrap_or_else(|_| panic!("合成测试锁不可用")) = Some(code);
+    for code in [
+        ContractErrorCode::Storage,
+        ContractErrorCode::PermissionDenied,
+        ContractErrorCode::AuthenticationCancelled,
+    ] {
+        *store
+            .query_error
+            .lock()
+            .unwrap_or_else(|_| panic!("合成测试锁不可用")) = Some(code);
         assert!(block_on(store.has_account_secret(account)).is_err());
     }
 }
@@ -976,9 +1132,22 @@ fn cold_catalog_index_is_independent_of_hot_derivation_range() {
     assert_eq!(MAX_COLD_WALLET_ACCOUNTS, 1990);
     let index = MAX_WALLET_ACCOUNT_INDEX + 1;
     let id = AccountId32::from_bytes([29; 32]);
-    let cold = value_or_panic(ColdWalletAccount::try_new(index, id,
-        citizen_ss58_address(id), "独立冷账户", 200));
-    let state = value_or_panic(WalletState::try_from_catalog_parts(1, None,
-        vec![cold.clone()], vec![id], index + 1, None, None, Vec::new()));
+    let cold = value_or_panic(ColdWalletAccount::try_new(
+        index,
+        id,
+        citizen_ss58_address(id),
+        "独立冷账户",
+        200,
+    ));
+    let state = value_or_panic(WalletState::try_from_catalog_parts(
+        1,
+        None,
+        vec![cold.clone()],
+        vec![id],
+        index + 1,
+        None,
+        None,
+        Vec::new(),
+    ));
     assert_eq!(state.cold_account_by_index(index), Some(&cold));
 }

@@ -31,7 +31,7 @@ Host与Core构造只组合资源、复制和校验输入，不调用宿主存储
 
 ### Android源码与包身份
 
-原生源码位于android/src，JVM与设备测试位于android/tests和android/device，Flutter适配位于android/flutter。包名和JNI类身份保持org.citizen.sdk及org.citizen.sdk.internal。Gradle通过sourceSets读取平面目录。
+原生源码位于android/src，JVM与设备测试统一位于android/tests，Flutter适配位于android/flutter。包名和JNI类身份保持org.citizen.sdk及org.citizen.sdk.internal。Gradle通过sourceSets读取平面目录。
 
 官方Flutter工具要求插件入口位于android/src/main/kotlin/org/citizen/sdk/CitizenSdkPlugin.kt；createFlutterSourceView仅在交付视图移动同一源文件，包内没有第二入口。普通构建视图保持仓库布局；平台原生件由实际工具构建，不用占位件通过完整性检查。
 
@@ -43,7 +43,7 @@ CitizenSDK 涉及聊天时只作为依赖使用方；本条不代表尚未接入
 
 ### Android 源码目录与包身份
 
-Android 原生主源码直接位于 `android/src/`，JVM 测试位于 `android/tests/`，设备测试位于 `android/device/`；Flutter 插件源码位于 `android/flutter/`，插件测试位于 `android/tests/`。Gradle 的 Kotlin、Java 源集直接读取这些目录，主Manifest显式定位到各自源码目录。包名 `org.citizen.sdk`、`org.citizen.sdk.internal`、JNI 类名及保留规则不随存放路径改变。
+Android 原生主源码直接位于 `android/src/`，JVM 测试位于 `android/tests/`，设备测试位于同一 `android/tests/`；Flutter 插件源码位于 `android/flutter/`，插件测试位于 `android/tests/`。Gradle 的 Kotlin、Java 源集直接读取这些目录，主Manifest显式定位到各自源码目录。包名 `org.citizen.sdk`、`org.citizen.sdk.internal`、JNI 类名及保留规则不随存放路径改变。
 
 Flutter 3.47.2官方工具按包名检查`android/src/main/kotlin/org/citizen/sdk/CitizenSdkPlugin.kt`。仓库唯一入口位于`android/flutter/CitizenSdkPlugin.kt`；`scripts/build.mjs`的`createFlutterSourceView`仅在装配交付包时移动同一文件到工具要求的位置。普通隔离构建传入`{flutter:false}`，直接使用仓库布局。包内没有第二份入口或来源链接。Gradle使用官方sourceSets配置读取平面源码，JVM/JNI身份、两份Manifest及保留规则不变。
 
@@ -57,7 +57,7 @@ Flutter 3.47.2官方工具按包名检查`android/src/main/kotlin/org/citizen/sd
 
 本文是 CitizenSDK 唯一技术事实文档，统一收录 SDK 现状、产品目标、公开能力、模块职责和长期验收标准。本次无UI职责调整、UI恢复步骤、确认状态与执行证据只记录在既有《公民接入公民软件包》任务卡；既往SDK独立交付记录仍保留在其原任务卡。
 
-**当前依赖边界：**正式轻节点只由 `net` 连接仓内锁定的 smoldot Rust 来源；
+**当前依赖边界：**正式轻节点只由 `ffi` 连接仓内锁定的 smoldot Rust 来源；
 正式Flutter包运行依赖为Flutter SDK、ffi2.2.0与ss58 1.3.1；生成工具ffigen20.1.1只归开发依赖。完整GitHub回归由scripts/build.mjs执行，
 Android Runner 不安装 Linux 桌面图形开发包；LinuxARM 相机回归所需 GTK/GStreamer
 开发包仍按该平台声明准备。删减只覆盖经实际入口核实的额外依赖，不改变现有四平台产物。
@@ -340,7 +340,7 @@ CitizenSDK 是三仓自有产品及外部第三方集成的钱包、账户、签
 | 词数、可选密码、账户派生 | `core/src/wallet_input.rs`、`wallet_derivation.rs`；实际接口和固定向量约束 | 保留现有允许值、规范化次序、派生路径和签名字节 |
 | 多账户、改名、当前账户和删除 | wallet_service 的 add_accounts、rename_account、set_active_account、delete_account、delete_wallet、reconcile_cleanup 已实现 | 复用现有钱包状态和精确清理，不新增多根钱包结构 |
 | 金库授权与本地签名 | `wallet_service.rs` 中独立 SigningService 验证账户、秘密归属和公钥，复用只读 `sign/`；不实例化 WalletService | 钱包与签名分别启用，保持认证及用后清理边界 |
-| 轻节点与基础链读取 | `net/`、`core/src/engine.rs` 已有订阅、storage/runtime、余额、nonce、费率和状态能力 | 保留上游与 SDK 自有适配；按实际需要补公共投影 |
+| 轻节点与基础链读取 | `ffi/src/`、`core/src/engine.rs` 已有订阅、storage/runtime、余额、nonce、费率和状态能力 | 保留上游与 SDK 自有适配；按实际需要补公共投影 |
 | 转账、历史及恢复 | Engine 的 transfer_with_remark_and_watch 及 history 服务保留广播前 pending、同块核验和恢复；`lib/api/citizen_transactions.dart` 分别定义 CitizenTransactions、CitizenHistory | 两个门面独立；本地转账仍必须完整组合所需五模块，不等于已覆盖 App 全部业务交易 |
 | 四类原生绑定 | `android/`、`darwin/`、`linux/`、`windows/` 及 Flutter 绑定已有源码和交付合同 | 在现有实现上同步必要入口，分别完成五个用户平台的真实环境验收 |
 | 独立模块组合 | EngineComponents 与 ProductComposition 已改为可选真实链；实例模块选择、编译支持、组件存在和实时就绪分别判断 | 纯钱包／签名不构造轻节点；保留已有核心服务，实际特性编译和资源隔离验收见任务卡 |
@@ -350,7 +350,7 @@ CitizenSDK 是三仓自有产品及外部第三方集成的钱包、账户、签
 
 ### 模块化与统一扫码签名目标
 
-现有 `types`、`core`、`ffi`、`sign` 和 `net` 继续承载各自职责。依赖方向保持 Engine → Contracts、Providers → Contracts，由装配层选择真实实现。官方语言绑定调用同一 Rust Core，不各自实现派生、签名或链验证。
+现有 `types`、`store`、`core`、`ffi`、`sign` 和 `qr` 承载各自职责。依赖方向保持 Engine → Contracts，由ffi直接装配原smoldot与真实资源实现，不再保留独立net包。官方语言绑定调用同一 Rust Core，不各自实现派生、签名或链验证。
 
 provider 的 HTTPS 启动节点建议使用固定 Hyper HTTP/1.1 与 rustls/ring，显式通过操作系统验证证书及主机名，响应仍受六秒和 64KiB 边界约束。根 Cargo 锁删除 reqwest、AWS-LC 及其独有闭包；内嵌 smoldot 上游源码与嵌套锁不变。正式构建和各端消费验真仍以本轮 GitHub 工作流结果为准。
 
@@ -407,25 +407,25 @@ Android预览使用Flutter的SurfaceTexture，Flutter引擎会应用相机写入
 ```text
 <本仓根>/
 ├── types/{Cargo.toml,src/,tests/}   类型合同
+├── store/{Cargo.toml,src/,tests/}   唯一存储实现
 ├── core/{Cargo.toml,src/,tests/}    Rust协调核心
-├── ffi/{Cargo.toml,src/}           统一C接口
+├── ffi/{Cargo.toml,src/,tests/}     统一C接口与smoldot接入
 ├── sign/{Cargo.toml,src/,tests/}    原签名算法
-├── net/{Cargo.toml,src/,tests/}     轻节点适配与上游边界测试
-├── qr/{Cargo.toml,src/}            扫码协议
-├── image/                         四个图像层源码及构建文件
+├── qr/{Cargo.toml,src/,tests/}      扫码协议
+├── image/{CMakeLists.txt,tests/}   原图像头与实现、编码和解码测试
 ├── smoldot/                       锁定上游，保留标准内部结构
-├── android/{src/,flutter/,tests/,device/,native/}
+├── android/{src/,flutter/,tests/,native/}
 ├── darwin/{src/,citizen_sdk/,tests/,Package.swift,citizen_sdk.podspec}
 ├── linux/{src/,citizen_sdk/,tests/,cmake/,CMakeLists.txt}
 ├── windows/{src/,citizen_sdk/,tests/,cmake/,CMakeLists.txt}
-├── lib/                           既有Dart API与绑定
+├── lib/                           主包：既有Dart API、绑定与test/
+│   └── test/{api/,models/,platform/,consumers/}  主包完整测试，保持分组
 ├── include/                       既有公开C/C++接口
 ├── chain/                         原有三个链资产
-├── scripts/                       产品构建入口与配置
-└── test/                          Dart/Node合同、夹具及consumers/
+└── scripts/                       产品构建入口与配置
 ```
 
-代码和中文注释在各自源码目录同步；测试沿用对应 Rust／平台测试及根 test 目录。残留清理只处理本步确实被替代的 SDK 自有实现，不扩展到其它产品或整个 shared。不创建用途密码学框架或应用业务模块。
+代码和中文注释在各自源码目录同步；测试沿用对应Rust／平台tests目录及主包lib/test目录，根目录不保留测试目录。残留清理只处理本步确实被替代的 SDK 自有实现，不扩展到其它产品或整个 shared。不创建用途密码学框架或应用业务模块。
 
 模块值及函数闭集以本仓实际公开头和发布器为准。当前Core148、Apple合并154、桌面Host19、图像4、Flutter公开接口94项。原待签字节获取/平台拼装和SDK窗口入口不恢复；任一宿主按需组合或使用full，全部进入同一Core。原QR期限语义由Core处理，源码存在不代表本步运行验收通过。
 
@@ -503,7 +503,7 @@ SDK 不依赖这些 shared 路径，不以单源整理为由修改独立冷钱�
 本笔等待，不等于链上执行失败，不重广播、不抹去 pending。单笔取消或超时均必须等待已进入
 store/CAS 或金库操作真实返回，再释放请求资源；不能以丢弃 future 方式中断持久化。
 
-七份既有固定数据向量在 `test/wallet`、`test/transaction` 单份保存；Rust 直接消费派生、
+七份既有固定数据向量在 `core/tests` 单份保存；Rust 直接消费派生、
 密码、交易构造、余额费率和真实 metadata/events，Dart 仅验证公共投影。发布器双向枚举
 现存源码／测试／文档并逐文件验真，恢复旧实现、漏入新测试、改动固定向量均失败。
 
@@ -614,8 +614,8 @@ CitizenSDK canonical Release 合同反向枚举 `chain` 三文件闭集并逐文
 
 `types` 是 CitizenSDK Core 的唯一类型化合同层，不实现轻节点、密码学、平台金库
 或产品业务；`core` 是唯一产品无关协调核心，`ffi` 是唯一产品 ABI，
-`net` 是真实链 provider。依赖方向固定为
-`bindings -> ffi -> core -> types <- net/sign/store`，Flutter、Swift、Kotlin、宿主页面、
+`ffi/src/node.rs` 直接管理同一smoldot实例。依赖方向固定为
+`bindings -> ffi -> core -> types`；ffi直接组合smoldot、sign与store，Flutter、Swift、Kotlin、宿主页面、
 TUYU、聊天和广场均不能反向进入 Core。根 Dart API、Android 原生/Flutter 以及共享
 Darwin Swift/Flutter 投影都通过产品 C ABI 接入 Engine。
 
@@ -1784,7 +1784,7 @@ b.d 里可以有很多不同交易载荷格式，但它们都不是新的扫码�
 
 ##### P-API-CITIZENAPP-004：公开启动清单边界
 
-CitizenSDK只向`https://www.crcfrcn.com/api/chain/citizensdk/bootstrap`读取节点建议，由`net/src/bootstrap.rs`严格解析；生产者为CitizenServe的`chain/bootstrap.rs`与`cloudflare/chain.rs`。本节描述当前代码合同，不作为生产已部署的证明。
+CitizenSDK只向`https://www.crcfrcn.com/api/chain/citizensdk/bootstrap`读取节点建议，由`ffi/src/bootstrap.rs`严格解析；生产者为CitizenServe的`chain/bootstrap.rs`与`cloudflare/chain.rs`。本节描述当前代码合同，不作为生产已部署的证明。
 
 - SDK顶层准确八字段：`is_ok`、`schema`、`generated_at`、`cache_ttl_seconds`、`chain`、`light_client`、`p2p`、`security`；`is_ok=true`，schema固定`citizensdk.chain.bootstrap`，未知字段或旧`ok`输入拒绝。
 - chain准确包含`chain_id`、`protocol_id`、`genesis_hash`、`state_root`、`ss58_format`、`token_symbol`、`token_decimals`；与随包链身份逐值核对。
@@ -1793,7 +1793,7 @@ CitizenSDK只向`https://www.crcfrcn.com/api/chain/citizensdk/bootstrap`读取�
 - 清单仅生成当前实例内存bootNodes投影，不修改随包文件、持久数据库或链上状态。失败沿SDK原节点准备路径处理，不降级为Cloudflare RPC。
 - CitizenApp服务发现使用另一个`/api/chain/bootstrap`及`citizenapp.chain.bootstrap`结构，由`citizenapp/lib/network/chain_bootstrap_api.dart`消费；它含App服务发现字段，不能交给SDK解析器。其完整HTTP合同归CitizenServe技术文档。
 - Serve当前固定缓存TTL为300秒，bootnodes来自CHAIN_BOOTNODES，公开链身份来自既有声明；Access凭据、私有RPC及用户密钥不得进入响应。配置需求以Serve自身scripts/config.mjs和实际代码为准，不在SDK维护第二份旧变量清单。
-- 所属回归为`net/src/bootstrap_tests.rs`及`test/node/citizensdk_bootstrap_manifest.json`；跨端生产者回归为Serve的`test/chain_services_contract.rs`，App消费回归为`test/security/chain_bootstrap_api_test.dart`。通过控制台发起所属产品原测试入口；不保留已撤销的TypeScript测试或migrate:local指令。
+- 所属回归为`ffi/tests/bootstrap.rs`及`ffi/tests/citizensdk_bootstrap_manifest.json`；跨端生产者回归为Serve的`test/chain_services_contract.rs`，App消费回归为`test/security/chain_bootstrap_api_test.dart`。通过控制台发起所属产品原测试入口；不保留已撤销的TypeScript测试或migrate:local指令。
 
 ##### P-API-CITIZENAPP-005：SDK不使用受控交易广播兜底
 
@@ -2371,7 +2371,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - 禁止把最新块 hash 写入 immortal era 的 signing payload
 - 必跑测试：
   - `citizensdk/core` 交易准备、immortal era、签名与 finalized execution 合同测试
-  - `citizensdk/test/api/public_api_contract_test.dart`
+  - `citizensdk/lib/test/api/public_api_contract_test.dart`
   - `flutter test test/transaction/multisig-transfer test/proposal test/trade`
 
 ##### P-TX-003：InternalVote.cast
@@ -3093,7 +3093,7 @@ CitizenSDK是单一SDK整体包；唯一工作流为.github/workflows/sdk.yml，
 
 Linux、Windows 头文件源码直接位于各平台 `citizen_sdk/`，删除源码 `include/` 包装层；构建 include 根指向平台根。公开安装目录仍为 `<prefix>/include/citizen_sdk/`，`#include <citizen_sdk/...>`、C ABI 与导出符号保持不变。原生安装头文件与唯一源码逐字节对拍，发布来源闭集与安装闭集分别检查。
 
-账户编码位于`lib/account_codec.dart`；Flutter消费者夹具位于`test/consumers/`。smoldot上游Rust来源直接保留编译所需标准路径，原始实现保持受保护。
+账户编码位于`lib/account_codec.dart`；Flutter消费者夹具位于`lib/test/consumers/`。smoldot上游Rust来源直接保留编译所需标准路径，原始实现保持受保护。
 
 ## 独立仓库源码与初始提交
 
@@ -3139,7 +3139,7 @@ CitizenSDK继续使用opaque RuntimeCall、准确块Runtime上下文及Subxt V4�
 
 lib/api/citizen_sdk.dart 的getStorageKeysPaged在接纳时复制prefix/startKey，发送与响应校验使用同一快照；调用方在等待期间修改原数组不能扩大最初请求。callRuntimeApi保持opaque参数快照及不可变返回字节。正常回包、伪造前缀和等待期间改参均有回归。
 
-当前准确Runtime metadata的扩展identifier为EthSetOrigin，portable类型名称为SetOrigin；其原生extra及additional_signed均为零字节。core/src/metadata.rs与core/tests/account_state.rs直接使用真实V15金标验证类型、pallet/call索引及完整冷签准备，既有nonce绑定、来源隔离与单次消费合同不变。test/transaction/citizenchain-revive-v15-metadata.hex来自第6步验真的真实WASM，不能用源码推测值替代。
+当前准确Runtime metadata的扩展identifier为EthSetOrigin，portable类型名称为SetOrigin；其原生extra及additional_signed均为零字节。core/src/metadata.rs与core/tests/account_state.rs直接使用真实V15金标验证类型、pallet/call索引及完整冷签准备，既有nonce绑定、来源隔离与单次消费合同不变。core/tests/citizenchain-revive-v15-metadata.hex来自第6步验真的真实WASM，不能用源码推测值替代。
 
 ## 派生账户序号与独立冷账户边界
 
@@ -3189,9 +3189,9 @@ Android原生AAR及根Flutter绑定分别执行Release单测，使用本轮真�
 
 readDiagnostics为既有公开诊断方法，零输入、只读，返回最多128个六字段tuple：方法、请求阶段、错误码、失败阶段、固定原生步骤、有界毫秒耗时。钱包/签名/交易接口和现有C ABI布局、枚举数值不变。诊断不保存账户、会话、参数、异常原文、秘密或其衍生值。Android以SDK自己的noBackup上下文、Apple以SDK应用私有目录原子保留最多64KiB最新记录，诊断失败不改变原操作。宿主仅通过SDK公开诊断接口读取，不访问SDK私有目录。可捕获panic返回固定步骤；进程终止须结合系统信号与匹配符号分析，不能据此声称钱包丢失或原位恢复。
 
-回归覆盖未启动provider、金库不可用、历史故障、本地真实存储错误、启停并发读取、取消及排空、诊断饱和后的新故障保留与秘密拒绝。验证只在GitHub通过本产品入口执行；开发期静态差异不表示测试或编译成功。
+回归覆盖未启动provider、金库不可用、历史故障、本地真实存储错误、启停并发读取、取消及排空、诊断饱和后的新故障保留与秘密拒绝。本机与GitHub均通过本产品scripts/build.mjs执行；开发期静态差异不表示测试或编译成功。
 
-完整回归的GitHub ci-test入口仅允许本仓macOS任务，先构造独占只读来源及测试工程，再执行真实宿主库、Rust所有者测试、严格Dart分析和全部Flutter文件；未完成、零用例、失败、跳过或文件未覆盖均拒绝。Android单测及Apple公开XCTest入口在原生件上传前执行，Linux与Windows保留各自原生CTest。
+默认test入口执行Rust所有者测试、严格Dart分析及默认Flutter测试；真实FFI由Apple入口单列执行。各平台使用同一scripts/build.mjs与独占源码投影；缺报告、零用例、失败、全部跳过均拒绝，明确的系统权限/隔离硬件跳过须单列，不计通过。Android单测及Apple公开XCTest入口在原生件上传前执行，Linux与Windows保留各自原生CTest。
 
 原生故障边界同时覆盖默认panic hook：本SDK请求或同步ABI边界内只输出固定故障字节，再返回闭集步骤，不读取panic载荷或源码位置；非SDK的panic继续调用原hook。嵌套边界须恢复线程状态，诊断不得改变原结果或认证权限。桌面Flutter绑定的安全记录为当前实例有界记录，Android及Apple另有私有持久化；不能把实例记录声称为跨重启历史。
 
@@ -3232,7 +3232,7 @@ Apple编译与Apple XCTest使用同一组正式静态库输出：Cargo的当前�
 
 nonce与Metadata调用证明的网络失败在原RuntimeService失败分支复用CITIZENSDK_TRANSACTION_DIAGNOSTICS=1，默认关闭。仅记录实际公开PeerID、两种固定调用名、原三次尝试内的序号、闭集错误类别和时间；不接收账户、块哈希、参数、Runtime、证明或原始错误正文。原runtime_query_tests以合成公钥验证不同对端、序号、十二类网络错误及关闭/未知调用/越界拒绝；no_std不读取环境或输出，输出失败不覆盖原错误。原节点选择、三次尝试、每次五秒、并行一、证明校验、断开和清理保持，不新增请求、不更改实网断言。PeerID用于定位实际响应节点；空证明协议不携带节点内部execution_proof错误，不能把客户端分类当成最终服务端根因。
 
-四项显式实网验收统一只连接随包清单中的nrcgch.crcfrcn.com:30333 WSS节点，保留原PeerID与checkpoint。SmoldotProviderConfig.with_bootnode只接受既有清单中的DNS/WSS地址，将该实例bootNodes投影为唯一所选项并关闭动态HTTPS节点建议；再次with_bootstrap不能解除已有定向限制。DefaultPlatform在官方PlatformRef连接边界使用同一实例级域名/端口限制，发现的其他地址在DNS及套接字创建前拒绝，普通TCP、WS、IP字面量和其他WSS目标均不能绕过。TLS证书/主机名及PeerID握手保持，实网可用样本必须恰有一个peer；原nonce/Runtime/链状态/空闲链的证明、期限、身份、清理和成功断言保留。正常SDK默认拓扑不变，旧节点无需为此定向验收同步更新；国储会不可达或证明失败仍如实失败。实现遵循官方PlatformRef的固定能力与立即返回连接句柄合同，定向选点是本产品要求而非上游统一规定。
+四项显式实网验收统一只连接随包清单中的nrcgch.crcfrcn.com:30333 WSS节点，保留原PeerID与checkpoint。SmoldotProviderConfig.with_bootnode只接受既有清单中的DNS/WSS地址，将该实例bootNodes投影为唯一所选项并关闭动态HTTPS节点建议；再次with_bootstrap不能解除已有定向限制。DefaultPlatform在官方PlatformRef连接边界使用同一实例级域名/端口限制，发现的其他地址在DNS及套接字创建前拒绝，普通TCP、WS、IP字面量和其他WSS目标均不能绕过。TLS证书/主机名及PeerID握手保持，实网可用样本必须恰有一个peer；原nonce/Runtime/链状态/空闲链的证明、期限、身份、清理和成功断言保留。正常SDK允许随包及发现的DNS/WSS对端，定向验收额外限制所选域名/端口；国储会不可达或证明失败仍如实失败。实现遵循官方PlatformRef的固定能力与立即返回连接句柄合同，定向选点是本产品要求而非上游统一规定。
 
 调用证明的网络分类继续按现有嵌套枚举展开为12项固定计数：未连接、请求过大、远端无法回答、响应解码、连接关闭、超时、协议不支持、子流关闭、子流重置、协商错误、响应LEB128错误、响应过大。SDK仅转换错误分类，实网测试读取相同固定字段；不改变任何生产请求、重试、节点选择、证明验证、超时或失败断言，不输出上游错误载荷。
 
@@ -3251,15 +3251,15 @@ Linux/Windows用官方Flutter --config-only生成原CMake图，只构建citizens
 
 ## 三层源码与标准工具布局
 
-自有源码按仓库相对路径计算且包含文件名，最多三层。七个Rust crate采用Cargo默认`src/lib.rs`和同目录模块声明；类型合同中的store子实现同目录保存，公开store命名空间不变。上游smoldot恢复原始模块路径，原字节、补丁及锁保持；SDK自己的上游边界测试留在`net/tests`，显式读取所属上游源码。
+自有源码按仓库相对路径计算且包含文件名，最多三层。六个Rust crate采用Cargo默认`src/lib.rs`和同目录模块声明；类型合同中的store子实现同目录保存，公开store命名空间不变。上游smoldot恢复原始模块路径，原字节、补丁及锁保持；SDK自己的上游边界测试留在`ffi/tests`，显式读取所属上游源码。
 
-Android两份Manifest及原生/Flutter测试边界保持；原生AAR从同一平面测试目录排除仅依赖Flutter的测试类。Apple测试同目录保存，构建时按所属模块装配标准SwiftPM测试目标；ABI头回归读取同一C目标实际编译的头，不从复制后的测试路径推导SDK源码根。Linux与Windows公开平台头放在`citizen_sdk`，安装后仍按原有`<citizen_sdk/...>`接口消费。三个Flutter消费者位于`test/consumers`。
+Android两份Manifest及原生/Flutter测试边界保持；原生AAR从同一平面测试目录排除仅依赖Flutter的测试类。Apple测试同目录保存，构建时按所属模块装配标准SwiftPM测试目标；ABI头回归读取同一C目标实际编译的头，不从复制后的测试路径推导SDK源码根。Linux与Windows公开平台头放在`citizen_sdk`，安装后仍按原有`<citizen_sdk/...>`接口消费。三个Flutter消费者位于`lib/test/consumers`。
 
 构建采用唯一正式源码布局，隔离工作副本只承载版本、测试和产物；无构建时Cargo路径重排。上游、缓存和XCFramework/AAR等官方产物内部结构保持标准。保留既有Rust核心、C声明、JVM/JNI身份、私钥清理、证书验证、存储和权限检查；公共仓储由同一Rust Store实现，平台仅交付原SQLite和安全文件资源。
 
 依据：[Cargo默认目标](https://doc.rust-lang.org/cargo/reference/cargo-targets.html)、[Rust模块文件](https://doc.rust-lang.org/reference/items/modules.html)、[Android sourceSets](https://developer.android.com/build/build-variants#sourcesets)、[Flutter 3.47.2插件入口检查](https://github.com/flutter/flutter/blob/3.47.2/packages/flutter_tools/lib/src/platform_plugins.dart)。
 
-Hosted过滤同步七个Rust crate、image与smoldot新根路径；平台插件的真实运行输入保留，Android共享JNI保留规则随包交付。源码来源说明仅更新实际目录与测试所属crate，不改上游源码、manifest、补丁或锁。
+Hosted过滤同步六个Rust crate、image与smoldot新根路径；平台插件的真实运行输入保留，Android共享JNI保留规则随包交付。源码来源说明仅更新实际目录与测试所属crate，不改上游源码、manifest、补丁或锁。
 
 ## Rust公共仓储实现
 
@@ -3271,7 +3271,7 @@ store依赖types，是公共链快照、Runtime缓存、交易历史、WalletPro
 
 文件名public-state-v1.sqlite3、schema版本2及七项对象、CSHR v1与钱包载荷v3保持。Android既有android_metadata系统表保持原样，仅从业务对象计数排除该表；SQLite3.31之前没有trusted_schema，Android按公开引擎能力处理，支持该设置的引擎必须应用并回读OFF，所有SQL执行错误仍拒绝。WAL及外键连接池配置后重新应用同一PRAGMA策略，FULL及其它有效设置均回读核验。未知/部分/额外业务schema及损坏记录明确失败，不重建或当空。缓存保留最近64次写入；历史最多4096条、31MiB耐久权重、单页1..100条，排序、过滤、游标和开放记录保护由Rust唯一执行；跨SQL读取在同一事务内绑定revision。删除后的原增量回收策略及错误合同保留。
 
-C++公共门面唯一源码为include/citizen_sdk.hpp，配置仅保留GTK/HWND差异；正式安装仍提供原citizen_sdk/citizen_sdk.hpp入口。共同输入、请求路由和敏感缓冲分别归include/input.hpp、operation.hpp、secret.hpp；两桌面端共用sqlite.hpp机械资源适配。Windows半关闭时始终向仍存活的Host重新查询Core句柄。共同C++行为测试归test/cpp.cc；公共仓储测试归store/tests，平台只保留SQLite/VFS、权限、ABI和实际资源生命周期测试。
+C++公共门面唯一源码为include/citizen_sdk.hpp，配置仅保留GTK/HWND差异；正式安装仍提供原citizen_sdk/citizen_sdk.hpp入口。共同输入、请求路由和敏感缓冲分别归include/input.hpp、operation.hpp、secret.hpp；两桌面端共用sqlite.hpp机械资源适配。Windows半关闭时始终向仍存活的Host重新查询Core句柄。共同C++行为测试归lib/test/cpp.cc；公共仓储测试归store/tests，平台只保留SQLite/VFS、权限、ABI和实际资源生命周期测试。
 
 store/src/*.rs、store/tests/*.rs、平台src及tests文件均不超过仓库相对三层；原平台公共仓储类、其业务测试、公共块键、重复C++实现及原codec模块均移除。外部依赖的版本和来源不变。
 
@@ -3295,7 +3295,7 @@ Core公开入口148项，含新增attach/invoke/detach；4项存储私有入口�
 
 诊断继续调用原平台私有日志，限制128条/64KiB及固定六字段，不传业务参数。敏感原生分配在每次free前同步清零，异步接受后立即清理输入，不把口令或助记词保存在pending中；只承诺SDK实际拥有的内存。
 
-产品scripts/build.mjs test运行全部纯Dart用例；依赖真实Rust/SQLite/图像库的test/platform/ffi_test.dart由native Apple入口强制编译同轮真实共享测试库后执行。该入口同时从C头重新生成绑定并与源码逐字节比较，差异即失败。设备金库不可用夹具不替代业务；LinuxARM/Windows完整Host、真实硬件及App消费仍须所属平台验收，本机源码或共同组件测试不作替代。
+产品scripts/build.mjs test运行全部纯Dart用例；依赖真实Rust/SQLite/图像库的lib/test/platform/ffi_test.dart由native Apple入口强制编译同轮真实共享测试库后执行。该入口同时从C头重新生成绑定并与源码逐字节比较，差异即失败。设备金库不可用夹具不替代业务；LinuxARM/Windows完整Host、真实硬件及App消费仍须所属平台验收，本机源码或共同组件测试不作替代。
 
 图像与Dart辅助符号由scripts/build.mjs逐项对拍实际动态导出，缺失或额外入口均失败。Android使用NDK官方推荐的[版本脚本](https://developer.android.com/ndk/guides/symbol-visibility)仅开放JNI_OnLoad和这6项包装函数，其它实现保持隐藏；不对需由Dart查找的静态包装归档应用exclude-libs ALL。
 
@@ -3365,3 +3365,31 @@ chain及wallet/secret的CAS修订直接取原校验封套，不保存SQL副本�
 generation/object直接以wallet_index/key_generation自然复合键关联；代际退休更新保留父行和永久墓碑，未知提交回读仍核对完整候选。CNG硬件key_name/auth_salt由真实代际唯一确定，不重复存列；TPM随机盐、私有/公有blob及实际硬件对象名保留。SecretRef规范键、原C ABI/回调声明与codec字节保持，宿主独立修订校验仍保留；SQL扫描复用同一codec读取封套，不新增按偏移解析器或字段翻译层。
 
 SQLite资源run失败仍使用宿主原返回码及阶段；当同次job已经保存同码失败，且其原因完整命中SDK固定白名单时，只补传该真实失败原因。白名单区分数据库版本、对象集合、结构定义、耐久设置及记录摘要/类型/钱包状态；未知文本或附加内容继续返回原通用资源错误。宿主未执行job、job成功而宿主收尾失败或宿主返回码不同，均保持原失败优先级。此项仅补充失败诊断，不改变SQL、事务、清理、持久格式和钱包读写，不转换或重建现有数据。同文件回归覆盖真实job分支、原返回码/阶段、宿主失败优先级及未知文本不回显。
+
+## 包与测试归属
+
+第一方Rust workspace为types、store、sign、qr、core、ffi六包。ffi/src/node.rs直接接入仓内原smoldot/light-base，chain.rs承接强类型链读取和nonce，rpc.rs只路由同一实例的本地请求，bootstrap.rs沿用启动节点建议合同。原net包及跨包导出入口删除；Core不增加smoldot依赖，链接口和可缺席nonce能力继续分别约束门禁。接入模块禁止unsafe，原smoldot名称、目录、原锁、实现和自带测试保持。
+
+各包tests拥有全部测试正文、辅助代码和金标；源码只保留原feature条件下的测试模块挂载，私有测试不扩大生产接口。混合测试目录关闭Cargo自动发现并登记真实集成目标，避免辅助文件和私有模块重复编译。钱包、metadata、事件和交易七份固定向量唯一归core/tests，启动建议协议夹具归ffi/tests，Dart只读取所有者原件。创世身份、密码学和协议预期保持。
+
+Android原JVM、Flutter和设备测试统一归android/tests；设备文件集合只由根build.gradle声明，native的test与androidTest源集互斥选择，独立AAR仍排除Flutter专属测试。JVM执行不代表设备执行。Darwin、LinuxARM、Windows继续各自唯一tests；iOS与macOS分别验收。
+
+image继续拥有SDK图像职责及原四项图像/两项Dart辅助接口；tests/encode.cc与decode.cc链接为原CTest单目标，编码、识别和输入边界断言不重复运行。钱包、链和扫码页面的显示仍归App。主包lib/test集中拥有Dart、Node构建、公共C++、消费者、链资产投影与交付回归，api/models/platform/consumers保持分组；根目录不保留test或tests，目录层级只计算目录、不计算文件名。lib/test在Hosted包中整体排除；测试依赖继续归dev_dependencies，Dart测试文件仅对lib目录的depend_on_referenced_packages分类提示作逐文件说明，严格类型检查及其它lint保持；不新增runner包或配置清单。
+
+本次归位保持SDK公开C ABI、Dart及各原生接口、链资产、存储字节和生命周期合同。测试统一沿scripts/build.mjs：test执行软件合同；test Android --device <ADB序号>明确选择在线设备；test iOS --simulator <UDID>明确选择已有模拟器；test macOS、test LinuxARM、test Windows只在匹配宿主运行；追加--performance运行所有者性能基线。native原构建及--device语义保持，不混作测试调度。缺设备、错平台、重复参数、缺报告、零执行、全部跳过和失败均非零退出。
+
+Android先由当前源码构建Core/JNI，运行原生与Flutter JVM测试，再由原Gradle assembleReleaseAndroidTest生成同一android/tests设备集合APK（同一正式Release Core/JNI），现有官方ADB am instrument -w -r直接运行AndroidJUnitRunner；核验逐项终态、宣布数量和正常结束标记，不将adb退出0当测试成功。每轮唯一测试Application ID，安装前拒绝覆盖，成功/失败/取消只回收本轮已拥有的测试宿主；不增加UTP宿主工具依赖。iOS/macOS复用同一临时SwiftPM装配和darwin/tests，选择同轮Core/图像切片及同版官方Flutter框架；iOS读取xcresult，macOS核验XCTest逐项原始结果及All tests宣布总数（不将SwiftPM缺失XML或Swift Testing零用例尾行当通过），模拟器保留既有数据并恢复初始启动状态。临时工程不进入源码，SDK不依赖控制台实现。
+
+Windows TPM正向合同由同一现有测试程序的--hardware独立运行，缺显式隔离选择时CTest记录Skipped。模拟器逻辑XCTest以官方xctest代理运行，不增加App包装；存储夹具明确临时根。依赖Keychain权限的用例仅在系统明确返回errSecMissingEntitlement时标记Skipped，未知内部错误继续失败。普通软件合同、模拟器、硬件缺钥/失败路径不代表硬件密钥正向授权或相机物理采集通过；未执行、跳过、失败和通过分别报告。
+
+默认test --performance采样共享Rust/存储/图像基线，Android/iOS/macOS追加--performance采样各自真实桥接，不重复共享基线。LinuxARM/Windows追加此选项执行对应宿主的共享基线，专属平台桥接耗时未采样并明确报告；该平台未实际运行时不得声明已验收。性能不设置机器特定耗时阈值。真实smoldot离线启动/导出/恢复/停止20轮，SQLite磁盘WAL批次32条、1000条历史/分页100条/重开20轮，ZXing三个尺寸各20轮，以及平台真实Core/图像桥接打开/关闭/编解码；报告环境、负载、样本数、P50/P95/最大值。Engine内存替身只度量调度/缓存，不称实网或Wasm性能；实网读取耗时和硬件交互延迟没有执行就记未运行。原容量、超时、错误及资源归属断言仍是门槛。
+
+
+复审整改：CLI的stdout只返回一个最终JSON，所有工具日志、测试摘要及性能数据归stderr；JUnit逐层核对XML结构、用例和套件数量/失败/错误/跳过，XCTest同时核对逐项终态及All tests总结。启动建议所有者夹具直接绑定随包正式创世身份，正向测试不得预改输入。RuntimeContext的metadata为不可变共享字节，Core缓存同时限制64项及64MiB，当前best受保护，容纳不下的其他合法结果直接返回、不缓存。交易观察队列与溢出终态均有界；慢消费者不能无限累积，溢出后停止转发并按原路径退订。SDK连接能力与拨号边界仅接受DNS/WSS，继续委托原smoldot的网络、TLS及证书校验，不修改上游、不新增包或第二个轻节点，原定向节点限制保持。
+
+
+Windows生物认证的OS回调context由原UserAuth容器保有，VERIFY终态、WinBioWait成功、CLOSE成功及当前回调借用全部结束后才可回收。CLOSE同步拒绝、异步失败或超时不宣称idle；保留同一会话、拒绝接纳另一生物认证，并由原cancel_all/关闭重试路径继续回收。取消产生的通知由同一会话的官方WinBioWait确认排空，不按不存在的CANCEL操作枚举猜测完成；每会话至多一个由原状态拥有的回收线程，真实join退出后才允许Host销毁，CLOSE必须核验ApiStatus，认证成功不覆盖清理失败。平台无关的所有权测试正文仍归windows/tests，由共同C++入口复用；实际WBF调用、编译及硬件正向必须在Windows另行验收。Windows默认软件测试及平台性能测试从声明CITIZENSDK_SQLITE_ARCHIVE的同一目录扩展MSVC LIB，保留原系统库路径，不依赖全局SQLite安装。
+
+Linux WAL-index映射沿SQLite真实区域需求增长，不使用任意64页上限；页号、乘法、off_t和容器容量先核对，不扩展且页面不存在时直接返回空视图，不预分配高页号数组。原DMS/OFD锁、文件身份、映射清理及权限边界保持；Linux/tests以生产VFS双连接验证第64页共享内容、负页/零尺寸拒绝及高页号只读空映射。该平台执行仍由LinuxARM实测证明。
+
+Windows追加认证在原UserAuth登记操作与取消后，通过既有WindowRef派发器于UI线程取得窗口租约并核对前台；工作线程不直接获取UI租约。前台派发等待有界且响应同一取消标记，拒绝或取消不打开WBF会话；超时后仍由原窗口pending/dispatching计数阻止Host提前销毁已投递回调。

@@ -1,6 +1,6 @@
 //! 带验证语义的 CitizenChain 客户端合同。
 
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use crate::{
     ContractError, ContractErrorCode, ContractFuture, ContractResult, ContractStream,
@@ -394,12 +394,12 @@ impl RuntimeVersion {
     }
 }
 
-/// 同一准确块上的 runtime version 与完整 SCALE metadata。
+/// 同一准确块上的runtime version与不可变共享metadata；克隆不复制完整字节。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeContext {
     block: VerifiedBlockRef,
     version: RuntimeVersion,
-    metadata: Vec<u8>,
+    metadata: Arc<[u8]>,
 }
 
 impl RuntimeContext {
@@ -423,7 +423,7 @@ impl RuntimeContext {
         Ok(Self {
             block,
             version,
-            metadata,
+            metadata: metadata.into(),
         })
     }
 
@@ -804,14 +804,5 @@ pub trait VerifiedChainClient: Send + Sync {
 }
 
 #[cfg(test)]
-mod finalized_block_range_tests {
-    use super::*;
-
-    #[test]
-    fn range_limit_accepts_120_and_rejects_121_reverse_and_overflow() {
-        assert_eq!(validated_finalized_block_range_len(1, 120).ok(), Some(120));
-        assert!(validated_finalized_block_range_len(1, 121).is_err());
-        assert!(validated_finalized_block_range_len(2, 1).is_err());
-        assert!(validated_finalized_block_range_len(0, u64::MAX).is_err());
-    }
-}
+#[path = "../tests/range.rs"]
+mod finalized_block_range_tests;

@@ -45,12 +45,16 @@ tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(prepareChainA
 android {
     namespace = 'org.citizen.sdk'
     compileSdk = 36
+    // 设备验收复用正式AAR的Release Core/JNI，不另建Debug原生实现。
+    testBuildType = 'release'
     ndkVersion = '28.2.13676358'
 
     defaultConfig {
         minSdk = 24
         consumerProguardFiles new File(nativeSourceRoot, 'native/consumer-rules.pro')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // 独立测试宿主只拥有本轮命名空间；不复用任何产品应用ID或数据。
+        testApplicationId System.getenv('CITIZENSDK_TEST_APPLICATION') ?: 'org.citizen.sdk.test'
         ndk {
             abiFilters 'arm64-v8a'
         }
@@ -76,7 +80,7 @@ android {
 
     sourceSets {
         all { sourceSet ->
-            def names = ['main': 'src', 'test': 'tests', 'androidTest': 'device']
+            def names = ['main': 'src', 'test': 'tests', 'androidTest': 'tests']
             def sourceRoot = new File(nativeSourceRoot, names[sourceSet.name] ?: "sourceSets/${sourceSet.name}")
             sourceSet.setRoot(sourceRoot.path)
             // 源码按类型从同一平面目录读取；package 声明保持原有 JVM/JNI 身份。
@@ -90,8 +94,18 @@ android {
             // jniLibs expects the parent whose direct child is arm64-v8a.
             jniLibs.srcDirs = [coreDir.parentFile]
         }
+        androidTest {
+            // 内置Kotlin设备编译按排除集合筛选；同目录Flutter/JVM测试不能混入独立AAR。
+            def omitted = new File(nativeSourceRoot, 'tests').listFiles()
+                .findAll { it.name.endsWith('.kt') && !rootProject.ext.citizenSdkDeviceTests.contains(it.name) }
+                .collect { it.name }
+            java.exclude(omitted)
+            kotlin.exclude(omitted)
+        }
         test {
             // Flutter测试与原生测试同目录保存，独立AAR只编译自身合同。
+            java.exclude(rootProject.ext.citizenSdkDeviceTests)
+            kotlin.exclude(rootProject.ext.citizenSdkDeviceTests)
             java.exclude 'CitizenSdkFlutter*'
             kotlin.exclude 'CitizenSdkFlutter*'
         }

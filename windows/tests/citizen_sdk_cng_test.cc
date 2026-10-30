@@ -216,6 +216,12 @@ void isolated_tpm_contract() {
 }  // namespace
 
 int wmain(int count, wchar_t **arguments) {
+  // 硬件正向合同独立返回CTest跳过码；普通合同不能将未执行记为通过。
+  if (count == 2 && std::wstring(arguments[1]) == L"--hardware") {
+    if (!isolated_tpm_enabled()) return 77;
+    try { isolated_tpm_contract(); } catch (...) { return 1; }
+    return 0;
+  }
   if (count > 1) return cold_process_child(count, arguments);
   using namespace citizen_sdk::windows;
   constexpr auto failure = CITIZENSDK_ERROR_INTEGRITY;
@@ -296,13 +302,5 @@ int wmain(int count, wchar_t **arguments) {
   try { Cng().decrypt_dek(citizen_sdk::VaultObject{}, citizen_sdk::Bytes{}, citizen_sdk::SensitiveBuffer{}, output.data()); }
   catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
   assert(rejected && std::all_of(output.begin(), output.end(), [](uint8_t byte) { return byte == 0; }));
-  if (isolated_tpm_enabled()) {
-    try { isolated_tpm_contract(); }
-    catch (...) { return 1; }
-    std::fputs("Windows TPM hardware tests PASSED (isolated opt-in)\n", stdout);
-  } else {
-    std::fputs("Windows TPM hardware tests NOT RUN (isolated opt-in required)\n", stdout);
-  }
-  if (std::fflush(stdout) != 0) return 1;
   return 0;
 }

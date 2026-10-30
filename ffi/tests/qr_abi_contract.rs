@@ -20,9 +20,9 @@ mod enabled {
     use citizen_sdk_qr::{parse, QrCode, SignRequest, SignResponse};
     use citizensdk::{
         citizensdk_create_with_modules, citizensdk_destroy, citizensdk_qr_consume_sign_response,
-        citizensdk_qr_validate_sign_response,
-        citizensdk_qr_create_sign_request, citizensdk_qr_encode_account_id, CitizenSdkAccountId,
-        CitizenSdkCreateOptions, CITIZENSDK_ABI_VERSION,
+        citizensdk_qr_create_sign_request, citizensdk_qr_encode_account_id,
+        citizensdk_qr_validate_sign_response, CitizenSdkAccountId, CitizenSdkCreateOptions,
+        CITIZENSDK_ABI_VERSION,
     };
 
     fn instance() -> u64 {
@@ -159,7 +159,7 @@ mod enabled {
     fn qr_consume_verifies_binding_and_returns_signature_exactly_once() {
         let handle = instance();
         let vector: serde_json::Value = serde_json::from_str(include_str!(
-            "../../test/transaction/citizenchain-transfer-build-v1.json"
+            "../../core/tests/citizenchain-transfer-build-v1.json"
         ))
         .unwrap();
         let account = CitizenSdkAccountId {
@@ -180,7 +180,7 @@ mod enabled {
         .try_into()
         .unwrap();
         let response = SignResponse {
-                current_account: None,
+            current_account: None,
             request_id: request.request_id.clone(),
             expires_at: request.expires_at,
             signer_public_key: request.require_signer().unwrap(),
@@ -220,12 +220,36 @@ mod enabled {
         let another = instance();
         let session = view(response.request_id.as_bytes());
         for _ in 0..2 {
-            assert_eq!(unsafe { citizensdk_qr_validate_sign_response(handle, session, view(encoded.as_bytes())) }, 0);
+            assert_eq!(
+                unsafe {
+                    citizensdk_qr_validate_sign_response(handle, session, view(encoded.as_bytes()))
+                },
+                0
+            );
         }
-        assert_eq!(unsafe { citizensdk_qr_validate_sign_response(another, session, view(encoded.as_bytes())) }, CitizenSdkErrorCode::Conflict.as_i32());
-        assert_eq!(unsafe { citizensdk_qr_validate_sign_response(handle, view(b"wrong-request"), view(encoded.as_bytes())) }, CitizenSdkErrorCode::Conflict.as_i32());
+        assert_eq!(
+            unsafe {
+                citizensdk_qr_validate_sign_response(another, session, view(encoded.as_bytes()))
+            },
+            CitizenSdkErrorCode::Conflict.as_i32()
+        );
+        assert_eq!(
+            unsafe {
+                citizensdk_qr_validate_sign_response(
+                    handle,
+                    view(b"wrong-request"),
+                    view(encoded.as_bytes()),
+                )
+            },
+            CitizenSdkErrorCode::Conflict.as_i32()
+        );
         let invalid_text = invalid.encode().unwrap();
-        assert_eq!(unsafe { citizensdk_qr_validate_sign_response(handle, session, view(invalid_text.as_bytes())) }, CitizenSdkErrorCode::Integrity.as_i32());
+        assert_eq!(
+            unsafe {
+                citizensdk_qr_validate_sign_response(handle, session, view(invalid_text.as_bytes()))
+            },
+            CitizenSdkErrorCode::Integrity.as_i32()
+        );
         assert_eq!(unsafe { citizensdk_destroy(another) }, 0);
         assert_eq!(
             unsafe {
@@ -248,7 +272,12 @@ mod enabled {
             CitizenSdkErrorCode::Ok.as_i32()
         );
         assert_eq!(output, signature);
-        assert_eq!(unsafe { citizensdk_qr_validate_sign_response(handle, session, view(encoded.as_bytes())) }, CitizenSdkErrorCode::Conflict.as_i32());
+        assert_eq!(
+            unsafe {
+                citizensdk_qr_validate_sign_response(handle, session, view(encoded.as_bytes()))
+            },
+            CitizenSdkErrorCode::Conflict.as_i32()
+        );
         output.fill(0xa5);
         assert_eq!(
             unsafe {

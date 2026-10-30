@@ -24,10 +24,8 @@ use citizen_sdk_engine::{
 use serde_json::Value as JsonValue;
 use subxt_core::{ext::codec::Decode, Metadata};
 
-const METADATA_HEX: &str =
-    include_str!("../../test/transaction/citizenchain-runtime-v14-metadata.hex");
-const VECTOR_JSON: &str =
-    include_str!("../../test/transaction/citizenchain-balance-fee-v1.json");
+const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
+const VECTOR_JSON: &str = include_str!("citizenchain-balance-fee-v1.json");
 
 struct TestClient {
     identity: ChainIdentity,
@@ -640,9 +638,7 @@ fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation
 
 #[test]
 fn current_revive_metadata_reaches_native_cold_signing_without_more_nonce_reads() {
-    check_prepared_execution(include_str!(
-        "../../test/transaction/citizenchain-revive-v15-metadata.hex"
-    ));
+    check_prepared_execution(include_str!("citizenchain-revive-v15-metadata.hex"));
 }
 
 fn check_prepared_execution(metadata_hex: &str) {

@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 publish = false
+autotests = false
 
 [lints]
 workspace = true
@@ -20,3 +21,37 @@ bs58 = { version = "=0.5.1", default-features = false, features = ["alloc"] }
 futures-core = "=0.3.34"
 # SecretBuffer 的实际内存擦除由成熟实现负责，禁止以普通 Vec 模拟清零。
 zeroize = "=1.9.0"
+
+# 公开合同测试显式登记；其余tests文件由原模块按cfg(test)加载。
+
+[[test]]
+name = "account_contract"
+path = "tests/account_contract.rs"
+
+[[test]]
+name = "capability_contract"
+path = "tests/capability_contract.rs"
+
+[[test]]
+name = "chain_contract"
+path = "tests/chain_contract.rs"
+
+[[test]]
+name = "secret_contract"
+path = "tests/secret_contract.rs"
+
+[[test]]
+name = "state_store_contract"
+path = "tests/state_store_contract.rs"
+
+[[test]]
+name = "transaction_build_contract"
+path = "tests/transaction_build_contract.rs"
+
+[[test]]
+name = "transaction_history_contract"
+path = "tests/transaction_history_contract.rs"
+
+[[test]]
+name = "transaction_prepare_contract"
+path = "tests/transaction_prepare_contract.rs"

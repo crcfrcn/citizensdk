@@ -176,6 +176,12 @@ fn runtime_context_keeps_version_metadata_and_exact_block_together() {
     assert_eq!(context.version().spec_version(), 100);
     assert_eq!(context.version().transaction_version(), 12);
     assert_eq!(context.metadata(), b"meta");
+    // 克隆保持不可变字节共享，不能使每次缓存读取重新分配完整metadata。
+    let cloned = context.clone();
+    assert!(std::ptr::eq(
+        context.metadata().as_ptr(),
+        cloned.metadata().as_ptr()
+    ));
     assert!(RuntimeContext::try_new(block, RuntimeVersion::new(1, 1), Vec::new()).is_err());
 }
 

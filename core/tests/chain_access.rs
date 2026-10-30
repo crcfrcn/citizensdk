@@ -6,10 +6,10 @@ use std::sync::{
 };
 
 use citizen_sdk_contracts::{
-    CapabilityName, ChainIdentity, ChainSigner, ChainSyncStatus, ContractError, ContractErrorCode, ContractFuture,
-    ContractStream, ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef, Hash32, Modules,
-    RuntimeContext, SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic, VerifiedBlockRef,
-    VerifiedChainClient,
+    CapabilityName, ChainIdentity, ChainSigner, ChainSyncStatus, ContractError, ContractErrorCode,
+    ContractFuture, ContractStream, ExportedChainState, ExtrinsicWatchEvent, FinalizedBlockRef,
+    Hash32, Modules, RuntimeContext, SignedExtrinsic, StateImportReceipt, SubmittedExtrinsic,
+    VerifiedBlockRef, VerifiedChainClient,
 };
 use citizen_sdk_engine::{CapabilityProbe, CitizenEngine, EngineComponents, EngineError};
 
@@ -68,8 +68,13 @@ impl VerifiedChainClient for CountingClient {
         self.reads.fetch_add(1, Ordering::SeqCst);
         let usable = self.sync_ready.load(Ordering::SeqCst);
         Box::pin(async move {
-            ChainSyncStatus::try_new(0, !usable, usable,
-                VerifiedBlockRef::best(self.block.hash(), self.block.number()), self.block)
+            ChainSyncStatus::try_new(
+                0,
+                !usable,
+                usable,
+                VerifiedBlockRef::best(self.block.hash(), self.block.number()),
+                self.block,
+            )
         })
     }
 
@@ -150,20 +155,33 @@ fn syncing_status_is_readable_without_opening_business_data_gates() {
     let client = Arc::new(CountingClient::new());
     let engine = engine(client.clone());
     assert!(futures::executor::block_on(engine.chain_sync_status()).is_err());
-    engine.update_chain_readiness(false).unwrap_or_else(|e| panic!("{e}"));
-    engine.begin_provider_start().unwrap_or_else(|e| panic!("{e}"));
+    engine
+        .update_chain_readiness(false)
+        .unwrap_or_else(|e| panic!("{e}"));
+    engine
+        .begin_provider_start()
+        .unwrap_or_else(|e| panic!("{e}"));
     assert!(futures::executor::block_on(engine.chain_sync_status()).is_err());
     futures::executor::block_on(engine.complete_provider_start()).unwrap_or_else(|e| panic!("{e}"));
-    let status = futures::executor::block_on(engine.chain_sync_status()).unwrap_or_else(|e| panic!("{e}"));
+    let status =
+        futures::executor::block_on(engine.chain_sync_status()).unwrap_or_else(|e| panic!("{e}"));
     assert!(!status.is_usable());
     assert!(status.is_syncing());
-    assert!(futures::executor::block_on(engine.finalized_head()).is_err(),
-        "读取同步状态不能放开链业务数据门禁");
+    assert!(
+        futures::executor::block_on(engine.finalized_head()).is_err(),
+        "读取同步状态不能放开链业务数据门禁"
+    );
     client.sync_ready.store(true, Ordering::SeqCst);
-    engine.update_chain_readiness(true).unwrap_or_else(|e| panic!("{e}"));
-    assert!(futures::executor::block_on(engine.chain_sync_status()).unwrap_or_else(|e| panic!("{e}")).is_usable());
+    engine
+        .update_chain_readiness(true)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(futures::executor::block_on(engine.chain_sync_status())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .is_usable());
     assert!(futures::executor::block_on(engine.finalized_head()).is_ok());
-    engine.mark_provider_stopped().unwrap_or_else(|e| panic!("{e}"));
+    engine
+        .mark_provider_stopped()
+        .unwrap_or_else(|e| panic!("{e}"));
     assert!(futures::executor::block_on(engine.chain_sync_status()).is_err());
     engine.dispose().unwrap_or_else(|e| panic!("{e}"));
     assert!(futures::executor::block_on(engine.chain_sync_status()).is_err());
@@ -175,16 +193,23 @@ fn sync_status_still_rejects_disabled_or_unavailable_chain() {
         let client = Arc::new(CountingClient::new());
         let engine = engine(client.clone());
         let mut facts = probes();
-        let probe = facts.iter_mut().find(|p| p.name == CapabilityName::ChainRead)
+        let probe = facts
+            .iter_mut()
+            .find(|p| p.name == CapabilityName::ChainRead)
             .unwrap_or_else(|| panic!("missing chain probe"));
         match field {
             "supported" => probe.supported = false,
             "available" => probe.available = false,
             _ => probe.enabled = false,
         }
-        engine.update_capabilities(facts).unwrap_or_else(|e| panic!("{e}"));
-        engine.begin_provider_start().unwrap_or_else(|e| panic!("{e}"));
-        futures::executor::block_on(engine.complete_provider_start()).unwrap_or_else(|e| panic!("{e}"));
+        engine
+            .update_capabilities(facts)
+            .unwrap_or_else(|e| panic!("{e}"));
+        engine
+            .begin_provider_start()
+            .unwrap_or_else(|e| panic!("{e}"));
+        futures::executor::block_on(engine.complete_provider_start())
+            .unwrap_or_else(|e| panic!("{e}"));
         let before = client.reads.load(Ordering::SeqCst);
         assert!(futures::executor::block_on(engine.chain_sync_status()).is_err());
         assert_eq!(client.reads.load(Ordering::SeqCst), before);

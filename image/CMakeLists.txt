@@ -68,8 +68,11 @@ endif()
 
 if(CITIZENSDK_QR_IMAGE_BUILD_TESTS)
   enable_testing()
-  add_executable(citizensdk_qr_image_test citizensdk_qr_image_test.cc)
+  # 编码和解码归同一真实测试目标，不重复登记。
+  add_executable(citizensdk_qr_image_test tests/encode.cc tests/decode.cc)
   target_compile_features(citizensdk_qr_image_test PRIVATE cxx_std_17)
+  # 同版Dart辅助声明引用SDK公共类型；测试消费同一真实头，不复制声明。
+  target_include_directories(citizensdk_qr_image_test PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../include")
   target_link_libraries(citizensdk_qr_image_test PRIVATE citizensdk_qr_image)
   add_test(NAME citizensdk_qr_image_round_trip COMMAND citizensdk_qr_image_test)
 endif()

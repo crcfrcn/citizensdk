@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 publish = false
+autotests = false
 
 [lints]
 workspace = true
@@ -21,3 +22,5 @@ serde_json = "=1.0.151"
 
 [dev-dependencies]
 futures-executor = "=0.3.34"
+
+# 公开合同测试显式登记；其余tests文件由原模块按cfg(test)加载。

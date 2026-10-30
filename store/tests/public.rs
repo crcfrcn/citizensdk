@@ -434,3 +434,92 @@ fn schema_and_record_corruption_never_reset() {
     assert!(block_on(ChainDatabaseStore::load(&store)).is_err());
     assert!(block_on(ChainDatabaseStore::compare_and_swap(&store, 1, None)).is_err());
 }
+
+/// 真实磁盘SQLite/WAL、同一PublicStore合同；每轮只使用独占临时文件。
+#[test]
+fn sqlite_history_baseline() {
+    use std::time::Instant;
+    let directory = std::env::temp_dir().join(format!(
+        "citizensdk-baseline-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    struct Remove(std::path::PathBuf);
+    impl Drop for Remove {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+    let _remove = Remove(directory.clone());
+    let mut writes = Vec::new();
+    let mut pages = Vec::new();
+    let mut reopens = Vec::new();
+    for round in 0..20 {
+        let name =
+            std::ffi::CString::new(directory.join(format!("{round}.sqlite3")).to_str().unwrap())
+                .unwrap();
+        let store = PublicStore::new(db::Db::named(&name));
+        let mut revision = 0;
+        let weight = db::record(1, 1, HistoryTransactionStatus::Pending).durable_weight_bytes();
+        for start in (0..1000).step_by(32) {
+            let count = (start + 32).min(1000);
+            let records = (start..count)
+                .map(|i| db::record(i + 1, 1, HistoryTransactionStatus::Pending))
+                .collect();
+            let index = TransactionHistoryIndex::try_new(
+                revision + 1,
+                count,
+                count * weight,
+                count,
+                count * weight,
+            )
+            .unwrap();
+            let mutation =
+                TransactionHistoryMutation::try_new(revision, index, vec![], records).unwrap();
+            let now = Instant::now();
+            block_on(TransactionHistoryStore::compare_and_swap(&store, mutation)).unwrap();
+            writes.push(now.elapsed().as_nanos());
+            revision += 1;
+        }
+        let now = Instant::now();
+        let page =
+            block_on(store.load_page(revision, TransactionHistoryQueryKind::Newest, None, 100))
+                .unwrap();
+        pages.push(now.elapsed().as_nanos());
+        assert_eq!(page.records().len(), 100);
+        assert!(page.has_more());
+        drop(store);
+        let now = Instant::now();
+        let reopened = PublicStore::new(db::Db::named(&name));
+        assert_eq!(
+            block_on(reopened.load_index()).unwrap().revision(),
+            revision
+        );
+        assert_eq!(
+            block_on(reopened.load_page(revision, TransactionHistoryQueryKind::Newest, None, 100))
+                .unwrap()
+                .records()
+                .len(),
+            100
+        );
+        reopens.push(now.elapsed().as_nanos());
+    }
+    for (name, mut samples) in [
+        ("batch32", writes),
+        ("page100_of1000", pages),
+        ("reopen", reopens),
+    ] {
+        samples.sort_unstable();
+        let n = samples.len();
+        println!(
+            "sdk-baseline sqlite_disk operation={name} rounds={n} p50_ns={} p95_ns={} max_ns={}",
+            samples[(n * 50).div_ceil(100) - 1],
+            samples[(n * 95).div_ceil(100) - 1],
+            samples[n - 1]
+        );
+    }
+}

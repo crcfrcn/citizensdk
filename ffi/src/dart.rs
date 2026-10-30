@@ -13,7 +13,5 @@ pub(crate) fn scope<T>(handle:CitizenSdkHandle,body:impl FnOnce()->FfiResult<T>)
  ORIGIN.with(|value|{if value.get().is_some(){return Err(FfiError::invalid("nested foreign request job"));}value.set(Some(handle));struct Reset<'a>(&'a Cell<Option<CitizenSdkHandle>>);impl Drop for Reset<'_>{fn drop(&mut self){self.0.set(None);}}let _reset=Reset(value);body()})
 }
 
-#[cfg(test)]mod tests{
- use super::*;
- #[test]fn origin_is_owner_scoped_and_restored_after_errors(){assert!(!owns(1));let _=scope(1,||{assert!(owns(1));assert!(!owns(2));assert!(scope(2,||Ok(())).is_err());Err::<(),_>(FfiError::invalid("fixture"))});assert!(!owns(1));}
-}
+#[cfg(test)]#[path = "../tests/dart.rs"]
+mod tests;

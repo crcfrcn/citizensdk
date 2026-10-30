@@ -15,6 +15,7 @@ mod metadata;
 #[cfg(all(feature = "qr", feature = "chain"))]
 mod qr_review;
 #[cfg(all(test, feature = "qr", feature = "chain"))]
+#[path = "../tests/review.rs"]
 mod qr_review_tests;
 pub mod runtime_context;
 pub mod state_import;
@@ -30,12 +31,15 @@ pub mod transaction_outcome;
 mod transaction_prepare;
 mod wallet_derivation;
 #[cfg(test)]
+#[path = "../tests/derivation.rs"]
 mod wallet_derivation_tests;
 mod wallet_input;
 #[cfg(test)]
+#[path = "../tests/input.rs"]
 mod wallet_input_tests;
 mod wallet_service;
 #[cfg(test)]
+#[path = "../tests/wallet.rs"]
 mod wallet_service_tests;
 
 #[cfg(feature = "chain")]

@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 publish = false
+autotests = false
 
 [lib]
 name = "citizensdk"
@@ -22,7 +23,7 @@ default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
 # 模块编译依赖不等于实例启用权限：wallet 复用 signer 算法，不自动开放签名入口。
 signing = ["dep:citizen-signer", "citizen-sdk-engine/signing"]
 wallet = ["signing", "citizen-sdk-engine/wallet"]
-chain = ["dep:citizen-sdk-smoldot-provider", "citizen-sdk-engine/chain"]
+chain = ["citizen-sdk-engine/chain", "dep:blake2-rfc", "dep:hex", "dep:parking_lot", "dep:bytes", "dep:http", "dep:http-body-util", "dep:hyper-rustls", "dep:hyper-util", "dep:rustls", "dep:url", "dep:smoldot-light", "dep:tokio"]
 transactions = ["chain", "citizen-sdk-engine/transactions"]
 history = ["chain", "citizen-sdk-engine/history"]
 qr = ["dep:citizen-sdk-qr", "dep:citizen-signer", "citizen-sdk-engine/qr"]
@@ -38,7 +39,6 @@ blake2 = "=0.10.6"
 citizen-sdk-contracts = { path = "../types" }
 citizen-sdk-engine = { path = "../core", default-features = false }
 citizen-sdk-qr = { path = "../qr", optional = true }
-citizen-sdk-smoldot-provider = { path = "../net", optional = true }
 # Product composition, rather than a host binding, selects CitizenSDK's one
 # audited sr25519 implementation. The public C ABI exposes account-scoped
 # signing but never exports secret material or lets a host inject a signer.
@@ -53,7 +53,90 @@ serde_json = "=1.0.151"
 sha2 = "=0.10.9"
 zeroize = "=1.9.0"
 
+# 原net接入依赖直接归本包；版本、来源及闭包保持。
+blake2-rfc = { version = "=0.2.18", optional = true }
+hex = { version = "=0.4.3", optional = true }
+parking_lot = { version = "=0.12.5", optional = true }
+bytes = { version = "=1.12.1", optional = true }
+http = { version = "=1.5.0", optional = true }
+http-body-util = { version = "=0.1.5", optional = true }
+hyper-rustls = { version = "=0.27.9", default-features = false, features = ["http1", "ring", "rustls-platform-verifier", "tls12"], optional = true }
+hyper-util = { version = "=0.1.20", default-features = false, features = ["client-legacy", "http1", "tokio"], optional = true }
+rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+url = { version = "=2.5.8", optional = true }
+smoldot-light = { path = "../smoldot/light-base", default-features = false, features = ["std"], optional = true }
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "sync", "time", "net"], optional = true }
+
 [target.'cfg(target_os = "android")'.dependencies]
 # Android HTTPS 使用系统证书验证；JNI 与平台验证器必须和锁文件中的官方组件一致。
 jni = "=0.22.4"
 rustls-platform-verifier = "=0.7.0"
+
+[dev-dependencies]
+futures = "=0.3.34"
+
+# 公开合同测试显式登记；其余tests文件由原模块按cfg(test)加载。
+
+[[test]]
+name = "abi_layout"
+path = "tests/abi_layout.rs"
+
+[[test]]
+name = "asset_boundary"
+path = "tests/asset_boundary.rs"
+
+[[test]]
+name = "capability_contract"
+path = "tests/capability_contract.rs"
+
+[[test]]
+name = "error_contract"
+path = "tests/error_contract.rs"
+
+[[test]]
+name = "event_contract"
+path = "tests/event_contract.rs"
+
+[[test]]
+name = "handle_contract"
+path = "tests/handle_contract.rs"
+
+[[test]]
+name = "host_provider_contract"
+path = "tests/host_provider_contract.rs"
+
+[[test]]
+name = "ownership_contract"
+path = "tests/ownership_contract.rs"
+
+[[test]]
+name = "qr_abi_contract"
+path = "tests/qr_abi_contract.rs"
+
+[[test]]
+name = "request_contract"
+path = "tests/request_contract.rs"
+
+[[test]]
+name = "symbol_contract"
+path = "tests/symbol_contract.rs"
+
+[[test]]
+name = "wallet_abi_contract"
+path = "tests/wallet_abi_contract.rs"
+
+[[test]]
+name = "capability_boundary"
+path = "tests/capability_boundary.rs"
+
+[[test]]
+name = "light_client_boundary"
+path = "tests/light_client_boundary.rs"
+
+[[test]]
+name = "network_sync_boundary"
+path = "tests/network_sync_boundary.rs"
+
+[[test]]
+name = "state_runtime_boundary"
+path = "tests/state_runtime_boundary.rs"

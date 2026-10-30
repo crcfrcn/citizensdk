@@ -7,6 +7,8 @@ use crate::error::EngineError;
 /// Eviction is deterministic FIFO while protecting the current best context.
 /// An evicted block is fetched and validated again if requested later.
 pub const MAX_RUNTIME_CONTEXTS: usize = 64;
+// 条数和metadata总字节同时受限，不改变合法读取结果的大小合同。
+const MAX_RUNTIME_CONTEXT_BYTES: usize = 64 * 1024 * 1024;
 
 /// Opaque request identity used to keep late in-flight completions from
 /// replacing a newer best-head runtime context.
@@ -110,17 +112,23 @@ impl RuntimeContextCache {
                 ));
             }
         } else {
-            if self.contexts.len() == MAX_RUNTIME_CONTEXTS {
-                let eviction = self
+            let size = context.metadata().len();
+            let advances_best = request.block.finality() == BlockFinality::Best
+                && self.latest_best_request == Some(request.sequence);
+            // 当前best仍保留；新best可以替换旧best。放不下的其他合法结果直接返回、不缓存。
+            while self.contexts.len() >= MAX_RUNTIME_CONTEXTS
+                || self
                     .contexts
                     .iter()
-                    .position(|existing| Some(existing.block()) != self.current_best)
-                    .ok_or_else(|| {
-                        EngineError::contract(
-                            ContractErrorCode::Internal,
-                            "runtime context cache has no safe eviction candidate",
-                        )
-                    })?;
+                    .map(|value| value.metadata().len())
+                    .sum::<usize>()
+                    > MAX_RUNTIME_CONTEXT_BYTES.saturating_sub(size)
+            {
+                let Some(eviction) = self.contexts.iter().position(|existing| {
+                    advances_best || Some(existing.block()) != self.current_best
+                }) else {
+                    return Ok(context);
+                };
                 self.contexts.remove(eviction);
             }
             self.contexts.push(context.clone());
@@ -153,98 +161,5 @@ impl RuntimeContextCache {
 }
 
 #[cfg(test)]
-mod tests {
-    use citizen_sdk_contracts::{
-        ContractErrorCode, Hash32, RuntimeContext, RuntimeVersion, VerifiedBlockRef,
-    };
-
-    use super::{RuntimeContextCache, MAX_RUNTIME_CONTEXTS};
-    use crate::EngineError;
-
-    #[test]
-    #[allow(clippy::expect_used)]
-    fn invalidation_rejects_late_best_completion_but_keeps_exact_context() {
-        let block = VerifiedBlockRef::best(Hash32::from_bytes([1; 32]), 1);
-        let mut cache = RuntimeContextCache::new();
-        let request = cache.begin(block).expect("request");
-        cache.invalidate_current_best();
-        let context =
-            RuntimeContext::try_new(block, RuntimeVersion::new(1, 1), vec![1]).expect("context");
-        cache
-            .complete(request, context.clone())
-            .expect("exact context");
-        assert!(cache.current_best().is_none());
-        assert_eq!(cache.get(block), Some(&context));
-    }
-
-    #[test]
-    fn request_sequence_exhaustion_is_permanent_and_never_reuses_identity() {
-        let mut cache = RuntimeContextCache::new();
-        cache.next_sequence = u64::MAX - 1;
-        let block = VerifiedBlockRef::best(Hash32::from_bytes([0x7f; 32]), 7);
-        let last = cache
-            .begin(block)
-            .unwrap_or_else(|error| panic!("last request failed: {error}"));
-        assert_eq!(last.sequence, u64::MAX - 1);
-        assert_eq!(cache.latest_best_request, Some(u64::MAX - 1));
-
-        for _ in 0..2 {
-            let error = cache
-                .begin(block)
-                .err()
-                .unwrap_or_else(|| panic!("exhausted sequence must fail"));
-            match error {
-                EngineError::Contract(error) => {
-                    assert_eq!(error.code(), ContractErrorCode::Internal)
-                }
-                other => panic!("unexpected exhaustion error: {other}"),
-            }
-            assert_eq!(cache.next_sequence, u64::MAX);
-            assert_eq!(cache.latest_best_request, Some(u64::MAX - 1));
-        }
-    }
-
-    #[test]
-    fn runtime_contexts_are_bounded_and_current_best_is_not_evicted() {
-        let mut cache = RuntimeContextCache::new();
-        let protected = VerifiedBlockRef::best(Hash32::from_bytes([0xff; 32]), 1);
-        let protected_request = cache
-            .begin(protected)
-            .unwrap_or_else(|error| panic!("protected request failed: {error}"));
-        let protected_context =
-            RuntimeContext::try_new(protected, RuntimeVersion::new(1, 1), vec![0xff])
-                .unwrap_or_else(|error| panic!("protected context failed: {error}"));
-        cache
-            .complete(protected_request, protected_context)
-            .unwrap_or_else(|error| panic!("protected completion failed: {error}"));
-
-        for index in 0..(MAX_RUNTIME_CONTEXTS + 16) {
-            let number = u64::try_from(index + 2)
-                .unwrap_or_else(|error| panic!("height conversion failed: {error}"));
-            let marker = u8::try_from(index + 2)
-                .unwrap_or_else(|error| panic!("marker conversion failed: {error}"));
-            let block = VerifiedBlockRef::finalized(Hash32::from_bytes([marker; 32]), number);
-            let request = cache
-                .begin(block)
-                .unwrap_or_else(|error| panic!("request failed: {error}"));
-            let context = RuntimeContext::try_new(
-                block,
-                RuntimeVersion::new(marker.into(), marker.into()),
-                vec![marker],
-            )
-            .unwrap_or_else(|error| panic!("context failed: {error}"));
-            cache
-                .complete(request, context)
-                .unwrap_or_else(|error| panic!("completion failed: {error}"));
-        }
-
-        assert_eq!(cache.contexts.len(), MAX_RUNTIME_CONTEXTS);
-        assert!(cache.get(protected).is_some());
-        assert_eq!(
-            cache.current_best().map(RuntimeContext::block),
-            Some(protected)
-        );
-        let first_evicted = VerifiedBlockRef::finalized(Hash32::from_bytes([0x02; 32]), 2);
-        assert!(cache.get(first_evicted).is_none());
-    }
-}
+#[path = "../tests/context.rs"]
+mod tests;

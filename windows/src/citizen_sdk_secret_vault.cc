@@ -5,6 +5,8 @@
 #include <sddl.h>
 #include <ncrypt.h>
 #include <map>
+#include <future>
+#include <chrono>
 #include <algorithm>
 #include <utility>
 #include "citizen_sdk_directory.hpp"
@@ -158,11 +160,20 @@ SecretVault::SecretVault(VaultStore &store, WindowRef &parent)
   services_.authentication_available = [this] { return user_auth_->available(); };
   services_.authorize_add_accounts = [this](uint64_t id) {
     require_worker(parent_);
-    auto parent = parent_->acquire();
-    require(parent.valid() && parent.get() != nullptr &&
-        ::GetForegroundWindow() == static_cast<HWND>(parent.get()),
-        CITIZENSDK_ERROR_AUTHENTICATION_REQUIRED, "追加认证需要前台窗口");
-    return user_auth_->authorize_add_accounts(id);
+    return user_auth_->authorize_add_accounts(id,[window=parent_](const std::atomic_bool &cancelled){
+      auto result=std::make_shared<std::promise<bool>>();auto ready=result->get_future();
+      // 窗口租约只在原UI派发器内获取和释放；等待期间不持代际锁或窗口锁。
+      if(!window->invoke([window,result]{
+        auto lease=window->acquire();
+        result->set_value(lease.valid()&&lease.get()!=nullptr&&
+            ::GetForegroundWindow()==static_cast<HWND>(lease.get()));
+      }))return false;
+      const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+      while(!cancelled.load()&&std::chrono::steady_clock::now()<deadline){
+        if(ready.wait_for(std::chrono::milliseconds(25))==std::future_status::ready)return ready.get();
+      }
+      return false;
+    });
   };
   services_.create_password = [this](uint64_t id) { return user_auth_->create_vault_password(id); };
   services_.unlock_password = [this](uint64_t host_operation_id) {

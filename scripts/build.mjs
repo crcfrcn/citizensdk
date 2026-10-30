@@ -2,8 +2,9 @@
 // config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；*.yml：负责全部GitHub流程，包括版本、作业编排、发布及历史清理。
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {cpus,loadavg,totalmem,freemem,release} from 'node:os';
 import {createReadStream,mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync,readlinkSync} from 'node:fs';
-import {join,dirname,resolve,basename,relative,sep,isAbsolute} from 'node:path';
+import {join,dirname,resolve,basename,relative,sep,isAbsolute,win32} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {manifest as configuration,tools} from './config.mjs';
 export function sdkName(version){return '公民SDK·SDK·v'+version;}
@@ -103,7 +104,7 @@ export async function waitGroup(pid,{env={},attempts=50,inspect=spawnSync,pause=
   try{await pause(100);}catch(error){throw unresolved('等待被中断',error);}
  }
 }
-async function run(command,args,{cwd=root,env={},capture=false,signal:taskSignal=controller.signal,trim=true}={}){
+export async function run(command,args,{cwd=root,env={},capture=false,signal:taskSignal=controller.signal,trim=true}={}){
  taskSignal.throwIfAborted();let batch=false;
  if(process.platform==='win32'&&/\.(?:bat|cmd)$/iu.test(command)){if([command,...args].some(value=>/["%!^&|<>\r\n]/u.test(value)))throw Error('Windows工具参数含Shell控制字符');args=['/d','/s','/c','\"'+[command,...args].map(value=>'\"'+value+'\"').join(' ')+'\"'];command=process.env.COMSPEC||'cmd.exe';batch=true;}
  const environment={...process.env,...env};delete environment.GH_TOKEN;delete environment.GITHUB_TOKEN;
@@ -173,7 +174,7 @@ async function verifySymbols(file,project,env,apple=false){
  for(const name of expected)if(!new RegExp('(?:^|\\s)_?'+name+'(?:\\s|$)','mu').test(output))throw Error('SDK公开ABI缺失：'+name);
  return output;
 }
-async function android(project,work,env,headers,device=false){
+async function android(project,work,env,headers,device=false,testing={}){
  const ndk=process.env.ANDROID_NDK_HOME||process.env.ANDROID_NDK_ROOT;
  const bin=join(ndk,'toolchains/llvm/prebuilt',process.platform==='darwin'?'darwin-x86_64':'linux-x86_64','bin'),triple='aarch64-linux-android';
  const environment={...env,CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS:'-C link-arg=-Wl,-soname,libcitizensdk.so',CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER:join(bin,'aarch64-linux-android24-clang'),CC_aarch64_linux_android:join(bin,'aarch64-linux-android24-clang'),AR_aarch64_linux_android:join(bin,'llvm-ar'),SDK_NM:join(bin,'llvm-nm')};
@@ -188,10 +189,14 @@ async function android(project,work,env,headers,device=false){
  for(const name of ['settings.gradle','build.gradle','native/build.gradle'])put(join(work,'gradle-project',name),`apply from: new File(System.getenv('CITIZENSDK_SOURCE_DIR'), 'android/${name}')\n`);
  const androidEnv={...environment,CITIZENSDK_WORK_DIR:work,CITIZENSDK_SOURCE_DIR:project,CITIZENSDK_ANDROID_BUILD_DIR:join(work,'gradle-output'),CITIZENSDK_ANDROID_CORE_DIR:stage,CITIZENSDK_INTERNAL_INCLUDE_DIR:headers,CITIZENSDK_FLUTTER_ROOT:process.env.FLUTTER_ROOT,GRADLE_USER_HOME:gradleHome};
  // 真机安装只构建原生组件；SDK正式交付仍执行原测试。
- await run('gradle',['--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),...device?[]:[':native:testReleaseUnitTest'],':native:assembleRelease'],{env:androidEnv});
+ await run('gradle',[...testing.testDevice?['--offline']:[],'--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),...device?[]:[':native:testReleaseUnitTest'],':native:assembleRelease'],{env:androidEnv});
  const output=join(work,'output/android'),aar=join(work,'gradle-output/native/outputs/aar/native-release.aar');copy(maven,join(output,'maven'));copy(aar,join(output,'citizensdk.aar'));copy(join(stage,'libcitizensdk.so'),join(output,'src/main/jniLibs/arm64-v8a/libcitizensdk.so'));
  await run('unzip',['-o',aar,'jni/arm64-v8a/libcitizensdk_jni.so','-d',join(work,'aar')],{env:androidEnv});copy(join(work,'aar/jni/arm64-v8a/libcitizensdk_jni.so'),join(output,'src/main/jniLibs/arm64-v8a/libcitizensdk_jni.so'));
- copy(join(work,'aar/jni/arm64-v8a/libcitizensdk_jni.so'),join(stage,'libcitizensdk_jni.so'));verifyImageSymbols(await run(join(bin,'llvm-nm'),['-D','--defined-only',join(stage,'libcitizensdk_jni.so')],{env:environment,capture:true}),readFileSync(join(project,'image/citizensdk_qr_image.h'),'utf8')); const dependencies=await run(join(bin,'llvm-readelf'),['--dynamic-table',join(stage,'libcitizensdk_jni.so')],{env:environment,capture:true});if(!/\(NEEDED\).*\[libcitizensdk\.so\]/u.test(dependencies)||/\(NEEDED\).*\[[^\]]*[\\/]/u.test(dependencies))throw Error('Android JNI装载依赖无效');if(!device)await run('gradle',['--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),':testReleaseUnitTest'],{env:androidEnv});
+ copy(join(work,'aar/jni/arm64-v8a/libcitizensdk_jni.so'),join(stage,'libcitizensdk_jni.so'));verifyImageSymbols(await run(join(bin,'llvm-nm'),['-D','--defined-only',join(stage,'libcitizensdk_jni.so')],{env:environment,capture:true}),readFileSync(join(project,'image/citizensdk_qr_image.h'),'utf8')); const dependencies=await run(join(bin,'llvm-readelf'),['--dynamic-table',join(stage,'libcitizensdk_jni.so')],{env:environment,capture:true});if(!/\(NEEDED\).*\[libcitizensdk\.so\]/u.test(dependencies)||/\(NEEDED\).*\[[^\]]*[\\/]/u.test(dependencies))throw Error('Android JNI装载依赖无效');if(!device)await run('gradle',[...testing.testDevice?['--offline']:[],'--no-daemon','-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),':testReleaseUnitTest'],{env:androidEnv});
+ if(testing.testDevice){
+  // Flutter JVM已消费Release JNI；instrumentation JNI必须只来自当前CMake，不再作为jniLibs输入。
+  rmSync(join(stage,'libcitizensdk_jni.so'));
+  console.error(JSON.stringify({target:'AndroidJVM',native:junit(join(work,'gradle-output/native/test-results/testReleaseUnitTest')),flutter:junit(join(work,'gradle-output/flutter/test-results/testReleaseUnitTest'))}));return androidTests(work,androidEnv,testing.testDevice,testing.performance);}
 }
 // Cargo与现有CMake各自拥有准确输出；内部依赖目录的同名库不参与最终链接选择。
 export function appleLibraries(core,qr){
@@ -199,12 +204,12 @@ export function appleLibraries(core,qr){
  for(const file of libraries){const info=lstatSync(file);if(!info.isFile()||!info.size)throw Error('Apple静态库缺失或为空：'+file);}
  return libraries;
 }
-async function apple(project,work,env,headers,version,device=false){
+async function apple(project,work,env,headers,version,device=false,testing={}){
  const frameworks=[];
  for(const [triple,sdk,target,identity,platform,minimum]of [
   ['aarch64-apple-ios','iphoneos','arm64-apple-ios16.0','arm64-apple-ios','iPhoneOS','16.0'],
   ['aarch64-apple-ios-sim','iphonesimulator','arm64-apple-ios16.0-simulator','arm64-apple-ios-simulator','iPhoneSimulator','16.0'],
-  ['aarch64-apple-darwin','macosx','arm64-apple-macosx13.0','arm64-apple-macos','MacOSX','13.0']].filter((_,index)=>!device||index===0)){
+  ['aarch64-apple-darwin','macosx','arm64-apple-macosx13.0','arm64-apple-macos','MacOSX','13.0']].filter((_,index)=>testing.target==='iOS'?index===1:testing.target==='macOS'?index===2:!device||index===0)){
   const sdkPath=await run('xcrun',['--sdk',sdk,'--show-sdk-path'],{capture:true}),environment={...env,SDKROOT:sdkPath,IPHONEOS_DEPLOYMENT_TARGET:'16.0',MACOSX_DEPLOYMENT_TARGET:'13.0',CARGO_PROFILE_RELEASE_STRIP:'false'};
   const core=await cargo(project,triple,environment),slice=join(work,triple),framework=join(slice,'CitizenSDK.framework'),mac=sdk==='macosx',content=mac?join(framework,'Versions/A'):framework;
   const modules=join(content,'Modules/CitizenSDK.swiftmodule'),resources=mac?join(content,'Resources'):content;mkdirSync(modules,{recursive:true});
@@ -225,47 +230,82 @@ async function apple(project,work,env,headers,version,device=false){
  }
  const output=join(work,'output/darwin/CitizenSDK.xcframework');mkdirSync(dirname(output),{recursive:true});await run('xcodebuild',['-create-xcframework',...frameworks,'-output',output],{env});
  // Xcode会移除已有稳定接口对应的二进制Swift模块；恢复同轮编译器快速消费所需三件输出。
- for(const [slice,triple,identity]of [['ios-arm64','aarch64-apple-ios','arm64-apple-ios'],['ios-arm64-simulator','aarch64-apple-ios-sim','arm64-apple-ios-simulator'],['macos-arm64','aarch64-apple-darwin','arm64-apple-macos']].filter((_,index)=>!device||index===0))for(const extension of ['swiftmodule','swiftdoc','swiftsourceinfo']){const from=join(work,triple,'CitizenSDK.framework/Modules/CitizenSDK.swiftmodule',identity+'.'+extension),to=join(output,slice,'CitizenSDK.framework/Modules/CitizenSDK.swiftmodule',identity+'.'+extension);if(existsSync(from)){if(existsSync(to)){if(!readFileSync(from).equals(readFileSync(to)))throw Error('XCFramework二进制模块漂移');}else copy(from,to);}}
+ for(const [slice,triple,identity]of [['ios-arm64','aarch64-apple-ios','arm64-apple-ios'],['ios-arm64-simulator','aarch64-apple-ios-sim','arm64-apple-ios-simulator'],['macos-arm64','aarch64-apple-darwin','arm64-apple-macos']].filter((_,index)=>testing.target==='iOS'?index===1:testing.target==='macOS'?index===2:!device||index===0))for(const extension of ['swiftmodule','swiftdoc','swiftsourceinfo']){const from=join(work,triple,'CitizenSDK.framework/Modules/CitizenSDK.swiftmodule',identity+'.'+extension),to=join(output,slice,'CitizenSDK.framework/Modules/CitizenSDK.swiftmodule',identity+'.'+extension);if(existsSync(from)){if(existsSync(to)){if(!readFileSync(from).equals(readFileSync(to)))throw Error('XCFramework二进制模块漂移');}else copy(from,to);}}
  // 真机安装不编译模拟器、macOS或SDK测试现场。
- if(!device)await appleTests(project,work,env,headers);
+ if(!device)await appleTests(project,work,env,headers,testing);
 }
-async function appleTests(project,work,env,headers){
- const harness=join(work,'apple-tests'),core=join(env.CARGO_TARGET_DIR,'aarch64-apple-darwin/release'),qr=join(work,'aarch64-apple-darwin/qr');
+async function appleTests(project,work,env,headers,{simulator,performance=false}={}){
+ const triple=simulator?'aarch64-apple-ios-sim':'aarch64-apple-darwin',flutterName=simulator?'Flutter':'FlutterMacOS';
+ const harness=join(work,'apple-tests'),core=join(env.CARGO_TARGET_DIR,triple,'release'),qr=join(work,triple,'qr');
  for(const name of ['citizensdk.h','citizensdk_types.h'])copy(join(project,'include',name),join(harness,'Sources/CitizenSDKC/include',name));copy(join(project,'image/citizensdk_qr_image.h'),join(harness,'Sources/CitizenSDKC/include/citizensdk_qr_image.h'));put(join(harness,'Sources/CitizenSDKC/harness.c'),'#include "citizensdk.h"\nint citizensdk_test_anchor(void){return 0;}\n');
  for(const file of files(join(project,'darwin/src')).filter(path=>path.endsWith('.swift')))put(join(harness,'Sources/CitizenSDK',basename(file)),'import CitizenSDKC\n'+readFileSync(file,'utf8'));
  put(join(harness,'Sources/CitizenSDK/CitizenSDKCExports.swift'),'@_exported import CitizenSDKC\n');copy(join(project,'darwin/citizen_sdk'),join(harness,'Sources/CitizenSDKFlutter'));
  // 同一平面测试目录按所属模块装配SwiftPM目标，每个测试只编译一次。
  for(const name of readdirSync(join(project,'darwin/tests')).filter(name=>name.endsWith('.swift')))copy(join(project,'darwin/tests',name),join(harness,'Tests',name.startsWith('CitizenSDKFlutter')?'CitizenSDKFlutterTests':'CitizenSDKTests',name));
- const engine=join(process.env.FLUTTER_ROOT,'bin/cache/artifacts/engine'),artifacts=readdirSync(engine).filter(name=>/^darwin-.*-release$/u.test(name)).map(name=>join(engine,name,'FlutterMacOS.xcframework')).filter(existsSync);if(artifacts.length!==1)throw Error('官方Flutter macOS Release framework不唯一');copy(artifacts[0],join(harness,'Artifacts/FlutterMacOS.xcframework'));
+ const engine=join(process.env.FLUTTER_ROOT,'bin/cache/artifacts/engine'),artifacts=simulator?[join(engine,'ios-release/Flutter.xcframework')].filter(existsSync):readdirSync(engine).filter(name=>/^darwin-.*-release$/u.test(name)).map(name=>join(engine,name,'FlutterMacOS.xcframework')).filter(existsSync);if(artifacts.length!==1)throw Error('官方Flutter Release framework不唯一');copy(artifacts[0],join(harness,'Artifacts',flutterName+'.xcframework'));
  const libraries=appleLibraries(core,qr);
- const flutterSlice=readdirSync(artifacts[0]).map(name=>join(artifacts[0],name,'FlutterMacOS.framework')).find(existsSync);if(!flutterSlice)throw Error('Flutter macOS framework缺失');
+ const flutterSlice=readdirSync(artifacts[0]).filter(name=>!simulator||name.includes('simulator')).map(name=>join(artifacts[0],name,flutterName+'.framework')).find(existsSync);if(!flutterSlice)throw Error('Flutter目标framework缺失');
  const flags=['-enable-testing','-warnings-as-errors','-strict-concurrency=complete','-I',headers,'-Xcc','-I'+join(harness,'Sources/CitizenSDKC/include')],link=libraries.flatMap(path=>['-Xlinker','-force_load','-Xlinker',path]);
  put(join(harness,'Package.swift'),`// swift-tools-version: 5.9
 import PackageDescription
 let flags: [SwiftSetting] = [.unsafeFlags(${JSON.stringify(flags)})]
-let package = Package(name: "CitizenSDKAppleTests", platforms: [.macOS(.v14)], targets: [
- .binaryTarget(name: "FlutterMacOS", path: "Artifacts/FlutterMacOS.xcframework"),
+let package = Package(name: "CitizenSDKAppleTests", platforms: [.macOS(.v14), .iOS(.v16)], products: [.library(name: "CitizenSDKAppleTests", targets: ["CitizenSDK", "CitizenSDKFlutter"])], targets: [
+ .binaryTarget(name: "${flutterName}", path: "Artifacts/${flutterName}.xcframework"),
  .target(name: "CitizenSDKC", publicHeadersPath: "include"),
  .target(name: "CitizenSDK", dependencies: ["CitizenSDKC"], swiftSettings: flags, linkerSettings: [.unsafeFlags(${JSON.stringify(link)}), .linkedFramework("Security"), .linkedFramework("LocalAuthentication"), .linkedLibrary("c++"), .linkedLibrary("sqlite3")]),
- .target(name: "CitizenSDKFlutter", dependencies: ["CitizenSDK", "FlutterMacOS"], swiftSettings: flags),
+ .target(name: "CitizenSDKFlutter", dependencies: ["CitizenSDK", "${flutterName}"], swiftSettings: flags),
  .testTarget(name: "CitizenSDKTests", dependencies: ["CitizenSDK"], swiftSettings: flags),
  .testTarget(name: "CitizenSDKFlutterTests", dependencies: ["CitizenSDK", "CitizenSDKFlutter"], swiftSettings: flags, linkerSettings: [.unsafeFlags(${JSON.stringify(['-Xlinker','-rpath','-Xlinker',dirname(flutterSlice)])})])
 ], swiftLanguageVersions: [.v5])\n`);
+ if(simulator){
+  const state=JSON.parse(await run('xcrun',['simctl','list','devices','available','-j'],{env,capture:true}));
+  const device=Object.values(state.devices).flat().find(value=>value.udid===simulator);
+  if(!device)throw Error('指定iOS模拟器不存在');
+  const application='org.citizen.sdk.test.'+basename(work).replaceAll('-','').toLowerCase();let booted=false;
+  const boot=device.state==='Shutdown';if(!boot&&device.state!=='Booted')throw Error('iOS模拟器状态不可执行');
+
+  try{
+   if(boot){await run('xcrun',['simctl','boot',simulator],{env});booted=true;}
+   await run('xcrun',['simctl','bootstatus',simulator,'-b'],{env});
+   const listing=JSON.parse(await run('xcodebuild',['-list','-json'],{cwd:harness,env,capture:true})),schemes=listing.workspace?.schemes||listing.project?.schemes||[];
+   const scheme='CitizenSDKAppleTests';
+   if(!schemes.includes(scheme))throw Error('Swift Package聚合测试scheme缺失：'+schemes.join(','));
+   const derived=join(work,'xcode'),result=join(work,'simulator.xcresult'),args=['-scheme',scheme,'-configuration','Release','-destination','platform=iOS Simulator,id='+simulator,'-derivedDataPath',derived,'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','PRODUCT_BUNDLE_IDENTIFIER='+application];
+   await run('xcodebuild',['build-for-testing',...args],{cwd:harness,env});
+   const bundles=readdirSync(join(derived,'Build/Products'),{recursive:true}).filter(name=>name.endsWith('.xctest')).map(name=>join(derived,'Build/Products',name));
+   if(!bundles.length)throw Error('iOS XCTest未生成');for(const bundle of bundles){copy(join(project,'chain'),join(bundle,'chain'));copy(join(project,'include/citizensdk.h'),join(bundle,'citizensdk.h'));}
+   // Swift Package逻辑测试直接使用Xcode官方xctest代理，没有自建.app；按真实运行描述核对。
+   const plans=files(join(derived,'Build/Products')).filter(name=>name.endsWith('.xctestrun'));
+   if(plans.length!==1)throw Error('iOS XCTest运行描述不唯一');
+   const plan=JSON.parse(await run('plutil',['-convert','json','-o','-',plans[0]],{env,capture:true}));
+   const targets=plan.TestConfigurations?.flatMap(value=>value.TestTargets)||[];
+   if(!targets.length)throw Error('iOS XCTest目标缺失');
+   for(const target of targets){if(!target.TestHostPath?.endsWith('/Developer/Library/Xcode/Agents/xctest'))throw Error('iOS逻辑测试代理未识别：'+JSON.stringify(target));}
+   await run('xcodebuild',['test-without-building',...args,'-resultBundlePath',result],{cwd:harness,env:{...env,TEST_RUNNER_CITIZENSDK_PERFORMANCE:String(performance)}});
+   const summary=JSON.parse(await run('xcrun',['xcresulttool','get','test-results','summary','--path',result,'--compact'],{env,capture:true}));
+   const passed=summary.passedTests,failed=summary.failedTests,skipped=summary.skippedTests;
+   if(!Number.isSafeInteger(passed)||passed<=0||failed!==0||!Number.isSafeInteger(skipped))throw Error('iOS测试报告未通过：'+JSON.stringify(summary));
+   console.error(JSON.stringify({target:'iOS',passed,failed,skipped,notRun:['Secure Enclave真机授权','相机物理采集']}));
+  }finally{
+   if(booted)await run('xcrun',['simctl','shutdown',simulator],{env,signal:new AbortController().signal});
+  }
+  return;
+ }
  const scratch=join(harness,'build'),args=['--package-path',harness,'--configuration','release','--scratch-path',scratch];await run('swift',['build','--build-tests',...args],{env});
  const bundles=readdirSync(scratch,{recursive:true}).filter(name=>name.endsWith('.xctest')).map(name=>join(scratch,name));if(!bundles.length)throw Error('Apple XCTest未生成');
  // Flutter测试目标通过原官方框架目录的rpath加载binaryTarget，不再复制；这里只补齐chain资源。
- for(const bundle of bundles)copy(join(project,'chain'),join(bundle,'Contents/Resources/chain'));
- await run('swift',['test','--skip-build',...args],{env});
+ for(const bundle of bundles){copy(join(project,'chain'),join(bundle,'Contents/Resources/chain'));copy(join(project,'include/citizensdk.h'),join(bundle,'Contents/Resources/citizensdk.h'));}
+ const output=await run('swift',['test','--skip-build',...args],{env:{...env,CITIZENSDK_PERFORMANCE:String(performance)},capture:true});console.error(output);console.error(JSON.stringify({target:'macOS',...xctestReport(output),notRun:['Secure Enclave真机授权','相机物理采集']}));
  // 同一正式Rust/图像静态库装配真实FFI测试库，不替代业务和结果投影。
  const fixture=join(work,'ffi.dylib');
- await run('xcrun',['clang++','-std=c++17','-dynamiclib','-fPIC','-Wall','-Wextra','-Wpedantic','-Wconversion','-Wsign-conversion','-Werror','-I'+join(project,'include'),'-I'+headers,join(project,'test/cpp.cc'),...libraries.map(path=>'-Wl,-force_load,'+path),'-framework','Security','-framework','SystemConfiguration','-framework','CoreFoundation','-lsqlite3','-lc++','-liconv','-lresolv','-o',fixture],{env});
+ await run('xcrun',['clang++','-std=c++17','-dynamiclib','-fPIC','-Wall','-Wextra','-Wpedantic','-Wconversion','-Wsign-conversion','-Werror','-I'+join(project,'include'),'-I'+headers,join(project,'lib/test/cpp.cc'),...libraries.map(path=>'-Wl,-force_load,'+path),'-framework','Security','-framework','SystemConfiguration','-framework','CoreFoundation','-lsqlite3','-lc++','-liconv','-lresolv','-o',fixture],{env});
  const flutter=join(process.env.FLUTTER_ROOT,'bin/flutter');
  await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});
  // ffigen只能修改构建副本；头文件与提交绑定不一致则失败，不能手修签名。
  const binding=join(project,'lib/platform/bind.dart'),expected=readFileSync(binding);
  await run(join(process.env.FLUTTER_ROOT,'bin/dart'),['run','ffigen'],{cwd:project,env});
  if(!readFileSync(binding).equals(expected))throw Error('C ABI生成绑定与源码不一致');
- await run(flutter,['test','--no-pub','--reporter=expanded','test/platform/ffi_test.dart'],{cwd:project,env:{...env,CITIZENSDK_TEST_LIBRARY:fixture,CITIZENSDK_TEST_WORK_DIR:work}});
+ await run(flutter,['test','--no-pub','--reporter=expanded','lib/test/platform/ffi_test.dart'],{cwd:project,env:{...env,CITIZENSDK_TEST_LIBRARY:fixture,CITIZENSDK_TEST_WORK_DIR:work}});
 }
 async function desktop(project,work,env,headers,target){
  const windows=target==='Windows',triple=windows?'x86_64-pc-windows-msvc':'aarch64-unknown-linux-gnu',platform=windows?'windows':'linux',core=await cargo(project,triple,env);
@@ -273,9 +313,9 @@ async function desktop(project,work,env,headers,target){
  if(windows)definitions.CITIZENSDK_CORE_IMPORT_LIBRARY=join(core,'citizensdk.dll.lib');else definitions.CITIZENSDK_ENABLE_QR_CAPTURE='ON';
  for(const name of ['SQLITE_INCLUDE_DIR','SQLITE_ARCHIVE',...windows?[]:['OPENSSL_INCLUDE_DIR','TSS2_INCLUDE_DIR','CRYPTO_ARCHIVE','TSS2_ESYS_ARCHIVE','TSS2_MU_ARCHIVE','TSS2_SYS_ARCHIVE','TSS2_RC_ARCHIVE','TSS2_TCTI_DEVICE_ARCHIVE']]){const value=process.env['CITIZENSDK_'+name];if(!value)throw Error('缺少宿主依赖：'+name);definitions['CITIZENSDK_'+name]=value;}
  if(!windows)mkdirSync(join(work,'test-state'),{mode:0o700});
- await run('cmake',['-S',join(project,platform),'-B',cmake,...windows?['-G','Ninja']:[],...Object.entries(definitions).map(([key,value])=>'-D'+key+'='+value)],{env});await run('cmake',['--build',cmake,'--config','Release','--parallel'],{env});await run('ctest',['--test-dir',cmake,'-C','Release','--no-tests=error','--output-on-failure'],{env});await run('cmake',['--install',cmake,'--config','Release'],{env});
+ await run('cmake',['-S',join(project,platform),'-B',cmake,...windows?['-G','Ninja']:[],...Object.entries(definitions).map(([key,value])=>'-D'+key+'='+value)],{env});await run('cmake',['--build',cmake,'--config','Release','--parallel'],{env});await run('ctest',['--test-dir',cmake,'-C','Release','--no-tests=error','--output-on-failure','--output-junit',join(work,'desktop.xml')],{env});testReport([readFileSync(join(work,'desktop.xml'),'utf8')]);await run('cmake',['--install',cmake,'--config','Release'],{env});
  if(!windows){mkdirSync(join(work,'consumer-state'),{mode:0o700});}
- const consumer=join(work,'consumer');await run('cmake',['-S',join(project,platform,'tests'),'-B',consumer,...windows?['-G','Ninja']:[],'-DCITIZENSDK_CONSUMER_PREFIX='+output,'-DCITIZENSDK_CONSUMER_VERSION='+/^version: (\S+)$/mu.exec(readFileSync(join(project,'pubspec.yaml'),'utf8'))[1],'-DCITIZENSDK_PLATFORM='+target,'-DCITIZENSDK_TEST_WORK_DIR='+join(work,'consumer-state')],{env});await run('cmake',['--build',consumer,'--config','Release','--parallel'],{env});await run('ctest',['--test-dir',consumer,'-C','Release','--no-tests=error','--output-on-failure'],{env});await desktopFlutter(project,work,env,target,output);
+ const consumer=join(work,'consumer');await run('cmake',['-S',join(project,platform,'tests'),'-B',consumer,...windows?['-G','Ninja']:[],'-DCITIZENSDK_CONSUMER_PREFIX='+output,'-DCITIZENSDK_CONSUMER_VERSION='+/^version: (\S+)$/mu.exec(readFileSync(join(project,'pubspec.yaml'),'utf8'))[1],'-DCITIZENSDK_PLATFORM='+target,'-DCITIZENSDK_TEST_WORK_DIR='+join(work,'consumer-state')],{env});await run('cmake',['--build',consumer,'--config','Release','--parallel'],{env});await run('ctest',['--test-dir',consumer,'-C','Release','--no-tests=error','--output-on-failure','--output-junit',join(work,'consumer.xml')],{env});console.error(JSON.stringify({target,...testReport([readFileSync(join(work,'desktop.xml'),'utf8'),readFileSync(join(work,'consumer.xml'),'utf8')]),notRun:windows?['相机物理采集']:['TPM正向授权','相机物理采集']}));await desktopFlutter(project,work,env,target,output);
 }
 // 同一Flutter工程沿用其官方配置工具；两条路径完整校验后才启动，禁止回退PATH。
 export async function flutterChecks(output,label,{env={},testEnv=env,runImpl=run}={}){
@@ -295,7 +335,7 @@ async function desktopFlutter(project,work,env,target,installed){
  const runner=join(work,'flutter-consumer'),flutter=join(process.env.FLUTTER_ROOT,'bin',windows?'flutter.bat':'flutter');
  await run(flutter,['create','--platforms='+platform,'--project-name','citizensdk_consumer','--org','org.citizen',runner],{env});
  writeFileSync(join(runner,'pubspec.yaml'),`name: citizensdk_consumer\npublish_to: none\nversion: 1.0.0+1\nenvironment:\n  sdk: ^3.8.0\ndependencies:\n  flutter:\n    sdk: flutter\n  citizen_sdk:\n    path: ${JSON.stringify(sdk.replaceAll('\\','/'))}\nflutter:\n  uses-material-design: false\n`);
- copyFileSync(join(project,'pubspec.lock'),join(runner,'pubspec.lock'));copyFileSync(join(project,'test/consumers',platform+'.dart'),join(runner,'lib/main.dart'));
+ copyFileSync(join(project,'pubspec.lock'),join(runner,'pubspec.lock'));copyFileSync(join(project,'lib/test/consumers',platform+'.dart'),join(runner,'lib/main.dart'));
  // 两平台均先创建本轮测试根，保留Windows夹具的owner/no-reparse检查。
  const state=join(work,'flutter-state');mkdirSync(state,{mode:0o700});
  const cmake=join(runner,platform,'CMakeLists.txt'),before=readFileSync(cmake,'utf8'),marker='include(flutter/generated_plugins.cmake)';if(!before.includes(marker))throw Error('Flutter官方插件登记入口缺失');
@@ -330,19 +370,149 @@ export function verifyConsumer(project){
  for(const name of ['Cargo.lock','pubspec.lock','include/citizensdk.h','include/citizensdk_types.h','lib/platform/bind.dart'])if(lstatSync(join(root,name)).size!==lstatSync(join(project,name)).size||!readFileSync(join(root,name)).equals(readFileSync(join(project,name))))throw Error('SDK交付与锁定源码接口不一致');
  return project;
 }
-export async function build({target,test=false,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))[1],native,device=false}={}){
+// Rust的SQLite测试沿用声明的同一MSVC静态库，不依赖全局sqlite安装或隐式LIB目录。
+export function sqliteLinkEnv(env,archive,platform=process.platform){
+ if(platform!=='win32')return env;
+ if(typeof archive!=='string'||!win32.isAbsolute(archive)||win32.basename(archive).toLowerCase()!=='sqlite3.lib')throw Error('Windows测试缺少声明的SQLite静态库');
+ return {...env,LIB:win32.dirname(archive)+';'+(env.LIB??process.env.LIB??'')};
+}
+// 性能仅描述同一真实实现；带替身的Engine样本明确标注为本机调度/缓存，不冒充实网。
+async function performanceTests(project,work,env){
+ console.error(JSON.stringify({performance:{platform:process.platform,arch:process.arch,os:release(),cpu:cpus()[0]?.model,cores:cpus().length,load:loadavg(),totalMemory:totalmem(),freeMemory:freemem(),rust:tools.rust,flutter:tools.flutter,threshold:'descriptive'}}));
+ for(const [packageName,target,filter]of [['citizen-sdk-ffi',['--lib'],'baseline_lifecycle_contract'],['citizen-sdk-engine',['--test','baseline_resource_contract'],''],['citizen-sdk-store',['--test','public'],'baseline']]){
+  const build=await run('cargo',['test','--release','--locked','-p',packageName,...target,'--no-run','--message-format=json'],{cwd:project,env,capture:true});
+  const artifacts=build.split(/\r?\n/u).filter(Boolean).map(line=>JSON.parse(line)).filter(value=>value.reason==='compiler-artifact'&&value.profile.test&&value.executable);
+  if(artifacts.length!==1)throw Error('性能测试可执行文件不唯一');
+  const args=[artifacts[0].executable,...filter?[filter]:[],'--nocapture','--test-threads=1'];
+  // 编译结束后再采RSS：time记录单个测试进程树中最大的进程高水位，不算总内存峰值。
+  if(process.platform==='darwin')await run('/usr/bin/time',['-l',...args],{cwd:project,env});
+  else if(process.platform==='linux'&&existsSync('/usr/bin/time'))await run('/usr/bin/time',['-v',...args],{cwd:project,env});
+  else{console.error('性能峰值RSS未测量：当前宿主没有系统time入口');await run(args[0],args.slice(1),{cwd:project,env});}
+ }
+ const image=join(work,'image-tests');await run('cmake',['-S',join(project,'image'),'-B',image,'-DCMAKE_BUILD_TYPE=Release','-DCITIZENSDK_QR_IMAGE_BUILD_TESTS=ON','-DCITIZENSDK_ZXING_SOURCE_DIR='+process.env.CITIZENSDK_ZXING_SOURCE_DIR],{env});
+ await run('cmake',['--build',image,'--config','Release','--parallel'],{env});
+ await run('ctest',['--test-dir',image,'-C','Release','--no-tests=error','--output-on-failure','--verbose','--output-junit',join(work,'image.xml')],{env:{...env,CITIZENSDK_PERFORMANCE:'true'}});testReport([readFileSync(join(work,'image.xml'),'utf8')]);
+}
+// 测试选择只决定现有入口的调度；设备标识不能被忽略或混入native构建开关。
+export function testOptions(args){
+ const values=[...args],target=values[0]&&!values[0].startsWith('--')?values.shift():undefined;
+ if(target&&!['Android','iOS','macOS','LinuxARM','Windows'].includes(target))throw Error('未知测试平台');
+ const options={test:true,target};
+ while(values.length){const flag=values.shift();if(flag==='--performance'&&!options.performance)options.performance=true;
+  else if(['--device','--simulator'].includes(flag)){
+   const key=flag==='--device'?'testDevice':'simulator',value=values.shift();
+   if(options[key]||!value||value.startsWith('-')||!/^[-A-Za-z0-9.:_]+$/u.test(value))throw Error('测试设备标识无效');options[key]=value;
+  }else throw Error('未知或重复测试参数：'+flag);
+ }
+ if(target==='Android'?!options.testDevice||options.simulator:options.testDevice)throw Error('Android测试必须显式选择--device');
+ if(target==='iOS'?!options.simulator||options.testDevice:options.simulator)throw Error('iOS测试必须显式选择--simulator');
+ return options;
+}
+// 读取工具原生JUnit报告；进程退出0、空报告和全部跳过均不能替代真正执行。
+export function testReport(documents){
+ if(!documents.length)throw Error('测试报告缺失');const result={passed:0,failed:0,skipped:0};
+ for(const xml of documents){
+  if(typeof xml!=='string')throw Error('测试报告不完整');
+  // 只读JUnit的元素结构与计数；拒绝DTD、重复属性及残缺XML，不执行实体或外部引用。
+  const stack=[];let offset=0,roots=0;
+  const count=(counts,kind)=>{counts[kind]++;counts.tests++;};
+  const tokens=/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<\/?[A-Za-z_][^<>]*>|[^<]+/gu;
+  for(const token of xml.matchAll(tokens)){
+   if(token.index!==offset)throw Error('测试报告XML不完整');offset+=token[0].length;const text=token[0];
+   if(text.startsWith('<?')||text.startsWith('<!--'))continue;
+   if(text.startsWith('<![CDATA[')){if(!stack.length)throw Error('测试报告XML结构无效');continue;}
+   if(!text.startsWith('<')){if(!stack.length&&text.trim())throw Error('测试报告XML结构无效');continue;}
+   const close=/^<\/([A-Za-z_][\w:.-]*)\s*>$/u.exec(text);
+   if(close){const node=stack.pop();if(!node||node.name!==close[1])throw Error('测试报告XML标签不匹配');finish(node);continue;}
+   const tag=/^<([A-Za-z_][\w:.-]*)([\s\S]*?)(\/?)>$/u.exec(text);if(!tag)throw Error('测试报告XML标签无效');
+   const attrs={};let tail=tag[2];while(tail.trim()){
+    const attribute=/^\s+([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/u.exec(tail);
+    if(!attribute||Object.hasOwn(attrs,attribute[1]))throw Error('测试报告XML属性无效');attrs[attribute[1]]=attribute[2]??attribute[3];tail=tail.slice(attribute[0].length);
+   }
+   const name=tag[1],parent=stack.at(-1),suite=name==='testsuite'||name==='testsuites';
+   if(!parent){if(!suite||++roots!==1)throw Error('测试报告根元素无效');}
+   if(suite&&parent&&!parent.suite||name==='testcase'&&!parent?.suite)throw Error('测试报告用例归属无效');
+   const node={name,attrs,suite,counts:{tests:0,passed:0,failed:0,skipped:0,failures:0,errors:0},failure:false,error:false,skip:false};
+   const entry=[...stack].reverse().find(value=>value.name==='testcase');
+   if(['failure','error','skipped'].includes(name)&&!entry)throw Error('测试报告错误节点无用例归属');
+   if(entry){if(name==='failure')entry.failure=true;if(name==='error')entry.error=true;if(name==='skipped')entry.skip=true;}
+   if(tag[3])finish(node);else stack.push(node);
+  }
+  if(offset!==xml.length||stack.length||roots!==1)throw Error('测试报告XML不完整');
+  function finish(node){
+   if(node.name==='testcase'){
+    const kind=node.failure||node.error?'failed':node.skip||['notrun','disabled'].includes(node.attrs.status)?'skipped':'passed';result[kind]++;
+    for(const suite of stack.filter(value=>value.suite)){count(suite.counts,kind);if(node.failure)suite.counts.failures++;if(node.error)suite.counts.errors++;}
+   }
+   if(node.suite&&!stack.length&&!node.counts.tests)throw Error('测试报告没有用例');
+   if(node.suite)for(const key of ['tests','failures','errors','skipped'])if(Object.hasOwn(node.attrs,key)&&(!/^\d+$/u.test(node.attrs[key])||Number(node.attrs[key])!==node.counts[key]))throw Error('测试报告套件计数不符：'+key);
+  }
+ }
+ if(result.failed||!result.passed)throw Error('测试未通过：'+JSON.stringify(result));return result;
+}
+function junit(directory){return testReport(existsSync(directory)?files(directory).filter(name=>name.endsWith('.xml')).map(name=>readFileSync(name,'utf8')):[]);}
+// XCTest原生逐项输出及All tests总数，避免SwiftPM缺失XML或把XCTSkip写成通过。
+export function xctestReport(output){
+ const cases=[...output.matchAll(/^Test Case '([^'\n]+)' (passed|failed|skipped) \([^\n]*\)\.\s*$/gmu)];
+ const totals=[...output.matchAll(/Test Suite 'All tests' (passed|failed) at[^\n]*\n\s*Executed (\d+) tests?, with (?:(\d+) tests? skipped and )?(\d+) failures?\b/gu)];
+ const result={passed:0,failed:0,skipped:0};
+ for(const entry of cases)result[entry[2]]++;
+ if(!totals.length||cases.length!==totals.reduce((sum,value)=>sum+Number(value[2]),0)||totals.some(value=>value[1]!=='passed'||Number(value[4])!==0)||result.skipped!==totals.reduce((sum,value)=>sum+Number(value[3]||0),0)||new Set(cases.map(value=>value[1])).size!==cases.length||!result.passed||result.failed)throw Error('XCTest数量或结果不符：'+JSON.stringify(result));return result;
+}
+// AndroidJUnitRunner官方raw结果：adb退出0本身不代表测试成功。
+export function instrumentationReport(output){
+ if(!/^INSTRUMENTATION_CODE: -1\s*$/mu.test(output)||/INSTRUMENTATION_(?:FAILED|ABORTED):|INSTRUMENTATION_RESULT: shortMsg=/u.test(output))throw Error('Android instrumentation未正常结束');
+ const totals=[...output.matchAll(/^INSTRUMENTATION_STATUS: numtests=(\d+)\s*$/gmu)].map(value=>Number(value[1])),codes=[...output.matchAll(/^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/gmu)].map(value=>Number(value[1]));
+ const result={passed:0,failed:0,skipped:0};
+ for(const code of codes)if(code===0)result.passed++;else if(code===-1||code===-2)result.failed++;else if(code===-3||code===-4)result.skipped++;else if(code!==1)throw Error('未知Android instrumentation状态');
+ if(!totals.length||totals.some(value=>value!==totals[0])||totals[0]!==result.passed+result.failed+result.skipped||!result.passed||result.failed)throw Error('Android测试数量或结果不符：'+JSON.stringify(result));
+ return result;
+}
+async function androidTests(work,env,serial,performance){
+ const adb=join(process.env.ANDROID_HOME||process.env.ANDROID_SDK_ROOT,'platform-tools',process.platform==='win32'?'adb.exe':'adb');
+ const devices=await run(adb,['devices'],{env,capture:true});
+ if(!devices.split(/\r?\n/u).some(line=>line===serial+'\tdevice'))throw Error('指定Android设备未在线');
+ const application='org.citizen.sdk.test.'+basename(work).replaceAll('-','').toLowerCase();
+ const environment={...env,ANDROID_SERIAL:serial,CITIZENSDK_TEST_APPLICATION:application};
+ let pending,owned=false;
+ try{
+  await run('gradle',['--offline','--no-daemon','--no-problems-report','--project-cache-dir',join(work,'gradle-cache'),'-p',join(work,'gradle-project'),':native:assembleReleaseAndroidTest'],{env:environment});
+  const directory=join(work,'gradle-output/native/outputs/apk/androidTest/release'),metadata=JSON.parse(readFileSync(join(directory,'output-metadata.json'),'utf8'));
+  if(metadata.applicationId!==application||metadata.elements?.length!==1||basename(metadata.elements[0].outputFile)!==metadata.elements[0].outputFile)throw Error('Android测试APK身份或数量不符');
+  const installed=await run(adb,['-s',serial,'shell','cmd','package','list','packages',application],{env,capture:true});
+  if(installed.split(/\r?\n/u).includes('package:'+application))throw Error('Android测试宿主已存在，禁止覆盖');
+  await run(adb,['-s',serial,'install','-t',join(directory,metadata.elements[0].outputFile)],{env});owned=true;
+  const output=await run(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','performance',String(Boolean(performance)),'-e','baseline',application,application+'/androidx.test.runner.AndroidJUnitRunner'],{env,capture:true});
+  console.error(output);const report=instrumentationReport(output);
+  if(performance){const logs=await run(adb,['-s',serial,'logcat','-d','-v','brief','-s','CitizenSDKBaseline:I'],{env,capture:true});const metrics=logs.split(/\r?\n/u).filter(line=>line.includes('application='+application+' '));if(metrics.length!==4)throw Error('Android性能报告缺失');for(const line of metrics)console.error(line.slice(line.indexOf('sdk-baseline')));}
 
+  console.error(JSON.stringify({target:'Android',...report,notRun:['生物识别交互及硬件密钥正向授权','相机物理采集']}));return report;
+ }catch(error){pending=error;throw error;}
+ finally{
+  // 直接instrumentation结束、异常或取消后，只回收本轮已取得所有权的测试包。
+  if(owned&&!pending?.keepWork){const cleanup=new AbortController();try{
+   const installed=await run(adb,['-s',serial,'shell','cmd','package','list','packages',application],{env,capture:true,signal:cleanup.signal});
+   if(installed.split(/\r?\n/u).includes('package:'+application)){await run(adb,['-s',serial,'shell','am','force-stop',application],{env,signal:cleanup.signal});await run(adb,['-s',serial,'uninstall',application],{env,signal:cleanup.signal});}
+  }catch(error){if(pending)console.error('测试宿主清理失败：'+error.message);else throw error;}}
+ }
+}
+export async function build({target,test=false,testDevice,simulator,performance=false,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))[1],native,device=false}={}){
+
+ if(test&&target){testOptions([target,...testDevice?['--device',testDevice]:[],...simulator?['--simulator',simulator]:[]]);const host={Android:['darwin','linux'],iOS:['darwin'],macOS:['darwin'],LinuxARM:['linux'],Windows:['win32']}[target];if(!host?.includes(process.platform)||target==='LinuxARM'&&process.arch!=='arm64')throw Error('当前宿主不能执行所选平台测试：'+target);}
  if(!test&&!native&&!['Android','Apple','LinuxARM','Windows'].includes(target))throw Error('编译必须选择真实内部目标或汇总完整产物');
  const base=join(root,'target',test?'test':'build');mkdirSync(base,{recursive:true});if(realpathSync(base)!==base)throw Error('任务目录经过链接');const work=mkdtempSync(join(base,'sdk-')),cache=claimCache(work);let complete=false,safe=true;
  try{
   if(cache.project)rmSync(cache.project,{recursive:true,force:true});
   const project=createFlutterSourceView(root,cache.project||join(work,'project'),{flutter:false}),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
-  if(test){
+  if(test)Object.assign(env,sqliteLinkEnv(env,process.env.CITIZENSDK_SQLITE_ARCHIVE));
+  if(test&&!target){
+   await run(process.execPath,['--test','lib/test/build.test.mjs'],{cwd:project,env});
    // 上游扩展有独立workspace/原锁，定向执行真实块接纳与清理回归，不启用Wasmtime。
    await run('cargo',['test','--manifest-path','smoldot/Cargo.toml','-p','smoldot-light','--lib','--no-default-features','--features','std','--locked','runtime_query_tests','--','--test-threads=1'],{cwd:project,env});
-   await run('cargo',['test','--workspace','--locked','--','--include-ignored','--test-threads=1'],{cwd:project,env});put(join(project,'analysis_options.yaml'),'include: package:flutter_lints/flutter.yaml\nanalyzer:\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n  errors:\n    invalid_use_of_visible_for_testing_member: error\n    missing_required_param: error\n    missing_return: error\nlinter:\n  rules:\n    avoid_dynamic_calls: false\n    directives_ordering: true\n    discarded_futures: true\n    prefer_final_locals: true\n    unawaited_futures: true\n');const flutter=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin',process.platform==='win32'?'flutter.bat':'flutter');await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});await run(flutter,['analyze','--fatal-infos'],{cwd:project,env});const tests=files(join(project,'test')).filter(path=>path.endsWith('_test.dart')&&relative(project,path).split(sep).join('/')!=='test/platform/ffi_test.dart').sort();if(!tests.length)throw Error('Dart测试缺失');await run(flutter,['test','--no-pub','--reporter=expanded',...tests],{cwd:project,env});return {tests:true};}
+   await run('cargo',['test','--workspace','--locked','--','--include-ignored','--test-threads=1'],{cwd:project,env});put(join(project,'analysis_options.yaml'),'include: package:flutter_lints/flutter.yaml\nanalyzer:\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n  errors:\n    invalid_use_of_visible_for_testing_member: error\n    missing_required_param: error\n    missing_return: error\nlinter:\n  rules:\n    avoid_dynamic_calls: false\n    directives_ordering: true\n    discarded_futures: true\n    prefer_final_locals: true\n    unawaited_futures: true\n');const flutter=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin',process.platform==='win32'?'flutter.bat':'flutter');await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});await run(flutter,['analyze','--fatal-infos'],{cwd:project,env});const tests=files(join(project,'lib/test')).filter(path=>path.endsWith('_test.dart')&&relative(project,path).split(sep).join('/')!=='lib/test/platform/ffi_test.dart').sort();if(!tests.length)throw Error('Dart测试缺失');await run(flutter,['test','--no-pub','--reporter=expanded',...tests],{cwd:project,env});if(performance)await performanceTests(project,work,env);return {tests:true};}
   if(native){const output=createFlutterSourceView(root,join(work,'output'));for(const name of ['android','darwin','linux','windows'])copy(join(native,name),join(output,name));setVersion(output,version);verifyComplete(output);}
-  else{setVersion(project,version);if(target==='Android')await android(project,work,env,headers,device);else if(target==='Apple')await apple(project,work,env,headers,version,device);else await desktop(project,work,env,headers,target);}
+  else{setVersion(project,version);if(target==='Android')await android(project,work,env,headers,device,{testDevice,performance});else if(['Apple','iOS','macOS'].includes(target))await apple(project,work,env,headers,version,device,test?{target,simulator,performance}:{});else await desktop(project,work,env,headers,target);}
+  if(test){if(performance&&['LinuxARM','Windows'].includes(target)){console.error(JSON.stringify({target,notRun:['平台桥接耗时采样']}));await performanceTests(project,work,env);}return {tests:true,target};}
   for(const name of readdirSync(work))if(name!=='output')rmSync(join(work,name),{recursive:true,force:true});complete=true;return {work,output:join(work,'output')};
  }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){cache.release();if(!complete)rmSync(work,{recursive:true,force:true});}}
 }
@@ -352,9 +522,9 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)&&!
   const [command,arg]=process.argv.slice(2);
   if(command==='verify')console.log(JSON.stringify({output:verifyConsumer(arg)}));
   else if(command==='consume')console.log(JSON.stringify(await consume({directory:process.env.CITIZENSDK_PACKAGE,sourceSha:arg,output:process.argv[4]})));
-  else if(command==='test')console.log(JSON.stringify(await build({test:true})));
+  else if(command==='test')console.log(JSON.stringify(await build(testOptions(process.argv.slice(3)))));
   else if(command==='native')console.log(JSON.stringify(await build({target:arg,device:process.argv.includes('--device')})));
   else if(command==='package'&&arg)console.log(JSON.stringify(await build({native:resolve(arg)})));
-  else throw Error('用法：node scripts/build.mjs native 目标 | package 原生件目录 | consume 源码SHA 输出 | verify 目录 | test');
+  else throw Error('用法：node scripts/build.mjs native 目标 | package 原生件目录 | consume 源码SHA 输出 | verify 目录 | test [Android --device ID | iOS --simulator UDID | macOS | LinuxARM | Windows] [--performance]');
  }catch(error){console.error(error.message);process.exitCode=1;}
 }
