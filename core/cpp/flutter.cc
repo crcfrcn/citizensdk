@@ -1016,7 +1016,7 @@ struct CaptureResource::State final {
         Scheduler queue, TextureFactory factory, Observer events, Closed done,
         CaptureControls calls)
       : host(value), id(std::move(identity)), purpose(use),
-        schedule(std::move(queue)), textures(std::move(textures)),
+        schedule(std::move(queue)), textures(std::move(factory)),
         observer(std::move(events)), closed(std::move(done)),
         controls(std::move(calls)) {}
   static void complete(Completion callback, citizensdk_error_code_t code) {
