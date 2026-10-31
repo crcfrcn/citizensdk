@@ -217,7 +217,12 @@ public final class CitizenSDKQrCapture: NSObject, AVCaptureVideoDataOutputSample
             gate.lock(); let current = !revoked && !paused && generation == snapshot; gate.unlock()
             if current { listener.result(result) }
         } catch let error as CitizenSDKError {
-            if error.code != .notFound && isActive { listener.error(error) }
-        } catch { if isActive { listener.error(CitizenSDKError(.decode, "QR frame could not be decoded")) } }
+            gate.lock(); let current = !revoked && !paused && generation == snapshot; gate.unlock()
+            // 帧错误与结果使用同一采集代次；暂停、恢复或关闭后的旧帧不得上报。
+            if error.code != .notFound && current { listener.error(error) }
+        } catch {
+            gate.lock(); let current = !revoked && !paused && generation == snapshot; gate.unlock()
+            if current { listener.error(CitizenSDKError(.decode, "QR frame could not be decoded")) }
+        }
     }
 }
