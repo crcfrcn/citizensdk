@@ -38,7 +38,7 @@ int main() {
   uint64_t json_size = 0;
   assert(citizensdk_qr_parse(sdk, input, 1, nullptr, 0, &json_size) == CITIZENSDK_OK && json_size > 0);
   std::array<uint8_t, 8> unchanged{}; unchanged.fill(0xa5);
-  for (const auto [purpose, expected] : {std::pair{5U,CITIZENSDK_ERROR_INVALID_ARGUMENT},std::pair{6U,CITIZENSDK_ERROR_DECODE},std::pair{UINT32_MAX,CITIZENSDK_ERROR_DECODE}}) {
+  for (const auto &[purpose, expected] : {std::pair{5U,CITIZENSDK_ERROR_INVALID_ARGUMENT},std::pair{6U,CITIZENSDK_ERROR_DECODE},std::pair{UINT32_MAX,CITIZENSDK_ERROR_DECODE}}) {
     uint64_t output_size = 777;
     assert(citizensdk_qr_parse(sdk, input, purpose, unchanged.data(), unchanged.size(), &output_size) == expected);
     assert(output_size == 777);

@@ -174,7 +174,7 @@ endforeach()
 add_test(NAME CitizenSDK.Windows.CConsumer COMMAND citizen_sdk_c_consumer
   "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_ASSET_DIR}" "${_runtime_dir}")
 add_test(NAME CitizenSDK.Windows.CppConsumer COMMAND citizen_sdk_cpp_consumer
-  "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_ASSET_DIR}" "${_runtime_dir}")
+  "${CITIZENSDK_TEST_WORK_DIR}" "${CITIZENSDK_ASSET_DIR}")
 # 不设置 PASS_REGULAR_EXPRESSION：它会让成功字样掩盖非零退出。
 # 构建器另检查 verbose 输出中两个成功标记各一次，同时要求真实 CTest exit=0。
 set_tests_properties(CitizenSDK.Windows.CConsumer CitizenSDK.Windows.CppConsumer

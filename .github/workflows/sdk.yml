@@ -620,3 +620,28 @@ jobs:
           [[ "${SDK_WORK_DIRECTORY%/*}" = "$GITHUB_WORKSPACE/target/build" && "${SDK_WORK_DIRECTORY##*/}" =~ ^sdk-[A-Za-z0-9]+$ ]]
           test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
           rm -rf "$SDK_WORK_DIRECTORY"
+  records:
+    needs: [select, android, apple, linux, windows, complete]
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    env:
+      SDK_RESULTS: '{"select":"${{ needs.select.result }}","android":"${{ needs.android.result }}","apple":"${{ needs.apple.result }}","linux":"${{ needs.linux.result }}","windows":"${{ needs.windows.result }}","complete":"${{ needs.complete.result }}"}'
+    steps:
+      - name: 只保留最新成功和最新失败各一条
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?per_page=100" > "$RUNNER_TEMP/runs.json"
+          result="$(jq -r 'if all(.[]; .=="success") then "success" else "failure" end' <<<"$SDK_RESULTS")"
+          jq --argjson current "$GITHUB_RUN_ID" --arg result "$result" '
+            [.[].workflow_runs[] | select(.status=="completed" or .id==$current) |
+             . + {state:(if .id==$current then $result elif .conclusion=="success" then "success" else "failure" end)}] |
+            group_by(.state) | map(sort_by(.run_number) | last.id)' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
+          jq -r --argjson current "$GITHUB_RUN_ID" --slurpfile keep "$RUNNER_TEMP/keep.json" '
+            [.[].workflow_runs[] | select(.status=="completed" and .id!=$current)][] |
+            select(.id as $id | $keep[0] | index($id) | not) | .id' "$RUNNER_TEMP/runs.json" |
+          while IFS= read -r run; do gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run"; done
