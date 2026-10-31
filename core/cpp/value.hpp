@@ -135,7 +135,6 @@ enum class Method {
   open_private_key,
   reveal_private_key,
   close_private_key,
-  cancel_operation,
   respond_credential,
   cancel_credential,
   open_qr_capture,

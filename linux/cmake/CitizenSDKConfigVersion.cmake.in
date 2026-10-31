@@ -1,6 +1,4 @@
-# CitizenSDK's generated package-version contract: callers may consume an
-# equal or newer release within major version 1, never a newer requested
-# version or a different ABI major.
+# 只接受当前版本及同一ABI主版本内的较旧请求；主版本读取真实产品声明。
 set(PACKAGE_VERSION "@PROJECT_VERSION@")
 if(NOT PACKAGE_FIND_VERSION)
   set(PACKAGE_VERSION_COMPATIBLE TRUE)

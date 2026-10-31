@@ -1,10 +1,9 @@
 package org.citizen.sdk
-import java.nio.ByteBuffer
 
 /** 平台仅解资源与UI输入；业务参数和结果直接使用同一Rust C ABI。 */
 internal object CitizenSdkFlutterCodec {
  const val METHOD_CHANNEL="citizen/sdk/core/v2";const val EVENT_CHANNEL="citizen/sdk/events/v2";const val PROTOCOL_VERSION=2
- val methods=setOf("open","diagnose","close","readDiagnostics","openPrivateKey","revealPrivateKey","closePrivateKey","cancelOperation","respondCredential","cancelCredential","openQrCapture","closeQrCapture","pauseQrCapture","resumeQrCapture","setQrCaptureTorch","qrDecodeImage")
+ val methods=setOf("open","diagnose","close","readDiagnostics","openPrivateKey","revealPrivateKey","closePrivateKey","respondCredential","cancelCredential","openQrCapture","closeQrCapture","pauseQrCapture","resumeQrCapture","setQrCaptureTorch","qrDecodeImage")
  sealed interface Request {
   val sessionId:String?;val requestSequence:Long
   data class Open(val modules:Int):Request{override val sessionId:String?=null;override val requestSequence=0L}
@@ -30,7 +29,7 @@ internal object CitizenSdkFlutterCodec {
  if(method=="openQrCapture"){if(t.size!=4)invalid();val purpose=integer(t[3]);if(purpose !in listOf(1L,2L,3L,4L,5L,7L,8L))invalid();return Request.Qr(method,s,n,listOf(purpose.toInt()))}
  if(method=="setQrCaptureTorch"){if(t.size!=5||t[4] !is Boolean)invalid();return Request.Qr(method,s,n,listOf(id(t[3]),t[4] as Boolean))}
  if(method=="qrDecodeImage"){if(t.size!=5)invalid();val bytes=t[3] as? ByteArray?:invalid();if(bytes.size !in 1..16777216)invalid();val purpose=integer(t[4]);if(purpose !in listOf(1L,2L,3L,4L,5L,7L,8L))invalid();return Request.Qr(method,s,n,listOf(bytes,purpose.toInt()))}
- if(t.size!=(if(method=="respondCredential")5 else 4))invalid();if(method=="cancelOperation"){val raw=id(t[3]);if(!Regex("[1-9][0-9]{0,18}").matches(raw)||raw.toLongOrNull()==null)invalid()};if(method=="respondCredential"||method=="cancelCredential"){val raw=id(t[3]);if(!Regex("[1-9][0-9]{0,19}").matches(raw)||runCatching{java.lang.Long.parseUnsignedLong(raw)}.isFailure)invalid();if(method=="respondCredential"&&t[4]!=null){val bytes=t[4] as? ByteArray?:invalid();if(bytes.size>1024)invalid();bytes.fill(0)}};return Request.Resource(method,s,n,id(t[3]))
+ if(t.size!=(if(method=="respondCredential")5 else 4))invalid();if(method=="respondCredential"||method=="cancelCredential"){val raw=id(t[3]);if(!Regex("[1-9][0-9]{0,19}").matches(raw)||runCatching{java.lang.Long.parseUnsignedLong(raw)}.isFailure)invalid();if(method=="respondCredential"&&t[4]!=null){val bytes=t[4] as? ByteArray?:invalid();if(bytes.size>1024)invalid();bytes.fill(0)}};return Request.Resource(method,s,n,id(t[3]))
  }
     fun response(sessionId: String, requestSequence: Long, value: List<Any?>): List<Any?> =
         listOf(PROTOCOL_VERSION, sessionId, requestSequence, value)

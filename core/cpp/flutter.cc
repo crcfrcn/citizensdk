@@ -9,7 +9,6 @@
 #endif // 系统差异
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <chrono>
 #include <future>
 #if defined(_WIN32) // 系统差异
@@ -151,43 +150,14 @@ public:
     std::lock_guard<std::mutex> guard(private_keys_->lock);
     private_keys_->observer = std::move(observer);
   }
-#if defined(_WIN32) // 系统差异
-  void private_key(const DecodedRequest &request,
-                   PrivateKeyResource::Completion completion) {
-    require_open();
-#else  // 系统差异
   void private_key(const DecodedRequest &r,
                    PrivateKeyResource::Completion completion) {
     if (!host_ || core_ == 0)
       throw ContractFailure(CITIZENSDK_ERROR_INVALID_STATE,
                             "CitizenSDK Host is closed");
-#endif // 系统差异
     const auto registry = private_keys_;
-#if defined(_WIN32) // 系统差异
-    if (request.method == Method::open_private_key) {
-#else  // 系统差异
     if (r.method == Method::open_private_key) {
-#endif // 系统差异
       const auto id = random_session_id();
-#if defined(_WIN32) // 系统差异
-      const std::weak_ptr<PrivateKeys> owner = registry;
-      auto resource = std::make_shared<PrivateKeyResource>(
-          core_, id, std::move(completion), [owner, id](bool granted) {
-            if (const auto current = owner.lock()) {
-              ResourceObserver observer;
-              {
-                std::lock_guard<std::mutex> guard(current->lock);
-                observer = current->observer;
-                if (!granted)
-                  current->values.erase(id);
-              }
-              if (granted && observer)
-                observer("privateKeyClosed", Value::list({Value::string(id)}));
-            }
-          });
-      {
-        std::lock_guard<std::mutex> guard(registry->lock);
-#else  // 系统差异
       const std::weak_ptr<PrivateKeys> weak = registry;
       auto resource = std::make_shared<PrivateKeyResource>(
           core_, id, std::move(completion), [weak, id](bool granted) {
@@ -207,28 +177,13 @@ public:
           });
       {
         std::lock_guard<std::mutex> guard(registry->lock);
-#endif // 系统差异
         if (!registry->values.emplace(id, resource).second)
           throw ContractFailure(CITIZENSDK_ERROR_CONFLICT,
                                 "Private key identity collision");
       }
-#if defined(_WIN32) // 系统差异
-      citizensdk_request_id_t native_request = 0;
-#else  // 系统差异
       citizensdk_request_id_t request = 0;
       citizensdk_error_code_t code;
-#endif // 系统差异
       try {
-#if defined(_WIN32) // 系统差异
-        const auto code = detail::submit_request(
-            host_,
-            [resource, account_id = request.account_id](
-                citizensdk_handle_t core, citizensdk_request_id_t *out) {
-              const auto receiver = resource->receiver();
-              uint64_t secret = 0;
-              const auto status = citizensdk_private_key_open(
-                  core, &account_id, &receiver, &secret, out);
-#else  // 系统差异
         code = detail::submit_request(
             host_,
             [resource, account = r.account_id](citizensdk_handle_t core,
@@ -237,40 +192,17 @@ public:
               uint64_t secret = 0;
               const auto status = citizensdk_private_key_open(
                   core, &account, &receiver, &secret, out);
-#endif // 系统差异
               if (status == CITIZENSDK_OK)
                 resource->bind(secret);
               return status;
-#if defined(_WIN32) // 系统差异
-            },
-            [resource](citizensdk_request_id_t,
-                       citizensdk_result_handle_t result){
-#else               // 系统差异
             },
             [resource](citizensdk_request_id_t,
                        citizensdk_result_handle_t result) {
-#endif              // 系统差异
               detail::EventResultScope owned(result);
-#if defined(_WIN32) // 系统差异
-              citizensdk_error_code_t completion_code = CITIZENSDK_OK;
-#else               // 系统差异
               citizensdk_error_code_t status = CITIZENSDK_OK;
-#endif              // 系统差异
               try {
                 require_result(result, CITIZENSDK_RESULT_EMPTY);
               }
-#if defined(_WIN32) // 系统差异
-              catch (const ContractFailure &error) { completion_code = error.code; }
-              catch (...) { completion_code = CITIZENSDK_ERROR_INTERNAL; }
-              resource->terminal(completion_code);},
-            [resource](citizensdk_handle_t) { resource->request_close(); },
-            &native_request);
-        if (code != CITIZENSDK_OK)
-          resource->terminal(code);
-      } catch (...) {
-        resource->terminal(CITIZENSDK_ERROR_INTERNAL);
-      }
-#else  // 系统差异
               catch (const ContractFailure &error) {
                 status = error.code;
               } catch (...) {
@@ -286,19 +218,9 @@ public:
       }
       if (code != CITIZENSDK_OK)
         resource->terminal(code);
-#endif // 系统差异
       return;
     }
     std::shared_ptr<PrivateKeyResource> resource;
-#if defined(_WIN32) // 系统差异
-    {
-      std::lock_guard<std::mutex> guard(registry->lock);
-      const auto entry = registry->values.find(request.resource_id);
-      if (entry == registry->values.end())
-        throw ContractFailure(CITIZENSDK_ERROR_NOT_FOUND,
-                              "Private key is not owned by this session");
-      resource = entry->second;
-#else  // 系统差异
     {
       std::lock_guard<std::mutex> guard(registry->lock);
       const auto found = registry->values.find(r.resource_id);
@@ -307,47 +229,20 @@ public:
             CITIZENSDK_ERROR_NOT_FOUND,
             "Private key resource is not owned by this session");
       resource = found->second;
-#endif // 系统差异
     }
-#if defined(_WIN32) // 系统差异
-    if (request.method == Method::reveal_private_key) {
-      resource->reveal(std::move(completion));
-      return;
-    }
-    if (request.method != Method::close_private_key)
-#else  // 系统差异
     if (r.method == Method::reveal_private_key) {
       resource->reveal(std::move(completion));
       return;
     }
     if (r.method != Method::close_private_key)
-#endif // 系统差异
       throw ContractFailure(CITIZENSDK_ERROR_UNSUPPORTED,
                             "Unsupported private key control");
-#if defined(_WIN32) // 系统差异
-    const std::weak_ptr<PrivateKeys> owner = registry;
-    resource->close(
-        [owner, resource, id = request.resource_id,
-         completion = std::move(completion)](std::function<Value()> project) {
-          completion([owner, resource, id, project = std::move(project)] {
-#else  // 系统差异
     const auto id = r.resource_id;
     const std::weak_ptr<PrivateKeys> weak = registry;
     resource->close([weak, resource, id, completion = std::move(completion)](
                         std::function<Value()> project) {
       completion([weak, resource, id, project = std::move(project)] {
-#endif // 系统差异
-            auto value = project();
-#if defined(_WIN32) // 系统差异
-            if (!resource->is_closed())
-              throw ContractFailure(CITIZENSDK_ERROR_INTEGRITY,
-                                    "Private key close is not terminal");
-            if (const auto current = owner.lock()) {
-              std::lock_guard<std::mutex> guard(current->lock);
-              const auto entry = current->values.find(id);
-              if (entry != current->values.end() && entry->second == resource)
-                current->values.erase(entry);
-#else  // 系统差异
+        auto value = project();
         if (!resource->is_closed())
           throw ContractFailure(CITIZENSDK_ERROR_INTEGRITY,
                                 "Private key close has no real terminal");
@@ -356,37 +251,18 @@ public:
           const auto found = owner->values.find(id);
           if (found != owner->values.end() && found->second == resource)
             owner->values.erase(found);
-#endif // 系统差异
-            }
-            return value;
-          });
-        });
+        }
+        return value;
+      });
+    });
   }
   void close_private_keys() {
-#if defined(_WIN32) // 系统差异
-    std::vector<std::shared_ptr<PrivateKeyResource>> pending;
-    {
-      std::lock_guard<std::mutex> guard(private_keys_->lock);
-      for (const auto &entry : private_keys_->values)
-        pending.push_back(entry.second);
-#else  // 系统差异
     std::vector<std::shared_ptr<PrivateKeyResource>> resources;
     {
       std::lock_guard<std::mutex> guard(private_keys_->lock);
       for (const auto &entry : private_keys_->values)
         resources.push_back(entry.second);
-#endif // 系统差异
     }
-#if defined(_WIN32) // 系统差异
-    std::exception_ptr failure;
-    for (const auto &resource : pending) {
-      try {
-        resource->request_close();
-      } catch (...) {
-        if (!failure)
-          failure = std::current_exception();
-      }
-#else  // 系统差异
     std::exception_ptr first;
     for (const auto &resource : resources) {
       try {
@@ -395,15 +271,9 @@ public:
         if (!first)
           first = std::current_exception();
       }
-#endif // 系统差异
     }
-#if defined(_WIN32) // 系统差异
-    if (failure)
-      std::rethrow_exception(failure);
-#else  // 系统差异
     if (first)
       std::rethrow_exception(first);
-#endif // 系统差异
   }
   bool private_keys_closed() {
     std::lock_guard<std::mutex> guard(private_keys_->lock);
@@ -1528,11 +1398,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
     callback(event(session->id, sequence, type, std::move(payload)));
   }
 
-#if defined(_WIN32) // 系统差异
-  bool post_drain(const std::shared_ptr<Session> &session) noexcept {
-#else  // 系统差异
   void post_drain(const std::shared_ptr<Session> &session) noexcept {
-#endif // 系统差异
     try {
       std::weak_ptr<State> weak = shared_from_this();
       std::weak_ptr<Session> target = session;
@@ -1545,17 +1411,9 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
             }
           }
       });
-#if defined(_WIN32) // 系统差异
-      return true;
-#else  // 系统差异
-#endif // 系统差异
     } catch (...) {
-#if defined(_WIN32) // 系统差异
-      return false;
-#else // 系统差异
       // Route::ready remains authoritative until the next UI dispatch/drain.
       // No borrowed result or callback pointer is stored in this recovery path.
-#endif // 系统差异
     }
   }
 
@@ -2111,46 +1969,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
       reply(ok ? success(request, Value::list({}))
                : failure(CITIZENSDK_ERROR_NOT_FOUND, "Credential missing",
                          request));
-      return;
-    }
-    if (request.method == Method::cancel_operation) {
-      std::optional<Reply> result;
-      try {
-        uint64_t sequence = 0;
-        const auto &id = request.resource_id;
-        const auto parsed =
-            std::from_chars(id.data(), id.data() + id.size(), sequence);
-        if (id.empty() || id.front() == '0' || parsed.ec != std::errc{} ||
-            parsed.ptr != id.data() + id.size() || sequence == 0)
-          throw ContractFailure(CITIZENSDK_ERROR_INVALID_ARGUMENT,
-                                "Operation identity is invalid");
-        citizensdk_request_id_t native = 0;
-        {
-          std::lock_guard<std::mutex> guard(session->lock);
-          if (sequence <= static_cast<uint64_t>(INT64_MAX)) {
-#if defined(_WIN32) // 系统差异
-            const auto route_entry =
-                session->routes.find(static_cast<int64_t>(sequence));
-            if (route_entry != session->routes.end() &&
-                !route_entry->second->terminal_seen)
-              native = route_entry->second->native_id;
-#else  // 系统差异
-            const auto found =
-                session->routes.find(static_cast<int64_t>(sequence));
-            if (found != session->routes.end() && !found->second->terminal_seen)
-              native = found->second->native_id;
-#endif // 系统差异
-          }
-        }
-        const bool accepted = native != 0 && session->transport->cancel(native);
-        result = success(request, Value::list({Value::boolean(accepted)}));
-      } catch (const ContractFailure &error) {
-        result = failure(error.code, error.what(), request, error.stage);
-      } catch (...) {
-        result = failure(CITIZENSDK_ERROR_INTERNAL,
-                         "Operation cancellation failed", request);
-      }
-      reply(std::move(*result));
       return;
     }
     auto route = std::make_shared<Route>();

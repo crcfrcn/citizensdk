@@ -16,8 +16,8 @@ if(CITIZENSDK_TEST_WORK_DIR STREQUAL "" OR
    (EXISTS "${CITIZENSDK_TEST_WORK_DIR}" AND NOT IS_DIRECTORY "${CITIZENSDK_TEST_WORK_DIR}"))
   message(FATAL_ERROR "CITIZENSDK_TEST_WORK_DIR must name a task-exclusive absolute directory")
 endif()
-# Flutter 测试编译适配层及钱包真实纯参数校验器，运行态连接安装的
-# Host/Core，不重建核心；原生 14 项仍走下方分支。
+# Flutter测试编译正式资源适配层，运行态连接安装的Host/Core；
+# 原生Host测试仍走下方分支，钱包输入直接调用Core。
 if(TARGET citizen_sdk_plugin)
   set(CITIZENSDK_WINDOWS_FLUTTER_CONTRACT_TESTS
     citizen_sdk_flutter_codec_test

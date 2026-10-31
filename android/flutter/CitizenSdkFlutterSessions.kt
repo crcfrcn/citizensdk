@@ -242,13 +242,8 @@ internal object CitizenSdkFlutterProcessOrphans : CitizenSdkFlutterRetrySchedule
 
 private data class CitizenSdkFlutterClosePlan(
     val owner: Boolean,
-    val outstanding: List<CitizenSdkFlutterOutstanding>,
+    val outstanding: List<CompletableFuture<*>>,
     val completion: CompletableFuture<Void>,
-)
-
-private data class CitizenSdkFlutterOutstanding(
-    val future: CompletableFuture<*>,
-    val cancel: (() -> Unit)?,
 )
 
 internal fun citizenSdkFlutterSettleWithin(
@@ -308,8 +303,7 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
     private inner class Session(val sdk: CitizenSdk, val diagnostics: CitizenSdkFlutterDiagnostics) {
         val nextEvent = AtomicLong(1)
         private val stateLock = Any()
-        private val inFlight = linkedMapOf<CompletableFuture<*>, CitizenSdkFlutterOutstanding>()
-        private val cancellations = linkedMapOf<Long, () -> Boolean>()
+        private val inFlight = linkedSetOf<CompletableFuture<*>>()
         val privateKeys = ConcurrentHashMap<String, CitizenSdkPrivateKey>()
         val diagnosticStarted = ConcurrentHashMap<Long, Long>()
         val captures = ConcurrentHashMap<String, CitizenSdkQrCapture>()
@@ -328,17 +322,10 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
             true
         }
 
-        fun track(future: CompletableFuture<*>, cancel: (() -> Unit)? = null) {
-            val outstanding = CitizenSdkFlutterOutstanding(future, cancel)
-            synchronized(stateLock) { inFlight[future] = outstanding }
-            future.whenComplete { _, _ -> synchronized(stateLock) { inFlight -= future } }
+        fun track(future: CompletableFuture<*>) {
+            synchronized(stateLock) { inFlight.add(future) }
+            future.whenComplete { _, _ -> synchronized(stateLock) { inFlight.remove(future) } }
         }
-
-        fun registerCancel(sequence: Long, future: CompletableFuture<*>, cancel: () -> Boolean) {
-            synchronized(stateLock) { cancellations[sequence] = cancel }
-            future.whenComplete { _, _ -> synchronized(stateLock) { cancellations.remove(sequence) } }
-        }
-        fun cancel(sequence: Long): Boolean = synchronized(stateLock) { cancellations[sequence]?.invoke() ?: false }
 
         fun <T : AutoCloseable> adopt(map: ConcurrentHashMap<String, T>, resource: T): String = synchronized(stateLock) {
             if (closing) {
@@ -367,7 +354,7 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
             closing = true
             val completion = CompletableFuture<Void>()
             closeCompletion = completion
-            CitizenSdkFlutterClosePlan(true, inFlight.values.toList(), completion)
+            CitizenSdkFlutterClosePlan(true, inFlight.toList(), completion)
         }
 
         fun reopenAfterFailedClose() = synchronized(stateLock) {
@@ -568,7 +555,6 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
       val id=request.resourceId
       when(request.method){
        "respondCredential","cancelCredential"->throw CitizenSdkException(CitizenSdkErrorCode.INVALID_STATE,"No active credential challenge")
-       "cancelOperation"->success(result,request.sessionId,request.requestSequence,listOf(session.cancel(id.toLong())))
        "revealPrivateKey"->complete(session,request,result,(session.privateKeys[id]?:missing()).reveal()){listOf(it)}
        "closePrivateKey"->{val key=session.privateKeys[id]?:missing();complete(session,request,result,key.close().thenApply{session.privateKeys.remove(id,key);Unit}){emptyList()}}
        "closeQrCapture","pauseQrCapture","resumeQrCapture"->{val capture=session.captures[id]?:missing();val future=when(request.method){"closeQrCapture"->capture.close().thenApply{session.captures.remove(id,capture);null};"pauseQrCapture"->capture.pause();else->capture.resume()};complete(session,request,result,future){emptyList()}}
@@ -614,7 +600,7 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
             listOf<Any?>(id, entry.id(), capture.previewWidth, capture.previewHeight, capture.rotationDegrees)
         }
         ready.whenComplete { _, error -> if (error != null) owned?.close() }
-        complete(session, request, result, ready, { owned?.close(); Unit }) { it }
+        complete(session, request, result, ready) { it }
     }
 
     private fun close(
@@ -637,25 +623,19 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
     private fun supervisedClose(session: Session): CompletableFuture<Void> {
         val plan = session.beginClose()
         if (!plan.owner) return plan.completion
-        val resourceClosures = session.privateKeys.values.map { resource -> resource.close() } + session.sdk.closeQrCaptures()
-        var cancellationError: Throwable? = null
-        plan.outstanding.forEach { outstanding ->
-            try {
-                outstanding.cancel?.invoke()
-            } catch (error: Throwable) {
-                if (cancellationError == null) cancellationError = error
-            }
+        // SDK拥有已交付和仍在打开的资源，先请求全部关闭，再等待真实终态。
+        val resourceClosures = try {
+            session.sdk.closeResources()
+        } catch (error: Throwable) {
+            session.reopenAfterFailedClose()
+            plan.completion.completeExceptionally(error)
+            return plan.completion
         }
-        val cancelFailure = cancellationError
-        val settled = if (cancelFailure == null) {
-            citizenSdkFlutterSettleWithin(
-                plan.outstanding.map { it.future } + resourceClosures,
-                CLOSE_SETTLEMENT_TIMEOUT_MILLIS,
-                CitizenSdkFlutterProcessOrphans,
-            )
-        } else {
-            CompletableFuture<Void>().also { it.completeExceptionally(cancelFailure) }
-        }
+        val settled = citizenSdkFlutterSettleWithin(
+            plan.outstanding + resourceClosures,
+            CLOSE_SETTLEMENT_TIMEOUT_MILLIS,
+            CitizenSdkFlutterProcessOrphans,
+        )
         settled.thenCompose {
             citizenSdkFlutterCloseLifecycle(
                 session.sdk.lifecycle,
@@ -696,26 +676,14 @@ internal class CitizenSdkFlutterSessions(context: Context, private val textures:
         session: Session,
         request: CitizenSdkFlutterCodec.Request.SessionRequest,
         result: MethodChannel.Result,
-        operation: CitizenSdkOperation<T>,
-        encode: (T) -> List<Any?>,
-    ) {
-        session.registerCancel(request.requestSequence, operation.future, operation::cancel)
-        complete(session, request, result, operation.future, { operation.cancel(); Unit }, encode)
-    }
-
-    private fun <T> complete(
-        session: Session,
-        request: CitizenSdkFlutterCodec.Request.SessionRequest,
-        result: MethodChannel.Result,
         future: CompletableFuture<T>,
-        cancel: (() -> Unit)? = null,
         encode: (T) -> List<Any?>,
     ) {
         // 异步完成只保留方法、会话和序号，不延长请求载荷的持有期。
         val context = CitizenSdkFlutterCodec.Request.Empty(
             CitizenSdkFlutterCodec.requestMethod(request), request.sessionId, request.requestSequence,
         )
-        session.track(future, cancel)
+        session.track(future)
         future.whenComplete { value, error ->
             main.post {
                 if (error == null) {

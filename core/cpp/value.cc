@@ -32,7 +32,6 @@ const char *kMethods[] = {"open",
                           "openPrivateKey",
                           "revealPrivateKey",
                           "closePrivateKey",
-                          "cancelOperation",
                           "respondCredential",
                           "cancelCredential",
                           "openQrCapture",
@@ -676,15 +675,7 @@ Value from_fl_value(FlValue *value, bool sensitive) {
 #endif // 系统差异
   // 总节点/总字节共享递归预算，先扣减再复制；保留 16 MiB payload 的固定 tuple
   // 余量。
-#if defined(_WIN32) // 系统差异
-  // A valid request has at most 1,995 nodes. The 4,096-node limit bounds
-  // recursive copies without changing any supported method's input range.
-#else  // 系统差异
-  // The largest valid request has 1,995 nodes. A 4,096-node budget rejects
-  // exponentially nested or irrelevant input before copying it. The byte
-  // budget preserves a maximum 16 MiB signing payload plus its small fixed
-  // tuple fields, while rejecting aggregate bulk values above that contract.
-#endif // 系统差异
+  // 节点与字节预算限制递归复制；资源输入继续按图像、凭据的实际合同校验。
   std::size_t remaining_nodes = kMaximumRequestNodes;
   std::size_t remaining_bytes = kMaximumRequestCopiedBytes;
 #if defined(_WIN32) // 系统差异

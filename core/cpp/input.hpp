@@ -9,7 +9,6 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -51,39 +50,9 @@ inline Bytes copy_view(citizensdk_bytes_view_t value, uint64_t maximum,
 }
 namespace input_limits {
 
-inline constexpr uint64_t kMaximumWalletProfileBytes =
-    UINT64_C(1) * 1024 * 1024;
-inline constexpr uint64_t kMaximumEncryptedSecretBytes = UINT64_C(64) * 1024;
 inline constexpr uint64_t kMaximumAssetBytes = UINT64_C(128) * 1024 * 1024;
 inline constexpr uint64_t kMaximumPathBytes = 4096;
 inline constexpr std::size_t kMaximumUnlockPasswordBytes = 1024;
-inline constexpr uint32_t kMaximumAdditionalAccounts = 1989;
-// 热派生范围独立于追加批次和冷账户容量；只按实际输入分配。
-inline constexpr uint32_t kMaximumAccountIndex = 19890604;
-
-inline void validate_wallet_indices(const uint32_t *indices, uint32_t count) {
-  require(indices != nullptr && count > 0 &&
-              count <= kMaximumAdditionalAccounts,
-          CITIZENSDK_ERROR_INVALID_ARGUMENT,
-          "wallet indices must contain 1...1989 entries");
-  std::unordered_set<uint32_t> unique;
-  unique.reserve(count);
-  for (uint32_t i = 0; i < count; ++i) {
-    require(indices[i] >= 1 && indices[i] <= kMaximumAccountIndex &&
-                unique.insert(indices[i]).second,
-            CITIZENSDK_ERROR_INVALID_ARGUMENT,
-            "wallet indices must be unique values in 1...19890604");
-  }
-}
-
-inline void validate_word_count(citizensdk_wallet_word_count_t count) {
-  require(count == CITIZENSDK_WALLET_WORDS_12 ||
-              count == CITIZENSDK_WALLET_WORDS_18 ||
-              count == CITIZENSDK_WALLET_WORDS_24,
-          CITIZENSDK_ERROR_INVALID_ARGUMENT,
-          "wallet word count must be 12, 18, or 24");
-}
-
 inline std::string validate_application_id(citizensdk_bytes_view_t value) {
   require(value.len <= 253 && (value.len == 0 || value.data != nullptr),
           CITIZENSDK_ERROR_INVALID_ARGUMENT, "application_id is too long");

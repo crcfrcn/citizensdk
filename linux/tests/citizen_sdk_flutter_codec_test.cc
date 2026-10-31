@@ -9,7 +9,7 @@ int main(){
  const auto close=decode("close",csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(1)}));assert(close.sequence==1&&close.session=="sdk");
  const auto key=decode("openPrivateKey",csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(2),csf::Value::string("0x"+std::string(64,'0'))}));assert(key.method==csf::Method::open_private_key);
  for(const auto bad: {0,6,9}){bool rejected=false;try{(void)decode("openQrCapture",csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(3),csf::Value::integer(bad)}));}catch(const csf::ContractFailure&e){rejected=e.code==CITIZENSDK_ERROR_INVALID_ARGUMENT;}assert(rejected);}
- bool rejected=false;try{(void)decode("getWalletState",csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(4)}));}catch(const csf::ContractFailure&e){rejected=e.code==CITIZENSDK_ERROR_UNSUPPORTED;}assert(rejected);
+ for(const auto* method: {"getWalletState","cancelOperation"}){bool rejected=false;try{(void)decode(method,csf::Value::list({csf::Value::integer(2),csf::Value::string("sdk"),csf::Value::integer(4)}));}catch(const csf::ContractFailure&e){rejected=e.code==CITIZENSDK_ERROR_UNSUPPORTED;}assert(rejected);}
  // 验证真实资源边界与非法枚举，不允许越界值变成close。
  assert(std::string(csf::method_name(csf::Method::open))=="open");
  assert(std::string(csf::method_name(csf::Method::close))=="close");

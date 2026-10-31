@@ -11,7 +11,7 @@ import FlutterMacOS
 internal enum CitizenSdkFlutterCodec {
  static let methodChannel="citizen/sdk/core/v2",eventChannel="citizen/sdk/events/v2"
  static let version:Int64=2
- static let methods:Set<String>=["open","diagnose","close","readDiagnostics","openPrivateKey","revealPrivateKey","closePrivateKey","cancelOperation","respondCredential","cancelCredential","openQrCapture","closeQrCapture","pauseQrCapture","resumeQrCapture","setQrCaptureTorch","qrDecodeImage"]
+ static let methods:Set<String>=["open","diagnose","close","readDiagnostics","openPrivateKey","revealPrivateKey","closePrivateKey","respondCredential","cancelCredential","openQrCapture","closeQrCapture","pauseQrCapture","resumeQrCapture","setQrCaptureTorch","qrDecodeImage"]
  static let eventTypes:Set<String>=["qrCaptureResult","qrCaptureError","qrCapturePreview","qrCaptureClosed","privateKeyClosed"]
  enum Request {
   case open(modules:CitizenSDKModules)
@@ -42,7 +42,6 @@ internal enum CitizenSdkFlutterCodec {
   if method=="setQrCaptureTorch"{guard t.count==5,let enabled=t[4] as? NSNumber,CFGetTypeID(enabled)==CFBooleanGetTypeID()else{throw invalid()};return .qr(method:method,session:s,sequence:n,fields:[try id(t[3]),enabled.boolValue])}
   if method=="qrDecodeImage"{guard t.count==5,let data=t[3] as? FlutterStandardTypedData,data.type.rawValue==0,(1...16777216).contains(data.data.count)else{throw invalid()};let purpose=try integer(t[4]);guard [1,2,3,4,5,7,8].contains(purpose)else{throw invalid()};return .qr(method:method,session:s,sequence:n,fields:[data.data,purpose])}
   guard t.count==(method=="respondCredential" ? 5:4)else{throw invalid()}
-  if method=="cancelOperation"{let raw=try id(t[3]);guard let n=Int64(raw),n>0,String(n)==raw else{throw invalid()}}
   if method=="respondCredential"||method=="cancelCredential"{let raw=try id(t[3]);guard let number=UInt64(raw),number>0,String(number)==raw else{throw invalid()};if method=="respondCredential",t[4] != nil{guard let data=t[4] as? FlutterStandardTypedData,data.type.rawValue==0,data.data.count<=1024 else{throw invalid()};var copy=data.data;copy.resetBytes(in:0..<copy.count)}}
   return .resource(method:method,session:s,sequence:n,id:try id(t[3]))
  }

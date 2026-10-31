@@ -25,13 +25,13 @@ using ReplyCallback = std::function<void(Reply)>;
 using EventSink = std::function<void(Value)>;
 using EnvironmentFactory = std::function<OpenEnvironment(uint32_t modules)>;
 
-// Internal native seam, not an exported SDK API. Production delegates only to
-// the installed Host and its borrowed Core. Tests inject finite callbacks into
-#if defined(_WIN32) // 系统差异
-// the same routing/state machine without running a chain, Win32 or TPM.
-#else  // 系统差异
-// the same routing/state machine without running a chain, GTK or TPM.
-#endif // 系统差异
+// Windows销毁Core后的关闭重入仍核对真实Host状态，测试使用同一生产判断。
+#if defined(_WIN32)
+bool allow_close_without_core(bool close_attempted,
+                              citizensdk_lifecycle_t checkpoint_state,
+                              citizensdk_error_code_t host_status,
+                              citizensdk_handle_t core);
+#endif
 
 // 生产绑定固定使用公开Core控制函数；内部有限执行器用于验证同一资源状态，不替代认证。
 struct PrivateKeyControls {

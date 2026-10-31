@@ -50,7 +50,7 @@ void main() {
       expect(sources.contains(name), isFalse, reason: name);
     }
   });
-  test('第一方源码目录不超过三级，四个主测试分组保留', () {
+  test('第一方源码目录不超过三级，三个主测试分组保留', () {
     const excluded = {
       '.git',
       '.github', // GitHub工具配置在下方按唯一sdk.yml单独检查。
@@ -89,7 +89,7 @@ void main() {
           ..sort();
     expect(workflows, ['sdk.yml']);
     visit(Directory('.'), 0);
-    for (final name in ['api', 'models', 'platform', 'consumers']) {
+    for (final name in ['api', 'models', 'platform']) {
       expect(Directory('lib/test/$name').existsSync(), isTrue);
     }
   });

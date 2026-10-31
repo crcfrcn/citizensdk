@@ -9,8 +9,7 @@ import Flutter
 import FlutterMacOS
 #endif
 
-/// Process session registry for the fixed Flutter protocol. Native SDK
-/// identities and accepted Core request IDs never leave this object.
+/// 仅登记真实系统资源会话；Dart借用同一Core句柄，普通业务不经过本路由。
 @MainActor
 internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency FlutterStreamHandler {
     @MainActor fileprivate final class Session {
@@ -20,21 +19,15 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         var diagnosticSignatures: [String: String] = [:]
         var nextEvent: Int64 = 1
         var closing = false
-        var outstanding: [UUID: Outstanding] = [:]
-        var cancellations: [Int64: () throws -> Bool] = [:]
+        var outstanding: [UUID: Task<Void, Never>] = [:]
         var privateKeys: [String: CitizenSDKPrivateKey] = [:]
         var captures: [String: CaptureBinding] = [:]
         init(_ sdk: CitizenSdk) { self.sdk = sdk }
     }
 
-    fileprivate struct Outstanding {
-        let task: Task<Void, Never>
-        let cancel: (() -> Void)?
-    }
-
     private struct ClosePreparation {
         let session: Session
-        let outstanding: [Outstanding]
+        let outstanding: [Task<Void, Never>]
     }
 
     private nonisolated let sessions = CitizenSdkFlutterRegistry()
@@ -114,16 +107,15 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         let prepared = Array(sessions.values).map(prepareForClose)
         await citizenSDKFlutterCancelAndDrain(
             prepared.flatMap(\.outstanding),
-            cancel: Self.cancel,
-            wait: { await $0.task.value }
+            cancel: { $0.cancel() },
+            wait: { await $0.value }
         )
         await citizenSDKFlutterCloseEverySession(
             prepared,
             close: { try await self.finishSupervisedClose($0.session) },
             recover: { preparation in
                 // Plugin detach must not abandon a live callback/host context.
-                // The facade supervisor retains wallet-flow ownership, retries
-                // checkpointing stop, then releases only after Core destroy.
+                // SDK保有未终结资源，完成检查点停止及Core销毁后才归还所有权。
                 let session = preparation.session
                 session.sdk.enqueueForSupervisedClose()
                 sessions.removeValue(forKey: session.sdk.sessionID)
@@ -367,7 +359,6 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
             switch method {
             case "respondCredential", "cancelCredential":
                 throw CitizenSDKError(.invalidState, "No active credential challenge")
-            case "cancelOperation": success(result, request, [try session.cancellations[Int64(id)!]?() ?? false])
             case "revealPrivateKey", "closePrivateKey":
                 guard let resource = session.privateKeys[id] else { throw CitizenSDKError(.notFound, "private key is not owned by this session") }
                 run(session, request, result) {
@@ -390,7 +381,7 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
 
     // Flutter 编码值只在 MainActor 内传递；异步操作不把 Any 结果跨执行器发送。
     private func run(_ session: Session, _ request: CitizenSdkFlutterCodec.Request,
-                     _ result: @escaping FlutterResult, cancel: (() -> Void)? = nil,
+                     _ result: @escaping FlutterResult,
                      accepted: Bool = false, operation: @escaping @MainActor () async throws -> [Any?]) {
         diagnose(session, request.method, "BEGIN")
         let id = UUID()
@@ -418,7 +409,7 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
                 self.fail(result, error, context)
             }
         }
-        session.outstanding[id] = Outstanding(task: task, cancel: cancel)
+        session.outstanding[id] = task
     }
 
     private func close(_ session: Session, _ request: CitizenSdkFlutterCodec.Request,
@@ -447,8 +438,8 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         let prepared = prepareForClose(session)
         await citizenSDKFlutterCancelAndDrain(
             prepared.outstanding,
-            cancel: Self.cancel,
-            wait: { await $0.task.value }
+            cancel: { $0.cancel() },
+            wait: { await $0.value }
         )
         try await finishSupervisedClose(session)
     }
@@ -459,15 +450,9 @@ internal final class CitizenSdkFlutterSessions: NSObject, @preconcurrency Flutte
         return ClosePreparation(session: session, outstanding: Array(session.outstanding.values))
     }
 
-    private static func cancel(_ value: Outstanding) {
-        value.cancel?()
-        value.task.cancel()
-    }
-
     private func finishSupervisedClose(_ session: Session) async throws {
-        // The facade's cached lifecycle event may lag behind Core. Its SPI
-        // recovery path queries the authoritative C lifecycle, checkpoints a
-        // truly running Core, and resumes partial teardown monotonically.
+        // SDK缓存事件不能代替Core真实生命周期；关闭读取实际状态，
+        // 运行中的Core先保存检查点，部分销毁继续沿原拥有者完成。
         try await session.sdk.supervisedClose()
         for id in Array(session.captures.keys) { releaseCapture(session, id: id) }
         session.privateKeys.removeAll()
@@ -620,9 +605,7 @@ internal func citizenSDKFlutterFinalizeOpen<Value>(
     catch { cleanup(value); throw error }
 }
 
-/// A failed Flutter listener installation still owns a live ABI callback and
-/// host context. If synchronous close cannot finish, transfer the facade to
-/// the supervised reaper instead of relying on a later `deinit` side effect.
+/// 监听器安装失败仍保有真实ABI回调与Host；同步关闭未完成时交后台继续排空。
 @MainActor
 internal func citizenSDKFlutterCloseOrSupervise(
     close: () throws -> Void,

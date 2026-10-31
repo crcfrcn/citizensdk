@@ -148,8 +148,7 @@ class CitizenSdk private constructor(
     fun detachActivity(activity: FragmentActivity) {
         synchronized(lifecycleGate) {
             if (!closed.get()) {
-                privateKeys.toList().forEach { it.close() }
-                closeQrCaptures()
+                closeResources()
                 hostServices.detachActivity(activity)
             }
         }
@@ -558,9 +557,10 @@ class CitizenSdk private constructor(
         }
     }
 
-    /** 包含尚在等待系统权限/初始化的采集，关闭不能只处理已交给Flutter的资源。 */
+    /** 先关闭SDK持有的全部私钥与采集，包括尚未交付给Flutter的资源。 */
     @JvmSynthetic
-    internal fun closeQrCaptures(): List<CompletableFuture<Void>> = qrCaptures.toList().map { it.close() }
+    internal fun closeResources(): List<CompletableFuture<Void>> =
+        privateKeys.toList().map { it.close() } + qrCaptures.toList().map { it.close() }
 
     fun qrParse(text: String): CitizenQrDocument =
         synchronized(lifecycleGate) { requireOpen(); (call {

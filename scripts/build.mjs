@@ -334,7 +334,7 @@ async function desktopFlutter(project,work,env,target,installed){
  const runner=join(work,'flutter-consumer'),flutter=join(process.env.FLUTTER_ROOT,'bin',windows?'flutter.bat':'flutter');
  await run(flutter,['create','--platforms='+platform,'--project-name','citizensdk_consumer','--org','org.citizen',runner],{env});
  writeFileSync(join(runner,'pubspec.yaml'),`name: citizensdk_consumer\npublish_to: none\nversion: 1.0.0+1\nenvironment:\n  sdk: ^3.8.0\ndependencies:\n  flutter:\n    sdk: flutter\n  citizen_sdk:\n    path: ${JSON.stringify(sdk.replaceAll('\\','/'))}\nflutter:\n  uses-material-design: false\n`);
- copyFileSync(join(project,'pubspec.lock'),join(runner,'pubspec.lock'));copyFileSync(join(project,'lib/test/consumers',platform+'.dart'),join(runner,'lib/main.dart'));
+ copyFileSync(join(project,'pubspec.lock'),join(runner,'pubspec.lock'));
  // 两平台均先创建本轮测试根，保留Windows夹具的owner/no-reparse检查。
  const state=join(work,'flutter-state');mkdirSync(state,{mode:0o700});
  const cmake=join(runner,platform,'CMakeLists.txt'),before=readFileSync(cmake,'utf8'),marker='include(flutter/generated_plugins.cmake)';if(!before.includes(marker))throw Error('Flutter官方插件登记入口缺失');

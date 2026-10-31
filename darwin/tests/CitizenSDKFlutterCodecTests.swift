@@ -22,5 +22,5 @@ final class CitizenSDKFlutterCodecTests:XCTestCase {
   XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method:"setQrCaptureTorch",arguments:[2,"sdk",1,"resource",1]))
   XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method:"revealPrivateKey",arguments:[2,"sdk",1,"resource",Data([1])]))
  }
- func testOrdinaryRequestsAreRejectedAtTheResourceBoundary(){XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method:"getWalletState",arguments:[2,"sdk",1])){XCTAssertEqual(($0 as? CitizenSdkFlutterCodec.ContractFailure)?.code,.unsupported)}}
+ func testOrdinaryRequestsAreRejectedAtTheResourceBoundary(){for method in ["getWalletState","cancelOperation"]{XCTAssertThrowsError(try CitizenSdkFlutterCodec.decode(method:method,arguments:[2,"sdk",1])){XCTAssertEqual(($0 as? CitizenSdkFlutterCodec.ContractFailure)?.code,.unsupported)}}}
 }
