@@ -74,7 +74,7 @@ scripts/config.mjs只声明本产品工具/配置/工作流；scripts/build.mjs�
 
 同一SDK包含Android arm64-v8a（API24+）、iOS16 arm64、iOS模拟器arm64、macOS13 arm64、LinuxARM64和Windowsx64实际原生件。macOS Framework沿官方Versions/A与五个内部相对链接。完整包、原锁、许可、真实来源及平台原生件不完整时失败，不自动换库或升级。
 
-主Dart测试在lib/test三个分组，根不设test/tests。lib/test/platform/fixture.dart提供同一CitizenSdkTestFixture供SDK与消费方测试复用，只模拟物理资源边界，Core/SQLite/ZXing均由正式测试库执行。显式macOS测试成功后，构建入口返回本轮work与testLibrary，现场只保留ffi.dylib；使用方测试结束后负责清理该独占现场，不能回退到旧协议或SDK业务替身。纯值/接口回归与真实FFI分开，实际FFI使用同轮正式Core、SQLite、ZXing，只有物理金库可用性、确保失败和终态等待点由明确有限夹具提供，不模拟SDK业务或结果。Dart显式显示和相机元数据/关闭确认使用有限物理通道夹具，覆盖迟到拒绝、借用副本清零、真实确认等待、暂停订阅不阻塞归还及早到关闭；这不是设备授权或相机采集正向验收。热准备的成功、作业失败、取消与关闭等待由同轮正式Core及有限物理夹具回归；该结果不代表硬件加密、授权或重启持久性通过。桌面Flutter回归覆盖正式插件编译和C++资源合同执行；CitizenApp与TuyuLove的App消费测试由各产品执行，只通过公开CitizenSdk接入同一版本。旧合成业务消费者及旧接口替身不作为验收。
+主Dart测试在lib/test三个分组，根不设test/tests。lib/test/platform/fixture.dart提供同一CitizenSdkTestFixture供SDK与消费方测试复用，只模拟物理资源边界，Core/SQLite/ZXing均由正式测试库执行。显式macOS测试成功后，构建入口返回本轮work与testLibrary，现场只保留ffi.dylib；使用方测试结束后负责清理该独占现场，不能回退到旧协议或SDK业务替身。纯值/接口回归与真实FFI分开，实际FFI使用同轮正式Core、SQLite、ZXing，只有物理金库可用性、确保失败和终态等待点由明确有限夹具提供，不模拟SDK业务或结果。Dart显式显示和相机元数据/关闭确认使用有限物理通道夹具，覆盖迟到拒绝、借用副本清零、真实确认等待、暂停订阅不阻塞归还及早到关闭；这不是设备授权或相机采集正向验收。热准备的成功、作业失败、取消与关闭等待由同轮正式Core及有限物理夹具回归；该结果不代表硬件加密、授权或重启持久性通过。桌面Flutter工程沿用同版官方模板的Dart语言声明，官方assemble编译模板入口；回归覆盖正式插件编译和C++资源合同执行；CitizenApp与TuyuLove的App消费测试由各产品执行，只通过公开CitizenSdk接入同一版本。旧合成业务消费者及旧接口替身不作为验收。
 
 相机测试夹具的scanText只在实际夹具资源活动时接收输入，通过公开生成C绑定调用真实Core的同步QR解析，并将Core产生的原JSON投递给SDK事件通道；不复制文档序列化、QR解析、签名或业务判定。每个宿主会话维护独立递增的物理事件序号，连续帧不会伪装成同一事件。
 
