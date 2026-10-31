@@ -78,7 +78,7 @@ int main() {
     (void)Tpm2().create_key(empty_password);
   } catch (const citizen_sdk::HostError &error) {
     empty_password_rejected =
-        error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+        error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(empty_password_rejected);
 
@@ -88,7 +88,7 @@ int main() {
   try {
     Tpm2().decrypt_dek(citizen_sdk::VaultObject{}, citizen_sdk::Bytes{}, empty_password, output.data());
   } catch (const citizen_sdk::HostError &error) {
-    malformed_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    malformed_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(malformed_rejected);
   assert(std::all_of(output.begin(), output.end(),

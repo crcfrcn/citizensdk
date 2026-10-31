@@ -189,7 +189,7 @@ void verify_wal_processes(const std::filesystem::path &directory,
     bool rejected = false;
     try { Store opening(directory); }
     catch (const HostError &error) {
-      rejected = error.code == CITIZENSDK_ERROR_STORAGE;
+      rejected = error.code() == CITIZENSDK_ERROR_STORAGE;
     }
     assert(rejected);
     ::_exit(0);

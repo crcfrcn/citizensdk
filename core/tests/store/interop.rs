@@ -139,12 +139,7 @@ fn records_written_by_rust_are_readable_as_the_existing_cshr_sql_layout() {
     let rows =
         db.0.lock()
             .unwrap()
-            .query(
-                "SELECT execution_id, data FROM entry",
-                &[],
-                1,
-                33554432,
-            )
+            .query("SELECT execution_id, data FROM entry", &[], 1, 33554432)
             .unwrap();
     assert_eq!(
         rows[0].text(0, 32).unwrap(),
@@ -192,15 +187,46 @@ fn physical_tables_and_columns_are_exact_and_have_no_derived_keys() {
             let rows = conn
                 .query(&format!("PRAGMA table_info({table})"), &[], 16, 4096)
                 .unwrap();
-            for row in &rows {
-                let name = row.text(1, 64).unwrap();
-                let words = name.split('_').collect::<Vec<_>>();
-                assert!((1..=2).contains(&words.len()), "{table}.{name}");
-                assert!(!matches!(name, "row_id" | "record_data" | "record_key"));
-                assert!(words
-                    .iter()
-                    .all(|word| !word.is_empty() && word.bytes().all(|b| b.is_ascii_lowercase())));
-            }
+            let actual = rows
+                .iter()
+                .map(|r| r.text(1, 64).unwrap())
+                .collect::<Vec<_>>();
+            let columns: &[&str] = match table {
+                "chain" => &["id", "data"],
+                "wallet" => &["wallet_index", "data"],
+                "runtime" => &["block_hash", "data"],
+                "history" => &["id", "state_rev"],
+                "entry" => &[
+                    "execution_id",
+                    "created_at",
+                    "retention_terminal",
+                    "chain_terminal",
+                    "data",
+                ],
+                "secret" => &["key", "data"],
+                "generation" => &[
+                    "wallet_index",
+                    "key_generation",
+                    "key_state",
+                    "operation_id",
+                ],
+                "object" if format == Some(Format::Cng) => &[
+                    "wallet_index",
+                    "key_generation",
+                    "public_blob",
+                    "object_name",
+                ],
+                "object" => &[
+                    "wallet_index",
+                    "key_generation",
+                    "public_blob",
+                    "private_blob",
+                    "object_name",
+                    "auth_salt",
+                ],
+                _ => panic!("unexpected physical table: {table}"),
+            };
+            assert_eq!(actual, columns, "{table} exact physical columns");
             if table == "generation" {
                 assert_eq!(rows.len(), 4);
             }

@@ -1,5 +1,6 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -52,6 +53,7 @@ void main() {
   test('第一方源码目录不超过三级，四个主测试分组保留', () {
     const excluded = {
       '.git',
+      '.github', // GitHub工具配置在下方按唯一sdk.yml单独检查。
       'target',
       'build',
       '.dart_tool',
@@ -77,6 +79,15 @@ void main() {
       }
     }
 
+    final workflows =
+        Directory('.github/workflows')
+            .listSync(followLinks: false)
+            .map(
+              (entry) => entry.uri.pathSegments.where((v) => v.isNotEmpty).last,
+            )
+            .toList()
+          ..sort();
+    expect(workflows, ['sdk.yml']);
     visit(Directory('.'), 0);
     for (final name in ['api', 'models', 'platform', 'consumers']) {
       expect(Directory('lib/test/$name').existsSync(), isTrue);

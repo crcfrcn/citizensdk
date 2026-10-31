@@ -22,7 +22,7 @@ int main() {
   using citizen_sdk::HostError;
   using citizen_sdk::copy_view;
 
-  // Host 与 Core 的七个公开头由正式构建视图汇总，源码 headers 只有平台头。
+  // 逐一扫描Core的三个公开头，直接使用正式构建传入的目录。
   const std::filesystem::path public_headers =
       CITIZENSDK_WINDOWS_TEST_PUBLIC_HEADER_DIR;
   assert(std::filesystem::is_directory(public_headers));
@@ -54,7 +54,7 @@ int main() {
   try {
     (void)copy_view({nullptr, 1}, 8, "null fixture");
   } catch (const HostError &error) {
-    null_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    null_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(null_rejected);
 
@@ -65,7 +65,7 @@ int main() {
   try {
     (void)copy_view({fixture, 3}, 2, "oversized fixture");
   } catch (const HostError &error) {
-    oversized_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    oversized_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(oversized_rejected);
 

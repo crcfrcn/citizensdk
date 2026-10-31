@@ -3,12 +3,6 @@ name: 公民SDK·SDK
 run-name: 公民SDK·SDK·${{ github.run_number }}
 'on':
   workflow_dispatch:
-    inputs:
-      publish:
-        description: '正式发布及远端清理须独立授权'
-        type: boolean
-        required: false
-        default: false
 concurrency:
   group: ${{ github.repository }}-sdk
   cancel-in-progress: false
@@ -569,8 +563,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 240
-    outputs:
-      artifact: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -612,8 +604,7 @@ jobs:
           (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
           CITIZENSDK_PACKAGE="$artifact" node scripts/build.mjs consume "$GITHUB_SHA" "$work/consumer" >/dev/null
           printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
-      - id: artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
           path: ${{ steps.build.outputs.path }}
@@ -629,70 +620,3 @@ jobs:
           [[ "${SDK_WORK_DIRECTORY%/*}" = "$GITHUB_WORKSPACE/target/build" && "${SDK_WORK_DIRECTORY##*/}" =~ ^sdk-[A-Za-z0-9]+$ ]]
           test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
           rm -rf "$SDK_WORK_DIRECTORY"
-  publish:
-    needs: [select, complete]
-    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
-    name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
-    uses: ./.github/workflows/publish.yml
-    permissions:
-      contents: write
-      actions: read
-    with:
-      version: ${{ needs.select.outputs.version }}
-      artifact: ${{ needs.complete.outputs.artifact }}
-    secrets: inherit
-  cleanup:
-    needs: [select, android, apple, linux, windows, complete, publish]
-    if: ${{ inputs.publish && always() && github.ref == 'refs/heads/main' }}
-    name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-      actions: write
-    env:
-      SDK_VERSION: ${{ needs.select.outputs.version }}
-      SDK_RESULTS: '{"select":"${{ needs.select.result }}","android":"${{ needs.android.result }}","apple":"${{ needs.apple.result }}","linux":"${{ needs.linux.result }}","windows":"${{ needs.windows.result }}","complete":"${{ needs.complete.result }}","publish":"${{ needs.publish.result }}"}'
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - id: tools
-        name: 从本产品声明读取Node版本
-        shell: bash
-        run: |
-          node_version="$(sed -n "s/.*node:'\([^']*\)'.*/\1/p" scripts/config.mjs)"
-          [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          printf 'node=%s\n' "$node_version" >> "$GITHUB_OUTPUT"
-      - *nodecache
-      - *node
-      - *nodesave
-      - name: 按本轮结果保留成功失败记录和最新缓存
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/runs.json"
-          result="$(jq -r 'if all(.[]; .=="success") then "success" else "failure" end' <<<"$SDK_RESULTS")"
-          jq --argjson current "$GITHUB_RUN_ID" --arg result "$result" '
-            [.[].workflow_runs[] | select(.status=="completed" or .id==$current) |
-             . + {state:(if .id==$current then $result elif .conclusion=="success" then "success" else "failure" end)}] |
-            group_by(.state) | map(sort_by(.run_number) | last.id)' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" > "$RUNNER_TEMP/caches.json"
-          jq -r '[.[].actions_caches[] | select(.ref=="refs/heads/main") |
-            select(.key|test("^sdk-(Linux-X64|Linux-ARM64|Windows-X64|macOS-ARM64)-")) |
-            . + {host:(.key|capture("^sdk-(?<host>Linux-X64|Linux-ARM64|Windows-X64|macOS-ARM64)-").host)}] |
-            group_by(.host)[] | sort_by(.created_at,.id) | reverse | .[1:][] | .id' "$RUNNER_TEMP/caches.json" |
-          while IFS= read -r cache; do gh cache delete "$cache" --repo "$GITHUB_REPOSITORY"; done
-          if [ "$(jq -r '.publish' <<<"$SDK_RESULTS")" = success ]; then
-            name="公民SDK·SDK·v${SDK_VERSION}"
-            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|select(.draft==false and (.tag_name|startswith("公民SDK·SDK·v")))|.tag_name' |
-            while IFS= read -r old; do
-              if [ "$old" != "$name" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; fi
-            done
-          fi
-          jq -r --argjson current "$GITHUB_RUN_ID" --slurpfile keep "$RUNNER_TEMP/keep.json" '
-            [.[].workflow_runs[] | select(.status=="completed" and .id!=$current)] | sort_by(.conclusion=="success",.run_number)[] |
-            select(.id as $id | $keep[0] | index($id) | not) | .id' "$RUNNER_TEMP/runs.json" |
-          while IFS= read -r run; do gh run delete "$run" --repo "$GITHUB_REPOSITORY"; done

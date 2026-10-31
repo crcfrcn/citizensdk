@@ -1,5 +1,5 @@
 // 按官方的要求或推荐实现，工具依赖有就复用，没有就下载，用最简单的实现方式；编译构建脚本只允许放编译构建代码和注释，禁止增加无关内容，禁止增加复杂的校验阻断。
-// config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；*.yml：负责全部GitHub流程，包括版本、作业编排、发布及历史清理。
+// config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；sdk.yml：负责塔塔自动化的版本、作业编排及完整Artifact交付。
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {cpus,loadavg,totalmem,freemem,release} from 'node:os';
@@ -138,7 +138,7 @@ export function createFlutterSourceView(source,output){
  function visit(at){for(const name of readdirSync(at)){if(excluded.has(name))continue;const from=join(at,name),entry=relative(source,from),to=join(output,entry),info=lstatSync(from);
   if(info.isDirectory()){mkdirSync(to,{recursive:true});visit(from);}else if(info.isFile()){copyFileSync(from,to);utimesSync(to,info.atime,info.mtime);}
   else if(info.isSymbolicLink()){
-   // 发布SDK只允许Apple标准Framework的五个内部相对链接，禁止借包内路径访问外部文件。
+   // SDK组包只允许Apple标准Framework的五个内部相对链接，禁止借包内路径访问外部文件。
    const frame=framework,path=entry.split(sep).join('/'),links=frameworkLinks;
    const target=realpathSync(from);if(!path.startsWith(frame)||links[path.slice(frame.length)]!==readlinkSync(from)||!target.startsWith(join(source,frame,'Versions/A')+sep)&&target!==join(source,frame,'Versions/A'))throw Error('SDK源码链接越界');symlinkSync(readlinkSync(from),to,lstatSync(target).isDirectory()?'dir':'file');
   }else throw Error('SDK源码输入禁止特殊文件');
@@ -522,7 +522,7 @@ export async function build({target,test=false,testDevice,simulator,performance=
    await run('cargo',['test','--workspace','--locked','--','--include-ignored','--test-threads=1'],{cwd:project,env});put(join(project,'analysis_options.yaml'),'include: package:flutter_lints/flutter.yaml\nanalyzer:\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n  errors:\n    invalid_use_of_visible_for_testing_member: error\n    missing_required_param: error\n    missing_return: error\nlinter:\n  rules:\n    avoid_dynamic_calls: false\n    directives_ordering: true\n    discarded_futures: true\n    prefer_final_locals: true\n    unawaited_futures: true\n');const flutter=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin',process.platform==='win32'?'flutter.bat':'flutter');await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});await run(flutter,['analyze','--fatal-infos'],{cwd:project,env});const tests=files(join(project,'lib/test')).filter(path=>path.endsWith('_test.dart')&&relative(project,path).split(sep).join('/')!=='lib/test/platform/ffi_test.dart').sort();if(!tests.length)throw Error('Dart测试缺失');await run(flutter,['test','--no-pub','--reporter=expanded',...tests],{cwd:project,env});if(performance)await performanceTests(project,work,env);return {tests:true};}
   if(native){const output=createFlutterSourceView(root,join(work,'output'));for(const name of ['android','darwin','linux','windows'])copy(join(native,name),join(output,name));setVersion(output,version);verifyComplete(output);}
   else{setVersion(project,version);if(target==='Android')await android(project,work,env,headers,device,{testDevice,performance});else if(['Apple','iOS','macOS'].includes(target))await apple(project,work,env,headers,version,device,test?{target,simulator,performance}:{});else await desktop(project,work,env,headers,target);}
-  if(test){if(performance&&['LinuxARM','Windows'].includes(target)){console.error(JSON.stringify({target,notRun:['平台桥接耗时采样']}));await performanceTests(project,work,env);}return {tests:true,target};}
+  if(test){if(target==='macOS'){for(const name of readdirSync(work))if(name!=='ffi.dylib')rmSync(join(work,name),{recursive:true,force:true});complete=true;return {tests:true,target,work,testLibrary:join(work,'ffi.dylib')};}if(performance&&['LinuxARM','Windows'].includes(target)){console.error(JSON.stringify({target,notRun:['平台桥接耗时采样']}));await performanceTests(project,work,env);}return {tests:true,target};}
   for(const name of readdirSync(work))if(name!=='output')rmSync(join(work,name),{recursive:true,force:true});complete=true;return {work,output:join(work,'output')};
  }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){cache.release();if(!complete)rmSync(work,{recursive:true,force:true});}}
 }

@@ -1161,9 +1161,6 @@ void CaptureResource::opened(void *raw, uint64_t native,
     } catch (const ContractFailure &failure) {
       s.terminal = failure.code;
       self->request_close();
-    } catch (const ContractFailure &failure) {
-      s.terminal = failure.code;
-      self->request_close();
     } catch (...) {
       s.terminal = CITIZENSDK_ERROR_INTERNAL;
       self->request_close();
@@ -1769,12 +1766,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         session->transport->retire();
       }
       outcome = failure(error.code, error.what(), request, error.stage);
-    } catch (const ContractFailure &error) {
-      if (session && session->transport) {
-        sessions.erase(session->id);
-        session->transport->retire();
-      }
-      outcome = failure(error.code, error.what(), request, error.stage);
     } catch (...) {
       if (session && session->transport) {
         sessions.erase(session->id);
@@ -1901,7 +1892,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         auto project = std::move(route->projection);
         try {
           route->ready = success(route->request, project());
-        } catch (const Error &e) {
+        } catch (const ContractFailure &e) {
           route->ready = failure(e.code, e.what(), route->request, e.stage);
         } catch (...) {
           route->ready = failure(CITIZENSDK_ERROR_INTERNAL,
@@ -1951,9 +1942,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
     } catch (const ContractFailure &error) {
       close_failed(session, error.code, error.what());
       return;
-    } catch (const ContractFailure &error) {
-      close_failed(session, error.code, error.what());
-      return;
     } catch (...) {
       close_failed(session, CITIZENSDK_ERROR_INTERNAL,
                    "Credential cancellation failed");
@@ -1995,8 +1983,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         reply(success(request, Value::list({Value::string("disposed")})));
     } catch (const ContractFailure &error) {
       close_failed(session, error.code, error.what());
-    } catch (const ContractFailure &error) {
-      close_failed(session, error.code, error.what());
     } catch (...) {
       close_failed(session, CITIZENSDK_ERROR_INTERNAL,
                    "CitizenSDK close failed");
@@ -2020,9 +2006,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
                    const DecodedRequest &request, ReplyCallback reply) {
     try {
       cancel_credentials(session);
-    } catch (const ContractFailure &error) {
-      reply(failure(error.code, error.what(), request, error.stage));
-      return;
     } catch (const ContractFailure &error) {
       reply(failure(error.code, error.what(), request, error.stage));
       return;
@@ -2163,8 +2146,6 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
         result = success(request, Value::list({Value::boolean(accepted)}));
       } catch (const ContractFailure &error) {
         result = failure(error.code, error.what(), request, error.stage);
-      } catch (const ContractFailure &error) {
-        result = failure(error.code, error.what(), request, error.stage);
       } catch (...) {
         result = failure(CITIZENSDK_ERROR_INTERNAL,
                          "Operation cancellation failed", request);
@@ -2183,7 +2164,7 @@ struct Sessions::State final : std::enable_shared_from_this<State> {
     }
     try {
       resource_operation(session, route);
-    } catch (const Error &e) {
+    } catch (const ContractFailure &e) {
       route->completed = true;
       route->ready = failure(e.code, e.what(), route->request, e.stage);
       drain(session);

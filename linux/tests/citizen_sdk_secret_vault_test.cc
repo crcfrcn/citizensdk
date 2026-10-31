@@ -159,7 +159,7 @@ int main() {
       vault.ensure_wallet_kek(1, invalid, operation);
     } catch (const citizen_sdk::HostError &error) {
       wrong_wallet_rejected =
-          error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+          error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
     }
     assert(wrong_wallet_rejected);
 
@@ -172,20 +172,20 @@ int main() {
     auto reject_wrap = [&] {
       bool rejected = false;
       try { (void)vault.wrap_dek(8, missing, operation, output.data()); }
-      catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+      catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
       assert(rejected);
     };
     reject_wrap();
     bool add_rejected = false;
     try { vault.authorize_add_accounts(10, missing, operation); }
-    catch (const citizen_sdk::HostError &error) { add_rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+    catch (const citizen_sdk::HostError &error) { add_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
     assert(add_rejected && vault.idle());
     assert(!store.is_generation_active(missing));
     bool missing_rejected = false;
     try {
       vault.unwrap_dek(9, missing, citizen_sdk::Bytes{1, 2}, output.data());
     } catch (const citizen_sdk::HostError &error) {
-      missing_rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED;
+      missing_rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED;
     }
     assert(missing_rejected);
     assert(std::all_of(output.begin(), output.end(),

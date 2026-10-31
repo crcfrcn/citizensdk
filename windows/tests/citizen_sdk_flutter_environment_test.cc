@@ -126,8 +126,6 @@ int main() {
   return 0;
   } catch (const csf::ContractFailure &error) {
     std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s contract_code=%d\n", stage, static_cast<int>(error.code));
-  } catch (const citizen_sdk::flutter::ContractFailure &error) {
-    std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s native_code=%d\n", stage, static_cast<int>(error.code));
   } catch (const std::exception &) {
     std::fprintf(stderr, "WINDOWS_ENV_FAILURE stage=%s exception=true\n", stage);
   }

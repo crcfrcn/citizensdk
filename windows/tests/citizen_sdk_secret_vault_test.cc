@@ -29,7 +29,7 @@ template <class Function>
 void fails(citizensdk_error_code_t expected, Function &&function) {
   bool rejected = false;
   try { function(); }
-  catch (const citizen_sdk::HostError &error) { rejected = error.code == expected; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == expected; }
   assert(rejected);
 }
 
@@ -151,7 +151,7 @@ int retire_child(int count, wchar_t **arguments) {
   if (!blocked || !proceed) return 2;
   bool busy = false;
   try { GenerationLock denied(wallet, 0); }
-  catch (const citizen_sdk::HostError &error) { busy = error.code == CITIZENSDK_ERROR_BUSY; }
+  catch (const citizen_sdk::HostError &error) { busy = error.code() == CITIZENSDK_ERROR_BUSY; }
   if (!busy || !::SetEvent(blocked.get()) ||
       ::WaitForSingleObject(proceed.get(), 30000) != WAIT_OBJECT_0) return 3;
   try {

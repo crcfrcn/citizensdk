@@ -35,7 +35,7 @@ citizensdk/
 ├── windows/       src/、tests/、cmake/ 及CMakeLists
 ├── image/, chain/, smoldot/
 ├── scripts/       build.mjs、config.mjs
-└── .github/workflows/  sdk.yml、publish.yml
+└── .github/workflows/  sdk.yml
 ```
 
 ## 接口和所有权
@@ -74,11 +74,15 @@ scripts/config.mjs只声明本产品工具/配置/工作流；scripts/build.mjs�
 
 同一SDK包含Android arm64-v8a（API24+）、iOS16 arm64、iOS模拟器arm64、macOS13 arm64、LinuxARM64和Windowsx64实际原生件。macOS Framework沿官方Versions/A与五个内部相对链接。完整包、原锁、许可、真实来源及平台原生件不完整时失败，不自动换库或升级。
 
-主Dart测试在lib/test四个分组，根不设test/tests。纯值/接口回归与真实FFI分开，实际FFI使用同轮正式Core、SQLite、ZXing，只有物理金库可用性、确保失败和终态等待点由明确有限夹具提供，不模拟SDK业务或结果。Dart显式显示和相机元数据/关闭确认使用有限物理通道夹具，覆盖迟到拒绝、借用副本清零、真实确认等待、暂停订阅不阻塞归还及早到关闭；这不是设备授权或相机采集正向验收。热准备的成功、作业失败、取消与关闭等待由同轮正式Core及有限物理夹具回归；该结果不代表硬件加密、授权或重启持久性通过。实际Flutter消费者为apple/linux/windows；CitizenApp和TuyuLove只通过公开CitizenSdk接入同一版本。旧合成业务消费者及旧接口替身不作为验收。
+主Dart测试在lib/test四个分组，根不设test/tests。lib/test/platform/fixture.dart提供同一CitizenSdkTestFixture供SDK与消费方测试复用，只模拟物理资源边界，Core/SQLite/ZXing均由正式测试库执行。显式macOS测试成功后，构建入口返回本轮work与testLibrary，现场只保留ffi.dylib；使用方测试结束后负责清理该独占现场，不能回退到旧协议或SDK业务替身。纯值/接口回归与真实FFI分开，实际FFI使用同轮正式Core、SQLite、ZXing，只有物理金库可用性、确保失败和终态等待点由明确有限夹具提供，不模拟SDK业务或结果。Dart显式显示和相机元数据/关闭确认使用有限物理通道夹具，覆盖迟到拒绝、借用副本清零、真实确认等待、暂停订阅不阻塞归还及早到关闭；这不是设备授权或相机采集正向验收。热准备的成功、作业失败、取消与关闭等待由同轮正式Core及有限物理夹具回归；该结果不代表硬件加密、授权或重启持久性通过。实际Flutter消费者为apple/linux/windows；CitizenApp和TuyuLove只通过公开CitizenSdk接入同一版本。旧合成业务消费者及旧接口替身不作为验收。
+
+相机测试夹具的scanText只在实际夹具资源活动时接收输入，通过公开生成C绑定调用真实Core的同步QR解析，并将Core产生的原JSON投递给SDK事件通道；不复制文档序列化、QR解析、签名或业务判定。每个宿主会话维护独立递增的物理事件序号，连续帧不会伪装成同一事件。
+
+测试资源按宿主会话归属；关闭一个会话只检查该会话资源，不能等待或清除其它会话仍在使用的相机/私钥显示。跨会话关闭与持续扫码由真实Core回归覆盖。
 
 SDK默认测试入口同时执行原Rust回归和工作流使用的严格Flutter静态检查，单独dart analyze lib不能代替该入口。实际工具退出码、报告、用例数和跳过必须分别核对；缺报告、零执行或全部跳过不能成功。共同C++/类型检查/有限单元不能替代LinuxARM、Windows、Keychain/Keystore/TPM正向认证和物理相机验收。执行结果只登记唯一任务卡，不在本技术文档保存过程结论。
 
-sdk.yml是唯一公开塔塔自动化入口；publish.yml只由其调用并执行实际发布。交付版本不低于pubspec声明，既有成功交付仅在版本不降低的前提下递增补丁。发布脚本直接使用Shell和GitHub CLI处理已验收产物，不准备未被调用的Node工具。publish默认false；正式发布和远端历史清理需要独立明确授权。工具下载遵守唯一全局规则，不由重构、安装或自动化授权推定允许。README只保留简介和许可入口。
+公民SDK只有塔塔鹿鹿和塔塔自动化。GitHub强制工具目录.github/workflows仅含sdk.yml，按唯一工作流合同独立验证；SDK第一方源码目录的三级及真实直接子项规则不变。sdk.yml是唯一公开塔塔自动化入口，四宿主编译、测试通过后在同一Run组装并交付完整Artifact；不设置SDK发布参数或作业，不创建Release/Tag，不删除远端记录或缓存。消费方从成功自动化Run取得完整Artifact，调用SDK公开consume接口。交付版本不低于pubspec声明，既有成功交付仅在版本不降低的前提下递增补丁。工具下载遵守唯一全局规则。README只保留简介和许可入口。
 
 ## 本地钱包目录与安全故障诊断
 
@@ -100,11 +104,9 @@ readDiagnostics为既有公开诊断方法，零输入、只读，返回最多12
 
 GitHub完整Rust回归显式使用--include-ignored，纳入既有四项受时间上限约束的实网只读验收；无钱包账户输入、不发送有效交易。真实网络不可用按原测试失败，不以忽略或零执行通过；其结果不等同于手机现场复现。
 
-构建缓存原子领取；持有时使用固定源码投影和原文件时间戳复用Cargo产物，缓存占用则使用本轮独占目录。包内Artifact使用目标后缀，最终完整包、Release和Tag仍统一为产品·SDK·版本。
+构建缓存原子领取；持有时使用固定源码投影和原文件时间戳复用Cargo产物，缓存占用则使用本轮独占目录。包内Artifact使用目标后缀，最终完整Artifact统一为产品·SDK·版本。
 
 严格Dart分析不降低检查级别；导入排序、语句括号、等价字符串插值及测试集合显式类型由产品源码维护，不在构建现场改写业务或屏蔽诊断。
-
-新正式版上传并回读后才删除旧正式版与对应Tag；旧版本清理失败必须使本轮失败，不能只打印告警后报告整体成功。
 
 Dart平台选择回归依据真实Abi.current验证LinuxARM准入，不把macOS的TargetPlatform覆盖当作真实Linux机器；未支持Linux架构与Fuchsia必须在进入任何通道之前拒绝。固定方法测试包含既有readDiagnostics的零输入和多余字段拒绝。
 

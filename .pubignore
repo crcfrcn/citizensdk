@@ -1,4 +1,4 @@
-# CitizenSDK 的 Hosted Package 从已注入同版原生运行件的唯一 Release 候选生成。
+# CitizenSDK 的 Hosted Package 从已注入同版原生运行件的完整 Artifact生成。
 # 这里只过滤开发、审计和测试输入；运行时 Dart/Flutter、插件、链资产与原生运行件保留。
 /.gitignore
 /.pubignore

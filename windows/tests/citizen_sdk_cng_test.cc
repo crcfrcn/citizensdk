@@ -201,7 +201,7 @@ void isolated_tpm_contract() {
     changed.name.back() ^= 1;
     bool rejected = false;
     try { (void)cng.validate_key(changed); }
-    catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_KEY_INVALIDATED; }
+    catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_KEY_INVALIDATED; }
     expect(rejected);
     cng.delete_key(wallet, object);
     deleted = true;
@@ -259,7 +259,7 @@ int wmain(int count, wchar_t **arguments) {
     }
     bool rejected = false;
     try { validate_cng_key_properties(changed); }
-    catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_INTEGRITY; }
+    catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
     assert(rejected);
   }
 
@@ -284,7 +284,7 @@ int wmain(int count, wchar_t **arguments) {
     }
     bool invalid = false;
     try { validate_cng_public_blob(changed); }
-    catch (const citizen_sdk::HostError &error) { invalid = error.code == CITIZENSDK_ERROR_INTEGRITY; }
+    catch (const citizen_sdk::HostError &error) { invalid = error.code() == CITIZENSDK_ERROR_INTEGRITY; }
     assert(invalid);
   }
 
@@ -294,13 +294,13 @@ int wmain(int count, wchar_t **arguments) {
   wallet.wallet_index = 1;
   bool rejected = false;
   try { (void)cng_key_name(wallet); }
-  catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
   assert(rejected);
   std::array<uint8_t, 32> output{};
   output.fill(0xa5);
   rejected = false;
   try { Cng().decrypt_dek(citizen_sdk::VaultObject{}, citizen_sdk::Bytes{}, citizen_sdk::SensitiveBuffer{}, output.data()); }
-  catch (const citizen_sdk::HostError &error) { rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
+  catch (const citizen_sdk::HostError &error) { rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT; }
   assert(rejected && std::all_of(output.begin(), output.end(), [](uint8_t byte) { return byte == 0; }));
   return 0;
 }

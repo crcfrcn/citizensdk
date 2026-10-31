@@ -42,7 +42,6 @@ int main() {
       "citizensdk.h",
       "citizensdk_types.h",
       "citizensdk_host.h",
-      // Flutter 注册声明只负责装配；和原生 Host 头一起接受秘密边界扫描。
   };
   assert(headers == expected_headers);
 
@@ -50,7 +49,7 @@ int main() {
   try {
     (void)copy_view({nullptr, 1}, 8, "null fixture");
   } catch (const HostError &error) {
-    null_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    null_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(null_rejected);
 
@@ -61,7 +60,7 @@ int main() {
   try {
     (void)copy_view({fixture, 3}, 2, "oversized fixture");
   } catch (const HostError &error) {
-    oversized_rejected = error.code == CITIZENSDK_ERROR_INVALID_ARGUMENT;
+    oversized_rejected = error.code() == CITIZENSDK_ERROR_INVALID_ARGUMENT;
   }
   assert(oversized_rejected);
 

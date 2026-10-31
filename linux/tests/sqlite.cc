@@ -37,7 +37,7 @@ void expect_permission_denied(const std::filesystem::path &directory,const char 
   try {
     citizen_sdk::linux::SQLiteStore store(directory, file_name);
   } catch (const citizen_sdk::HostError &error) {
-    rejected = error.code == CITIZENSDK_ERROR_PERMISSION_DENIED;
+    rejected = error.code() == CITIZENSDK_ERROR_PERMISSION_DENIED;
   }
   assert(rejected);
 }
