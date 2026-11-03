@@ -82,7 +82,7 @@ scripts/config.mjs只声明本产品工具/配置/工作流；scripts/build.mjs�
 
 SDK默认测试入口同时执行原Rust回归和工作流使用的严格Flutter静态检查，单独dart analyze lib不能代替该入口。实际工具退出码、报告、用例数和跳过必须分别核对；缺报告、零执行或全部跳过不能成功。共同C++/类型检查/有限单元不能替代LinuxARM、Windows、Keychain/Keystore/TPM正向认证和物理相机验收。执行结果只登记唯一任务卡，不在本技术文档保存过程结论。
 
-公民SDK只有塔塔鹿鹿和塔塔自动化。GitHub强制工具目录.github/workflows仅含sdk.yml，按唯一工作流合同独立验证；SDK第一方源码目录的三级及真实直接子项规则不变。sdk.yml是唯一公开塔塔自动化入口，四宿主编译、测试通过后在同一Run组装并交付完整Artifact；不设置SDK发布参数或作业，不创建Release/Tag；自动化末尾独立保留最新成功与最新失败各一条，其他尚未结束的Run保留，删除失败原样失败，不删除缓存或其它资源。消费方从成功自动化Run取得完整Artifact，调用SDK公开consume接口。交付版本不低于pubspec声明，既有成功交付仅在版本不降低的前提下递增补丁。工具下载遵守唯一全局规则。README只保留简介和许可入口。
+公民SDK只有塔塔鹿鹿和塔塔自动化。GitHub强制工具目录.github/workflows仅含sdk.yml，按唯一工作流合同独立验证；SDK第一方源码目录的三级及真实直接子项规则不变。sdk.yml是唯一公开塔塔自动化入口，四宿主编译、测试通过后在同一Run组装完整SDK，保留内部Artifact并发布同名正式Release与Tag；正式交付为ZIP、来源JSON与SHA256三件套，上传草稿后逐件下载回读，全部一致才公开为正式版。自动化末尾保留正式Release引用的生产Run及最新成功与最新失败各一条，其他尚未结束的Run保留，删除失败原样失败，不删除缓存或其它资源。消费方从正式Release列表自动选择版本并下载完整包，调用SDK公开consume接口，不从Actions Artifact选版。交付版本从正式Release的最高语义版本自动递增补丁，并以pubspec声明为下限。工具下载遵守唯一全局规则。README只保留简介和许可入口。
 
 ## 本地钱包目录与安全故障诊断
 

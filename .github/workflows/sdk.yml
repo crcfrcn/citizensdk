@@ -53,24 +53,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&status=success&per_page=1" > "$RUNNER_TEMP/runs.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
           node --input-type=module >> "$GITHUB_OUTPUT" <<'NODE'
           import {readFileSync} from 'node:fs';
-          import {execFileSync} from 'node:child_process';
-          const previous=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/runs.json','utf8')).workflow_runs[0];
+          const releases=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/releases.json','utf8')).flat();
+          const valid=value=>typeof value==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(value);
+          const versions=releases.flatMap(release=>{
+            if(release.draft||release.prerelease||!release.published_at)return [];
+            let proof;try{proof=JSON.parse(release.body);}catch{return [];}
+            return proof?.product_id==='citizensdk'&&proof.platform==='sdk'&&valid(proof.software_version)?[proof.software_version]:[];
+          }).sort((left,right)=>{
+            const a=left.split('.').map(BigInt),b=right.split('.').map(BigInt);
+            for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]>b[i]?-1:1;return 0;
+          });
           let version=/^version: (\S+)$/mu.exec(readFileSync('pubspec.yaml','utf8'))[1];
-          if(previous){
-            const data=JSON.parse(execFileSync('gh',['api','repos/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+previous.id+'/artifacts?per_page=100'],{encoding:'utf8'}));
-            const artifact=data.artifacts.find(value=>/^公民SDK·SDK·v\d+\.\d+\.\d+$/u.test(value.name));
-            const next=artifact.name.slice('公民SDK·SDK·v'.length).split('.').map(BigInt);
-            next[2]++;
-            // 新主版本以源码声明为下限；同版交付继续递增补丁。
+          if(!valid(version))throw Error('SDK版本声明无效');
+          if(versions.length){
+            const next=versions[0].split('.').map(BigInt);next[2]++;
             const declared=version.split('.').map(BigInt);
-            for(let i=0;i<3;i++){
-              if(next[i]===declared[i])continue;
-              if(next[i]>declared[i])version=next.join('.');
-              break;
-            }
+            for(let i=0;i<3;i++){if(next[i]===declared[i])continue;if(next[i]>declared[i])version=next.join('.');break;}
           }
           console.log('version='+version);
           NODE
@@ -152,7 +153,7 @@ jobs:
           done
           export PATH="$cargo_home/bin:$PATH"
           export RUSTUP_HOME="$tool_cache/rustup"
-          if [ "$RUNNER_OS" = Windows ]; then export RUSTUP_HOME="$(cygpath -m "$RUSTUP_HOME")"; fi
+          if [ "$RUNNER_OS" = Windows ]; then RUSTUP_HOME="$(cygpath -m "$RUSTUP_HOME")"; fi
           printf 'RUSTUP_HOME=%s\n' "$RUSTUP_HOME" >> "$GITHUB_ENV"
           printf 'CARGO_TARGET_DIR=%s/target/cache/rust\nGRADLE_USER_HOME=%s/target/cache/gradle-home\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           cargo_bin="$cargo_home/bin"
@@ -563,6 +564,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 240
+    permissions:
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -604,6 +608,7 @@ jobs:
           (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
           CITIZENSDK_PACKAGE="$artifact" node scripts/build.mjs consume "$GITHUB_SHA" "$work/consumer" >/dev/null
           printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
+          printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 公民SDK·SDK·v${{ needs.select.outputs.version }}
@@ -611,6 +616,63 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           overwrite: true
+      - name: 生成并核对正式Release与Tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_ARTIFACT_DIRECTORY: ${{ steps.build.outputs.path }}
+        run: |
+          set -euo pipefail
+          encoded="$(jq -rn --arg name "$SDK_NAME" '$name|@uri')"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-releases.json"
+          previous="$(jq '[.[][]|select(.tag_name==env.SDK_NAME)]' "$RUNNER_TEMP/sdk-releases.json")"
+          test "$(printf '%s' "$previous" | jq length)" -le 1
+          if [ "$(printf '%s' "$previous" | jq length)" -eq 1 ]; then
+            proof="$(printf '%s' "$previous" | jq '.[0].body|fromjson')"
+            old_run="$(printf '%s' "$proof" | jq -r .producer_run_id)"
+            old_attempt="$(printf '%s' "$proof" | jq -r .producer_run_attempt)"
+            old_sha="$(printf '%s' "$proof" | jq -r .git_commit_sha)"
+            printf '%s' "$proof" | jq -e '.product_id=="citizensdk" and .platform=="sdk" and .software_version==env.SDK_VERSION' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$old_sha" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .path==".github/workflows/sdk.yml"' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$old_sha" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+            gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          # GraphQL变量由gh参数传入，查询字符串必须保持原文。
+          # shellcheck disable=SC2016
+          ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$SDK_NAME" --jq '.data.repository.ref.target.oid // ""')"
+          test -z "$ref"
+          tag_created=false
+          rollback() {
+            release_status=$?
+            id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|select(.tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA)|select((.body|fromjson?|.producer_run_id)==(env.GITHUB_RUN_ID|tonumber))|.id')"
+            if [ -n "$id" ]; then gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes || printf '本次Release撤销未完成\n' >&2; fi
+            if [ "$tag_created" = true ]; then
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" --jq .object.sha | grep -Fxq "$GITHUB_SHA"; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$encoded" || printf '本次Tag撤销未完成\n' >&2
+              fi
+            fi
+            exit "$release_status"
+          }
+          trap rollback ERR
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$SDK_NAME" -f sha="$GITHUB_SHA" > "$RUNNER_TEMP/sdk-tag.json"
+          tag_created=true
+          jq -e '.object.sha==env.GITHUB_SHA' "$RUNNER_TEMP/sdk-tag.json" >/dev/null
+          # GitHub会规范化下载文件名；官方label保留准确的产品、平台和版本显示名。
+          files=()
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+          gh release create "$SDK_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
+          back="$RUNNER_TEMP/sdk-readback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$back"
+          gh release view "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/sdk-assets.json"
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do
+            label="$(basename "$file")"
+            remote="$(jq -er --arg label "$label" '[.assets[]|select(.label==$label and .state=="uploaded")]|if length==1 then .[0].name else error("附件标签不唯一") end' "$RUNNER_TEMP/sdk-assets.json")"
+            gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
+            cmp "$file" "$back/$label"
+          done
+          gh release edit "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
+          trap - ERR
       - name: 清理本轮SDK编译现场
         continue-on-error: true
         if: ${{ always() && steps.build.outputs.work != '' }}
@@ -627,20 +689,25 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: write
+      contents: read
     env:
       SDK_RESULTS: '{"select":"${{ needs.select.result }}","android":"${{ needs.android.result }}","apple":"${{ needs.apple.result }}","linux":"${{ needs.linux.result }}","windows":"${{ needs.windows.result }}","complete":"${{ needs.complete.result }}"}'
     steps:
-      - name: 只保留最新成功和最新失败各一条
+      - name: 保留正式Release来源及最新成功失败记录
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-release-records.json"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?per_page=100" > "$RUNNER_TEMP/runs.json"
           result="$(jq -r 'if all(.[]; .=="success") then "success" else "failure" end' <<<"$SDK_RESULTS")"
-          jq --argjson current "$GITHUB_RUN_ID" --arg result "$result" '
+          jq --argjson current "$GITHUB_RUN_ID" --arg result "$result" --slurpfile releases "$RUNNER_TEMP/sdk-release-records.json" '
             [.[].workflow_runs[] | select(.status=="completed" or .id==$current) |
              . + {state:(if .id==$current then $result elif .conclusion=="success" then "success" else "failure" end)}] |
-            group_by(.state) | map(sort_by(.run_number) | last.id)' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
+            (group_by(.state) | map(sort_by(.run_number) | last.id)) +
+            [$releases[0][][] | select(.draft==false and .prerelease==false and .published_at!=null) |
+             .body | fromjson? | select(.product_id=="citizensdk" and .platform=="sdk") | .producer_run_id] |
+            unique' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
           jq -r --argjson current "$GITHUB_RUN_ID" --slurpfile keep "$RUNNER_TEMP/keep.json" '
             [.[].workflow_runs[] | select(.status=="completed" and .id!=$current)][] |
             select(.id as $id | $keep[0] | index($id) | not) | .id' "$RUNNER_TEMP/runs.json" |

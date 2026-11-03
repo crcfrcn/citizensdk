@@ -1,5 +1,5 @@
 // 按官方的要求或推荐实现，工具依赖有就复用，没有就下载，用最简单的实现方式；编译构建脚本只允许放编译构建代码和注释，禁止增加无关内容，禁止增加复杂的校验阻断。
-// config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；sdk.yml：负责塔塔自动化的版本、作业编排及完整Artifact交付。
+// config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；sdk.yml：负责塔塔自动化的版本、作业编排及完整Release交付。
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {cpus,loadavg,totalmem,freemem,release} from 'node:os';
