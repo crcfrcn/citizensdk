@@ -1247,7 +1247,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
 - 消费者：CitizenApp finalized 链读、Cloudflare finalized 镜像和对账器。
 - 禁止事项：
   - 禁止恢复 `BillingKeeper` storage。
-  - 禁止 D1 保存第二份扣款价格真源。
+  - 禁止保存第二份扣款价格真源。
   - 禁止在 CitizenApp 或 Cloudflare 计算并提交订阅公历到期时间。
   - 禁止使用区块高度、固定天数或固定毫秒推导 `paid_until`。
   - 禁止 App、Cloudflare、keeper 或任意外部账户提交续费；runtime 只处理有界到期索引。
