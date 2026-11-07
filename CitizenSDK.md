@@ -2,7 +2,7 @@
 
 ## 当前实现
 
-CitizenSDK是通用无UI区块链SDK。链同步、Runtime、交易准备/执行/历史、钱包、sr25519和二维码协议只在同一Rust Core实现。App拥有页面、展示、业务载荷和用户确认；系统资源由SDK各平台实际拥有者提供。聊天逻辑归TataChatSDK，不在本SDK实现。
+CitizenSDK是通用无UI区块链SDK。链同步、Runtime、交易准备/执行/历史、钱包、sr25519和二维码协议只在同一Rust Core实现。App拥有页面、展示、业务载荷和用户确认；系统资源由SDK各平台实际拥有者提供。聊天客户端归公民App的chat本地包。
 
 源码只保留一个根Cargo包citizensdk；Pub、Cargo、Gradle、podspec与桌面CMake同一基准版本2.0.0，`[lib] path="core/src/lib.rs"`。C ABI=2。Core唯一构造是`citizensdk_create(options, modules, stores, out_handle)`；调用方显式交付所选模块所需真实资源。旧构造、旧包、业务Host回调、自定义Store装配、内存会话仓储、签名器对象及兼容路径均删除。
 
@@ -1065,7 +1065,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
 
 ##### 聊天近场能力归属
 
-聊天近场能力如有需求，只能由 TataChatSDK 实现并通过公开接口供产品依赖使用。撤销在 CitizenApp 原生目录或 transport 目录另行实现聊天近场传输的方案；本条不声明近场能力已经实现。
+聊天相关传输、界面与MLS状态归公民App的chat本地包；本SDK提供区块链与钱包公开能力。
 
 ##### P-TX-013：Square.publish_square_post
 
