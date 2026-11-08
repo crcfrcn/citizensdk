@@ -24,8 +24,8 @@ int main() {
   citizensdk_account_id_t source{};
   source.bytes[0] = 0x7a;
   for (const auto &[encode, decode] : {
-           std::pair{citizensdk_account_id_encode, citizensdk_account_id_decode},
-           std::pair{citizensdk_ss58_encode, citizensdk_ss58_decode}}) {
+           std::pair{&citizensdk_account_id_encode, &citizensdk_account_id_decode},
+           std::pair{&citizensdk_ss58_encode, &citizensdk_ss58_decode}}) {
     std::array<uint8_t, 66> bytes{};
     uint64_t count = 0;
     assert(encode(&source, bytes.data(), bytes.size(), &count) == CITIZENSDK_OK);
