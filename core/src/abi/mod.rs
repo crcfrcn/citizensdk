@@ -15,6 +15,7 @@ use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
 use std::ptr;
 
+use crate::types::AccountId32;
 use crate::types::BlockFinality;
 use crate::types::ChainIdentity;
 use crate::types::ExecutionConclusion;
@@ -246,6 +247,105 @@ const fn lifecycle_admission_policy(uses_host_services: bool) -> LifecycleAdmiss
 #[no_mangle]
 pub extern "C" fn citizensdk_abi_version() -> u32 {
     CITIZENSDK_ABI_VERSION
+}
+
+#[no_mangle]
+pub extern "C" fn citizensdk_ss58_prefix() -> u16 {
+    crate::types::CITIZEN_SS58_PREFIX
+}
+
+/// 校验账户文本；输出为 NULL 时只校验。
+///
+/// # Safety
+/// 输入视图须可读，非空输出须可写。
+#[no_mangle]
+pub unsafe extern "C" fn citizensdk_account_id_decode(
+    input: CitizenSdkBytesView,
+    output: *mut CitizenSdkAccountId,
+) -> i32 {
+    decode_account(input, output, 66, str::parse::<AccountId32>)
+}
+
+/// # Safety
+/// 输入视图须可读，输出须可写。
+#[no_mangle]
+pub unsafe extern "C" fn citizensdk_ss58_decode(
+    input: CitizenSdkBytesView,
+    output: *mut CitizenSdkAccountId,
+) -> i32 {
+    decode_account(input, output, 64, crate::types::parse_citizen_ss58_address)
+}
+
+unsafe fn decode_account(
+    input: CitizenSdkBytesView,
+    output: *mut CitizenSdkAccountId,
+    limit: usize,
+    decode: impl FnOnce(&str) -> crate::types::ContractResult<AccountId32>,
+) -> i32 {
+    ffi_status(|| {
+        let bytes = copy_view(input, "account", limit)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| FfiError::invalid("账户文本无效"))?;
+        let account = decode(text)?;
+        if !output.is_null() {
+            ptr::write(
+                output,
+                CitizenSdkAccountId {
+                    bytes: account.into_bytes(),
+                },
+            );
+        }
+        Ok(())
+    })
+}
+
+/// # Safety
+/// 账户须可读，输出缓冲及长度指针遵循公开 C 头的复制合同。
+#[no_mangle]
+pub unsafe extern "C" fn citizensdk_account_id_encode(
+    account: *const CitizenSdkAccountId,
+    buffer: *mut u8,
+    capacity: u64,
+    out_required: *mut u64,
+) -> i32 {
+    encode_account(account, buffer, capacity, out_required, |value| {
+        value.to_string()
+    })
+}
+
+/// # Safety
+/// 账户须可读，输出缓冲及长度指针遵循公开 C 头的复制合同。
+#[no_mangle]
+pub unsafe extern "C" fn citizensdk_ss58_encode(
+    account: *const CitizenSdkAccountId,
+    buffer: *mut u8,
+    capacity: u64,
+    out_required: *mut u64,
+) -> i32 {
+    encode_account(
+        account,
+        buffer,
+        capacity,
+        out_required,
+        crate::types::citizen_ss58_address,
+    )
+}
+
+unsafe fn encode_account(
+    account: *const CitizenSdkAccountId,
+    buffer: *mut u8,
+    capacity: u64,
+    out_required: *mut u64,
+    encode: impl FnOnce(AccountId32) -> String,
+) -> i32 {
+    ffi_status(|| {
+        let bytes = copy_fixed_32(account.cast(), "account_id")?;
+        copy_to_host(
+            encode(AccountId32::from_bytes(bytes)),
+            buffer,
+            capacity,
+            out_required,
+        )
+    })
 }
 
 #[no_mangle]
@@ -934,6 +1034,60 @@ pub unsafe extern "C" fn citizensdk_get_system_events_at(
             let events = runtime.drive(runtime.engine().finalized_system_events_at(block))??;
             Ok(ResultPayload::Storage(events))
         })
+    })
+}
+
+#[no_mangle]
+/// 解码完整 System.Events 字节；轻节点已验证锚点由调用此纯编解码入口的 SDK 读取层核对。
+///
+/// # Safety
+/// 两个输入在本调用期间可读，out_required 和提供的输出缓冲区可写。
+pub unsafe extern "C" fn citizensdk_decode_system_events(
+    metadata: CitizenSdkBytesView,
+    events: CitizenSdkBytesView,
+    output: *mut u8,
+    capacity: u64,
+    out_required: *mut u64,
+) -> i32 {
+    #[cfg(feature = "chain")]
+    {
+        ffi_status(|| {
+            let metadata = copy_view(metadata, "runtime metadata", 8 * 1024 * 1024)?;
+            let events = copy_view(events, "System.Events", MAX_ABI_INPUT_BYTES)?;
+            let decoded = crate::system_events::decode_system_events(&metadata, &events)?;
+            copy_to_host(decoded, output, capacity, out_required)
+        })
+    }
+    #[cfg(not(feature = "chain"))]
+    {
+        let _ = (metadata, events, output, capacity, out_required);
+        ffi_status(|| {
+            Err(FfiError::new(
+                CitizenSdkErrorCode::Unsupported,
+                "当前构建不包含链事件",
+            ))
+        })
+    }
+}
+
+#[no_mangle]
+/// 对完整 SCALE extrinsic 字节计算公民链交易哈希。
+///
+/// # Safety
+/// extrinsic 在本调用期间可读，out_hash_32 至少可写 32 字节。
+pub unsafe extern "C" fn citizensdk_hash_extrinsic(
+    extrinsic: CitizenSdkBytesView,
+    out_hash_32: *mut u8,
+) -> i32 {
+    ffi_status(|| {
+        require_output(out_hash_32, "out_hash_32")?;
+        let bytes = copy_view(extrinsic, "extrinsic", 64 * 1024 * 1024)?;
+        if bytes.is_empty() {
+            return Err(FfiError::invalid("extrinsic is empty"));
+        }
+        let hash = crate::types::account::blake2b::<32>(&bytes);
+        ptr::copy_nonoverlapping(hash.as_ptr(), out_hash_32, hash.len());
+        Ok(())
     })
 }
 

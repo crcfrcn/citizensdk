@@ -75,18 +75,32 @@ fn header_functions(header: &str) -> BTreeSet<String> {
 #[test]
 fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
     let source = include_str!("../../src/abi/mod.rs");
-    let mut old = rust_exports(source);
+    let mut base = rust_exports(source);
     // Android 系统证书初始化仅是 JNI 内部符号，不能混入钱包/QR 的公开 ABI 计数。
     assert!(source.contains("#[cfg(target_os = \"android\")]\n#[no_mangle]\npub unsafe extern \"C\" fn citizensdk_android_init_tls"));
-    assert!(old.remove("citizensdk_android_init_tls"));
+    assert!(base.remove("citizensdk_android_init_tls"));
     let wallet = rust_exports(include_str!("../../src/abi/wallet_abi.rs"));
     let qr = rust_exports(include_str!("../../src/abi/qr_abi.rs"));
-    // 钱包函数逐项对拍同一143项公开C闭集；被删除的结果编号不重排、不复用。
-    assert_eq!(old.len(), 55);
-    assert_eq!(wallet.len(), 66);
+    // 钱包、账户编解码和交易事件工具按同一 154 项公开 C 符号集合核对。
+    assert_eq!(base.len(), 62);
+    for symbol in [
+        "citizensdk_account_id_decode",
+        "citizensdk_account_id_encode",
+        "citizensdk_ss58_decode",
+        "citizensdk_ss58_encode",
+        "citizensdk_ss58_prefix",
+        "citizensdk_decode_system_events",
+        "citizensdk_hash_extrinsic",
+    ] {
+        assert!(
+            base.contains(symbol),
+            "missing base ABI symbol: {symbol}"
+        );
+    }
+    assert_eq!(wallet.len(), 70);
     assert_eq!(qr.len(), 11);
-    assert!(old.is_disjoint(&wallet));
-    assert!(old.is_disjoint(&qr));
+    assert!(base.is_disjoint(&wallet));
+    assert!(base.is_disjoint(&qr));
     assert!(wallet.is_disjoint(&qr));
 
     let expected_wallet: BTreeSet<_> = [
@@ -110,7 +124,11 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
         "citizensdk_wallet_state_get_diagnostic_cleanup_account",
         "citizensdk_wallet_state_get_diagnostic_count",
         "citizensdk_wallet_state_get_initialization",
+        "citizensdk_chain_codec",
+        "citizensdk_get_finalized_block_range",
+        "citizensdk_result_get_block_range",
         "citizensdk_wallet_state_retain",
+        "citizensdk_wallet_state_get_removed_account",
         "citizensdk_wallet_word_suggestions",
         "citizensdk_get_genesis_hash",
         "citizensdk_get_finalized_account_balances",
@@ -183,12 +201,12 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
 
     let presence = rust_exports(include_str!("../../src/host.rs"));
     assert!(presence.is_empty());
-    assert!(presence.is_disjoint(&old));
+    assert!(presence.is_disjoint(&base));
     assert!(presence.is_disjoint(&wallet));
     assert!(presence.is_disjoint(&qr));
     assert!(presence.is_disjoint(&transaction));
     let header = header_functions(include_str!("../../../include/citizensdk.h"));
-    let all: BTreeSet<_> = old
+    let all: BTreeSet<_> = base
         .union(&wallet)
         .chain(qr.iter())
         .chain(transaction.iter())
@@ -247,10 +265,10 @@ fn appended_result_values_and_portable_product_layouts_are_frozen() {
     assert_eq!(size_of::<CitizenSdkAccountId>(), 32);
     assert_eq!(size_of::<CitizenSdkAccountBalanceInfo>(), 144);
     assert_eq!(size_of::<CitizenSdkAccountNonceInfo>(), 104);
-    assert_eq!(size_of::<CitizenSdkFeeSnapshotInfo>(), 104);
+    assert_eq!(size_of::<CitizenSdkFeeSnapshotInfo>(), 120);
     assert_eq!(size_of::<CitizenSdkWalletProfileInfo>(), 96);
     assert_eq!(size_of::<CitizenSdkWalletAccountInfo>(), 72);
-    assert_eq!(size_of::<CitizenSdkWalletStateInfo>(), 56);
+    assert_eq!(size_of::<CitizenSdkWalletStateInfo>(), 64);
     assert_eq!(size_of::<CitizenSdkWalletStateAccountInfo>(), 88);
     assert_eq!(size_of::<CitizenSdkPreparedWalletInfo>(), 16);
     assert_eq!(size_of::<CitizenSdkTransactionHistoryPageInfo>(), 40);

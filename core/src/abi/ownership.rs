@@ -111,6 +111,7 @@ pub enum ResultPayload {
     ChainSyncStatus(ChainSyncStatus),
     BlockHeader(VerifiedBlockHeader),
     BlockBody(VerifiedBlockBody),
+    BlockRange(Vec<crate::types::FinalizedBlockRef>),
     PreparedTransaction(PreparedTransactionPayload),
     TransactionExecution(TransactionExecutionPayload),
 }
@@ -146,6 +147,7 @@ impl ResultPayload {
             Self::ChainSyncStatus(_) => CitizenSdkResultKind::ChainSyncStatus,
             Self::BlockHeader(_) => CitizenSdkResultKind::BlockHeader,
             Self::BlockBody(_) => CitizenSdkResultKind::BlockBody,
+            Self::BlockRange(_) => CitizenSdkResultKind::BlockRange,
             Self::PreparedTransaction(_) => CitizenSdkResultKind::PreparedTransaction,
             Self::TransactionExecution(_) => CitizenSdkResultKind::TransactionExecution,
         }
@@ -155,6 +157,7 @@ impl ResultPayload {
         match self {
             Self::Empty
             | Self::Block(_)
+            | Self::BlockRange(_)
             | Self::Hash(_)
             | Self::Execution(_)
             | Self::Watch(_)
@@ -366,24 +369,27 @@ pub fn insert(result: OwnedResult) -> FfiResult<CitizenSdkResultHandle> {
 }
 
 pub fn get(handle: CitizenSdkResultHandle) -> FfiResult<OwnedResult> {
+    with_result(handle, |result| Ok(result.clone()))
+}
+
+/// 只在短锁内读结果，不克隆完整目录、不向锁外借出引用。
+pub(crate) fn with_result<T>(
+    handle: CitizenSdkResultHandle,
+    read: impl FnOnce(&OwnedResult) -> FfiResult<T>,
+) -> FfiResult<T> {
     if handle == 0 {
         return Err(FfiError::new(
             CitizenSdkErrorCode::InvalidHandle,
             "result handle 0 is invalid",
         ));
     }
-    lock_results()
-        .get(&handle)
-        .and_then(|entry| match entry {
-            ResultEntry::Ready(result) => Some(result.as_ref().clone()),
-            ResultEntry::Reserved { .. } => None,
-        })
-        .ok_or_else(|| {
-            FfiError::new(
-                CitizenSdkErrorCode::InvalidHandle,
-                "result handle is unknown or already released",
-            )
-        })
+    match lock_results().get(&handle) {
+        Some(ResultEntry::Ready(result)) => read(result.as_ref()),
+        _ => Err(FfiError::new(
+            CitizenSdkErrorCode::InvalidHandle,
+            "result handle is unknown or already released",
+        )),
+    }
 }
 
 /// 批量余额按索引读取时不能克隆整批；此处只在 registry 短锁内借用公开事实。

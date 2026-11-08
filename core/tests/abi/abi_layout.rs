@@ -321,7 +321,7 @@ fn account_wallet_and_history_layout_and_constants_are_exact() {
         account_id: 64,
         nonce: 96,
     });
-    assert_layout!(CitizenSdkFeeSnapshotInfo, 104, 8, {
+    assert_layout!(CitizenSdkFeeSnapshotInfo, 120, 8, {
         struct_size: 0,
         abi_version: 4,
         best_block: 8,
@@ -329,6 +329,7 @@ fn account_wallet_and_history_layout_and_constants_are_exact() {
         reserved: 68,
         minimum_fee_fen: 72,
         existential_deposit_fen: 88,
+        vote_fee_fen: 104,
     });
     assert_layout!(CitizenSdkWalletProfileInfo, 96, 8, {
         struct_size: 0,
@@ -351,13 +352,14 @@ fn account_wallet_and_history_layout_and_constants_are_exact() {
         ss58_address_len: 56,
         name_len: 64,
     });
-    assert_layout!(CitizenSdkWalletStateInfo, 56, 8, {
+    assert_layout!(CitizenSdkWalletStateInfo, 64, 8, {
         struct_size: 0,
         abi_version: 4,
         revision: 8,
         account_count: 16,
         has_default_account: 20,
         default_account_id: 24,
+        removed_account_count: 56,
     });
     assert_layout!(CitizenSdkWalletStateAccountInfo, 88, 8, {
         struct_size: 0,

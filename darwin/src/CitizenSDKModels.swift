@@ -229,6 +229,7 @@ public struct CitizenFeeSnapshot: Equatable, Sendable {
     public let feeRateParts: UInt32
     public let minimumFeeFen: CitizenU128
     public let existentialDepositFen: CitizenU128
+    public let voteFeeFen: CitizenU128
 }
 
 public struct CitizenWalletAccount: Equatable, Sendable {
@@ -289,14 +290,16 @@ public struct CitizenWalletState: Equatable, Sendable {
     public let cleanupPending: Bool
     /// 独立付款钱包，不改变默认账户或热钱包activeAccountID。
     public let activeWalletIndex: UInt32?
+    public let removedAccountIDs: [Data]
     public let diagnostics: [CitizenWalletDiagnostic]
 
     internal init(revision: UInt64, hotProfile: CitizenWalletProfile?, accounts: [CitizenWalletStateAccount],
                   initializationState: UInt32, cleanupPending: Bool, activeWalletIndex: UInt32?,
-                  diagnostics: [CitizenWalletDiagnostic] = []) {
+                  removedAccountIDs: [Data] = [], diagnostics: [CitizenWalletDiagnostic] = []) {
         self.revision = revision; self.hotProfile = hotProfile; self.accounts = accounts
         self.initializationState = initializationState; self.cleanupPending = cleanupPending
         self.activeWalletIndex = activeWalletIndex; self.diagnostics = diagnostics
+        self.removedAccountIDs = removedAccountIDs
     }
 
     public var defaultAccount: CitizenWalletStateAccount? { accounts.first }

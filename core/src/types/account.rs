@@ -240,3 +240,13 @@ pub(crate) fn require_citizenchain_identity(identity: &ChainIdentity) -> Contrac
     }
     Ok(())
 }
+
+pub(crate) fn blake2b<const N: usize>(input: &[u8]) -> [u8; N] {
+    use blake2::digest::{Update, VariableOutput};
+    let mut output = [0; N];
+    if let Ok(mut hash) = blake2::Blake2bVar::new(N) {
+        hash.update(input);
+        let _ = hash.finalize_variable(&mut output);
+    }
+    output
+}

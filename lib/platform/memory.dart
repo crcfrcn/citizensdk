@@ -41,25 +41,36 @@ final class _Memory {
     }
   }
 
+  int decodeAccountId(String value, Pointer<c.citizensdk_account_id> out) =>
+      value.length > 66
+      ? c.CITIZENSDK_ERROR_INVALID_ARGUMENT
+      : _api.citizensdk_account_id_decode(view(value), out);
+
   Pointer<c.citizensdk_account_id> account(String value) {
-    final data = _unhex(value, 32);
-    final out = alloc<c.citizensdk_account_id>(32);
-    for (var i = 0; i < 32; i++) {
-      out.ref.bytes[i] = data[i];
-    }
+    final out = alloc<c.citizensdk_account_id>(
+      sizeOf<c.citizensdk_account_id>(),
+    );
+    _status(decodeAccountId(value, out));
     return out;
   }
 
   Pointer<c.citizensdk_account_id> accounts(List<String> values, int maximum) {
     if (values.length > maximum) throw _failure(1);
-    final out = alloc<c.citizensdk_account_id>(32 * values.length);
+    final out = alloc<c.citizensdk_account_id>(
+      sizeOf<c.citizensdk_account_id>() * values.length,
+    );
     for (var i = 0; i < values.length; i++) {
-      final data = _unhex(values[i], 32);
-      for (var j = 0; j < 32; j++) {
-        out[i].bytes[j] = data[j];
-      }
+      _status(decodeAccountId(values[i], out + i));
     }
     return out;
+  }
+
+  c.citizensdk_u128 u128(BigInt value) {
+    if (value.isNegative || value.bitLength > 128) throw _failure(1);
+    final out = alloc<c.citizensdk_u128>(sizeOf<c.citizensdk_u128>());
+    out.ref.low = value.toSigned(64).toInt();
+    out.ref.high = (value >> 64).toSigned(64).toInt();
+    return out.ref;
   }
 
   Pointer<c.citizensdk_block_ref> block(CitizenBlockRef value) {
@@ -199,3 +210,15 @@ int _u16(int value) {
   if (value < 0 || value > 0xffff) throw _failure(1);
   return value;
 }
+
+
+Uint8List _chainCodec(Map<String, Object> operation, [Uint8List? metadata]) =>
+    _withMemory((m) {
+      final context = m.view(metadata ?? Uint8List(0), 8 * 1024 * 1024);
+      final request = m.view(jsonEncode(operation), 1024 * 1024);
+      return m.copy(
+        (out, capacity, count) =>
+            _api.citizensdk_chain_codec(context, request, out, capacity, count),
+        16 * 1024 * 1024,
+      );
+    });

@@ -77,6 +77,7 @@ pub struct WalletStateSnapshot {
     catalog: WalletState,
     initialization_state: WalletInitializationState,
     cleanup_pending: bool,
+    removed_accounts: Vec<AccountId32>,
 }
 
 impl WalletStateSnapshot {
@@ -110,7 +111,25 @@ impl WalletStateSnapshot {
             catalog,
             initialization_state,
             cleanup_pending,
+            removed_accounts: Vec::new(),
         })
+    }
+
+    fn deletion(
+        state: &WalletState,
+        ids: impl IntoIterator<Item = AccountId32>,
+    ) -> Result<Self, EngineError> {
+        let mut result = Self::from_state(state)?;
+        result.removed_accounts = ids
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        Ok(result)
+    }
+
+    pub fn removed_accounts(&self) -> &[AccountId32] {
+        &self.removed_accounts
     }
 
     pub const fn initialization_state(&self) -> WalletInitializationState {
@@ -146,6 +165,20 @@ impl WalletStateSnapshot {
     pub fn default_account_id(&self) -> Option<AccountId32> {
         self.catalog.default_account_id()
     }
+}
+
+fn require_stable_catalog(state: &WalletState) -> Result<(), EngineError> {
+    require_no_private_key_view(state)?;
+    if state.provisioning().is_some()
+        || state.cleanup().is_some()
+        || !state.cleanup_queue().is_empty()
+    {
+        return Err(error(
+            ContractErrorCode::InvalidState,
+            "钱包仍有未完成的热钱包操作计划",
+        ));
+    }
+    Ok(())
 }
 
 static WALLET_OPERATION_GATE: OnceLock<AsyncMutex<()>> = OnceLock::new();
@@ -764,18 +797,18 @@ impl WalletService {
         &self,
         expected_revision: u64,
         expected: &WalletRecord,
-    ) -> Result<WalletState, EngineError> {
+    ) -> Result<WalletStateSnapshot, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         let state = self.inspected_state(expected_revision, expected).await?;
-        self.delete_record_locked(&state, expected).await
+        let committed = self.stage_record_delete(&state, expected).await?;
+        self.delete_receipt(committed, expected.account_ids()).await
     }
 
-    async fn delete_record_locked(
+    async fn record_cleanup(
         &self,
-        state: &WalletState,
         record: &WalletRecord,
-    ) -> Result<WalletState, EngineError> {
-        let cleanup = match record {
+    ) -> Result<Option<WalletCleanupPlan>, EngineError> {
+        Ok(match record {
             WalletRecord::Profile { generation, .. } => {
                 let refs = record.cleanup_refs()?;
                 let operation =
@@ -810,7 +843,15 @@ impl WalletService {
                 }
                 None
             }
-        };
+        })
+    }
+
+    async fn stage_record_delete(
+        &self,
+        state: &WalletState,
+        record: &WalletRecord,
+    ) -> Result<WalletState, EngineError> {
+        let cleanup = self.record_cleanup(record).await?;
         if self.profiles.load().await? != *state {
             return Err(conflict("钱包事实已变化，请重试"));
         }
@@ -825,20 +866,35 @@ impl WalletService {
         } else {
             state.profile().cloned()
         };
-        let committed = self
-            .commit_record_change(
-                state,
-                profile,
-                state.cold_accounts().to_vec(),
-                diagnostics,
-                cleanup,
-            )
-            .await?;
-        if committed.cleanup().is_some() {
-            self.finish_active_cleanup(committed).await
+        self.commit_record_change(
+            state,
+            profile,
+            state.cold_accounts().to_vec(),
+            diagnostics,
+            cleanup,
+        )
+        .await
+    }
+
+    async fn finish_delete(&self, state: WalletState) -> Result<WalletState, EngineError> {
+        if state.cleanup().is_some() {
+            self.finish_active_cleanup(state).await
         } else {
-            Ok(committed)
+            Ok(state)
         }
+    }
+
+    async fn delete_receipt(
+        &self,
+        committed: WalletState,
+        ids: impl IntoIterator<Item = AccountId32>,
+    ) -> Result<WalletStateSnapshot, EngineError> {
+        // CAS 已确认删除；清理失败仍报告实际提交及待清理事实，重试沿原队列。
+        let state = self
+            .finish_delete(committed.clone())
+            .await
+            .unwrap_or(committed);
+        WalletStateSnapshot::deletion(&state, ids)
     }
 
     /// 各记录动作只构造下一份事实；真实持久化、写后异常回读仍只有commit_candidate。
@@ -1098,6 +1154,15 @@ impl WalletService {
     pub async fn delete_cold_account(&self, account_id: AccountId32) -> Result<(), EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         let state = self.catalog_mutation_state().await?;
+        self.delete_cold_locked(&state, account_id).await?;
+        Ok(())
+    }
+
+    async fn delete_cold_locked(
+        &self,
+        state: &WalletState,
+        account_id: AccountId32,
+    ) -> Result<WalletState, EngineError> {
         let Some(position) = state
             .cold_accounts()
             .iter()
@@ -1114,14 +1179,13 @@ impl WalletService {
             .filter(|candidate| *candidate != account_id)
             .collect();
         self.commit_catalog_state(
-            &state,
+            state,
             cold_accounts,
             ordered,
             state.next_cold_wallet_index(),
             state.active_wallet_index(),
         )
-        .await?;
-        Ok(())
+        .await
     }
 
     /// 查询稳定账户的签名分流；未完成 provisioning 的热账户不会提前可见。
@@ -1485,6 +1549,43 @@ impl WalletService {
     pub async fn delete_account(&self, account_id: AccountId32) -> Result<(), EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         let state = self.reconcile_locked().await?;
+        let committed = self.delete_hot_locked(&state, account_id).await?;
+        self.finish_delete(committed).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn delete_account_any(
+        &self,
+        account_id: AccountId32,
+        hardware: Result<(), EngineError>,
+    ) -> Result<WalletStateSnapshot, EngineError> {
+        let _guard = wallet_operation_gate().lock().await;
+        let state = self.profiles.load().await?;
+        if state
+            .cold_accounts()
+            .iter()
+            .any(|account| account.account_id() == account_id)
+        {
+            require_stable_catalog(&state)?;
+            let committed = self.delete_cold_locked(&state, account_id).await?;
+            return WalletStateSnapshot::deletion(&committed, [account_id]);
+        }
+        if !stable_profile(&state)
+            .is_some_and(|profile| profile.account_by_id(account_id).is_some())
+        {
+            return Err(error(ContractErrorCode::NotFound, "钱包账户不存在"));
+        }
+        hardware?;
+        let state = self.reconcile_locked().await?;
+        let committed = self.delete_hot_locked(&state, account_id).await?;
+        self.delete_receipt(committed, [account_id]).await
+    }
+
+    async fn delete_hot_locked(
+        &self,
+        state: &WalletState,
+        account_id: AccountId32,
+    ) -> Result<WalletState, EngineError> {
         let profile = state
             .profile()
             .cloned()
@@ -1500,7 +1601,9 @@ impl WalletService {
                     "账户0是钱包锚点，存在其它账户时不能单独删除",
                 ));
             }
-            return self.delete_wallet_locked(&state, &profile).await;
+            return self
+                .stage_record_delete(state, &WalletRecord::from_profile(&profile))
+                .await;
         }
         let (next_profile, removed) = profile.try_without_child_account(account_id)?;
         let operation_id = self.operation_id_for_profile(&profile)?;
@@ -1511,35 +1614,71 @@ impl WalletService {
             vec![removed.secret_ref()],
             false,
         )?;
-        let committed = self
-            .commit_state(
-                &state,
-                Some(next_profile),
-                None,
-                Some(cleanup),
-                state.cleanup_queue().to_vec(),
-            )
-            .await?;
-        self.finish_active_cleanup(committed).await?;
-        Ok(())
+        self.commit_state(
+            state,
+            Some(next_profile),
+            None,
+            Some(cleanup),
+            state.cleanup_queue().to_vec(),
+        )
+        .await
     }
 
-    pub async fn delete_wallet(&self) -> Result<(), EngineError> {
+    /// 擦除同一个目录和已确认的秘密，不建立另一份队列；空目录允许重试。
+    pub(crate) async fn wipe_wallets(
+        &self,
+        hardware: Result<(), EngineError>,
+    ) -> Result<WalletStateSnapshot, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
+        let current = self.profiles.load().await?;
+        if current.profile().is_some()
+            || current.provisioning().is_some()
+            || current.cleanup().is_some()
+            || !current.cleanup_queue().is_empty()
+            || !current.diagnostics().is_empty()
+        {
+            hardware?;
+        }
         let state = self.reconcile_locked().await?;
+        let ids = state
+            .ordered_account_ids()
+            .iter()
+            .copied()
+            .chain(
+                state
+                    .diagnostics()
+                    .iter()
+                    .flat_map(WalletRecord::account_ids),
+            )
+            .collect::<Vec<_>>();
+        let mut cleanup = None;
         if let Some(profile) = state.profile() {
-            return self.delete_wallet_locked(&state, profile).await;
+            cleanup = self
+                .record_cleanup(&WalletRecord::from_profile(profile))
+                .await?;
         }
-        if let Some(record) = state.diagnostic(CITIZEN_WALLET_INDEX) {
-            // 原无签名擦除仍可处理可信热槽；不因模式异常改成“成功但没有删除”或强加签名。
-            self.delete_record_locked(&state, record).await?;
-            return Ok(());
+        for record in state.diagnostics() {
+            if let Some(plan) = self.record_cleanup(record).await? {
+                if cleanup.is_some() {
+                    return Err(error(ContractErrorCode::Integrity, "钱包擦除包含多个热槽"));
+                }
+                cleanup = Some(plan);
+            }
         }
-        Err(error(ContractErrorCode::NotFound, "钱包不存在"))
+        if state.profile().is_none()
+            && state.cold_accounts().is_empty()
+            && state.diagnostics().is_empty()
+        {
+            return WalletStateSnapshot::deletion(&state, ids);
+        }
+        let committed = self
+            .commit_record_change(&state, None, Vec::new(), Vec::new(), cleanup)
+            .await?;
+        self.delete_receipt(committed, ids).await
     }
 
     /// 原“签名并删除”的无UI原子动作；擦除继续使用delete_wallet，不新增认证。
-    pub async fn sign_and_delete_wallet(&self) -> Result<(), EngineError> {
+    pub async fn sign_and_delete_wallet(&self) -> Result<WalletStateSnapshot, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         let state = self.reconcile_locked().await?;
         require_no_private_key_view(&state)?;
@@ -1574,7 +1713,9 @@ impl WalletService {
             return Err(conflict("钱包在签名删除授权期间发生变化"));
         }
         // 授权/删除共享操作门和代际，最终只调用既有CAS与清理恢复实现。
-        self.delete_wallet_locked(&current, &profile).await
+        let record = WalletRecord::from_profile(&profile);
+        let committed = self.stage_record_delete(&current, &record).await?;
+        self.delete_receipt(committed, record.account_ids()).await
     }
 
     pub async fn reconcile_cleanup(&self) -> Result<(), EngineError> {
@@ -1923,16 +2064,6 @@ impl WalletService {
         let secret = self.vault.open(secret_ref, envelope).await?;
         let public_key = crate::sign::public_key(&secret)?;
         Ok(public_key.as_bytes() == secret_ref.account_id().as_bytes())
-    }
-
-    async fn delete_wallet_locked(
-        &self,
-        state: &WalletState,
-        profile: &WalletProfile,
-    ) -> Result<(), EngineError> {
-        self.delete_record_locked(state, &WalletRecord::from_profile(profile))
-            .await?;
-        Ok(())
     }
 
     fn operation_id_for_profile(&self, profile: &WalletProfile) -> Result<[u8; 16], EngineError> {
@@ -2361,16 +2492,7 @@ impl WalletService {
     /// 冷账户/顺序写入不得为方便而重放热钱包 cleanup，因为那会触发金库调用。
     async fn catalog_mutation_state(&self) -> Result<WalletState, EngineError> {
         let state = self.profiles.load().await?;
-        require_no_private_key_view(&state)?;
-        if state.provisioning().is_some()
-            || state.cleanup().is_some()
-            || !state.cleanup_queue().is_empty()
-        {
-            return Err(error(
-                ContractErrorCode::InvalidState,
-                "钱包仍有未完成的热钱包操作计划",
-            ));
-        }
+        require_stable_catalog(&state)?;
         Ok(state)
     }
 

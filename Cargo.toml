@@ -53,6 +53,7 @@ schnorrkel = { version = "=0.11.5", default-features = false, features = ["preau
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151" }
 sha2 = { version = "=0.10.9" }
+sha3 = "=0.10.9"
 smoldot-light = { path = "smoldot/light-base", default-features = false, features = ["std"], optional = true }
 subxt-core = { version = "=0.43.0", default-features = true, optional = true }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "sync", "time", "net"], optional = true }

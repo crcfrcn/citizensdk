@@ -19,7 +19,7 @@ pub const MAX_WALLET_ACCOUNT_INDEX: u32 = 19_890_604;
 pub const MAX_WALLET_ACCOUNTS: usize = MAX_WALLET_ACCOUNT_INDEX as usize + 1;
 /// 当前已验证公民链热钱包只有一只无根钱包，固定使用 wallet index 0。
 pub const CITIZEN_WALLET_INDEX: u32 = 0;
-/// CitizenChain Runtime 与现有稳定 Dart 钱包共同使用的 SS58 prefix。
+/// CitizenChain Runtime 使用的 SS58 前缀，经公开 ABI 交付给调用方。
 pub const CITIZEN_SS58_PREFIX: u16 = 2027;
 /// 本机账户名称最多包含 30 个 Unicode scalar，与现有 Dart `runes.length` 一致。
 pub const MAX_WALLET_ACCOUNT_NAME_SCALARS: usize = 30;
@@ -185,10 +185,8 @@ impl ColdWalletAccount {
 
 /// 由 AccountId32 生成唯一规范的 CitizenChain SS58 展示地址。
 pub fn citizen_ss58_address(account_id: AccountId32) -> String {
-    let prefix = CITIZEN_SS58_PREFIX;
     let mut payload = Vec::with_capacity(36);
-    payload.push(((prefix & 0b0000_0000_1111_1100) as u8) >> 2 | 0b0100_0000);
-    payload.push(((prefix >> 8) as u8) | ((prefix & 0b11) as u8) << 6);
+    payload.extend_from_slice(&ss58_prefix_bytes(CITIZEN_SS58_PREFIX));
     payload.extend_from_slice(account_id.as_bytes());
 
     let mut hasher = Blake2b512::new();
@@ -211,23 +209,10 @@ pub fn parse_citizen_ss58_address(address: &str) -> ContractResult<AccountId32> 
     if decoded.len() != 36 {
         return Err(invalid_ss58());
     }
-    let expected_prefix = ss58_prefix_bytes(CITIZEN_SS58_PREFIX);
-    if decoded[..2] != expected_prefix {
-        return Err(invalid_ss58());
-    }
-
-    let payload = &decoded[..34];
-    let mut hasher = Blake2b512::new();
-    hasher.update(b"SS58PRE");
-    hasher.update(payload);
-    let checksum = hasher.finalize();
-    if decoded[34..] != checksum[..2] {
-        return Err(invalid_ss58());
-    }
-
     let mut account_id = [0_u8; 32];
     account_id.copy_from_slice(&decoded[2..34]);
     let account_id = AccountId32::from_bytes(account_id);
+    // 同一编码器复核网络前缀、校验和及 Base58 表达。
     if citizen_ss58_address(account_id) != address {
         return Err(invalid_ss58());
     }
@@ -244,7 +229,7 @@ fn ss58_prefix_bytes(prefix: u16) -> [u8; 2] {
 fn invalid_ss58() -> ContractError {
     ContractError::new(
         ContractErrorCode::InvalidArgument,
-        "必须提供 prefix 2027、校验和正确的规范 CitizenChain SS58 地址",
+        "必须提供校验和正确的规范 CitizenChain SS58 地址",
     )
 }
 

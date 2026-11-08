@@ -413,14 +413,6 @@ class CitizenSdk private constructor(
         }
     }
 
-    /** 扫码导入只接纳账户码，不把用户码或其它码型当作账户输入。 */
-    fun importColdAccountCode(code: String, name: String = ""): CitizenSdkOperation<CitizenWalletState> {
-        val content = parseForPurpose(code, CitizenQrScanPurpose.COLD_ACCOUNT_IMPORT).document.content as? CitizenQrDocument.Content.AccountId
-            ?: throw CitizenSdkException(CitizenSdkErrorCode.INVALID_ARGUMENT, "QR code is not an account code")
-        val bytes = ByteArray(32) { index -> content.accountId.substring(2 + index * 2, 4 + index * 2).toInt(16).toByte() }
-        return importColdAccount(bytes, name)
-    }
-
     fun reorderWalletAccountsWithoutDefaultChange(
         expectedRevision: String,
         accountIds: List<ByteArray>,
@@ -467,8 +459,10 @@ class CitizenSdk private constructor(
         }
 
     /** 胁迫/PIN清除不追加认证；用户主动“签名并删除”使用独立授权入口。 */
-    fun deleteWallet(): CitizenSdkOperation<Unit> = emptyOperation { (call { Bindings.nativeDeleteWallet(it) }) }
-    fun signAndDeleteWallet(): CitizenSdkOperation<Unit> = emptyOperation { (call { Bindings.nativeSignAndDeleteWallet(it) }) }
+    fun deleteWallet(): CitizenSdkOperation<CitizenWalletState> =
+        requestOperation({ call { Bindings.nativeDeleteWallet(it) } }) { it.value as CitizenWalletState }
+    fun signAndDeleteWallet(): CitizenSdkOperation<CitizenWalletState> =
+        requestOperation({ call { Bindings.nativeSignAndDeleteWallet(it) } }) { it.value as CitizenWalletState }
 
     /** 清理完成后读公开profile；取消只转交当前真实请求，不提前完成结果。 */
     fun reconcileWalletCleanup(): CitizenSdkOperation<CitizenWalletProfile?> {

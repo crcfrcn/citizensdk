@@ -23,7 +23,19 @@ final c.Bindings _api = c.Bindings.fromLookup(<T extends NativeType>(
 
 // 一个实例直接拥有Core句柄、真实在途请求和资源，不保留Platform或Session对象。
 final class CitizenSdk with WidgetsBindingObserver {
-  CitizenSdk._(this._hostId, this._handle, this._credentialProvider);
+  CitizenSdk._(
+    this._hostId,
+    this._handle,
+    this._credentialProvider,
+    this._balanceStorage,
+  );
+
+  final CitizenBalanceStorage? _balanceStorage;
+  late final balances = CitizenBalances(
+    getAccountBalance: _readAccountBalance,
+    getAccountBalances: _readAccountBalances,
+    storage: _balanceStorage,
+  );
   static const _methods = MethodChannel('citizen/sdk/core/v2');
   static const _nativeEvents = EventChannel('citizen/sdk/events/v2');
   static final _instances = <String, CitizenSdk>{};
@@ -50,6 +62,8 @@ final class CitizenSdk with WidgetsBindingObserver {
   int _resourceSequence = 1, _eventSequence = 1;
   CitizenSdkException? _protocolError;
   Future<void>? _closeFuture;
+  _CatalogRead? _catalogRead;
+  late final _sync = _ChainSync(getSyncStatus);
 
   static void _checkAbi() {
     try {
@@ -64,6 +78,7 @@ final class CitizenSdk with WidgetsBindingObserver {
 
   static Future<CitizenSdk> open({
     int modules = CitizenSdkModules.full,
+    CitizenBalanceStorage? balanceStorage,
     Future<Uint8List?> Function(CitizenCredentialChallenge challenge)?
     credentialProvider,
   }) async {
@@ -113,7 +128,7 @@ final class CitizenSdk with WidgetsBindingObserver {
       final handle = _nativeId(value[2]! as String);
       if (handle == 0) throw _failure(9);
       _checkAbi();
-      sdk = CitizenSdk._(id, handle, credentialProvider);
+      sdk = CitizenSdk._(id, handle, credentialProvider, balanceStorage);
       sdk._attach();
       _instances[id] = sdk;
       if (credentialProvider != null) {
@@ -321,6 +336,8 @@ final class CitizenSdk with WidgetsBindingObserver {
               ),
             );
           case 7:
+            _catalogRead?.invalidated = true;
+            _catalogRead = null;
             _events.add(CitizenSdkWalletChanged(sequence: sequence));
         }
       } on Object catch (error, stack) {
@@ -644,6 +661,7 @@ final class CitizenSdk with WidgetsBindingObserver {
 
   Future<void> _close() async {
     _closing = true;
+    _sync.close();
     try {
       // 先请求取消，再等待提交资源释放；释放会等待真实终态，不能挡住取消本身。
       for (final id in _pending.keys.toList()) {

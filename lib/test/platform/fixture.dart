@@ -13,6 +13,44 @@ import 'package:flutter_test/flutter_test.dart';
 /// 原生测试库由本轮正式构建提供，禁止回退到旧协议或业务结果处理器。
 class CitizenSdkTestFixture {
   static final path = Platform.environment['CITIZENSDK_TEST_LIBRARY'];
+
+  static final _runtimeMetadata = _loadRuntimeMetadata();
+
+  /// 从 SDK 所属 Runtime 金标为测试块提供 metadata。
+  static Future<CitizenRuntimeContext> runtimeContext(
+    CitizenBlockRef block, {
+    int specVersion = 1,
+    int transactionVersion = 4,
+  }) async => CitizenRuntimeContext(
+    block: block,
+    specVersion: specVersion,
+    transactionVersion: transactionVersion,
+    metadata: _runtimeMetadata,
+  );
+
+  static Uint8List _loadRuntimeMetadata() {
+    // Flutter tester 不提供 Isolate 的包 URI 解析，直接使用 Pub 的装配记录。
+    final config = File('.dart_tool/package_config.json').absolute;
+    final data = jsonDecode(config.readAsStringSync()) as Map<String, Object?>;
+    final packages = data['packages'] as List<Object?>;
+    final sdk = packages.cast<Map<String, Object?>>().singleWhere(
+      (package) => package['name'] == 'citizen_sdk',
+    );
+    final root = Directory.fromUri(config.uri.resolve(sdk['rootUri'] as String));
+    final fixture = root.uri.resolve('core/tests/citizenchain-revive-v15-metadata.hex');
+    final hex = File.fromUri(fixture)
+        .readAsStringSync()
+        .trim()
+        .replaceFirst(RegExp(r'^0x'), '');
+    if (hex.isEmpty || hex.length.isOdd) {
+      throw const FormatException('Runtime 金标不是完整十六进制');
+    }
+    return Uint8List.fromList([
+      for (var i = 0; i < hex.length; i += 2)
+        int.parse(hex.substring(i, i + 2), radix: 16),
+    ]);
+  }
+
   late final library = DynamicLibrary.open(path!);
   late final api = c.Bindings(DynamicLibrary.open(path!));
   late final open = library

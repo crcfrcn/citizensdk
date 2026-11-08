@@ -7,6 +7,44 @@ import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('SCALE 定宽无符号整数保持 u32、u128 字节和宽度约束', () {
+    final id = BigInt.from(0xffffffff);
+    final max = (BigInt.one << 128) - BigInt.one;
+    expect(CitizenScale.unsigned(id, 4), [255, 255, 255, 255]);
+    expect(CitizenScale.unsigned(max, 16), List.filled(16, 255));
+    final framed = Uint8List.fromList([0xaa, 0x34, 0x12, 0, 0, 0xbb]);
+    expect(CitizenScale.readUnsigned(framed, 1, 4), BigInt.from(0x1234));
+    expect(() => CitizenScale.readUnsigned(framed, 3, 4), throwsFormatException);
+    expect(() => CitizenScale.unsigned(id + BigInt.one, 4), throwsArgumentError);
+    expect(() => CitizenScale.unsigned(-BigInt.one, 16), throwsArgumentError);
+  });
+
+  test('公民链金额精确解析与展示', () {
+    final fen = BigInt.parse('9007199254740993');
+    expect(parseFen('90,071,992,547,409.93'), fen);
+    expect(formatFen(fen), '90,071,992,547,409.93');
+    expect(formatFen(-BigInt.one), '-0.01');
+    expect(formatFen(BigInt.from(2700), trimZeros: true), '27');
+    expect(formatFen(BigInt.from(990), trimZeros: true), '9.9');
+    expect(parseFen('.5'), BigInt.from(50));
+    expect(parseFen('1.'), BigInt.from(100));
+    for (final input in ['', '.', '9.999', '1,2', '1e2', 'NaN']) {
+      expect(parseFen(input), isNull, reason: input);
+    }
+    expect(parseFen((BigInt.one << 128).toString()), isNull);
+  });
+
+  test('清算费按链端基点舍入并校验乘积', () {
+    expect(clearingFeeFen(BigInt.one, 1, 1), BigInt.one);
+    expect(clearingFeeFen(BigInt.from(14999), 1, 1), BigInt.one);
+    expect(clearingFeeFen(BigInt.from(15000), 1, 1), BigInt.two);
+    expect(() => clearingFeeFen(BigInt.one, 0, 1), throwsArgumentError);
+    expect(
+      () => clearingFeeFen((BigInt.one << 128) - BigInt.one, 2, 1),
+      throwsArgumentError,
+    );
+  });
+
   test('下一个热账户提示到顶停止且只查看实际账户', () {
     CitizenWalletProfile profile(int index) => CitizenWalletProfile(
       walletIndex: 0,
@@ -219,6 +257,95 @@ void main() {
     expect(runtime.metadata, <int>[1, 2]);
     expect(state.database, <int>[1, 2]);
     expect(() => body.extrinsics.single[0] = 0, throwsUnsupportedError);
+  });
+
+  test('共用冷签流程取消或异常时释放原执行，成功时仅消费一次', () async {
+    final pending = CitizenTransactionExternalSigningPending(
+      executionId: '0x${'01' * 16}',
+      sourceAccountId: Uint8List(32),
+      callDataHash: Uint8List(32),
+      qrRequest: 'public-qr-fixture',
+      expiresAt: DateTime.utc(2030),
+    );
+    final completed = CitizenTransactionExecutionCompleted(
+      executionId: pending.executionId,
+      sourceAccountId: pending.sourceAccountId,
+      callDataHash: pending.callDataHash,
+      transactionHash: Uint8List(32),
+      resolution: CitizenTransactionResolution.poolRejected,
+      execution: null,
+      poolRejectionReason: '测试拒绝',
+      replacementHash: null,
+    );
+    final cancelled = <String>[];
+    final consumed = <(String, String)>[];
+    Future<CitizenTransactionExecutionCompleted?> finish(
+      Future<String?> Function(CitizenTransactionExternalSigningPending)
+      request,
+    ) => completeCitizenTransaction(
+      pending,
+      requestResponse: request,
+      consumeResponse: (id, response) async {
+        consumed.add((id, response));
+        return completed;
+      },
+      cancelExecution: (id) async => cancelled.add(id),
+    );
+
+    expect(await finish((_) async => null), isNull);
+    final failure = StateError('扫码页面退出');
+    await expectLater(
+      finish((_) async => throw failure),
+      throwsA(same(failure)),
+    );
+    expect(
+      await finish((value) async {
+        expect(value, same(pending));
+        return 'response';
+      }),
+      same(completed),
+    );
+    expect(cancelled, [pending.executionId, pending.executionId]);
+    expect(consumed, [(pending.executionId, 'response')]);
+
+    final cleanup = StateError('取消执行失败');
+    final originalStack = StackTrace.fromString('原操作堆栈');
+    var attempts = 0;
+    Future<void> cancel(String id) async {
+      expect(id, pending.executionId);
+      attempts++;
+      throw cleanup;
+    }
+
+    for (final stage in ['扫描', '消费']) {
+      final original = StateError('$stage失败');
+      try {
+        await completeCitizenTransaction(
+          pending,
+          requestResponse: (_) async {
+            if (stage == '扫描') Error.throwWithStackTrace(original, originalStack);
+            return 'response';
+          },
+          consumeResponse: (_, _) async =>
+              Error.throwWithStackTrace(original, originalStack),
+          cancelExecution: cancel,
+        );
+        fail('冷签错误必须抛回');
+      } catch (error, stack) {
+        expect(error, same(original));
+        expect(stack.toString(), originalStack.toString());
+      }
+    }
+    await expectLater(
+      completeCitizenTransaction(
+        pending,
+        requestResponse: (_) async => null,
+        consumeResponse: (_, _) async => fail('取消后不能消费'),
+        cancelExecution: cancel,
+      ),
+      throwsA(same(cleanup)),
+    );
+    expect(attempts, 3);
   });
 
   test('通用交易准备与执行模型复制并冻结所有公开字节', () {

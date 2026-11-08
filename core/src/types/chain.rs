@@ -114,6 +114,36 @@ impl AccountId32 {
     }
 }
 
+impl std::str::FromStr for AccountId32 {
+    type Err = ContractError;
+
+    fn from_str(value: &str) -> ContractResult<Self> {
+        let invalid = || {
+            ContractError::new(
+                ContractErrorCode::InvalidArgument,
+                "AccountId 必须是小写 0x 加 64 位十六进制",
+            )
+        };
+        let text = value.strip_prefix("0x").ok_or_else(invalid)?;
+        if text.len() != 64 || text.bytes().any(|byte| byte.is_ascii_uppercase()) {
+            return Err(invalid());
+        }
+        let mut bytes = [0; 32];
+        hex::decode_to_slice(text, &mut bytes).map_err(|_| invalid())?;
+        Ok(Self::from_bytes(bytes))
+    }
+}
+
+impl fmt::Display for AccountId32 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("0x")?;
+        for byte in self.as_bytes() {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
 /// provider 已核对出的块语义；不能把 best 口头当成 finalized。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlockFinality {

@@ -1,4 +1,5 @@
 use subxt_core::config::SubstrateConfig;
+use subxt_core::events::EventDetails;
 use subxt_core::events::Events;
 use subxt_core::events::Phase;
 use subxt_core::ext::codec::Compact;
@@ -58,35 +59,12 @@ pub fn decode_system_outcome(
     extrinsic_index: u32,
 ) -> Result<Option<DecodedSystemOutcome>, EngineError> {
     let metadata = decode_metadata_strict(metadata_bytes)?;
-    let mut prefix_cursor = events_bytes;
-    let declared_count = Compact::<u32>::decode(&mut prefix_cursor)
-        .map_err(|error| EngineError::InvalidEvents(error.to_string()))?
-        .0;
-    let prefix_length = events_bytes.len().saturating_sub(prefix_cursor.len());
-    let canonical_prefix = Compact(declared_count).encode();
-    if events_bytes.get(..prefix_length) != Some(canonical_prefix.as_slice()) {
-        return Err(EngineError::InvalidEvents(
-            "event vector uses a non-canonical Compact length".to_owned(),
-        ));
-    }
-    let events = Events::<SubstrateConfig>::decode_from(events_bytes.to_vec(), metadata.clone());
-    if events.len() != declared_count {
-        return Err(EngineError::InvalidEvents(
-            "event vector length prefix was not preserved".to_owned(),
-        ));
-    }
-
-    let mut decoded_count = 0_u32;
-    let mut consumed = prefix_length;
     let mut outcome = None;
-    for event in events.iter() {
-        let event = event.map_err(|error| EngineError::InvalidEvents(error.to_string()))?;
-        decoded_count = decoded_count.saturating_add(1);
-        consumed = consumed.saturating_add(event.bytes().len());
+    walk_system_events(&metadata, events_bytes, |event| {
         if event.phase() != Phase::ApplyExtrinsic(extrinsic_index)
             || event.pallet_name() != "System"
         {
-            continue;
+            return Ok(());
         }
 
         let candidate = match event.variant_name() {
@@ -111,6 +89,80 @@ pub fn decode_system_outcome(
             }
             outcome = Some(candidate);
         }
+        Ok(())
+    })?;
+    Ok(outcome)
+}
+
+/// 使用同一个严格遍历器投影同块事件。字段由原 metadata 解码，整数保留十进制精度。
+pub fn decode_system_events(
+    metadata_bytes: &[u8],
+    events_bytes: &[u8],
+) -> Result<Vec<u8>, EngineError> {
+    let metadata = decode_metadata_strict(metadata_bytes)?;
+    let mut decoded = Vec::new();
+    let mut outcomes = std::collections::HashSet::new();
+    walk_system_events(&metadata, events_bytes, |event| {
+        let phase = event.phase();
+        let index = match phase {
+            Phase::ApplyExtrinsic(index) => Some(index),
+            Phase::Initialization | Phase::Finalization => None,
+        };
+        if let Some(index) = index {
+            if event.pallet_name() == "System"
+                && matches!(event.variant_name(), "ExtrinsicSuccess" | "ExtrinsicFailed")
+                && !outcomes.insert(index)
+            {
+                return Err(EngineError::InvalidEvents(format!(
+                    "multiple System execution outcomes for extrinsic index {index}"
+                )));
+            }
+        }
+        let fields = event
+            .field_values()
+            .map_err(|error| EngineError::InvalidEvents(error.to_string()))?;
+        decoded.push(serde_json::json!({
+            "event_index": event.index(),
+            "extrinsic_index": index,
+            "pallet": event.pallet_name(),
+            "name": event.variant_name(),
+            "fields": crate::metadata::composite_json(fields),
+        }));
+        Ok(())
+    })?;
+    serde_json::to_vec(&decoded).map_err(|error| EngineError::InvalidEvents(error.to_string()))
+}
+
+fn walk_system_events(
+    metadata: &Metadata,
+    events_bytes: &[u8],
+    mut visit: impl FnMut(EventDetails<SubstrateConfig>) -> Result<(), EngineError>,
+) -> Result<(), EngineError> {
+    let mut prefix_cursor = events_bytes;
+    let declared_count = Compact::<u32>::decode(&mut prefix_cursor)
+        .map_err(|error| EngineError::InvalidEvents(error.to_string()))?
+        .0;
+    let prefix_length = events_bytes.len().saturating_sub(prefix_cursor.len());
+    let canonical_prefix = Compact(declared_count).encode();
+    if events_bytes.get(..prefix_length) != Some(canonical_prefix.as_slice()) {
+        return Err(EngineError::InvalidEvents(
+            "event vector uses a non-canonical Compact length".to_owned(),
+        ));
+    }
+    let events = Events::<SubstrateConfig>::decode_from(events_bytes.to_vec(), metadata.clone());
+    if events.len() != declared_count {
+        return Err(EngineError::InvalidEvents(
+            "event vector length prefix was not preserved".to_owned(),
+        ));
+    }
+
+    let mut decoded_count = 0_u32;
+    let mut consumed = prefix_length;
+    for event in events.iter() {
+        let event = event.map_err(|error| EngineError::InvalidEvents(error.to_string()))?;
+        decoded_count = decoded_count.saturating_add(1);
+        consumed = consumed.saturating_add(event.bytes().len());
+        visit(event)?;
     }
 
     if decoded_count != declared_count || consumed != events_bytes.len() {
@@ -118,7 +170,7 @@ pub fn decode_system_outcome(
             "event vector was not consumed exactly".to_owned(),
         ));
     }
-    Ok(outcome)
+    Ok(())
 }
 
 pub(crate) fn decode_metadata_strict(bytes: &[u8]) -> Result<Metadata, EngineError> {

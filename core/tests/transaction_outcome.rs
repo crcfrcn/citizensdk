@@ -76,6 +76,32 @@ fn fixture_metadata() -> Metadata {
 }
 
 #[test]
+fn system_events_projection_uses_the_exact_execution_indices() {
+    let metadata = hex_bytes(METADATA_HEX);
+    let mut events = hex_bytes(EVENTS_HEX);
+    let projection = citizensdk::system_events::decode_system_events(&metadata, &events)
+        .expect("真实事件应完整解码");
+    let projected: serde_json::Value = serde_json::from_slice(&projection).expect("事件投影 JSON");
+    let records = projected.as_array().expect("事件向量");
+    assert!(records.iter().any(|event| {
+        event["pallet"] == "System"
+            && event["name"] == "ExtrinsicSuccess"
+            && event["extrinsic_index"] == 0
+    }));
+    assert!(records.iter().any(|event| {
+        event["pallet"] == "System"
+            && event["name"] == "ExtrinsicFailed"
+            && event["extrinsic_index"] == 1
+    }));
+    assert!(records
+        .iter()
+        .enumerate()
+        .all(|(index, event)| event["event_index"].as_u64() == Some(index as u64)));
+    events.push(0);
+    assert!(citizensdk::system_events::decode_system_events(&metadata, &events).is_err());
+}
+
+#[test]
 fn production_events_prove_index_zero_success_and_index_one_bad_origin() {
     let block = VerifiedBlockRef::finalized(Hash32::from_bytes([9; 32]), 100);
     let context = runtime(block);

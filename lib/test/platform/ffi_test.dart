@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/platform/bind.dart' as c;
 import 'package:flutter/services.dart';
@@ -36,6 +37,186 @@ void main() {
   }
 
   String account(int b) => citizenAccountIdFromBytes(List<int>.filled(32, b));
+  test('真实事件向量严格解码并复用原始交易哈希', () async {
+    Uint8List fixtureBytes(String name) {
+      final hex = File('core/tests/$name').readAsStringSync().trim();
+      return Uint8List.fromList([
+        for (var i = 2; i < hex.length; i += 2)
+          int.parse(hex.substring(i, i + 2), radix: 16),
+      ]);
+    }
+
+    final block = CitizenBlockRef(
+      hash: '0x${'05' * 32}',
+      number: BigInt.one,
+      finality: CitizenBlockFinality.finalized,
+    );
+    final runtime = CitizenRuntimeContext(
+      block: block,
+      specVersion: 100,
+      transactionVersion: 12,
+      metadata: fixtureBytes('citizenchain-runtime-v14-metadata.hex'),
+    );
+    final bytes = fixtureBytes('citizenchain-runtime-system-events.hex');
+    final events = await readCitizenFinalizedEvents(
+      block,
+      readEvents: (_) async => bytes,
+      readRuntime: (_) async => runtime,
+    );
+    expect(
+      events.any(
+        (e) =>
+            e.pallet == 'System' &&
+            e.name == 'ExtrinsicSuccess' &&
+            e.extrinsicIndex == 0,
+      ),
+      isTrue,
+    );
+    expect(
+      events.any(
+        (e) =>
+            e.pallet == 'System' &&
+            e.name == 'ExtrinsicFailed' &&
+            e.extrinsicIndex == 1,
+      ),
+      isTrue,
+    );
+    expect(
+      () => runtime.decodeSystemEvents(Uint8List.fromList([...bytes, 0])),
+      throwsA(isA<CitizenSdkException>()),
+    );
+    final extrinsic = Uint8List.fromList([12, 132, 1, 2]);
+    final body = CitizenBlockBody(block: block, extrinsics: [extrinsic]);
+    final digest = CitizenScale.blake2b256(extrinsic)
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    expect(body.transactionHashAt(0), '0x$digest');
+    expect(() => body.transactionHashAt(1), throwsFormatException);
+  });
+
+  test('钱包事实保留同一失败执行的每条实际扣费', () async {
+    final block = CitizenBlockRef(
+      hash: '0x${'06' * 32}',
+      number: BigInt.one,
+      finality: CitizenBlockFinality.finalized,
+    );
+    final from = account(1);
+    final to = account(2);
+    List<String> bytes(int byte) => List<String>.filled(32, '$byte');
+    CitizenSystemEvent event(
+      int eventIndex,
+      String pallet,
+      String name,
+      Object? fields,
+    ) => CitizenSystemEvent(
+      eventIndex: eventIndex,
+      extrinsicIndex: 0,
+      pallet: pallet,
+      name: name,
+      fields: fields,
+    );
+    final events = [
+      event(0, 'Balances', 'Transfer', {
+        'from': bytes(1),
+        'to': bytes(2),
+        'amount': '9007199254740993',
+      }),
+      event(1, 'OnchainTransaction', 'FeePaid', {
+        'account_id': bytes(1),
+        'fee': '10',
+      }),
+      event(2, 'OnchainTransaction', 'FeePaid', {
+        'account_id': bytes(2),
+        'fee': '20',
+      }),
+      event(3, 'System', 'ExtrinsicFailed', null),
+    ];
+    final body = CitizenBlockBody(
+      block: block,
+      extrinsics: [
+        Uint8List.fromList([12, 132, 1, 2]),
+      ],
+    );
+    final facts = await readCitizenWalletEvents(
+      block,
+      [from, to],
+      readEvents: (_) async => events,
+      readBody: (_) async => body,
+    );
+    expect(facts.transfers, isEmpty);
+    expect(
+      facts.fees.map((fee) => (fee.accountId, fee.feeFen, fee.eventIndex)),
+      [(from, BigInt.from(10), 1), (to, BigInt.from(20), 2)],
+    );
+    expect(
+      facts.fees.map((fee) => fee.status),
+      everyElement(CitizenExecutionStatus.failed),
+    );
+    expect(
+      facts.fees.map((fee) => fee.transactionHash),
+      everyElement(body.transactionHashAt(0)),
+    );
+  });
+
+  test('原生 AccountId 和 SS58 共用冻结钱包向量', () {
+    final golden =
+        jsonDecode(
+              File(
+                'core/tests/citizenchain-wallet-derivation-v1.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    for (final entry in golden['cases'] as List<dynamic>) {
+      final accounts =
+          (entry as Map<String, dynamic>)['accounts'] as List<dynamic>;
+      for (final value in accounts) {
+        final row = value as Map<String, dynamic>;
+        final address = row['ss58'] as String?;
+        if (address == null) continue;
+        final id = row['account_id'] as String;
+        final bytes = citizenAccountIdBytesFromSs58(address);
+        expect(citizenAccountIdFromBytes(bytes), id);
+        expect(citizenAccountIdBytes(id), orderedEquals(bytes));
+        expect(citizenSs58FromAccountIdBytes(bytes), address);
+        expect(citizenSs58FromAccountId(id), address);
+        expect(isCitizenAccountId(id), isTrue);
+      }
+    }
+  });
+  test('账户文本、字节与 SS58 的无效输入均由正式入口拒绝', () {
+    final id = account(0xab);
+    for (final invalid in [
+      id.toUpperCase(),
+      id.substring(2),
+      '$id\n',
+      '0x${'g' * 64}',
+    ]) {
+      expect(isCitizenAccountId(invalid), isFalse);
+      expect(() => citizenAccountIdBytes(invalid), throwsFormatException);
+    }
+    for (final invalid in [
+      List<int>.filled(31, 0),
+      List<int>.filled(32, -1),
+      List<int>.filled(32, 256),
+    ]) {
+      expect(() => citizenAccountIdFromBytes(invalid), throwsArgumentError);
+      expect(() => citizenSs58FromAccountIdBytes(invalid), throwsArgumentError);
+    }
+    final address = citizenSs58FromAccountId(id);
+    final corrupt =
+        address.substring(0, address.length - 1) +
+        (address.endsWith('1') ? '2' : '1');
+    for (final invalid in [
+      '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
+      '2',
+      corrupt,
+    ]) {
+      expect(
+        () => citizenAccountIdBytesFromSs58(invalid),
+        throwsFormatException,
+      );
+    }
+  });
   test('唯一生成声明与实际Core一致，旧构造不导出', () {
     expect(fixture.api.citizensdk_abi_version(), c.CITIZENSDK_ABI_VERSION);
     for (final name in [
@@ -140,7 +321,7 @@ void main() {
     try {
       expect((await sdk.getWalletState().result).accounts, isEmpty);
       final state = await sdk
-          .importColdAccount(accountId: account(3), name: '本轮临时账户')
+          .importColdAccount(account(3), name: '本轮临时账户')
           .result;
       expect(state.accounts.single.accountId, account(3));
       expect(
@@ -176,32 +357,110 @@ void main() {
       await sdk.close();
     }
   });
-  test('规范地址导入与字节身份共用同一Core目录', () async {
+  test('手填 AccountId 与 SS58 使用同一冷账户目录', () async {
     final sdk = await wallet();
     try {
       final id = account(4);
       final address = citizenSs58FromAccountId(id);
-      await sdk.importColdAccount(ss58Address: address).result;
-      expect((await sdk.getWalletState().result).accounts.single.accountId, id);
+      final byId = await sdk.importColdAccount(id).result;
+      expect(byId.accounts.single.accountId, id);
+      expect(byId.accounts.single.ss58Address, address);
+      await expectLater(
+        sdk.importColdAccount(address).result,
+        throwsA(
+          isA<CitizenSdkException>().having(
+            (error) => error.code,
+            '重复账户',
+            CitizenSdkErrorCode.conflict,
+          ),
+        ),
+      );
+      final corrupt =
+          '${address.substring(0, address.length - 1)}'
+          '${address.endsWith('1') ? '2' : '1'}';
+      for (final invalid in [
+        '',
+        '0x12',
+        '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
+        corrupt,
+      ]) {
+        await expectLater(
+          Future.sync(() => sdk.importColdAccount(invalid).result),
+          throwsA(
+            isA<CitizenSdkException>().having(
+              (error) => error.code,
+              '非法账户输入',
+              CitizenSdkErrorCode.invalidArgument,
+            ),
+          ),
+        );
+      }
+      final afterRejections = await sdk.getWalletState().result;
+      expect(afterRejections.revision, byId.revision);
+      expect(afterRejections.accounts.single.accountId, id);
+
+      final otherId = account(7);
+      final otherAddress = citizenSs58FromAccountId(otherId);
+      final byAddress = await sdk.importColdAccount(otherAddress).result;
+      expect(byAddress.accounts.map((entry) => entry.accountId), [id, otherId]);
+      expect(byAddress.accounts.last.ss58Address, otherAddress);
+      expect(byAddress.revision, byId.revision + BigInt.one);
     } finally {
       await sdk.close();
     }
   });
-  test('有效扫码代码直接导入实际冷目录', () async {
+  test('SDK Compact 在边界用最短编码，并拒绝冗余编码', () {
+    expect(CitizenScale.compact(63), [0xfc]);
+    expect(CitizenScale.compact(64), [0x01, 0x01]);
+    expect(CitizenScale.readCompact(Uint8List.fromList([0, 1, 1]), 1), (64, 2));
+    expect(
+      () => CitizenScale.readCompact(Uint8List.fromList([0xfd, 0]), 0),
+      throwsFormatException,
+    );
+  });
+  test('同轮目录和诊断检查共享一个读取，取消单方不影响另一方', () async {
     final sdk = await wallet();
     try {
-      final wire = await sdk.encodeAccountId(account(5));
-      expect(
-        (await sdk.importColdAccountCode(code: wire).result)
-            .accounts
-            .single
-            .accountId,
-        account(5),
+      await sdk.importColdAccount(account(7)).result;
+      final read = sdk.getWalletState(), inspect = sdk.inspectWallets();
+      expect(read.operationId, inspect.operationId);
+      expect(await read.cancel(), isFalse);
+      final inspection = await inspect.result;
+      expect(identical(await read.result, inspection.state), isTrue);
+      await inspection.release();
+      final removed = await sdk.deleteAccount(account(7)).result;
+      expect(removed.removedAccountIds, [account(7)]);
+      expect(removed.cleanupPending, isFalse);
+      expect((await sdk.getWalletState().result).removedAccountIds, isEmpty);
+      await sdk.importColdAccount(account(8)).result;
+      await sdk.importColdAccount(account(9)).result;
+      final wipe = await sdk.deleteWallet().result;
+      expect(wipe.removedAccountIds, [account(8), account(9)]);
+      expect(wipe.accounts, isEmpty);
+      expect((await sdk.deleteWallet().result).removedAccountIds, isEmpty);
+    } finally {
+      await sdk.close();
+    }
+  });
+
+  test('钱包会话的空余额批量仍走 Core 运行门', () async {
+    final sdk = await wallet();
+    try {
+      await expectLater(
+        sdk.getAccountBalances(const []),
+        throwsA(
+          isA<CitizenSdkException>().having(
+            (error) => error.code,
+            'code',
+            CitizenSdkErrorCode.notReady,
+          ),
+        ),
       );
     } finally {
       await sdk.close();
     }
   });
+
   test('真实检查快照归还后失效，父关闭可重复', () async {
     final sdk = await wallet();
     final inspection = await sdk.inspectWallets().result;
@@ -218,7 +477,7 @@ void main() {
   test('多个真实实例互不共享SQLite目录', () async {
     final a = await wallet(), b = await wallet();
     try {
-      await a.importColdAccount(accountId: account(6)).result;
+      await a.importColdAccount(account(6)).result;
       expect((await a.getWalletState().result).accounts, hasLength(1));
       expect((await b.getWalletState().result).accounts, isEmpty);
     } finally {
@@ -335,7 +594,18 @@ void main() {
       final phrase = await prepared.recoveryPhrase(), borrowed = phrase.bytes;
       expect(borrowed.isNotEmpty, isTrue);
       await prepared.commit().result;
-      expect((await sdk.getWalletState().result).hotProfile != null, isTrue);
+      final state = await sdk.getWalletState().result;
+      expect(state.hotProfile, isNotNull);
+      expect(phrase.isClosed, isFalse);
+      await sdk
+          .renameWallet(
+            expectedRevision: state.revision,
+            walletIndex: 0,
+            name: '备份撤销测试',
+          )
+          .result;
+      await phrase.closed.timeout(const Duration(seconds: 4));
+      expect(() => phrase.bytes, throwsA(isA<CitizenSdkException>()));
       await phrase.release();
       expect(borrowed.every((b) => b == 0), isTrue);
       await prepared.release();

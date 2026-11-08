@@ -193,6 +193,7 @@ class CitizenFeeSnapshot(
     val feeRateParts: Long,
     val minimumFeeFen: CitizenU128,
     val existentialDepositFen: CitizenU128,
+    val voteFeeFen: CitizenU128,
 )
 
 class CitizenWalletAccount(
@@ -267,7 +268,10 @@ class CitizenWalletState(
     /** 独立付款选择，不代表默认账户或热钱包activeAccountId。 */
     val activeWalletIndex: Long?,
     diagnostics: List<CitizenWalletDiagnostic> = emptyList(),
+    removedAccountIds: List<ByteArray> = emptyList(),
 ) {
+    private val removed = removedAccountIds.map { it.requireSize(32, "accountId").clone() }
+    fun removedAccountIds(): List<ByteArray> = removed.map { it.clone() }
     val diagnostics: List<CitizenWalletDiagnostic> = diagnostics.toList()
     val accounts: List<CitizenWalletStateAccount> = accounts.toList()
     val defaultAccount: CitizenWalletStateAccount? get() = accounts.firstOrNull()

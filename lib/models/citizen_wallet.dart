@@ -209,7 +209,9 @@ final class CitizenWalletState {
     required this.initializationState,
     required this.cleanupPending,
     List<CitizenWalletDiagnostic> diagnostics = const [],
-  }) : accounts = List<CitizenWalletStateAccount>.unmodifiable(accounts),
+    List<String> removedAccountIds = const [],
+  }) : removedAccountIds = List.unmodifiable(removedAccountIds),
+       accounts = List<CitizenWalletStateAccount>.unmodifiable(accounts),
        diagnostics = List<CitizenWalletDiagnostic>.unmodifiable(diagnostics);
 
   final BigInt revision;
@@ -221,6 +223,40 @@ final class CitizenWalletState {
   final CitizenWalletInitializationState initializationState;
   final bool cleanupPending;
   final List<CitizenWalletDiagnostic> diagnostics;
+  final List<String> removedAccountIds;
+
+  /// 删除前仅给宿主登记清理范围；实际提交仍由 Core 验证。
+  ({List<String> accountIds, Set<int> walletIndexes, bool whole})
+  deletionTargets({String? accountId, int? diagnosticIndex}) {
+    if (diagnosticIndex != null) {
+      final row = diagnostics.firstWhere(
+        (value) => value.walletIndex == diagnosticIndex,
+      );
+      return (
+        accountIds: row.cleanupTargets?.accountIds ?? [row.accountId],
+        walletIndexes: {row.walletIndex},
+        whole: row.cleanupTargets?.deleteWalletWideKey ?? false,
+      );
+    }
+    final row = accounts.firstWhere((value) => value.accountId == accountId);
+    final whole =
+        row.signMode == CitizenWalletSignMode.hot && row.accountIndex == 0;
+    return (
+      accountIds: whole
+          ? accounts
+                .where((value) => value.walletIndex == row.walletIndex)
+                .map((value) => value.accountId)
+                .toList()
+          : [row.accountId],
+      walletIndexes: {row.walletIndex},
+      whole: whole,
+    );
+  }
+
+  bool isRemovalSettled(Set<String> ids, Set<int> walletIndexes) =>
+      !cleanupPending &&
+      !accounts.any((value) => ids.contains(value.accountId)) &&
+      !diagnostics.any((value) => walletIndexes.contains(value.walletIndex));
 
   /// 只连接同一快照内的付款钱包与其账户；热钱包使用钱包锚点而非热当前账户。
   CitizenWalletStateAccount? get activeWalletAccount {

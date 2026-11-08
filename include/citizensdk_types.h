@@ -147,6 +147,7 @@ typedef uint32_t citizensdk_result_kind_t;
 #define CITIZENSDK_RESULT_BLOCK_BODY 26U
 #define CITIZENSDK_RESULT_PREPARED_TRANSACTION 27U
 #define CITIZENSDK_RESULT_TRANSACTION_EXECUTION 28U
+#define CITIZENSDK_RESULT_BLOCK_RANGE 29U
 
 typedef uint32_t citizensdk_transaction_execution_status_t;
 #define CITIZENSDK_TRANSACTION_EXECUTION_EXTERNAL_PENDING 1U
@@ -597,6 +598,7 @@ typedef struct citizensdk_fee_snapshot_info {
   uint32_t reserved;
   citizensdk_u128_t minimum_fee_fen;
   citizensdk_u128_t existential_deposit_fen;
+  citizensdk_u128_t vote_fee_fen;
 } citizensdk_fee_snapshot_info_t;
 
 typedef struct citizensdk_wallet_profile_info {
@@ -665,6 +667,7 @@ typedef struct citizensdk_wallet_state_info {
   uint32_t account_count;
   uint32_t has_default_account;
   citizensdk_account_id_t default_account_id;
+  uint32_t removed_account_count;
 } citizensdk_wallet_state_info_t;
 
 /* 同次快照中的只读异常事实，不可用于普通签名；原因1=模式、2=身份、3=结构。

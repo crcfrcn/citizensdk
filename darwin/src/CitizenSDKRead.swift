@@ -238,7 +238,8 @@ internal enum CitizenSDKRead {
             try CitizenSDKChecks.requireOK(citizensdk_result_get_fee_snapshot(result, &value), "Core fee result is invalid")
             return CitizenFeeSnapshot(bestBlock: try block(value.best_block), feeRateParts: value.fee_rate_parts,
                                       minimumFeeFen: u128(value.minimum_fee_fen),
-                                      existentialDepositFen: u128(value.existential_deposit_fen))
+                                      existentialDepositFen: u128(value.existential_deposit_fen),
+                                      voteFeeFen: u128(value.vote_fee_fen))
         }
     }
 
@@ -386,9 +387,18 @@ internal enum CitizenSDKRead {
                   hasSelection == 0 || walletIndices.contains(selection) else {
                 throw CitizenSDKError(.integrity, "wallet selection is outside the catalog")
             }
+            let removed = try (0..<stateInfo.removed_account_count).map { index -> Data in
+                var id = citizensdk_account_id_t()
+                try CitizenSDKChecks.requireOK(citizensdk_wallet_state_get_removed_account(result, index, &id), "删除账户读取失败")
+                return fixed(id.bytes, 32)
+            }
+            let removedSet = Set(removed)
+            guard removedSet.count == removed.count, accounts.allSatisfy({ !removedSet.contains($0.accountID) }) else {
+                throw CitizenSDKError(.integrity, "删除回执与钱包目录不一致")
+            }
             return CitizenWalletState(revision: stateInfo.revision, hotProfile: hotProfile, accounts: accounts,
                                       initializationState: initialization, cleanupPending: cleanup != 0,
-                                      activeWalletIndex: hasSelection == 1 ? selection : nil, diagnostics: diagnostics)
+                                      activeWalletIndex: hasSelection == 1 ? selection : nil, removedAccountIDs: removed, diagnostics: diagnostics)
         }
     }
 

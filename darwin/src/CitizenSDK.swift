@@ -1918,19 +1918,6 @@ let address = Data((ss58Address).utf8), nameBytes = Data((checkedName).utf8)
         })
     }
 
-    public func importColdAccountCode(_ code: String, name: String = "") throws -> CitizenSDKOperation<CitizenWalletState> {
-        let parsed = try parseForPurpose(code, purpose: .coldAccountImport)
-        guard case let .accountID(text) = parsed.document.content else { throw CitizenSDKError(.integrity, "account code has no account ID") }
-        var bytes = Data(capacity: 32)
-        var index = text.index(text.startIndex, offsetBy: 2)
-        for _ in 0..<32 {
-            let end = text.index(index, offsetBy: 2)
-            guard let byte = UInt8(text[index..<end], radix: 16) else { throw CitizenSDKError(.integrity, "Core account ID is invalid") }
-            bytes.append(byte); index = end
-        }
-        return try importColdAccount(accountID: bytes, name: name)
-    }
-
     public func reorderWalletAccountsWithoutDefaultChange(expectedRevision: UInt64, accountIDs: [Data]) throws -> CitizenSDKOperation<CitizenWalletState> {
         let core=self.core
 
@@ -2022,12 +2009,12 @@ var account = try core.cAccount((CitizenSDKInputLimits.accountID(accountID)))
     }
 
     /// 普通清除不追加授权；“签名并删除”在Core内先完成真实授权签名。
-    public func deleteWallet() throws -> CitizenSDKOperation<Void> {
+    public func deleteWallet() throws -> CitizenSDKOperation<CitizenWalletState> {
         let core=self.core
- return try (core.begin(accept: { citizensdk_delete_wallet(core.handle, $0) }, decode: CitizenSDKRead.empty)) }
-    public func signAndDeleteWallet() throws -> CitizenSDKOperation<Void> {
+ return try (core.begin(accept: { citizensdk_delete_wallet(core.handle, $0) }, decode: CitizenSDKRead.walletState)) }
+    public func signAndDeleteWallet() throws -> CitizenSDKOperation<CitizenWalletState> {
         let core=self.core
- return try (core.begin(accept: { citizensdk_sign_and_delete_wallet(core.handle, $0) }, decode: CitizenSDKRead.empty)) }
+ return try (core.begin(accept: { citizensdk_sign_and_delete_wallet(core.handle, $0) }, decode: CitizenSDKRead.walletState)) }
 
     public func reconcileWalletCleanup() throws -> CitizenSDKOperation<CitizenWalletProfile?> {
         let core=self.core

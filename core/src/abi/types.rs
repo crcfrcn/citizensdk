@@ -193,6 +193,7 @@ pub enum CitizenSdkResultKind {
     BlockBody = 26,
     PreparedTransaction = 27,
     TransactionExecution = 28,
+    BlockRange = 29,
 }
 
 #[repr(u32)]
@@ -611,6 +612,7 @@ pub struct CitizenSdkFeeSnapshotInfo {
     pub reserved: u32,
     pub minimum_fee_fen: CitizenSdkU128,
     pub existential_deposit_fen: CitizenSdkU128,
+    pub vote_fee_fen: CitizenSdkU128,
 }
 
 impl Default for CitizenSdkFeeSnapshotInfo {
@@ -623,6 +625,7 @@ impl Default for CitizenSdkFeeSnapshotInfo {
             reserved: 0,
             minimum_fee_fen: CitizenSdkU128::default(),
             existential_deposit_fen: CitizenSdkU128::default(),
+            vote_fee_fen: CitizenSdkU128::default(),
         }
     }
 }
@@ -716,6 +719,7 @@ pub struct CitizenSdkWalletStateInfo {
     pub account_count: u32,
     pub has_default_account: u32,
     pub default_account_id: CitizenSdkAccountId,
+    pub removed_account_count: u32,
 }
 
 impl Default for CitizenSdkWalletStateInfo {
@@ -727,6 +731,7 @@ impl Default for CitizenSdkWalletStateInfo {
             account_count: 0,
             has_default_account: 0,
             default_account_id: CitizenSdkAccountId::default(),
+            removed_account_count: 0,
         }
     }
 }

@@ -11,8 +11,6 @@ dependencies:
   ffi: 2.2.0
   flutter:
     sdk: flutter
-  # 地址仅消费原锁中的SS58实现，不引入签名和助记词依赖。
-  ss58: 1.3.1
 
 dev_dependencies:
   ffigen: 20.1.1

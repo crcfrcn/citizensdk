@@ -6,13 +6,15 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data' show BytesBuilder;
+
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart' hide Size;
 import 'package:flutter/widgets.dart' hide Size;
-import 'account_codec.dart';
-import 'platform/bind.dart' as c;
-export 'account_codec.dart';
 
+import 'platform/bind.dart' as c;
+
+part 'account_codec.dart';
 part 'api/citizen_sdk.dart';
 part 'api/citizen_chain.dart';
 part 'api/citizen_sdk_wallet.dart';

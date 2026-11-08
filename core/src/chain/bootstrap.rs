@@ -4,6 +4,7 @@ use crate::types::ContractError;
 use crate::types::ContractErrorCode;
 use crate::types::ContractResult;
 use crate::types::CITIZENCHAIN_GENESIS_HASH;
+use crate::types::CITIZEN_SS58_PREFIX;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use hyper_rustls::HttpsConnectorBuilder;
@@ -144,7 +145,7 @@ pub(crate) fn merge_bootnodes(chain_spec: &str, bytes: &[u8]) -> ContractResult<
         || spec["protocolId"] != chain["protocol_id"]
         || remote_genesis != genesis_hash
         || spec["genesis"]["stateRootHash"] != remote_state
-        || chain["ss58_format"] != 2027
+        || chain["ss58_format"] != CITIZEN_SS58_PREFIX
         || spec["properties"]["ss58Format"] != chain["ss58_format"]
         || chain["token_symbol"] != "GMB"
         || chain["token_decimals"] != 2

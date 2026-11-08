@@ -45,7 +45,7 @@ impl TransactionPreparationId {
     }
 }
 
-/// Unpredictable identity for one claimed transaction execution.
+/// 执行沿用其准备阶段生成的随机标识。持久历史和本次准备可精确关联。
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TransactionExecutionId([u8; 16]);
 

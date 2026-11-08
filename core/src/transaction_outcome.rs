@@ -1,3 +1,4 @@
+use crate::types::account::blake2b;
 use crate::types::DispatchFailure;
 use crate::types::ExecutionConclusion;
 use crate::types::Hash32;
@@ -6,8 +7,6 @@ use crate::types::RuntimeContext;
 use crate::types::SignedExtrinsic;
 use crate::types::UnverifiedReason;
 use crate::types::VerifiedBlockRef;
-use subxt_core::config::substrate::BlakeTwo256;
-use subxt_core::config::Hasher;
 
 use crate::error::EngineError;
 use crate::system_events::decode_metadata_strict;
@@ -36,22 +35,14 @@ pub fn verify_transaction_outcome(evidence: TransactionEvidence<'_>) -> Executio
             UnverifiedReason::RuntimeContextUnavailable,
         );
     }
-    let metadata = match decode_metadata_strict(evidence.runtime_context.metadata()) {
-        Ok(metadata) => metadata,
-        Err(_) => {
-            return unverified(
-                Some(evidence.block),
-                None,
-                UnverifiedReason::MetadataDecodeFailed,
-            );
-        }
-    };
-    let hasher = BlakeTwo256::new(&metadata);
-    let local_hash = Hash32::from_bytes(
-        hasher
-            .hash(evidence.signed_extrinsic.as_bytes())
-            .to_fixed_bytes(),
-    );
+    if decode_metadata_strict(evidence.runtime_context.metadata()).is_err() {
+        return unverified(
+            Some(evidence.block),
+            None,
+            UnverifiedReason::MetadataDecodeFailed,
+        );
+    }
+    let local_hash = Hash32::from_bytes(blake2b(evidence.signed_extrinsic.as_bytes()));
     if local_hash != evidence.submitted_hash {
         return unverified(
             Some(evidence.block),
@@ -65,7 +56,7 @@ pub fn verify_transaction_outcome(evidence: TransactionEvidence<'_>) -> Executio
         .iter()
         .enumerate()
         .filter_map(|(index, extrinsic)| {
-            let hash = Hash32::from_bytes(hasher.hash(extrinsic).to_fixed_bytes());
+            let hash = Hash32::from_bytes(blake2b(extrinsic));
             (hash == evidence.submitted_hash).then_some(index)
         })
         .collect();
@@ -166,11 +157,8 @@ pub fn signed_extrinsic_hash(
     runtime_context: &RuntimeContext,
     extrinsic: &SignedExtrinsic,
 ) -> Result<Hash32, EngineError> {
-    let metadata = decode_metadata_strict(runtime_context.metadata())?;
-    let hasher = BlakeTwo256::new(&metadata);
-    Ok(Hash32::from_bytes(
-        hasher.hash(extrinsic.as_bytes()).to_fixed_bytes(),
-    ))
+    decode_metadata_strict(runtime_context.metadata())?;
+    Ok(Hash32::from_bytes(blake2b(extrinsic.as_bytes())))
 }
 
 fn contract_failure(decoded: DecodedDispatchFailure) -> Option<DispatchFailure> {

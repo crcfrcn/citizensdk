@@ -40,7 +40,7 @@ citizensdk/
 
 ## 接口和所有权
 
-公开Core C函数闭集由`include/citizensdk.h`和独立143项符号金标逐项一致校验。图像/Dart辅助6项来自同一image实现；硬件SQL私有机械入口3项不进入公开头。绑定由pubspec的ffigen节点和同仓实际头生成，不手改生成签名。
+公开 Core C 函数闭集由 `include/citizensdk.h` 和独立 148 项符号金标逐项一致校验。图像及 Dart 辅助 6 项来自同一 image 实现。硬件 SQL 私有入口 3 项仅供 SDK 内部使用。绑定由 pubspec 的 ffigen 配置和同仓实际头生成。
 
 Dart只有一个CitizenSdk实例，业务直接调用C入口和typed getter。chain/wallet/signing/transactions/history/qr分组对象、Platform、Session、Codec、字符串业务派发和列表结果投影均删除。ReceivePort只接收C声明的五项`kind, sequence, request, result, revision`，由各实例自身端口关联；接纳/取消使用真实Core requestId。
 
@@ -56,6 +56,22 @@ Android使用平面sourceSets和ffiPlugin；每个FlutterEngine由应用通过�
 
 smoldot是唯一轻节点实现，保留原锁、WSS、系统证书和主机名校验。链资产只来自chain的三份既定输入，Core在创建provider前核验固定身份与完整manifest；调用方给出的manifest不能授权另一个checkpoint。Runtime、nonce、余额、费率、交易准备和执行始终绑定同一准确块事实，不在平台补造链值。
 
+钱包及交易金额以整数分传递。Dart 的 `parseFen`、`formatFen`、`groupAmountInput` 统一十进制精度和展示；`clearingFeeFen` 按已取得的清算行基点费率和最低费计算。`getFeeSnapshot(amountFen: ...)` 在同一个 best 块读取费率、最低费、账户存活门槛（ED）和投票定额费，再用 Core 估算指定金额的手续费和自付门槛。
+
+Dart 主库的 `scaleTokenUnits` 按给定精度精确换算整枚代币。`encodeErc20Transfer` 生成标准 68 字节 ERC-20 transfer 输入，并可原样附加调用方提供的字节。`verifyErc20Transfer` 通过调用方的 RPC 单轮核对链号、交易成功、完整输入、区块归属、finalized 高度和唯一匹配的 Transfer 日志，复查区块后返回付款人、区块及日志位置和 Unix 毫秒时间。成功一轮共六次 RPC。调用方负责选择节点、提供时间下限及尾部字节，并处理其业务结果。
+
+交易准备生成的标识沿用至执行及持久历史。SDK 的观察接口先订阅原 HistoryChanged 再读对应记录，按执行标识、来源账户和调用摘要精确关联。通用冷签完成入口在取消或异常时尝试回收原执行，成功则消费一次原 QR 会话。扫码或消费与回收同时失败时，向调用方保留原始错误及堆栈。仅回收失败时报告该错误。页面、业务确认和错误提示由调用方决定。
+
+原生 System.Events 解码与执行终态验证共用完整事件遍历。SDK 按准确 finalized 块读取 metadata、事件及需要的已验证正文，按完整 extrinsic 字节计算交易哈希。钱包事件交付本金、备注、原事件索引及每条 FeePaid 的付款账户和整数分。失败执行仍可能实际扣费，报价只描述其 best 快照的预估。数据库记录、游标、业务状态和展示由调用方持有。
+
+调用方可用报价的 `bestBlock` 取得同块 `CitizenRuntimeContext`，再用 `unsignedConstant(pallet, name)` 读取该块 metadata 的无符号整数常量。读取与报价共用 Core 解码；缺失、类型不符或块读取失败时拒绝。业务常量名称和用途由调用方决定。
+
+同步状态由 SDK 会话发布。链读取提供已验证的 finalized 区间和链时间、同块 metadata、存储键与 SCALE 编解码、通用 RuntimeCall 以及 EVM 地址映射。机构与个人多签的用途命名、业务派生和交易字段由 App 持有。
+
+宿主以同一 `CitizenRuntimeContext` 读取常量、生成完整或部分存储键及编码 RuntimeCall。`CitizenScale` 提供 Compact、定宽整数和哈希原语，供宿主处理固定业务载荷。finalized 区间的高度、顺序、完整性和最终性由 SDK 校验，宿主按返回顺序处理自己的业务记录。
+
+Dart 会话维护已验证的链上余额快照。宿主可交付链上快照的原始读写，SDK 负责账户、整数和 finalized 证明校验、刷新合并与快照失效。目录读取与诊断检查共享在途读取，单方等待不取消其他消费者；诊断继续由 Core 对精确修订和原记录复核。备份资源在创建后绑定真实钱包及修订，目录变化或关闭时撤销并清零。账户删除、签名删除和整库擦除在同一操作门内提交，结果同时给出移除账户与清理状态；擦除空目录可安全重试。
+
 sr25519只有core/src/sign.rs的同步派生、公钥、签名和验签函数；Substrate Ed25519展开、硬派生、签名上下文和冻结向量不变。临时秘密使用原Zeroizing/受控缓冲。设备认证、网络、SQL及真实关闭保持各自异步所有权，不把算法包装成Future。
 
 Core只接受同步SQLite机械资源：run在原线程持有连接/锁并恰好执行一次job；事务固定同一连接，query只借用当前行。未完成事务离开job后连接退休，不自动重开。SQL、schema、CAS、记录域、校验和、历史索引及加密记录语义只归Core Store；平台不提供第二套业务Store/Codec。
@@ -63,6 +79,10 @@ Core只接受同步SQLite机械资源：run在原线程持有连接/锁并恰好
 公共文件public-state.sqlite3、schema2、七项业务对象，安全文件secure-state.sqlite3、schema1，CSHR/TXR及钱包载荷格式保持所属代码原定义；同版本未知/部分/额外DDL或损坏记录仍拒绝，不迁移、重建或当空。WAL、FULL、外键、trusted_schema和secure_delete按原平台能力应用并回读，Android系统android_metadata不算业务对象。
 
 热派生最大序号19890604，冷账户容量1990，两者和处理批次分别约束；删孔不复用，未提交追加只暴露稳定旧目录。修订、密文信封、provisioning owner和generation必须准确匹配，generation永久退休。历史最多4096条、31MiB耐久权重、页1..100，终态与未知广播事实不被本机重试覆盖。
+
+Dart 的 `importColdAccount(String account, {String name = ''})` 接收手填账户文本。以 `0x` 开头的输入经 AccountId 校验进入原生账户导入，其余输入由原生公民链 SS58 导入校验。Core 按同一 AccountId 检查重复并写入钱包目录，拒绝时目录修订保持原值。
+
+Dart、Swift 和 Kotlin 的扫码解析只返回用途校验后的文档。宿主先用账户码结果填入表单，再在用户确认后将账户交给对应的冷账户导入入口。
 
 平台金库只负责KEK生命周期及32字节DEK包裹/解包，不接收账户mini-secret、助记词或sr25519签名请求。Core认证/解密信封并签名。普通结果不返回账户秘密或独立钱包signed extrinsic；备份、密码、助记词输入和显式取钥只经受控资源短时借用。SDK只承诺清零自身实际拥有的内存，不把借用输入或用户返回副本说成已擦除。
 
@@ -542,7 +562,7 @@ CitizenWallet 自己出示账户码即可完成，不得要求联网热钱包参
 | 键 | 含义 | 类型 | 必填 | 注释 |
 |---|---|---|---|---|
 | `c` | cid_number | string | 是 | 永久公民身份号；无首尾空格，UTF-8 长度 1–32 字节 |
-| `n` | account_id | string | 是 | 当前 CID 绑定账户；小写 `0x` 加 64 位十六进制，走 `isAccountIdText` 单源校验 |
+| `n` | account_id | string | 是 | 当前 CID 绑定账户。小写 `0x` 加 64 位十六进制，由 Core `AccountId32` 校验 |
 
 **不含昵称**:本机昵称可随意改写、无任何链上或服务端约束,一旦进码就会被扫码端
 当成对方公开身份显示,是冒名风险。真实公开昵称由扫码端按 `c` 从资料接口拉取。
@@ -847,6 +867,7 @@ AccountId 同时命中链上同一条 Active 管理员记录，再生成 `k=1,a=
 - 同一结构存在多个业务角色账户时统一为 `<role>_account_id`，例如 `actor_account_id`、`voter_account_id`、`payer_account_id`、`beneficiary_account_id`；这些字段只表达签名、付款、收款或不可变交易事实，不得用作 CID 用户身份主键。
 - 签名公钥统一为 `public_key`；当前签名者公钥为 `signer_public_key`；凭证签名者公钥为 `credential_signer_public_key`。
 - SS58 字段统一为 `ss58_address`，只用于展示和边界输入输出；授权、索引、存储主键和缓存 key 必须使用账户字节对应的 `account_id`。
+- 账户文本由 Rust Core 的 `AccountId32` 编解码，SS58 由同一 Core 钱包编解码器处理。钱包、二维码和 Dart 公开入口共用这两项实现。Dart 通过无状态 C ABI 查询公民链前缀、校验规范账户文本并在账户文本、32 字节和 SS58 之间转换。解码仅在成功时写入账户输出。
 - `account_id` 和 32 字节公钥的跨端文本编码唯一为小写 `0x` 加 64 位十六进制，校验式为 `^0x[0-9a-f]{64}$`。
 - 验签先由 `signer_public_key` 得到 `signer_account_id`，再与业务要求的 `account_id` 或 `<role>_account_id` 比较；不得直接按 SS58 文本授权。
 - 机构岗位权限仍为 `cid_number + role_code + account_id`，公民身份仍为 `cid_number + account_id`；账户命名统一不得改变 CID、岗位和签名职责边界。
@@ -1053,9 +1074,9 @@ CitizenSDK只向`https://www.crcfrcn.com/api/chain/citizensdk/bootstrap`读取�
 - light_client准确包含`mode=smoldot`、`truth_source=p2p_finalized_storage`、`api_is_truth=false`、`bundled_assets_required`；checkpoint和链同步资产只来自签名安装包，不接受远端替换字段、URL或摘要。
 - p2p准确包含`bootnodes`、`min_peer_count_hint`；security准确四字段`exposes_rpc_url`、`rpc_proxy`、`exposes_private_key_material`、`validator_rpc_public`，均为false。请求六秒、64 KiB上限及禁止重定向保持。
 - 清单仅生成当前实例内存bootNodes投影，不修改随包文件、持久数据库或链上状态。失败沿SDK原节点准备路径处理，不降级为Cloudflare RPC。
-- CitizenApp服务发现使用另一个`/api/chain/bootstrap`及`citizenapp.chain.bootstrap`结构，由`citizenapp/lib/network/chain_bootstrap_api.dart`消费；它含App服务发现字段，不能交给SDK解析器。其完整HTTP合同归CitizenServe技术文档。
+- CitizenApp 调用 SDK 启动轻节点，节点建议由 SDK 按本节合同读取。
 - Serve当前固定缓存TTL为300秒，bootnodes来自CHAIN_BOOTNODES，公开链身份来自既有声明；Access凭据、私有RPC及用户密钥不得进入响应。配置需求以Serve自身scripts/config.mjs和实际代码为准，不在SDK维护第二份旧变量清单。
-- 所属回归为`core/tests/abi/bootstrap.rs`及`core/tests/abi/citizensdk_bootstrap_manifest.json`；跨端生产者回归为Serve的`test/chain_services_contract.rs`，App消费回归为`test/security/chain_bootstrap_api_test.dart`。通过控制台发起所属产品原测试入口；不保留已撤销的TypeScript测试或migrate:local指令。
+- 所属回归为`core/tests/abi/bootstrap.rs`及`core/tests/abi/citizensdk_bootstrap_manifest.json`；跨端生产者回归为Serve的`test/chain_services_contract.rs`。通过控制台发起所属产品原测试入口；不保留已撤销的TypeScript测试或migrate:local指令。
 
 ##### P-API-CITIZENAPP-005：SDK不使用受控交易广播兜底
 
@@ -1316,9 +1337,9 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - 禁止用账户码写入通讯录（无 CID 真源，通讯录关系必须锚永久 CID）。
   - 禁止在账户码中夹带任何身份或时效字段。
   - 禁止让 CitizenWallet 生成用户码，或让账户码承担「人」的语义。
-- 必跑测试：`citizenapp/test/wallet/widgets/wallet_identity_card_test.dart`、
-  `citizenapp/test/wallet/pages/wallet_multi_account_ui_test.dart`、
-  `citizenapp/test/qr/qr_router_test.dart`、`citizenwallet/test/ui/account_detail_page_test.dart`、
+- 必跑测试：`citizenapp/wallet/test/account/wallet_identity_card_test.dart`、
+  `citizenapp/wallet/test/account/wallet_multi_account_ui_test.dart`、
+  `citizenapp/scanner/test/scanner_view_test.dart`、`citizenwallet/test/ui/account_detail_page_test.dart`、
   `citizenchain/onchina/src/core/qr/mod.rs` 的 `wallet_code_parser_*` 测试
 
 ##### P-CRED-003：CitizenIdentity VotingIdentityPayload

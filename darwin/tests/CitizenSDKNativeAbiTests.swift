@@ -176,7 +176,16 @@ final class CitizenSDKCoreAbiTests: XCTestCase {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         })
-        XCTAssertEqual(names.count, 143)
+        XCTAssertEqual(names.count, 154)
+        XCTAssertTrue(names.isSuperset(of: [
+            "citizensdk_wallet_state_get_removed_account", "citizensdk_chain_codec",
+            "citizensdk_get_finalized_block_range", "citizensdk_result_get_block_range",
+            "citizensdk_decode_system_events", "citizensdk_hash_extrinsic",
+        ]))
+        XCTAssertTrue(names.isSuperset(of: [
+            "citizensdk_account_id_decode", "citizensdk_account_id_encode",
+            "citizensdk_ss58_decode", "citizensdk_ss58_encode", "citizensdk_ss58_prefix",
+        ]))
         XCTAssertTrue(names.isDisjoint(with: ["citizensdk_set_secret_presence_provider", "citizensdk_encrypted_secret_record_has_secret"]))
         XCTAssertTrue(names.isSuperset(of: ["citizensdk_review_qr_sign_request", "citizensdk_sign_qr_request", "citizensdk_result_copy_qr"]))
         XCTAssertFalse(names.contains("citizensdk_qr_signing_bytes"))

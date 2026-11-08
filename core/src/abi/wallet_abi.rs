@@ -177,6 +177,82 @@ fn encode_payload(kind: u32, fields: &[u8], payload: &[u8]) -> FfiResult<Vec<u8>
 /// # Safety
 /// 输入必须在同步调用期间可读；输出按capacity提供，out_required必须可写。
 #[no_mangle]
+/// 读取连续、已验证的 finalized 区块范围。
+/// # Safety
+/// out_request_id 可写。
+pub unsafe extern "C" fn citizensdk_get_finalized_block_range(
+    handle: CitizenSdkHandle, start: u64, end: u64, out_request_id: *mut CitizenSdkRequestId,
+) -> i32 {
+    #[cfg(feature = "chain")]
+    { ffi_status(|| {
+        crate::types::validated_finalized_block_range_len(start, end)?;
+        let runtime = handles::get(handle)?;
+        runtime.provider()?;
+        accept_and_write(runtime, out_request_id, move |runtime, _, _| {
+            runtime.refresh_provider_capabilities()?;
+            let blocks = runtime.drive(runtime.engine().finalized_block_range(start, end))??;
+            Ok(ResultPayload::BlockRange(blocks))
+        })
+    }) }
+    #[cfg(not(feature = "chain"))]
+    { let _ = (handle, start, end, out_request_id);
+      ffi_status(|| Err(module_unsupported("chain"))) }
+}
+
+#[no_mangle]
+/// 只复制本次范围的数量及指定块；out_block 为 NULL 时只读数量。
+/// # Safety
+/// out_count 必须可写，非 NULL 的 out_block 必须是受支持的可写 ABI 值。
+pub unsafe extern "C" fn citizensdk_result_get_block_range(
+    result: CitizenSdkResultHandle, index: u32, out_count: *mut u32,
+    out_block: *mut CitizenSdkBlockRef,
+) -> i32 {
+    ffi_status(|| {
+        require_output(out_count, "block range count")?;
+        let (count, block) = ownership::with_result(result, |owned| {
+            let ResultPayload::BlockRange(blocks) = &owned.payload else {
+                return Err(wrong_result("block range"));
+            };
+            let count = checked_count(blocks.len(), "block range")?;
+            let block = if out_block.is_null() { None } else {
+                let value = blocks.get(index as usize).ok_or_else(|| FfiError::invalid("block range index"))?;
+                Some(block_to_abi((*value).into()))
+            };
+            Ok((count, block))
+        })?;
+        if let Some(block) = block {
+            validate_output_versioned(out_block, "block range item")?;
+            ptr::write(out_block, block);
+        }
+        ptr::write(out_count, count);
+        Ok(())
+    })
+}
+
+#[no_mangle]
+/// 同步处理公开链协议字节；调用方不传入节点或宿主回调。
+/// # Safety
+/// 输入在本调用期间可读；out_required 及提供的输出缓冲区可写。
+pub unsafe extern "C" fn citizensdk_chain_codec(
+    metadata: CitizenSdkBytesView,
+    request: CitizenSdkBytesView,
+    output: *mut u8,
+    capacity: u64,
+    out_required: *mut u64,
+) -> i32 {
+    #[cfg(feature = "chain")]
+    { ffi_status(|| {
+        let metadata = copy_view(metadata, "runtime metadata", 8 * 1024 * 1024)?;
+        let request = copy_view(request, "chain codec request", 1024 * 1024)?;
+        let value = crate::metadata::chain_codec(&metadata, &request)?;
+        copy_to_host(value, output, capacity, out_required)
+    }) }
+    #[cfg(not(feature = "chain"))]
+    { let _ = (metadata, request, output, capacity, out_required);
+      ffi_status(|| Err(module_unsupported("chain"))) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn citizensdk_encode_signing_payload(
     payload_kind: u32,
     fields_json: CitizenSdkBytesView,
@@ -1917,8 +1993,8 @@ pub unsafe extern "C" fn citizensdk_delete_wallet(
             let runtime = handles::get(handle)?;
             accept_wallet_change_and_write(runtime, out_request_id, false, move |runtime, _, _| {
                 runtime.refresh_local_wallet_capabilities()?;
-                runtime.drive_local(runtime.engine().delete_wallet())??;
-                Ok(ResultPayload::Empty)
+                let state = runtime.drive_local(runtime.engine().delete_wallet())??;
+                Ok(ResultPayload::WalletState(Box::new(state)))
             })
         })
     }
@@ -1944,8 +2020,8 @@ pub unsafe extern "C" fn citizensdk_sign_and_delete_wallet(
             let runtime = handles::get(handle)?;
             accept_wallet_change_and_write(runtime, out_request_id, false, move |runtime, _, _| {
                 runtime.refresh_local_wallet_capabilities()?;
-                runtime.drive_local(runtime.engine().sign_and_delete_wallet())??;
-                Ok(ResultPayload::Empty)
+                let state = runtime.drive_local(runtime.engine().sign_and_delete_wallet())??;
+                Ok(ResultPayload::WalletState(Box::new(state)))
             })
         })
     }
@@ -2597,9 +2673,42 @@ pub unsafe extern "C" fn citizensdk_result_get_wallet_state(
                     .default_account_id()
                     .map(account_id_to_abi)
                     .unwrap_or_default(),
+                removed_account_count: checked_count(
+                    state.removed_accounts().len(),
+                    "removed wallet account",
+                )?,
                 ..CitizenSdkWalletStateInfo::default()
             },
         );
+        Ok(())
+    })
+}
+
+#[no_mangle]
+/// 读取本次删除提交移除的账户，不回读目录。
+/// # Safety
+/// out_account 必须可写；索引无效不修改输出。
+pub unsafe extern "C" fn citizensdk_wallet_state_get_removed_account(
+    result: CitizenSdkResultHandle,
+    index: u32,
+    out_account: *mut CitizenSdkAccountId,
+) -> i32 {
+    ffi_status(|| {
+        require_output(out_account, "removed wallet account")?;
+        let id = ownership::with_result(result, |owned| {
+            let ResultPayload::WalletState(state) = &owned.payload else {
+                return Err(wrong_result("wallet state"));
+            };
+            if owned.code != CitizenSdkErrorCode::Ok {
+                return Err(wrong_result("successful wallet state"));
+            }
+            state
+                .removed_accounts()
+                .get(index as usize)
+                .copied()
+                .ok_or_else(|| FfiError::invalid("removed wallet account index"))
+        })?;
+        ptr::write(out_account, account_id_to_abi(id));
         Ok(())
     })
 }
@@ -3323,6 +3432,7 @@ fn fee_snapshot_to_abi(snapshot: BestFeeSnapshot) -> CitizenSdkFeeSnapshotInfo {
         fee_rate_parts: snapshot.policy().fee_rate_parts(),
         minimum_fee_fen: u128_to_abi(snapshot.policy().minimum_fee_fen()),
         existential_deposit_fen: u128_to_abi(snapshot.existential_deposit_fen()),
+        vote_fee_fen: u128_to_abi(snapshot.vote_fee_fen()),
         ..CitizenSdkFeeSnapshotInfo::default()
     }
 }

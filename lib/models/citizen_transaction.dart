@@ -167,3 +167,38 @@ final class CitizenTransactionHistoryPage {
   final List<CitizenTransactionHistoryRecord> records;
   final String? nextBeforeExecutionId;
 }
+
+/// 已验证本金转移。备注事件与前序本金事件一对一配对，保留本金事件索引。
+typedef CitizenTransferFact = ({
+  String fromAccountId,
+  String toAccountId,
+  BigInt amountFen,
+  String? remark,
+  int eventIndex,
+  int? extrinsicIndex,
+  String? transactionHash,
+});
+
+/// 一次已验证的实际扣费，按付款账户及事件索引保留每条 FeePaid。
+typedef CitizenFeeFact = ({
+  String accountId,
+  BigInt feeFen,
+  int eventIndex,
+  int? extrinsicIndex,
+  String? transactionHash,
+  CitizenExecutionStatus? status,
+});
+
+/// SDK 对同一 finalized 块交付的原生转账和实际收费。
+final class CitizenWalletBlockEvents {
+  CitizenWalletBlockEvents({
+    required this.block,
+    required List<CitizenTransferFact> transfers,
+    required List<CitizenFeeFact> fees,
+  }) : transfers = List.unmodifiable(transfers),
+       fees = List.unmodifiable(fees);
+
+  final CitizenBlockRef block;
+  final List<CitizenTransferFact> transfers;
+  final List<CitizenFeeFact> fees;
+}

@@ -1,8 +1,13 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-// 独立显式金标固定143项；各函数与公开头逐项一致，不从生产头生成预期。
-const EXPECTED_EXPORTS: [&str; 143] = [
+// 独立显式金标固定154项；各函数与公开头逐项一致，不从生产头生成预期。
+const EXPECTED_EXPORTS: [&str; 154] = [
+    "citizensdk_account_id_decode",
+    "citizensdk_account_id_encode",
+    "citizensdk_ss58_decode",
+    "citizensdk_ss58_encode",
+    "citizensdk_ss58_prefix",
     "citizensdk_attach",
     "citizensdk_detach",
     "citizensdk_invoke",
@@ -29,7 +34,11 @@ const EXPECTED_EXPORTS: [&str; 143] = [
     "citizensdk_wallet_state_get_diagnostic_cleanup_account",
     "citizensdk_wallet_state_get_diagnostic_count",
     "citizensdk_wallet_state_get_initialization",
+    "citizensdk_chain_codec",
+    "citizensdk_get_finalized_block_range",
+    "citizensdk_result_get_block_range",
     "citizensdk_wallet_state_retain",
+    "citizensdk_wallet_state_get_removed_account",
     "citizensdk_abi_version",
     "citizensdk_add_wallet_accounts",
     "citizensdk_begin_default_account_change",
@@ -67,6 +76,8 @@ const EXPECTED_EXPORTS: [&str; 143] = [
     "citizensdk_get_storage_batch_at",
     "citizensdk_get_storage_keys_paged",
     "citizensdk_get_sync_status",
+    "citizensdk_decode_system_events",
+    "citizensdk_hash_extrinsic",
     "citizensdk_get_system_events_at",
     "citizensdk_get_transaction_history",
     "citizensdk_get_wallet_profile",
@@ -293,7 +304,7 @@ fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
         .into_keys()
         .collect();
 
-    assert_eq!(header.len(), 143, "C declaration count changed");
+    assert_eq!(header.len(), 154, "C declaration count changed");
     assert_eq!(rust, expected, "Rust export set changed");
     assert_eq!(header, expected, "C declaration set changed");
     assert!(!rust.contains("citizensdk_set_default_wallet_account"));

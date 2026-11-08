@@ -215,8 +215,8 @@ pub fn encode_document(input_json: &str) -> QrResult<Value> {
     let kind = unsigned(fields, "kind")?;
     let expiry =
         |fields: &Map<String, Value>| -> QrResult<u64> { decimal(string(fields, "expires_at")?) };
-    let account = |name| decode_account_id(string(fields, name)?).map(AccountId32::from_bytes);
-    let signer = |name| decode_account_id(string(fields, name)?).map(Sr25519PublicKey::from_bytes);
+    let account = |name| parse_account_text(string(fields, name)?);
+    let signer = |name| account(name).map(|id| Sr25519PublicKey::from_bytes(id.into_bytes()));
     let fixed = |name, length| -> QrResult<Vec<u8>> {
         let bytes = decode_hex(string(fields, name)?, length)?;
         if bytes.len() != length {
@@ -441,16 +441,16 @@ pub fn prepare_account_authorization(action: u32, payload: &[u8], account_id: &s
     let Some((genesis, cid, current, revision, expiry, slot)) = template(action, payload) else {
         return rejected(1);
     };
-    let Ok(account) = decode_account_id(account_id) else {
+    let Ok(account) = account_id.parse::<AccountId32>() else {
         return rejected(2);
     };
-    if current == Some(account) {
+    if current == Some(account.into_bytes()) {
         return rejected(3);
     }
     let mut materialized = payload.to_vec();
-    materialized[slot..slot + 32].copy_from_slice(&account);
+    materialized[slot..slot + 32].copy_from_slice(account.as_bytes());
     serde_json::json!({"reason": 0, "genesis_hash": hex(&genesis), "cid_number": cid,
-        "current_account_id": current.map(|id| hex(&id)), "expected_binding_revision": revision.to_string(),
+        "current_account_id": current.map(|id| AccountId32::from_bytes(id).to_string()), "expected_binding_revision": revision.to_string(),
         "expires_at": expiry.to_string(), "materialized_payload": hex(&materialized)})
 }
 impl QrCode {
@@ -482,27 +482,27 @@ impl QrCode {
             Self::SignRequest(v) => serde_json::json!({
                 "kind": 1, "canonical_text": v.encode()?, "request_id": v.request_id,
                 "expires_at": v.expires_at, "action": v.action,
-                "signer_account_id": v.signer_public_key.map(|key| hex(key.as_bytes())),
+                "signer_account_id": v.signer_public_key.map(|key| AccountId32::from_bytes(*key.as_bytes()).to_string()),
                 "review_payload": hex(&v.review_payload),
             }),
             Self::SignResponse(v) => serde_json::json!({
                 "kind": 2, "canonical_text": v.encode()?, "request_id": v.request_id,
                 "expires_at": v.expires_at,
-                "signer_account_id": hex(v.signer_public_key.as_bytes()),
+                "signer_account_id": AccountId32::from_bytes(*v.signer_public_key.as_bytes()).to_string(),
                 "signature": hex(v.signature.as_bytes()),
-                "current_account_id": v.current_account.map(|(account, _)| hex(account.as_bytes())),
+                "current_account_id": v.current_account.map(|(account, _)| account.to_string()),
                 "current_account_signature": v.current_account.map(|(_, signature)| hex(signature.as_bytes())),
             }),
             Self::AccountId(v) => serde_json::json!({
-                "kind": 5, "canonical_text": v.encode()?, "account_id": hex(v.account_id.as_bytes()),
+                "kind": 5, "canonical_text": v.encode()?, "account_id": v.account_id.to_string(),
             }),
             Self::UserContact(v) => serde_json::json!({
                 "kind": 3, "canonical_text": v.encode()?, "cid_number": v.cid_number,
-                "account_id": hex(v.account_id.as_bytes()),
+                "account_id": v.account_id.to_string(),
             }),
             Self::UserTransfer(v) => serde_json::json!({
                 "kind": 4, "canonical_text": v.encode()?, "request_id": v.request_id,
-                "expires_at": v.expires_at, "account_id": hex(v.account_id.as_bytes()),
+                "expires_at": v.expires_at, "account_id": v.account_id.to_string(),
                 "amount": v.amount, "symbol": v.symbol, "memo": v.memo,
                 "bank_cid_number": v.bank_cid_number,
             }),
@@ -595,7 +595,7 @@ impl AccountIdCode {
         checked_json(serde_json::json!({
             "p": QR_V1,
             "k": 5,
-            "b": {"n": account_id_text(self.account_id)}
+            "b": {"n": self.account_id.to_string()}
         }))
     }
 }
@@ -604,7 +604,7 @@ impl UserContactCode {
     pub fn encode(&self) -> QrResult<String> {
         validate_cid(&self.cid_number)?;
         checked_json(serde_json::json!({"p": QR_V1, "k": 3,
-            "b": {"c": self.cid_number, "n": account_id_text(self.account_id)}}))
+            "b": {"c": self.cid_number, "n": self.account_id.to_string()}}))
     }
 }
 
@@ -618,7 +618,7 @@ impl UserTransferCode {
         }
         checked_json(
             serde_json::json!({"p": QR_V1, "k": 4, "i": self.request_id, "e": self.expires_at,
-            "b": {"n": account_id_text(self.account_id), "v": self.amount, "t": self.symbol,
+            "b": {"n": self.account_id.to_string(), "v": self.amount, "t": self.symbol,
                 "m": self.memo, "l": self.bank_cid_number}}),
         )
     }
@@ -714,7 +714,7 @@ fn parse_user_contact(envelope: &Map<String, Value>) -> QrResult<QrCode> {
     validate_cid(&cid_number)?;
     Ok(QrCode::UserContact(UserContactCode {
         cid_number,
-        account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
+        account_id: parse_account_text(string(body, "n")?)?,
     }))
 }
 
@@ -744,7 +744,7 @@ fn parse_user_transfer(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCo
         amount,
         symbol,
         bank_cid_number,
-        account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
+        account_id: parse_account_text(string(body, "n")?)?,
         memo: string(body, "m")?.to_owned(),
     }))
 }
@@ -773,7 +773,7 @@ fn parse_account_id(envelope: &Map<String, Value>) -> QrResult<QrCode> {
     let body = object(field(envelope, "b")?, "账户码 body 必须是对象")?;
     exact_keys(body, &["n"])?;
     Ok(QrCode::AccountId(AccountIdCode {
-        account_id: AccountId32::from_bytes(decode_account_id(string(body, "n")?)?),
+        account_id: parse_account_text(string(body, "n")?)?,
     }))
 }
 
@@ -859,16 +859,6 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
     }
 }
 
-fn account_id_text(account_id: AccountId32) -> String {
-    let mut output = String::with_capacity(66);
-    output.push_str("0x");
-    for byte in account_id.as_bytes() {
-        use std::fmt::Write as _;
-        let _ = write!(output, "{byte:02x}");
-    }
-    output
-}
-
 fn validate_request_id(request_id: &str) -> QrResult<()> {
     if request_id.len() < 16
         || request_id.len() > MAX_REQUEST_ID_BYTES
@@ -938,23 +928,8 @@ fn decode_fixed<const N: usize>(value: &str, message: &'static str) -> QrResult<
         .map_err(|_| QrError::new(QrErrorCode::InvalidField, message))
 }
 
-fn decode_account_id(value: &str) -> QrResult<[u8; 32]> {
-    let text = value
-        .strip_prefix("0x")
-        .ok_or_else(|| invalid_field("account_id 必须使用小写 0x 十六进制"))?;
-    if text.len() != 64 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(invalid_field("account_id 长度或字符无效"));
-    }
-    if text.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        return Err(invalid_field("account_id 必须使用小写十六进制"));
-    }
-    let mut output = [0_u8; 32];
-    for (index, chunk) in text.as_bytes().chunks_exact(2).enumerate() {
-        let pair = std::str::from_utf8(chunk).map_err(|_| invalid_field("account_id 无效"))?;
-        output[index] =
-            u8::from_str_radix(pair, 16).map_err(|_| invalid_field("account_id 无效"))?;
-    }
-    Ok(output)
+fn parse_account_text(value: &str) -> QrResult<AccountId32> {
+    value.parse().map_err(|_| invalid_field("账户标识格式无效"))
 }
 
 fn object<'a>(value: &'a Value, message: &'static str) -> QrResult<&'a Map<String, Value>> {

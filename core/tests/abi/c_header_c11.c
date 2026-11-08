@@ -99,12 +99,13 @@ ABI_OFFSET(citizensdk_result_info_t, kind, 12);
 ABI_OFFSET(citizensdk_result_info_t, payload_len, 16);
 ABI_OFFSET(citizensdk_result_info_t, error_message_len, 24);
 
-ABI_SIZE(citizensdk_wallet_state_info_t, 56);
+ABI_SIZE(citizensdk_wallet_state_info_t, 64);
 ABI_ALIGN(citizensdk_wallet_state_info_t, 8);
 ABI_OFFSET(citizensdk_wallet_state_info_t, revision, 8);
 ABI_OFFSET(citizensdk_wallet_state_info_t, account_count, 16);
 ABI_OFFSET(citizensdk_wallet_state_info_t, has_default_account, 20);
 ABI_OFFSET(citizensdk_wallet_state_info_t, default_account_id, 24);
+ABI_OFFSET(citizensdk_wallet_state_info_t, removed_account_count, 56);
 ABI_SIZE(citizensdk_wallet_diagnostic_info_v1_t, 80);
 ABI_ALIGN(citizensdk_wallet_diagnostic_info_v1_t, 8);
 ABI_OFFSET(citizensdk_wallet_diagnostic_info_v1_t, wallet_index, 8);
@@ -119,6 +120,14 @@ ABI_OFFSET(citizensdk_wallet_diagnostic_info_v1_t, delete_wallet_wide_key, 76);
 ABI_FUNCTION(citizensdk_wallet_state_get_diagnostic_cleanup_account,
              citizensdk_error_code_t, citizensdk_result_handle_t, uint32_t,
              uint32_t, citizensdk_account_id_t *);
+ABI_FUNCTION(citizensdk_wallet_state_get_removed_account, citizensdk_error_code_t,
+             citizensdk_result_handle_t, uint32_t, citizensdk_account_id_t *);
+ABI_FUNCTION(citizensdk_chain_codec, citizensdk_error_code_t,
+             citizensdk_bytes_view_t, citizensdk_bytes_view_t, uint8_t *, uint64_t, uint64_t *);
+ABI_FUNCTION(citizensdk_get_finalized_block_range, citizensdk_error_code_t,
+             citizensdk_handle_t, uint64_t, uint64_t, citizensdk_request_id_t *);
+ABI_FUNCTION(citizensdk_result_get_block_range, citizensdk_error_code_t,
+             citizensdk_result_handle_t, uint32_t, uint32_t *, citizensdk_block_ref_t *);
 ABI_FUNCTION(citizensdk_wallet_state_retain, citizensdk_error_code_t,
              citizensdk_handle_t, citizensdk_result_handle_t,
              citizensdk_result_handle_t *);
@@ -311,7 +320,7 @@ ABI_OFFSET(citizensdk_account_nonce_info_t, best_block, 8);
 ABI_OFFSET(citizensdk_account_nonce_info_t, account_id, 64);
 ABI_OFFSET(citizensdk_account_nonce_info_t, nonce, 96);
 
-ABI_SIZE(citizensdk_fee_snapshot_info_t, 104);
+ABI_SIZE(citizensdk_fee_snapshot_info_t, 120);
 ABI_ALIGN(citizensdk_fee_snapshot_info_t, 8);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, struct_size, 0);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, abi_version, 4);
@@ -320,6 +329,7 @@ ABI_OFFSET(citizensdk_fee_snapshot_info_t, fee_rate_parts, 64);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, reserved, 68);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, minimum_fee_fen, 72);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, existential_deposit_fen, 88);
+ABI_OFFSET(citizensdk_fee_snapshot_info_t, vote_fee_fen, 104);
 
 ABI_SIZE(citizensdk_wallet_profile_info_t, 96);
 ABI_ALIGN(citizensdk_wallet_profile_info_t, 8);
@@ -497,6 +507,15 @@ _Static_assert(CITIZENSDK_TRANSACTION_HISTORY_FINALIZED_FAILED == 5,
                "transaction history status ABI");
 
 ABI_FUNCTION(citizensdk_abi_version, uint32_t, void);
+ABI_FUNCTION(citizensdk_ss58_prefix, uint16_t, void);
+ABI_FUNCTION(citizensdk_account_id_decode, citizensdk_error_code_t,
+             citizensdk_bytes_view_t, citizensdk_account_id_t *);
+ABI_FUNCTION(citizensdk_account_id_encode, citizensdk_error_code_t,
+             const citizensdk_account_id_t *, uint8_t *, uint64_t, uint64_t *);
+ABI_FUNCTION(citizensdk_ss58_decode, citizensdk_error_code_t,
+             citizensdk_bytes_view_t, citizensdk_account_id_t *);
+ABI_FUNCTION(citizensdk_ss58_encode, citizensdk_error_code_t,
+             const citizensdk_account_id_t *, uint8_t *, uint64_t, uint64_t *);
 ABI_FUNCTION(citizensdk_create_options_size, uint32_t, void);
 ABI_FUNCTION(citizensdk_validate_modules, citizensdk_error_code_t, uint32_t);
 ABI_FUNCTION(citizensdk_accept_request_sequence, citizensdk_error_code_t,
@@ -878,6 +897,11 @@ ABI_FUNCTION(citizensdk_get_block_body_at, citizensdk_error_code_t,
 ABI_FUNCTION(citizensdk_get_system_events_at, citizensdk_error_code_t,
              citizensdk_handle_t, const citizensdk_block_ref_t *,
              citizensdk_request_id_t *);
+ABI_FUNCTION(citizensdk_decode_system_events, citizensdk_error_code_t,
+             citizensdk_bytes_view_t, citizensdk_bytes_view_t, uint8_t *,
+             uint64_t, uint64_t *);
+ABI_FUNCTION(citizensdk_hash_extrinsic, citizensdk_error_code_t,
+             citizensdk_bytes_view_t, uint8_t *);
 ABI_FUNCTION(citizensdk_get_storage_keys_paged, citizensdk_error_code_t,
              citizensdk_handle_t, const citizensdk_block_ref_t *,
              citizensdk_bytes_view_t, uint8_t, citizensdk_bytes_view_t,

@@ -1,4 +1,5 @@
 #include "citizensdk.h"
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -19,6 +20,23 @@ int main() {
   static_assert(sizeof(citizensdk_account_id_t) == 32);
   static_assert(offsetof(citizensdk_create_options_t, abi_version) == 4);
   assert(citizensdk_abi_version() == CITIZENSDK_ABI_VERSION);
+  assert(citizensdk_ss58_prefix() == 2027);
+  citizensdk_account_id_t source{};
+  source.bytes[0] = 0x7a;
+  for (const auto &[encode, decode] : {
+           std::pair{citizensdk_account_id_encode, citizensdk_account_id_decode},
+           std::pair{citizensdk_ss58_encode, citizensdk_ss58_decode}}) {
+    std::array<uint8_t, 66> bytes{};
+    uint64_t count = 0;
+    assert(encode(&source, bytes.data(), bytes.size(), &count) == CITIZENSDK_OK);
+    const citizensdk_bytes_view_t account_input{bytes.data(), count};
+    citizensdk_account_id_t decoded{};
+    assert(decode(account_input, &decoded) == CITIZENSDK_OK);
+    assert(std::equal(source.bytes, source.bytes + sizeof(source.bytes), decoded.bytes));
+    bytes[0] = ' ';
+    assert(decode(account_input, &decoded) == CITIZENSDK_ERROR_INVALID_ARGUMENT);
+    assert(std::equal(source.bytes, source.bytes + sizeof(source.bytes), decoded.bytes));
+  }
   citizensdk_create_options_t options{};
   options.struct_size = sizeof(options); options.abi_version = CITIZENSDK_ABI_VERSION;
   citizensdk_stores_v1_t stores{};

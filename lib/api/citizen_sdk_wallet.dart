@@ -1,20 +1,59 @@
 part of '../citizen_sdk.dart';
 
 extension Wallet on CitizenSdk {
-  CitizenSdkOperation<CitizenWalletState> getWalletState() => _operation(
-    (m, out) => _api.citizensdk_get_wallet_state(_handle, out),
-    _readWallet,
-    diagnostic: 'getWalletState',
-  );
-  CitizenSdkOperation<CitizenWalletInspection> inspectWallets() => _operation(
-    (m, out) => _api.citizensdk_get_wallet_state(_handle, out),
-    (m, r) {
-      final state = _readWallet(m, r), token = m.alloc<Uint64>(8);
-      _status(_api.citizensdk_wallet_state_retain(_handle, r, token));
-      return CitizenWalletInspection._(this, token.value, state);
-    },
+  CitizenSdkOperation<CitizenWalletState> getWalletState() =>
+      _readCatalog((value) => value.state, diagnostic: 'getWalletState');
+
+  CitizenSdkOperation<CitizenWalletInspection> inspectWallets() => _readCatalog(
+    (value) => CitizenWalletInspection._(
+      this,
+      _retainCatalog(value.token),
+      value.state,
+    ),
     diagnostic: 'inspectWallets',
   );
+
+  int _retainCatalog(int result) => _withMemory((m) {
+    final out = m.alloc<Uint64>(8);
+    _status(_api.citizensdk_wallet_state_retain(_handle, result, out));
+    return out.value;
+  });
+
+  CitizenSdkOperation<T> _readCatalog<T>(
+    T Function(({CitizenWalletState state, int token}) value) take, {
+    required String diagnostic,
+  }) {
+    _requireOpen();
+    final shared = _catalogRead ??= _CatalogRead(
+      _operation(
+        (m, out) => _api.citizensdk_get_wallet_state(_handle, out),
+        (m, r) => (state: _readWallet(m, r), token: _retainCatalog(r)),
+        diagnostic: diagnostic,
+      ),
+    );
+    shared.readers++;
+    int? token;
+    final result = shared.operation.result
+        .then((value) {
+          token = value.token;
+          if (shared.invalidated) throw _failure(3, '钱包目录修订已变化');
+          return take(value);
+        })
+        .whenComplete(() {
+          if (identical(_catalogRead, shared)) _catalogRead = null;
+          if (--shared.readers == 0 && token != null) _releaseResult(token!);
+        });
+    return CitizenSdkOperation(
+      operationId: shared.operation.operationId,
+      result: result,
+      cancel: () async {
+        if (shared.readers != 1) return false;
+        if (identical(_catalogRead, shared)) _catalogRead = null;
+        return shared.operation.cancel();
+      },
+    );
+  }
+
   Future<CitizenWalletInputValidation> validatePassword(
     String password,
   ) async => _input(password, 1, 0);
@@ -110,54 +149,28 @@ extension Wallet on CitizenSdk {
     ),
     _requiredProfile,
   );
-  CitizenSdkOperation<CitizenWalletState> importColdAccount({
-    String? accountId,
-    String? ss58Address,
-    String name = '',
-  }) {
-    if ((accountId == null) == (ss58Address == null)) throw _failure(1);
-    return _operation(
-      (m, out) => accountId != null
-          ? _api.citizensdk_import_cold_account_id(
-              _handle,
-              m.account(accountId),
-              m.view(name, 120),
-              out,
-            )
-          : _api.citizensdk_import_cold_account_ss58(
-              _handle,
-              m.view(ss58Address!, 128),
-              m.view(name, 120),
-              out,
-            ),
-      _readWallet,
-    );
-  }
 
-  CitizenSdkOperation<CitizenWalletState> importColdAccountCode({
-    required String code,
+  /// 导入规范 AccountId 或公民链 SS58 地址，由 Core 校验并写入钱包目录。
+  CitizenSdkOperation<CitizenWalletState> importColdAccount(
+    String account, {
     String name = '',
-  }) => _operation((m, out) {
-    final document = _document(
-      m.text(
-        (b, cap, n) => _api.citizensdk_qr_parse(
-          _handle,
-          m.view(code, 2331),
-          CitizenQrScanPurpose.coldAccountImport.value,
-          b,
-          cap,
-          n,
-        ),
-      ),
-    );
-    if (document.accountId == null) throw _failure(9);
-    return _api.citizensdk_import_cold_account_id(
-      _handle,
-      m.account(document.accountId!),
-      m.view(name, 120),
-      out,
-    );
-  }, _readWallet);
+  }) => _operation(
+    (m, out) => account.startsWith('0x')
+        ? _api.citizensdk_import_cold_account_id(
+            _handle,
+            m.account(account),
+            m.view(name, 120),
+            out,
+          )
+        : _api.citizensdk_import_cold_account_ss58(
+            _handle,
+            m.view(account, 64),
+            m.view(name, 120),
+            out,
+          ),
+    _readWallet,
+  );
+
   CitizenSdkOperation<CitizenWalletProfile> setActiveAccount(
     String accountId,
   ) => _operation(
@@ -212,13 +225,13 @@ extension Wallet on CitizenSdk {
             _api.citizensdk_delete_account(_handle, m.account(accountId), out),
         _readWallet,
       );
-  CitizenSdkOperation<void> deleteWallet() => _operation(
+  CitizenSdkOperation<CitizenWalletState> deleteWallet() => _operation(
     (m, out) => _api.citizensdk_delete_wallet(_handle, out),
-    (m, r) {},
+    _readWallet,
   );
-  CitizenSdkOperation<void> signAndDeleteWallet() => _operation(
+  CitizenSdkOperation<CitizenWalletState> signAndDeleteWallet() => _operation(
     (m, out) => _api.citizensdk_sign_and_delete_wallet(_handle, out),
-    (m, r) {},
+    _readWallet,
   );
   CitizenSdkOperation<void> reconcileCleanup() => _operation(
     (m, out) => _api.citizensdk_reconcile_wallet_cleanup(_handle, out),
@@ -386,7 +399,7 @@ CitizenWalletProfile? _readProfile(_Memory m, int result) {
     final account = q.ref;
     return CitizenAccount(
       index: account.index,
-      accountId: _hex(account.account_id.bytes, 32),
+      accountId: _accountIdText(account.account_id.bytes),
       ss58Address: utf8.decode(address.asTypedList(a.value)),
       name: utf8.decode(name.asTypedList(n.value)),
       createdAtMillis: _unsigned(account.created_at_millis),
@@ -400,10 +413,10 @@ CitizenWalletProfile? _readProfile(_Memory m, int result) {
           _api.citizensdk_wallet_profile_copy_name(result, b, cap, n),
       120,
     ),
-    masterAccountId: _hex(v.master_account_id.bytes, 32),
+    masterAccountId: _accountIdText(v.master_account_id.bytes),
     origin: _enum(CitizenWalletOrigin.values, v.origin, 1),
     createdAtMillis: _unsigned(v.created_at_millis),
-    activeAccountId: _hex(v.active_account_id.bytes, 32),
+    activeAccountId: _accountIdText(v.active_account_id.bytes),
     accounts: accounts,
   );
 }
@@ -457,7 +470,7 @@ CitizenWalletState _readWallet(_Memory m, int result) {
         signMode: _enum(CitizenWalletSignMode.values, v.sign_mode, 1),
         walletIndex: v.wallet_index,
         accountIndex: _boolean(v.has_account_index) ? v.account_index : null,
-        accountId: _hex(v.account_id.bytes, 32),
+        accountId: _accountIdText(v.account_id.bytes),
         ss58Address: utf8.decode(address.asTypedList(a.value)),
         name: utf8.decode(name.asTypedList(n.value)),
         createdAtMillis: _unsigned(v.created_at_millis),
@@ -502,7 +515,7 @@ CitizenWalletState _readWallet(_Memory m, int result) {
               account,
             ),
           );
-          return _hex(account.ref.bytes, 32);
+          return _accountIdText(account.ref.bytes);
         }),
         deleteWalletWideKey: _boolean(v.delete_wallet_wide_key),
       );
@@ -522,7 +535,7 @@ CitizenWalletState _readWallet(_Memory m, int result) {
         ),
         120,
       ),
-      accountId: _hex(v.account_id.bytes, 32),
+      accountId: _accountIdText(v.account_id.bytes),
       ss58Address: _boolean(v.has_ss58_address)
           ? m.text(
               (b, cap, n) => _api.citizensdk_wallet_state_copy_diagnostic_text(
@@ -547,6 +560,17 @@ CitizenWalletState _readWallet(_Memory m, int result) {
       cleanupTargets: targets,
     );
   });
+  final removedCount = p.ref.removed_account_count;
+  final removedId = m.alloc<c.citizensdk_account_id>(sizeOf<c.citizensdk_account_id>());
+  final removed = List<String>.generate(removedCount, (i) {
+    _status(_api.citizensdk_wallet_state_get_removed_account(result, i, removedId));
+    return _accountIdText(removedId.ref.bytes);
+  });
+  final removedSet = removed.toSet();
+  if (removedSet.length != removed.length ||
+      accounts.any((account) => removedSet.contains(account.accountId))) {
+    throw _failure(9);
+  }
   return CitizenWalletState(
     revision: _unsigned(p.ref.revision),
     activeWalletIndex: _boolean(present.value) ? selected.value : null,
@@ -558,6 +582,7 @@ CitizenWalletState _readWallet(_Memory m, int result) {
     ),
     cleanupPending: _boolean(cleanup.value),
     diagnostics: diagnostics,
+    removedAccountIds: removed,
   );
 }
 
@@ -598,14 +623,14 @@ CitizenSigningOutcome _readSigning(_Memory m, int result) {
   if (v.status == 1) {
     if (bn.value != 64) throw _failure(9);
     return CitizenSigningCompleted(
-      accountId: _hex(v.account_id.bytes, 32),
+      accountId: _accountIdText(v.account_id.bytes),
       payloadHash: _hex(v.payload_hash, 32),
       signature: signature.asTypedList(64),
     );
   }
   if (v.status != 2 || v.transport != 1) throw _failure(9);
   return CitizenExternalSigningPending(
-    accountId: _hex(v.account_id.bytes, 32),
+    accountId: _accountIdText(v.account_id.bytes),
     payloadHash: _hex(v.payload_hash, 32),
     transport: CitizenExternalSignerTransport.qrV1,
     expiresAt: _unsigned(v.expires_at),
@@ -640,20 +665,29 @@ CitizenDefaultAccountChangeOutcome _readDefaultChange(_Memory m, int result) {
   }
   if (v.status == 1) {
     return CitizenDefaultAccountChangeCompleted(
-      currentDefaultAccountId: _hex(v.current_default_account_id.bytes, 32),
+      currentDefaultAccountId: _accountIdText(
+        v.current_default_account_id.bytes,
+      ),
       payloadHash: _hex(v.payload_hash, 32),
       committedRevision: _unsigned(v.committed_revision),
     );
   }
   if (v.status != 2 || v.transport != 1) throw _failure(9);
   return CitizenDefaultAccountChangePending(
-    currentDefaultAccountId: _hex(v.current_default_account_id.bytes, 32),
+    currentDefaultAccountId: _accountIdText(v.current_default_account_id.bytes),
     payloadHash: _hex(v.payload_hash, 32),
     transport: CitizenExternalSignerTransport.qrV1,
     expiresAt: _unsigned(v.expires_at),
     sessionId: utf8.decode(session.asTypedList(sn.value)),
     transportRequest: utf8.decode(request.asTypedList(rn.value)),
   );
+}
+
+final class _CatalogRead {
+  _CatalogRead(this.operation);
+  final CitizenSdkOperation<({CitizenWalletState state, int token})> operation;
+  int readers = 0;
+  bool invalidated = false;
 }
 
 // 这些对象真实拥有Core资源；不存在另一层资源编号表或可替换实现。
@@ -666,12 +700,14 @@ final class CitizenSdkPreparedWallet {
   bool _released = false, _submitted = false;
   Future<void>? _releaseFuture;
   Future<CitizenWalletProfile>? _commitFuture;
+  CitizenSdkRecoveryPhrase? _phrase;
   void _require() {
     if (_released || _submitted || _releaseFuture != null) throw _failure(3);
   }
 
   Future<CitizenSdkRecoveryPhrase> recoveryPhrase() async {
     _require();
+    if (_phrase != null) throw _failure(3, '备份资源已经取得');
     final bytes = _withMemory(
       (m) => m.copy(
         (b, cap, n) => _api.citizensdk_prepared_wallet_copy_mnemonic(
@@ -686,7 +722,7 @@ final class CitizenSdkPreparedWallet {
     );
     try {
       _require();
-      return CitizenSdkRecoveryPhrase._(_sdk, bytes);
+      return _phrase = CitizenSdkRecoveryPhrase._(_sdk, bytes);
     } on Object {
       bytes.fillRange(0, bytes.length, 0);
       rethrow;
@@ -701,8 +737,21 @@ final class CitizenSdkPreparedWallet {
       _requiredProfile,
     );
     _submitted = true;
-    _commitFuture = operation.result;
-    return operation;
+    final result = _commitFuture = operation.result.then(
+      (profile) async {
+        await _phrase?._bind(profile);
+        return profile;
+      },
+      onError: (Object error, StackTrace stack) async {
+        await _phrase?.release();
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
+    return CitizenSdkOperation(
+      operationId: operation.operationId,
+      result: result,
+      cancel: operation.cancel,
+    );
   }
 
   Future<void> release() {
@@ -717,6 +766,7 @@ final class CitizenSdkPreparedWallet {
       } on Object {
         /* 实际请求已终结后仍归还资源。 */
       }
+      await _phrase?.release();
       if (!_sdk._closed) {
         final code = _api.citizensdk_prepared_wallet_release(
           _sdk._handle,
@@ -742,17 +792,55 @@ final class CitizenSdkRecoveryPhrase {
   }
   final CitizenSdk _sdk;
   final Uint8List _bytes;
-  bool _released = false;
+  final _closed = Completer<void>();
+  StreamSubscription<CitizenSdkEvent>? _events;
+  BigInt? _revision;
+  Future<void> get closed => _closed.future;
+  bool get isClosed => _closed.isCompleted;
+
   Uint8List get bytes {
-    if (_released) throw _failure(3);
+    if (isClosed) throw _failure(3);
     return _bytes.asUnmodifiableView();
   }
 
+  Future<void> _bind(CitizenWalletProfile profile) async {
+    if (isClosed) return;
+    bool owns(CitizenWalletState state) =>
+        state.hotProfile?.walletIndex == profile.walletIndex &&
+        state.hotProfile?.masterAccountId == profile.masterAccountId &&
+        state.hotProfile?.createdAtMillis == profile.createdAtMillis;
+    Future<void> check() async {
+      try {
+        final state = await _sdk.getWalletState().result;
+        if (!owns(state) || state.revision != _revision) await release();
+      } on Object {
+        await release();
+      }
+    }
+
+    _events = _sdk.events.listen((event) {
+      if (event is CitizenSdkWalletChanged) {
+        unawaited(_revision == null ? release() : check());
+      }
+    }, onError: (Object _) => unawaited(release()));
+    try {
+      final state = await _sdk.getWalletState().result;
+      if (!owns(state)) {
+        await release();
+      } else if (!isClosed) {
+        _revision = state.revision;
+      }
+    } on Object {
+      await release();
+    }
+  }
+
   Future<void> release() async {
-    if (_released) return;
+    if (isClosed) return;
     _bytes.fillRange(0, _bytes.length, 0);
-    _released = true;
+    _closed.complete();
     _sdk._forget(release);
+    await _events?.cancel();
   }
 
   @override

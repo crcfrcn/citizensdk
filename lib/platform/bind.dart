@@ -40,6 +40,130 @@ class Bindings {
   late final _citizensdk_create_options_size =
       _citizensdk_create_options_sizePtr.asFunction<int Function()>();
 
+  int citizensdk_ss58_prefix() {
+    return _citizensdk_ss58_prefix();
+  }
+
+  late final _citizensdk_ss58_prefixPtr =
+      _lookup<ffi.NativeFunction<ffi.Uint16 Function()>>(
+        'citizensdk_ss58_prefix',
+      );
+  late final _citizensdk_ss58_prefix = _citizensdk_ss58_prefixPtr
+      .asFunction<int Function()>();
+
+  int citizensdk_account_id_decode(
+    citizensdk_bytes_view_t input,
+    ffi.Pointer<citizensdk_account_id_t> output,
+  ) {
+    return _citizensdk_account_id_decode(input, output);
+  }
+
+  late final _citizensdk_account_id_decodePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_bytes_view_t,
+            ffi.Pointer<citizensdk_account_id_t>,
+          )
+        >
+      >('citizensdk_account_id_decode');
+  late final _citizensdk_account_id_decode = _citizensdk_account_id_decodePtr
+      .asFunction<
+        int Function(
+          citizensdk_bytes_view_t,
+          ffi.Pointer<citizensdk_account_id_t>,
+        )
+      >();
+
+  int citizensdk_account_id_encode(
+    ffi.Pointer<citizensdk_account_id_t> account,
+    ffi.Pointer<ffi.Uint8> buffer,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> out_required,
+  ) {
+    return _citizensdk_account_id_encode(
+      account,
+      buffer,
+      capacity,
+      out_required,
+    );
+  }
+
+  late final _citizensdk_account_id_encodePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            ffi.Pointer<citizensdk_account_id_t>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_account_id_encode');
+  late final _citizensdk_account_id_encode = _citizensdk_account_id_encodePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<citizensdk_account_id_t>,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          ffi.Pointer<ffi.Uint64>,
+        )
+      >();
+
+  int citizensdk_ss58_decode(
+    citizensdk_bytes_view_t input,
+    ffi.Pointer<citizensdk_account_id_t> output,
+  ) {
+    return _citizensdk_ss58_decode(input, output);
+  }
+
+  late final _citizensdk_ss58_decodePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_bytes_view_t,
+            ffi.Pointer<citizensdk_account_id_t>,
+          )
+        >
+      >('citizensdk_ss58_decode');
+  late final _citizensdk_ss58_decode = _citizensdk_ss58_decodePtr
+      .asFunction<
+        int Function(
+          citizensdk_bytes_view_t,
+          ffi.Pointer<citizensdk_account_id_t>,
+        )
+      >();
+
+  int citizensdk_ss58_encode(
+    ffi.Pointer<citizensdk_account_id_t> account,
+    ffi.Pointer<ffi.Uint8> buffer,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> out_required,
+  ) {
+    return _citizensdk_ss58_encode(account, buffer, capacity, out_required);
+  }
+
+  late final _citizensdk_ss58_encodePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            ffi.Pointer<citizensdk_account_id_t>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_ss58_encode');
+  late final _citizensdk_ss58_encode = _citizensdk_ss58_encodePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<citizensdk_account_id_t>,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          ffi.Pointer<ffi.Uint64>,
+        )
+      >();
+
   int citizensdk_validate_modules(int modules) {
     return _citizensdk_validate_modules(modules);
   }
@@ -1006,6 +1130,67 @@ class Bindings {
             )
           >();
 
+  int citizensdk_decode_system_events(
+    citizensdk_bytes_view_t metadata,
+    citizensdk_bytes_view_t events,
+    ffi.Pointer<ffi.Uint8> output,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> out_required,
+  ) {
+    return _citizensdk_decode_system_events(
+      metadata,
+      events,
+      output,
+      capacity,
+      out_required,
+    );
+  }
+
+  late final _citizensdk_decode_system_eventsPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_bytes_view_t,
+            citizensdk_bytes_view_t,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_decode_system_events');
+  late final _citizensdk_decode_system_events =
+      _citizensdk_decode_system_eventsPtr
+          .asFunction<
+            int Function(
+              citizensdk_bytes_view_t,
+              citizensdk_bytes_view_t,
+              ffi.Pointer<ffi.Uint8>,
+              int,
+              ffi.Pointer<ffi.Uint64>,
+            )
+          >();
+
+  int citizensdk_hash_extrinsic(
+    citizensdk_bytes_view_t extrinsic,
+    ffi.Pointer<ffi.Uint8> out_hash_32,
+  ) {
+    return _citizensdk_hash_extrinsic(extrinsic, out_hash_32);
+  }
+
+  late final _citizensdk_hash_extrinsicPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_bytes_view_t,
+            ffi.Pointer<ffi.Uint8>,
+          )
+        >
+      >('citizensdk_hash_extrinsic');
+  late final _citizensdk_hash_extrinsic = _citizensdk_hash_extrinsicPtr
+      .asFunction<
+        int Function(citizensdk_bytes_view_t, ffi.Pointer<ffi.Uint8>)
+      >();
+
   int citizensdk_get_storage_at(
     int handle,
     ffi.Pointer<citizensdk_block_ref_t> block,
@@ -1418,6 +1603,112 @@ class Bindings {
   late final _citizensdk_get_wallet_profile = _citizensdk_get_wallet_profilePtr
       .asFunction<int Function(int, ffi.Pointer<citizensdk_request_id_t>)>();
 
+  int citizensdk_get_finalized_block_range(
+    int handle,
+    int start,
+    int end,
+    ffi.Pointer<citizensdk_request_id_t> out_request_id,
+  ) {
+    return _citizensdk_get_finalized_block_range(
+      handle,
+      start,
+      end,
+      out_request_id,
+    );
+  }
+
+  late final _citizensdk_get_finalized_block_rangePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_handle_t,
+            ffi.Uint64,
+            ffi.Uint64,
+            ffi.Pointer<citizensdk_request_id_t>,
+          )
+        >
+      >('citizensdk_get_finalized_block_range');
+  late final _citizensdk_get_finalized_block_range =
+      _citizensdk_get_finalized_block_rangePtr
+          .asFunction<
+            int Function(int, int, int, ffi.Pointer<citizensdk_request_id_t>)
+          >();
+
+  int citizensdk_result_get_block_range(
+    int result,
+    int index,
+    ffi.Pointer<ffi.Uint32> out_count,
+    ffi.Pointer<citizensdk_block_ref_t> out_block,
+  ) {
+    return _citizensdk_result_get_block_range(
+      result,
+      index,
+      out_count,
+      out_block,
+    );
+  }
+
+  late final _citizensdk_result_get_block_rangePtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_result_handle_t,
+            ffi.Uint32,
+            ffi.Pointer<ffi.Uint32>,
+            ffi.Pointer<citizensdk_block_ref_t>,
+          )
+        >
+      >('citizensdk_result_get_block_range');
+  late final _citizensdk_result_get_block_range =
+      _citizensdk_result_get_block_rangePtr
+          .asFunction<
+            int Function(
+              int,
+              int,
+              ffi.Pointer<ffi.Uint32>,
+              ffi.Pointer<citizensdk_block_ref_t>,
+            )
+          >();
+
+  int citizensdk_chain_codec(
+    citizensdk_bytes_view_t metadata,
+    citizensdk_bytes_view_t request,
+    ffi.Pointer<ffi.Uint8> output,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> out_required,
+  ) {
+    return _citizensdk_chain_codec(
+      metadata,
+      request,
+      output,
+      capacity,
+      out_required,
+    );
+  }
+
+  late final _citizensdk_chain_codecPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_bytes_view_t,
+            citizensdk_bytes_view_t,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_chain_codec');
+  late final _citizensdk_chain_codec = _citizensdk_chain_codecPtr
+      .asFunction<
+        int Function(
+          citizensdk_bytes_view_t,
+          citizensdk_bytes_view_t,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          ffi.Pointer<ffi.Uint64>,
+        )
+      >();
+
   int citizensdk_get_wallet_state(
     int handle,
     ffi.Pointer<citizensdk_request_id_t> out_request_id,
@@ -1459,6 +1750,34 @@ class Bindings {
       _citizensdk_wallet_state_retainPtr
           .asFunction<
             int Function(int, int, ffi.Pointer<citizensdk_result_handle_t>)
+          >();
+
+  int citizensdk_wallet_state_get_removed_account(
+    int result,
+    int index,
+    ffi.Pointer<citizensdk_account_id_t> out_account,
+  ) {
+    return _citizensdk_wallet_state_get_removed_account(
+      result,
+      index,
+      out_account,
+    );
+  }
+
+  late final _citizensdk_wallet_state_get_removed_accountPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_result_handle_t,
+            ffi.Uint32,
+            ffi.Pointer<citizensdk_account_id_t>,
+          )
+        >
+      >('citizensdk_wallet_state_get_removed_account');
+  late final _citizensdk_wallet_state_get_removed_account =
+      _citizensdk_wallet_state_get_removed_accountPtr
+          .asFunction<
+            int Function(int, int, ffi.Pointer<citizensdk_account_id_t>)
           >();
 
   int citizensdk_wallet_state_get_diagnostic_count(
@@ -5497,6 +5816,8 @@ final class citizensdk_fee_snapshot_info extends ffi.Struct {
   external citizensdk_u128_t minimum_fee_fen;
 
   external citizensdk_u128_t existential_deposit_fen;
+
+  external citizensdk_u128_t vote_fee_fen;
 }
 
 typedef citizensdk_fee_snapshot_info_t = citizensdk_fee_snapshot_info;
@@ -5637,6 +5958,9 @@ final class citizensdk_wallet_state_info extends ffi.Struct {
   external int has_default_account;
 
   external citizensdk_account_id_t default_account_id;
+
+  @ffi.Uint32()
+  external int removed_account_count;
 }
 
 typedef citizensdk_wallet_state_info_t = citizensdk_wallet_state_info;
@@ -6187,6 +6511,8 @@ const int CITIZENSDK_RESULT_BLOCK_BODY = 26;
 const int CITIZENSDK_RESULT_PREPARED_TRANSACTION = 27;
 
 const int CITIZENSDK_RESULT_TRANSACTION_EXECUTION = 28;
+
+const int CITIZENSDK_RESULT_BLOCK_RANGE = 29;
 
 const int CITIZENSDK_TRANSACTION_EXECUTION_EXTERNAL_PENDING = 1;
 

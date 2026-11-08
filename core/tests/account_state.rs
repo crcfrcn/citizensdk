@@ -474,6 +474,7 @@ fn fee_policy_is_decoded_only_from_one_exact_production_runtime_context() {
         snapshot.existential_deposit_fen(),
         integer(&fee["existential_deposit_fen"])
     );
+    assert_eq!(snapshot.vote_fee_fen(), integer(&fee["vote_fee_fen"]));
     assert_eq!(
         snapshot
             .minimum_self_pay_fen()

@@ -592,6 +592,13 @@ impl CitizenEngine {
         })
     }
 
+    pub fn finalized_block_range(&self, start: u64, end: u64) -> EngineFuture<'_, Vec<FinalizedBlockRef>> {
+        Box::pin(async move {
+            self.require_capabilities(&[CapabilityName::ChainRead])?;
+            self.chain_client()?.get_finalized_blocks_at(start, end).await.map_err(EngineError::from)
+        })
+    }
+
     /// Prove that a caller-supplied hash/height pair is the finalized canonical block.
     pub fn resolve_finalized_block(
         &self,
@@ -933,7 +940,8 @@ impl CitizenEngine {
                         prepared.signed_extrinsic_len(),
                     )
                     .await?;
-                let execution_id = next_transaction_execution_id(&self.transaction_executions)?;
+                // 同一随机标识贯穿准备、执行与历史，观察者可精确关联本次签名。
+                let execution_id = TransactionExecutionId::try_new(preparation_id.into_bytes())?;
                 let intent = prepared.signing_intent()?;
                 match sign_mode {
                     Some(WalletSignMode::Hot) => {
@@ -1176,12 +1184,10 @@ impl CitizenEngine {
         };
         let service = self.local_wallet_service(required);
         Box::pin(async move {
-            let state = self
-                .with_wallet_monitor_paused(
-                    service?.delete_diagnostic_wallet(expected_revision, &record),
-                )
-                .await?;
-            WalletStateSnapshot::from_state(&state)
+            self.with_wallet_monitor_paused(
+                service?.delete_diagnostic_wallet(expected_revision, &record),
+            )
+            .await
         })
     }
 
@@ -1296,18 +1302,11 @@ impl CitizenEngine {
         &self,
         account_id: AccountId32,
     ) -> EngineFuture<'_, WalletStateSnapshot> {
+        let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
+        let hardware = self.require_local_capabilities(&[CapabilityName::HardwareVault]);
         Box::pin(async move {
-            match self.wallet_account_sign_mode(account_id).await? {
-                Some(WalletSignMode::Hot) => self.delete_wallet_account(account_id).await?,
-                Some(WalletSignMode::Cold) => self.delete_cold_wallet_account(account_id).await?,
-                None => {
-                    return Err(EngineError::contract(
-                        ContractErrorCode::NotFound,
-                        "钱包账户不存在",
-                    ));
-                }
-            }
-            self.wallet_state().await
+            self.with_wallet_monitor_paused(service?.delete_account_any(account_id, hardware))
+                .await
         })
     }
 
@@ -1707,17 +1706,17 @@ impl CitizenEngine {
         })
     }
 
-    pub fn delete_wallet(&self) -> EngineFuture<'_, ()> {
-        let service = self
-            .local_wallet_service(&[CapabilityName::WalletProfile, CapabilityName::HardwareVault]);
+    pub fn delete_wallet(&self) -> EngineFuture<'_, WalletStateSnapshot> {
+        let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
+        let hardware = self.require_local_capabilities(&[CapabilityName::HardwareVault]);
         Box::pin(async move {
-            self.with_wallet_monitor_paused(service?.delete_wallet())
+            self.with_wallet_monitor_paused(service?.wipe_wallets(hardware))
                 .await
         })
     }
 
     /// 签名删除与无签名擦除分开接纳，共用WalletService的唯一清理路径。
-    pub fn sign_and_delete_wallet(&self) -> EngineFuture<'_, ()> {
+    pub fn sign_and_delete_wallet(&self) -> EngineFuture<'_, WalletStateSnapshot> {
         let service = self.local_wallet_service(&[
             CapabilityName::WalletProfile,
             CapabilityName::LocalSigning,
@@ -2624,32 +2623,6 @@ impl CitizenEngine {
             .update(probes_for_lifecycle(base_probes, lifecycle))?;
         Ok(())
     }
-}
-
-#[cfg(feature = "chain")]
-fn next_transaction_execution_id(
-    registry: &Mutex<HashMap<TransactionExecutionId, ClaimedTransactionExecution>>,
-) -> Result<TransactionExecutionId, EngineError> {
-    let executions = registry.lock().map_err(|_| EngineError::StatePoisoned)?;
-    for _ in 0..32 {
-        let mut bytes = [0_u8; 16];
-        getrandom::fill(&mut bytes).map_err(|_| {
-            EngineError::contract(
-                ContractErrorCode::Unavailable,
-                "操作系统随机源无法生成 transaction execution id",
-            )
-        })?;
-        let Ok(id) = TransactionExecutionId::try_new(bytes) else {
-            continue;
-        };
-        if !executions.contains_key(&id) {
-            return Ok(id);
-        }
-    }
-    Err(EngineError::contract(
-        ContractErrorCode::Internal,
-        "transaction execution id 随机碰撞次数超限",
-    ))
 }
 
 struct EnginePrivateKeyViewLease {

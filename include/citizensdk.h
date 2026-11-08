@@ -20,6 +20,20 @@ extern "C" {
 CITIZENSDK_API uint32_t citizensdk_abi_version(void);
 CITIZENSDK_API uint32_t citizensdk_create_options_size(void);
 
+/* 无状态账户编解码。解码仅在成功后写入非空输出，NULL 只校验。
+ * 编码输出为 UTF-8，无 NUL；空缓冲加零容量查询所需字节数。 */
+CITIZENSDK_API uint16_t citizensdk_ss58_prefix(void);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_account_id_decode(
+    citizensdk_bytes_view_t input, citizensdk_account_id_t *output);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_account_id_encode(
+    const citizensdk_account_id_t *account, uint8_t *buffer, uint64_t capacity,
+    uint64_t *out_required);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_ss58_decode(
+    citizensdk_bytes_view_t input, citizensdk_account_id_t *output);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_ss58_encode(
+    const citizensdk_account_id_t *account, uint8_t *buffer, uint64_t capacity,
+    uint64_t *out_required);
+
 /* Pure preflight. Rejects empty/unknown masks, missing chain dependencies and
  * modules excluded from this build, before hosts create any device resources. */
 CITIZENSDK_API citizensdk_error_code_t citizensdk_validate_modules(uint32_t modules);
@@ -209,11 +223,21 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_get_block_header_at(
 CITIZENSDK_API citizensdk_error_code_t citizensdk_get_block_body_at(
     citizensdk_handle_t handle, const citizensdk_block_ref_t *block,
     citizensdk_request_id_t *out_request_id);
-/* Protocol-level raw System.Events; finalized blocks only. Event interpretation
- * and product semantics remain the integrating application's responsibility. */
+/* Protocol-level raw System.Events; finalized blocks only. */
 CITIZENSDK_API citizensdk_error_code_t citizensdk_get_system_events_at(
     citizensdk_handle_t handle, const citizensdk_block_ref_t *block,
     citizensdk_request_id_t *out_request_id);
+/* 纯编解码。使用准确区块的 Runtime metadata，完整消费 System.Events。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_decode_system_events(
+    citizensdk_bytes_view_t metadata,
+    citizensdk_bytes_view_t events,
+    uint8_t *output,
+    uint64_t capacity,
+    uint64_t *out_required);
+
+/* 完整 SCALE extrinsic 的 Blake2-256。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_hash_extrinsic(
+    citizensdk_bytes_view_t extrinsic, uint8_t *out_hash_32);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_get_storage_at(
     citizensdk_handle_t handle, const citizensdk_block_ref_t *block,
     citizensdk_bytes_view_t key, citizensdk_request_id_t *out_request_id);
@@ -282,6 +306,19 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_get_wallet_profile(
 /* Unified secret-free hot/cold catalog. Accounts use one global order and its
  * first item is the default account. This version deliberately exposes no
  * unauthorised default-account mutation. */
+/* 同次已验证 finalized 范围；out_block 为 NULL 时只返回数量。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_get_finalized_block_range(
+    citizensdk_handle_t handle, uint64_t start, uint64_t end,
+    citizensdk_request_id_t *out_request_id);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_block_range(
+    citizensdk_result_handle_t result, uint32_t index, uint32_t *out_count,
+    citizensdk_block_ref_t *out_block);
+
+/* 公开协议编码，不读链、不签名。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_chain_codec(
+    citizensdk_bytes_view_t metadata, citizensdk_bytes_view_t request,
+    uint8_t *output, uint64_t capacity, uint64_t *out_required);
+
 CITIZENSDK_API citizensdk_error_code_t citizensdk_get_wallet_state(
     citizensdk_handle_t handle, citizensdk_request_id_t *out_request_id);
 /* 保留同实例成功WalletState为独立拥有的结果引用，仍用result_release释放。
@@ -289,6 +326,10 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_get_wallet_state(
 CITIZENSDK_API citizensdk_error_code_t citizensdk_wallet_state_retain(
     citizensdk_handle_t handle, citizensdk_result_handle_t result,
     citizensdk_result_handle_t *out_retained_result);
+/* 本次删除提交的公开账户标识，与同一结果中的 removed_account_count 对齐。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_wallet_state_get_removed_account(
+    citizensdk_result_handle_t result, uint32_t index,
+    citizensdk_account_id_t *out_account);
 /* 同次异常事实；out_info预置完整size/version。文本field仅1=钱包名、2=地址。
  * NULL/0查询长度；短缓冲、错误类型、越界均不修改任何输出。 */
 CITIZENSDK_API citizensdk_error_code_t citizensdk_wallet_state_get_diagnostic_count(

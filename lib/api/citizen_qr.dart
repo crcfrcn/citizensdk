@@ -749,13 +749,6 @@ CitizenQrDocument _documentMap(Map<String, Object?> value) {
     currentAccountSignature: bytes('current_account_signature', 64),
   );
   if (result.canonicalText.isEmpty) throw _failure(9);
-  for (final account in [
-    result.accountId,
-    result.signerAccountId,
-    result.currentAccountId,
-  ]) {
-    if (account != null) _unhex(account, 32);
-  }
   switch (kind) {
     case CitizenQrKind.signRequest:
       if (result.requestId == null ||

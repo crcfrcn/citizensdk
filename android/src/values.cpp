@@ -359,13 +359,20 @@ jobject wallet(JNIEnv *env, uint64_t result) {
             : nullptr,
         cleanup));
   }
+  List removed(env, info.removed_account_count);
+  for (uint32_t i = 0; i < info.removed_account_count; ++i) {
+    Local local(env);
+    citizensdk_account_id_t id{};
+    require(env, citizensdk_wallet_state_get_removed_account(result, i, &id));
+    removed.push(bytes(env, id.bytes, 32));
+  }
   return model(env, "CitizenWalletState",
                "(Ljava/lang/String;Lorg/citizen/sdk/CitizenWalletProfile;Ljava/"
-               "util/List;IZLjava/lang/Long;Ljava/util/List;)V",
+               "util/List;IZLjava/lang/Long;Ljava/util/List;Ljava/util/List;)V",
                decimal(env, info.revision), profile(env, result),
                accounts.value, static_cast<jint>(initialization),
                static_cast<jboolean>(pending),
-               present ? number(env, selected) : nullptr, diagnostics.value);
+               present ? number(env, selected) : nullptr, diagnostics.value, removed.value);
 }
 jobject signing(JNIEnv *env, uint64_t result, bool change) {
   uint32_t status = 0, transport = 0;
@@ -631,11 +638,12 @@ jobject result_value(JNIEnv *env, CitizenSdkHostBridge *bridge,
     require(env, citizensdk_result_get_fee_snapshot(result, &value));
     return model(env, "CitizenFeeSnapshot",
                  "(Lorg/citizen/sdk/CitizenBlockRef;JLorg/citizen/sdk/"
-                 "CitizenU128;Lorg/citizen/sdk/CitizenU128;)V",
+                 "CitizenU128;Lorg/citizen/sdk/CitizenU128;Lorg/citizen/sdk/CitizenU128;)V",
                  block(env, value.best_block),
                  static_cast<jlong>(value.fee_rate_parts),
                  amount(env, value.minimum_fee_fen),
-                 amount(env, value.existential_deposit_fen));
+                 amount(env, value.existential_deposit_fen),
+                 amount(env, value.vote_fee_fen));
   }
   case CITIZENSDK_RESULT_WALLET_PROFILE:
     return profile(env, result);

@@ -25,6 +25,7 @@
     "fee_rate_parts": 1000000,
     "minimum_fee_fen": "10",
     "existential_deposit_fen": "111",
+    "vote_fee_fen": "100",
     "minimum_self_pay_fen": "121",
     "estimates": [
       { "amount_fen": "0", "fee_fen": "10" },

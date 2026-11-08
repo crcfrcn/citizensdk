@@ -18,6 +18,7 @@ class CitizenSdkNativeAbiTest {
         try {
             val inspection = first.inspectWallets().future.get(5, TimeUnit.SECONDS)
             try {
+                assertEquals(emptyList<ByteArray>(), inspection.state.removedAccountIds())
                 var borrowed = false
                 val error = assertThrows(CitizenSdkException::class.java) {
                     inspection.withHandle(second) { borrowed = true }

@@ -984,7 +984,7 @@ fn diagnostic_rename_and_delete_preserve_other_records_and_use_existing_cleanup(
             .delete_diagnostic_wallet(renamed.revision(), &hot)
             .await
             .unwrap();
-        assert!(removed.profile().is_none() && removed.cleanup().is_none());
+        assert!(removed.profile().is_none() && !removed.cleanup_pending());
         assert_eq!(removed.diagnostics(), &[cold_record.clone()]);
         assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), opens); // 无签名删除不得额外取私钥。
         assert!(!harness.vault.has_key(0, profile.generation()));
@@ -1028,7 +1028,7 @@ fn diagnostic_changes_handle_cas_failures_and_plain_wipe_without_losing_pending_
                     "已改名"
                 );
             }
-            harness.service.delete_wallet().await.unwrap();
+            harness.service.wipe_wallets(Ok(())).await.unwrap();
             assert!(harness.profiles.snapshot().diagnostics().is_empty());
         }
     });
@@ -1244,6 +1244,8 @@ fn public_catalog_reorder_uses_revision_and_cannot_change_the_default_account() 
         );
         let deleted = engine.delete_wallet_account_any(second).await.unwrap();
         assert!(deleted.cold_account_by_id(second).is_none());
+        assert_eq!(deleted.removed_accounts(), &[second]);
+        assert!(!deleted.cleanup_pending());
         assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.vault.delete_wallet_calls.load(Ordering::SeqCst), 0);
         engine.dispose().unwrap();
@@ -1480,7 +1482,9 @@ fn hot_wallet_changes_preserve_cold_accounts_and_cross_mode_duplicates_fail() {
             harness.profiles.snapshot().ordered_account_ids(),
             &[cold_id, hot_id, child]
         );
-        harness.service.delete_wallet().await.unwrap();
+        let removed = harness.service.sign_and_delete_wallet().await.unwrap();
+        assert_eq!(removed.removed_accounts().len(), 2);
+        assert!(!removed.removed_accounts().contains(&cold_id));
         let state = harness.profiles.snapshot();
         assert!(state.profile().is_none());
         assert_eq!(state.cold_accounts().len(), 1);
@@ -1814,7 +1818,7 @@ fn every_supported_word_count_round_trips_backup_import_accounts_and_deletion() 
                     .delete_account(accounts.account_by_index(1).unwrap().account_id())
                     .await
                     .unwrap();
-                restored.service.delete_wallet().await.unwrap();
+                restored.service.wipe_wallets(Ok(())).await.unwrap();
                 assert!(restored.service.profile().await.unwrap().is_none());
                 assert_eq!(restored.secrets.envelope_count(), 0);
             }
@@ -2208,10 +2212,56 @@ fn signed_deletion_authorizes_account_zero_but_plain_wipe_does_not_open_a_secret
         );
         assert_eq!(wipe.profiles.snapshot(), before);
         assert_eq!(wipe.vault.delete_wallet_calls.load(Ordering::SeqCst), 0);
+        let cold = AccountId32::from_bytes([0x77; 32]);
+        wipe.service
+            .import_cold_account(cold, "离线账户")
+            .await
+            .unwrap();
         let opens = wipe.vault.open_calls.load(Ordering::SeqCst);
-        wipe.service.delete_wallet().await.unwrap();
+        let receipt = wipe.service.wipe_wallets(Ok(())).await.unwrap();
+        assert_eq!(receipt.removed_accounts().len(), 2);
+        assert!(receipt.removed_accounts().contains(&cold));
+        assert!(receipt
+            .removed_accounts()
+            .contains(&profile.master_account_id()));
+        assert!(receipt.ordered_account_ids().is_empty());
+        assert!(!receipt.cleanup_pending());
+        assert!(wipe
+            .service
+            .wipe_wallets(Ok(()))
+            .await
+            .unwrap()
+            .removed_accounts()
+            .is_empty());
         assert_eq!(wipe.vault.open_calls.load(Ordering::SeqCst), opens);
         assert!(wipe.service.profile().await.unwrap().is_none());
+    });
+}
+
+#[test]
+fn wallet_wipe_receipt_preserves_committed_scope_when_cleanup_fails() {
+    block_on(async {
+        let harness = Harness::new();
+        let hot = harness.service.import(&known_mnemonic(), "").await.unwrap();
+        let cold = AccountId32::from_bytes([0x72; 32]);
+        harness
+            .service
+            .import_cold_account(cold, "离线账户")
+            .await
+            .unwrap();
+        *harness.secrets.next_fault.lock().unwrap() = WriteFault::BeforeWrite;
+        let receipt = harness.service.wipe_wallets(Ok(())).await.unwrap();
+        assert!(receipt.ordered_account_ids().is_empty());
+        assert_eq!(receipt.removed_accounts().len(), 2);
+        assert!(receipt
+            .removed_accounts()
+            .contains(&hot.master_account_id()));
+        assert!(receipt.removed_accounts().contains(&cold));
+        assert!(receipt.cleanup_pending());
+        let retried = harness.second_service().wipe_wallets(Ok(())).await.unwrap();
+        assert!(retried.ordered_account_ids().is_empty());
+        assert!(retried.removed_accounts().is_empty());
+        assert!(!retried.cleanup_pending());
     });
 }
 
@@ -2551,7 +2601,7 @@ fn child_anchor_and_whole_wallet_deletion_honor_exact_ownership() {
 
         // 同一设备可建立新生命周期，显式 delete_wallet 也必须清除全部物理目标。
         let replacement = harness.service.import(&mnemonic, "").await.unwrap();
-        harness.service.delete_wallet().await.unwrap();
+        harness.service.wipe_wallets(Ok(())).await.unwrap();
         assert!(harness.service.profile().await.unwrap().is_none());
         assert_eq!(harness.secrets.envelope_count(), 0);
         assert!(!harness
@@ -2571,7 +2621,11 @@ fn deleted_generation_and_secret_ref_reject_every_late_writer() {
             .expect("建立待删除钱包");
         let secret_ref = profile.accounts()[0].secret_ref();
 
-        harness.service.delete_wallet().await.expect("删除钱包");
+        harness
+            .service
+            .wipe_wallets(Ok(()))
+            .await
+            .expect("删除钱包");
         let tombstone = harness.secrets.load(secret_ref).await.unwrap();
         assert!(tombstone.is_tombstone());
 
@@ -2745,7 +2799,7 @@ fn private_key_view_requires_confirmation_and_holds_wallet_until_ui_and_notifica
         assert!(view.take_notification().unwrap().is_none());
         assert!(view.take_completion().unwrap().is_none());
         assert!(engine.dispose().is_err());
-        assert!(harness.second_service().delete_wallet().await.is_err());
+        assert!(harness.second_service().wipe_wallets(Ok(())).await.is_err());
         assert!(harness
             .service
             .rename_account(profile.master_account_id(), "禁止变更")
@@ -2781,7 +2835,7 @@ fn private_key_view_requires_confirmation_and_holds_wallet_until_ui_and_notifica
         assert!(view.take_completion().unwrap().is_none());
         assert!(view.take_notification().unwrap().is_none());
         assert!(!view.reserve_work().unwrap());
-        harness.service.delete_wallet().await.unwrap();
+        harness.service.wipe_wallets(Ok(())).await.unwrap();
         engine.dispose().unwrap();
     });
 }
@@ -2830,7 +2884,7 @@ fn private_key_view_cancel_and_finish_do_not_drop_pending_authentication_or_allo
             harness.vault.open_completed.load(Ordering::SeqCst),
             before_completed
         );
-        assert!(harness.service.delete_wallet().await.is_err());
+        assert!(harness.service.wipe_wallets(Ok(())).await.is_err());
         assert!(engine.dispose().is_err());
         release.send(()).unwrap();
         work.await.unwrap();
@@ -2845,7 +2899,7 @@ fn private_key_view_cancel_and_finish_do_not_drop_pending_authentication_or_allo
             Some(Err(EngineError::Cancelled))
         );
         assert!(view.take_notification().unwrap().is_none());
-        harness.service.delete_wallet().await.unwrap();
+        harness.service.wipe_wallets(Ok(())).await.unwrap();
         engine.dispose().unwrap();
     });
 }

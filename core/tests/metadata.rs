@@ -116,3 +116,117 @@ fn unknown_truncated_and_trailing_calls_fail_closed() {
         }
     }
 }
+
+#[test]
+fn chain_codec_uses_exact_metadata_for_storage_and_call() {
+    use serde_json::json;
+    let metadata = hex::decode(include_str!("citizenchain-revive-v15-metadata.hex").trim().trim_start_matches("0x")).unwrap();
+    let codec = |operation: serde_json::Value| super::chain_codec(&metadata, &serde_json::to_vec(&operation).unwrap());
+    let account = vec![0x31u8; 32];
+    let args = json!({"kind":"sequence","value":[
+        {"kind":"bytes","value":account},
+        {"kind":"integer","value":"123"},
+        {"kind":"bytes","value":[0x61, 0x62]}
+    ]});
+    let call = codec(json!({"op":"call","pallet":"OnchainTransaction","method":"transfer_with_remark","args":args})).unwrap();
+    let verified = crate::types::OpaqueTransactionCall::try_new(call.clone()).unwrap();
+    let parsed = crate::system_events::decode_metadata_strict(&metadata).unwrap();
+    super::validate_opaque_runtime_call(&parsed, &verified).unwrap();
+    let generated = codec(json!({"op":"storage","pallet":"System","entry":"Account","keys":[
+        {"kind":"bytes","value":vec![0x31u8; 32]}
+    ]})).unwrap();
+    let expected = crate::account_state::system_account_storage_key(
+        &parsed,
+        crate::types::AccountId32::from_bytes([0x31; 32]),
+    )
+    .unwrap();
+    assert_eq!(generated, expected);
+    assert!(codec(json!({"op":"call","pallet":"OnchainTransaction","method":"not_a_call","args":args})).is_err());
+    assert!(codec(json!({"op":"decode_storage","pallet":"Timestamp","entry":"Now","value":vec![0u8;9]})).is_err());
+}
+
+#[test]
+fn chain_codec_reads_unsigned_constant_from_verified_metadata() {
+    let metadata = hex::decode(
+        include_str!("citizenchain-revive-v15-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let read = |pallet, name| {
+        let request = serde_json::json!({
+            "op": "unsigned_constant",
+            "pallet": pallet,
+            "name": name,
+        });
+        super::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
+    };
+    assert_eq!(read("PersonalManage", "MinCreateAmount").unwrap(), b"111");
+    assert_eq!(read("OnchainTransaction", "MaxTransferRemarkLen").unwrap(), b"99");
+    assert!(read("PersonalManage", "MissingConstant").is_err());
+    assert!(read("System", "Version").is_err());
+}
+
+#[test]
+fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
+    use serde_json::json;
+    use subxt_core::ext::codec::Encode;
+    use subxt_core::storage::{address::dynamic, get_address_root_bytes};
+    let metadata = hex::decode(
+        include_str!("citizenchain-revive-v15-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let codec = |request: serde_json::Value| {
+        super::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
+    };
+
+    let cid = b"CN001-TEST-2026".to_vec();
+    let cid_bytes = cid.encode();
+    let mut expected = get_address_root_bytes(&dynamic("CitizenIdentity", "AccountIdByCid", ()));
+    expected.extend_from_slice(&crate::types::account::blake2b::<16>(&cid_bytes));
+    expected.extend_from_slice(&cid_bytes);
+    assert_eq!(
+        codec(json!({
+            "op":"storage","pallet":"CitizenIdentity","entry":"AccountIdByCid",
+            "keys":[{"kind":"bytes","value":cid}],
+        }))
+        .unwrap(),
+        expected
+    );
+
+    let id = 42_u64;
+    let mut prefix = get_address_root_bytes(&dynamic("InternalVote", "InternalVotesByTicket", ()));
+    let id_bytes = id.to_le_bytes();
+    prefix.extend_from_slice(&crate::types::account::blake2b::<16>(&id_bytes));
+    prefix.extend_from_slice(&id_bytes);
+    assert_eq!(
+        codec(json!({
+            "op":"storage","pallet":"InternalVote","entry":"InternalVotesByTicket",
+            "keys":[{"kind":"integer","value":id.to_string()}],
+        }))
+        .unwrap(),
+        prefix
+    );
+
+    for (name, discriminant) in [("Freedom", 0), ("Spark", 2)] {
+        let key = codec(json!({
+            "op":"storage","pallet":"SquarePost","entry":"PlatformPrice",
+            "keys":[{"kind":"variant","value":[name, []]}],
+        }))
+        .unwrap();
+        assert_eq!(key.len(), 41);
+        assert_eq!(key.last(), Some(&discriminant));
+    }
+
+    for (method, index) in [("deposit", 31), ("withdraw", 32)] {
+        let call = codec(json!({
+            "op":"call","pallet":"OffchainTransaction","method":method,
+            "args":{"kind":"sequence","value":[{"kind":"integer","value":"4660"}]},
+        }))
+        .unwrap();
+        assert_eq!(call[..2], [19, index]);
+        assert_eq!(call[2..], 4660_u128.to_le_bytes());
+    }
+}
