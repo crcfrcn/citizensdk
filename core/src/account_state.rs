@@ -94,21 +94,13 @@ impl<'a> AccountStateService<'a> {
         &self,
         account_id: AccountId32,
     ) -> Result<FinalizedAccountBalance, EngineError> {
-        let identity = verified_identity(self.chain_client).await?;
-        let block = self
-            .chain_client
-            .get_finalized_head()
-            .await
-            .map_err(EngineError::from)?;
-        let context = verified_runtime_context(self.chain_client, block.into()).await?;
-        let metadata = decode_metadata_strict(context.metadata())?;
-        let key = system_account_storage_key(&metadata, account_id)?;
-        let raw = self
-            .chain_client
-            .get_finalized_storage_at(block, key)
-            .await
-            .map_err(EngineError::from)?;
-        decode_finalized_account_balance(&identity, block, account_id, raw.as_deref())
+        self.finalized_account_balances(vec![account_id])
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                EngineError::contract(ContractErrorCode::Integrity, "单账户批量余额缺失")
+            })
     }
 
     /// 一次 batch 读取多个 finalized `System.Account`，返回顺序和重复项与输入完全一致。
@@ -152,11 +144,21 @@ impl<'a> AccountStateService<'a> {
             .copied()
             .map(|account_id| system_account_storage_key(&metadata, account_id))
             .collect::<Result<Vec<_>, _>>()?;
-        let values = self
-            .chain_client
-            .get_finalized_storage_batch_at(block, keys)
-            .await
-            .map_err(EngineError::from)?;
+        let mut values = Vec::with_capacity(keys.len());
+        for chunk in keys.chunks(crate::types::MAX_STORAGE_BATCH_KEYS) {
+            let chunk_values = self
+                .chain_client
+                .get_finalized_storage_batch_at(block, chunk.to_vec())
+                .await
+                .map_err(EngineError::from)?;
+            if chunk_values.len() != chunk.len() {
+                return Err(EngineError::contract(
+                    ContractErrorCode::Integrity,
+                    "finalized System.Account chunk 数量不一致",
+                ));
+            }
+            values.extend(chunk_values);
+        }
         if values.len() != unique_accounts.len() {
             return Err(EngineError::contract(
                 ContractErrorCode::Integrity,

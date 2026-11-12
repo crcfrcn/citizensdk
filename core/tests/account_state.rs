@@ -888,3 +888,31 @@ fn check_prepared_execution(metadata_hex: &str) {
     .is_err());
     assert_eq!(nonce.0.load(Ordering::SeqCst), 2);
 }
+
+#[test]
+fn wide_unique_balance_batch_uses_bounded_chunks_at_one_finalized_anchor() {
+    let finalized = FinalizedBlockRef::from_parts(Hash32::from_bytes([0xaa; 32]), 77);
+    let best = VerifiedBlockRef::best(Hash32::from_bytes([0xbb; 32]), 78);
+    let client = TestClient::new(best, finalized);
+    let accounts: Vec<_> = (0_u32..1500)
+        .map(|n| {
+            let mut bytes = [0_u8; 32];
+            bytes[..4].copy_from_slice(&n.to_le_bytes());
+            AccountId32::from_bytes(bytes)
+        })
+        .collect();
+    let values = futures::executor::block_on(
+        AccountStateService::new(&client, None).finalized_account_balances(accounts.clone()),
+    )
+    .unwrap();
+    assert_eq!(values.len(), accounts.len());
+    assert_eq!(*client.batch_widths.lock().unwrap(), vec![1024, 476]);
+    assert_eq!(
+        *client.batch_blocks.lock().unwrap(),
+        vec![finalized.into(), finalized.into()]
+    );
+    for (value, account) in values.iter().zip(accounts) {
+        assert_eq!(value.account_id(), account);
+        assert_eq!(value.block(), finalized);
+    }
+}

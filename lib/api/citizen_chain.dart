@@ -310,30 +310,13 @@ extension Chain on CitizenSdk {
     return balances.getAccountBalance(accountId, forceRefresh: forceRefresh);
   }
 
-  Future<CitizenAccountBalance> _readAccountBalance(String accountId) =>
-      _request(
-        (m, out) => _api.citizensdk_get_finalized_account_balance(
-          _handle,
-          m.account(accountId),
-          out,
-        ),
-        (m, r) {
-          final p = m.struct<c.citizensdk_account_balance_info>(
-            sizeOf<c.citizensdk_account_balance_info>(),
-          );
-          _status(_api.citizensdk_result_get_account_balance(r, p));
-          return _balance(p.ref);
-        },
-      );
   Future<List<CitizenAccountBalance>> getAccountBalances(
     List<String> accountIds, {
     bool forceRefresh = true,
   }) async {
     _requireOpen();
-    // 空批量的原生模块和运行状态合同不能由缓存跳过。
-    if (forceRefresh && accountIds.isEmpty) {
-      return _readAccountBalances(accountIds);
-    }
+    // 空批量仍核对原生模块与运行状态。
+    if (accountIds.isEmpty) return _readAccountBalances(accountIds);
     return balances.getAccountBalances(accountIds, forceRefresh: forceRefresh);
   }
 
@@ -731,11 +714,11 @@ final class CitizenBalanceState<T> extends ChangeNotifier {
   Future<void>? _loading;
   T? get value => _value;
   bool get hasError => _error != null;
+  Object? get error => _error;
   bool get isLoading => _loading != null;
 
-  /// 普通显示已有快照即返回；并发刷新共享同一次读取，不清空可显示金额。
+  /// 委托 SDK 核对最新区块；同一状态合并在途操作，保留可显示金额。
   Future<void> load({bool forceRefresh = false}) {
-    if (!forceRefresh && _value != null) return Future.value();
     final running = _loading;
     if (running != null) return running;
     final completed = Completer<void>();
@@ -760,9 +743,15 @@ final class CitizenBalanceState<T> extends ChangeNotifier {
   }
 
   void _accept(T value) {
+    final previous = _value;
+    final changed =
+        _error != null ||
+        (previous is CitizenAccountBalance && value is CitizenAccountBalance
+            ? !CitizenBalances._sameAmount(previous, value)
+            : previous != value);
     _value = value;
     _error = null;
-    notifyListeners();
+    if (changed) notifyListeners();
   }
 
   void _fail(Object error) {
@@ -787,30 +776,33 @@ typedef CitizenBalanceStorage = ({
 /// 每个 SDK 会话的一份余额快照；展示缓存不授予交易权限。
 final class CitizenBalances {
   CitizenBalances({
-    required Future<CitizenAccountBalance> Function(String accountId)
-    getAccountBalance,
     required Future<List<CitizenAccountBalance>> Function(
       List<String> accountIds,
     )
     getAccountBalances,
+    Future<CitizenBlockRef> Function()? getFinalizedHead,
     CitizenBalanceStorage? storage,
-  }) : _getAccountBalance = getAccountBalance,
-       _getAccountBalances = getAccountBalances,
+  }) : _getAccountBalances = getAccountBalances,
+       _getFinalizedHead = getFinalizedHead,
        _storage = storage;
 
   final CitizenBalanceStorage? _storage;
-  final Future<CitizenAccountBalance> Function(String accountId)
-  _getAccountBalance;
-  final Future<List<CitizenAccountBalance>> Function(List<String> accountIds)
+  final Future<List<CitizenAccountBalance>> Function(List<String>)
   _getAccountBalances;
+  final Future<CitizenBlockRef> Function()? _getFinalizedHead;
   final _inflight = <String, Future<CitizenAccountBalance>>{};
-  final _changes = StreamController<String>.broadcast();
+  final _queued = <String, Completer<CitizenAccountBalance>>{};
   final _accountStates = <String, CitizenBalanceState<CitizenAccountBalance>>{};
   final _localReads = <String, Future<CitizenAccountBalance?>>{};
   final _removing = <String>{};
   final _epochs = <String, int>{};
+  final _watched = <String, int>{};
+  CitizenBlockRef? _head;
+  Future<CitizenBlockRef>? _headFlight;
+  Future<void>? _draining, _observing;
+  bool _checkHead = false;
+  bool _scheduled = false, _foreground = true, _closed = false, _dirty = false;
 
-  /// 同一账户的所有钱包组件直接观察此状态，不在页面复制金额或加载标志。
   CitizenBalanceState<CitizenAccountBalance> accountState(String accountId) {
     _requireAccountId(accountId);
     return _accountStates.putIfAbsent(
@@ -821,75 +813,139 @@ final class CitizenBalances {
     );
   }
 
-  /// 钱包目录首次显示前仅恢复磁盘快照，不等待网络、身份或其他缺失账户。
+  /// 页面可见时登记；最后一个引用释放后停止该账户的自动读取。
+  VoidCallback watch(Iterable<String> accountIds) {
+    if (_closed) throw StateError('余额服务已关闭');
+    final ids = accountIds.toSet();
+    for (final id in ids) {
+      _requireAccountId(id);
+      if (_removing.contains(id)) throw StateError('余额正在清理');
+    }
+    for (final id in ids) {
+      _watched.update(id, (n) => n + 1, ifAbsent: () => 1);
+    }
+    _requestObserved();
+    final epochs = {for (final id in ids) id: _epochs[id]};
+    var released = false;
+    return () {
+      if (released) return;
+      released = true;
+      for (final id in ids) {
+        if (epochs[id] != _epochs[id]) continue;
+        final count = _watched[id];
+        if (count == null) continue;
+        if (count == 1) {
+          _watched.remove(id);
+        } else {
+          _watched[id] = count - 1;
+        }
+      }
+    };
+  }
+
+  void finalized(CitizenBlockRef block) {
+    if (_closed) return;
+    if (block.finality != CitizenBlockFinality.finalized)
+      throw StateError('余额需要 finalized 区块');
+    final old = _head;
+    if (old != null && block.number < old.number) return;
+    if (old != null && block.number == old.number) {
+      if (old.hash != block.hash) throw StateError('同高度 finalized 证明冲突');
+      return;
+    }
+    _head = block;
+    _requestObserved();
+  }
+
+  void setForeground(bool value) {
+    if (_closed) return;
+    _foreground = value;
+    if (value) _requestObserved(checkHead: true);
+  }
+
+  void _requestObserved({bool checkHead = false}) {
+    if (_closed || !_foreground || _watched.isEmpty) return;
+    _dirty = true;
+    _checkHead = _checkHead || checkHead;
+    if (_observing != null) return;
+    _observing =
+        Future<void>.microtask(() async {
+          while (_dirty && !_closed && _foreground && _watched.isNotEmpty) {
+            _dirty = false;
+            final refreshHead = _checkHead;
+            _checkHead = false;
+            try {
+              await _load(
+                _watched.keys.toList(),
+                automatic: true,
+                forceRefresh: refreshHead,
+              );
+            } on Object {
+              /* 下一最终块、重新显示或手动重试再读，不增加轮询。 */
+            }
+          }
+        }).whenComplete(() {
+          _observing = null;
+        });
+  }
+
   Future<void> restore(Iterable<String> accountIds) async {
     await Future.wait(accountIds.toSet().map(read));
   }
 
-  /// 删除回执到达后排空该账户的在途写入，并删除链上余额快照。
   Future<void> remove(Iterable<String> accountIds) async {
     for (final id in accountIds.toSet()) {
       if (!_removing.add(id)) throw StateError('余额正在清理');
       _epochs.update(id, (value) => value + 1, ifAbsent: () => 1);
+      _watched.remove(id);
       try {
         final state = _accountStates[id];
-        final pending = <Future<Object?>>[
-          ?_inflight[id],
-          ?_localReads[id],
-          ?state?._loading,
-        ];
         await Future.wait(
-          pending.map((value) async {
+          <Future<Object?>>[
+            ?_inflight[id],
+            ?_localReads[id],
+            ?state?._loading,
+          ].map((value) async {
             try {
               await value;
-            } catch (_) {
-              /* 失败的读取没有新快照。 */
-            }
+            } on Object {}
           }),
         );
         await _storage?.write(id, (_) => null);
         _accountStates.remove(id);
         state?._clear();
-        _changes.add(id);
       } finally {
         _removing.remove(id);
       }
     }
   }
 
-  /// 只通知账户主键；组件重新读取唯一快照，不保存另一份余额业务状态。
-  Stream<String> get changes => _changes.stream;
+  Future<void> _latest(bool refresh) async {
+    final loader = _getFinalizedHead;
+    if (loader == null || (!refresh && _head != null)) return;
+    final flight = _headFlight ??= loader();
+    try {
+      finalized(await flight);
+    } finally {
+      if (identical(_headFlight, flight)) _headFlight = null;
+    }
+  }
 
-  /// 交易最终确认后只补充落后于证明块的快照；重放旧历史不能触发重复查链。
-  Future<void> afterFinalized(
-    CitizenBlockRef block,
-    Iterable<String> accountIds,
-  ) async {
-    if (block.finality != CitizenBlockFinality.finalized) {
-      throw StateError('余额更新需要 finalized 证明');
-    }
-    final missing = <String>[];
-    for (final accountId in accountIds.toSet()) {
-      final snapshot = await read(accountId);
-      if (snapshot == null || snapshot.block.number < block.number) {
-        missing.add(accountId);
-      }
-    }
-    if (missing.isNotEmpty) {
-      await getAccountBalances(missing, forceRefresh: true);
-    }
+  bool _current(CitizenAccountBalance? value) {
+    if (value == null) return false;
+    final head = _head;
+    if (head == null) return _getFinalizedHead == null;
+    return value.block.number == head.number && value.block.hash == head.hash;
   }
 
   Future<CitizenAccountBalance> getAccountBalance(
     String accountId, {
     bool forceRefresh = false,
-  }) async => (await _load(
-    [accountId],
-    forceRefresh: forceRefresh,
-    single: true,
-  )).single;
+  }) async => (await getAccountBalances([
+    accountId,
+  ], forceRefresh: forceRefresh)).single;
 
-  /// 保持输入顺序和重复项；并发页面共享同账户正在执行的读取。
+  /// 订阅、预检、单账户和批量查询共用同一队列。
   Future<List<CitizenAccountBalance>> getAccountBalances(
     List<String> accountIds, {
     bool forceRefresh = false,
@@ -898,79 +954,149 @@ final class CitizenBalances {
   Future<List<CitizenAccountBalance>> _load(
     List<String> accountIds, {
     bool forceRefresh = false,
-    bool single = false,
+    bool automatic = false,
   }) async {
-    for (final accountId in accountIds) {
-      _requireAccountId(accountId);
-      if (_removing.contains(accountId)) throw StateError('余额正在清理');
-    }
+    if (_closed) throw StateError('余额服务已关闭');
     final ids = accountIds.toSet().toList();
-    // 先完成本地读取，再同步登记全部缺失项；避免批量读库途中悬挂未监听的错误 Future。
-    // 已有快照的展示不等待其它页面发起的网络刷新。
-    final epochs = ids.map((id) => _epochs[id]).toList();
-    final localValues = forceRefresh ? null : await Future.wait(ids.map(read));
-    for (var i = 0; i < ids.length; i++) {
-      if (_removing.contains(ids[i]) || epochs[i] != _epochs[ids[i]]) {
-        throw StateError('读取期间账户余额已清理');
-      }
+    for (final id in ids) {
+      _requireAccountId(id);
+      if (_removing.contains(id)) throw StateError('余额正在清理');
     }
-    final results = <String, Future<CitizenAccountBalance>>{};
-    final missing = <String, Completer<CitizenAccountBalance>>{};
-    for (var index = 0; index < ids.length; index++) {
-      final accountId = ids[index];
-      final local = localValues?[index];
-      if (local != null) {
-        results[accountId] = Future.value(local);
-        continue;
+    if (ids.isEmpty) return const [];
+    final epochs = {for (final id in ids) id: _epochs[id]};
+    try {
+      await restore(ids);
+      if (automatic) {
+        if (!_foreground) return const [];
+        ids.removeWhere((id) => !_watched.containsKey(id));
+        if (ids.isEmpty) return const [];
       }
-      final running = _inflight[accountId];
-      if (running != null) {
-        results[accountId] = running;
-        continue;
+      await _latest(forceRefresh);
+    } catch (error) {
+      for (final id in ids) {
+        if (!_closed && !_removing.contains(id) && epochs[id] == _epochs[id])
+          accountState(id)._fail(error);
       }
-      final completer = Completer<CitizenAccountBalance>();
-      missing[accountId] = completer;
-      results[accountId] = _inflight[accountId] = completer.future;
+      rethrow;
     }
-    if (missing.isNotEmpty) unawaited(_refresh(missing, single: single));
-    return Future.wait(accountIds.map((id) => results[id]!));
+    final results = <String, CitizenAccountBalance>{};
+    while (true) {
+      if (automatic) {
+        if (!_foreground) return const [];
+        ids.removeWhere((id) => !_watched.containsKey(id));
+        if (ids.isEmpty) return const [];
+      }
+      final futures = <Future<CitizenAccountBalance>>[];
+      for (var i = 0; i < ids.length; i++) {
+        final id = ids[i];
+        if (_closed || _removing.contains(id) || epochs[id] != _epochs[id])
+          throw StateError('余额读取已失效');
+        final value = accountState(id).value;
+        if (_current(value) && !(forceRefresh && _getFinalizedHead == null)) {
+          accountState(id)._accept(value!);
+          results[id] = value;
+        } else {
+          futures.add(_queue(id));
+        }
+      }
+      if (futures.isEmpty) break;
+      for (final value in await Future.wait(futures)) {
+        results[value.accountId] = value;
+      }
+      forceRefresh = false;
+      if (_head == null || ids.every((id) => _current(results[id]))) break;
+    }
+    return [for (final id in (automatic ? ids : accountIds)) results[id]!];
   }
 
-  Future<void> _refresh(
-    Map<String, Completer<CitizenAccountBalance>> pending, {
-    required bool single,
-  }) async {
-    final ids = pending.keys.toList();
-    try {
-      final values = single
-          ? [await _getAccountBalance(ids.single)]
-          : await _getAccountBalances(ids);
-      if (values.length != ids.length) throw StateError('余额响应数量不一致');
-      for (var i = 0; i < ids.length; i++) {
-        _validate(values[i], ids[i]);
-      }
-      for (var i = 0; i < ids.length; i++) {
-        final value = await _put(values[i]);
-        accountState(ids[i])._accept(value);
-        pending[ids[i]]!.complete(value);
-        _changes.add(ids[i]);
-      }
-    } catch (error, stack) {
-      // 失败只返回本次失败；持久快照不清空、不写零，已有页面继续显示最近成功值。
-      for (final entry in pending.entries) {
-        accountState(entry.key)._fail(error);
-        final completer = entry.value;
-        if (!completer.isCompleted) completer.completeError(error, stack);
-      }
-    } finally {
-      for (final id in ids) {
-        final _ = _inflight.remove(id);
+  Future<CitizenAccountBalance> _queue(String id) {
+    final running = _inflight[id];
+    if (running != null) return running;
+    final pending = Completer<CitizenAccountBalance>();
+    _queued[id] = pending;
+    _inflight[id] = pending.future;
+    if (_draining == null) _scheduleDrain();
+    return pending.future;
+  }
+
+  void _scheduleDrain() {
+    if (_scheduled) return;
+    _scheduled = true;
+    scheduleMicrotask(() {
+      _scheduled = false;
+      _draining = _drain().whenComplete(() {
+        _draining = null;
+        if (_queued.isNotEmpty) _scheduleDrain();
+      });
+    });
+  }
+
+  Future<void> _drain() async {
+    while (_queued.isNotEmpty) {
+      final ids = _queued.keys.take(1990).toList();
+      final pending = {for (final id in ids) id: _queued.remove(id)!};
+      final epochs = {for (final id in ids) id: _epochs[id]};
+      final target = _head;
+      try {
+        if (_closed) throw StateError('余额服务已关闭');
+        final values = await _getAccountBalances(ids);
+        if (values.length != ids.length) throw StateError('余额响应数量不一致');
+        for (var i = 0; i < ids.length; i++) {
+          _validate(values[i], ids[i]);
+          if (values[i].block.hash != values.first.block.hash ||
+              values[i].block.number != values.first.block.number ||
+              target != null && values[i].block.number < target.number) {
+            throw StateError('余额没有绑定同一最新最终区块');
+          }
+        }
+        finalized(values.first.block);
+        for (var i = 0; i < ids.length; i++) {
+          final id = ids[i];
+          if (_closed || _removing.contains(id) || epochs[id] != _epochs[id])
+            throw StateError('余额读取已失效');
+          final value = await _put(values[i]);
+          if (_closed || _removing.contains(id) || epochs[id] != _epochs[id]) {
+            throw StateError('余额读取已失效');
+          }
+          accountState(id)._accept(value);
+          pending[id]!.complete(value);
+        }
+      } catch (error, stack) {
+        for (final id in ids) {
+          if (!_closed && !_removing.contains(id) && epochs[id] == _epochs[id])
+            accountState(id)._fail(error);
+          if (!pending[id]!.isCompleted)
+            pending[id]!.completeError(error, stack);
+        }
+      } finally {
+        for (final id in ids) {
+          _inflight.remove(id);
+        }
       }
     }
   }
+
+  Future<void> close() async {
+    _closed = true;
+    _watched.clear();
+    await _draining;
+    if (_queued.isNotEmpty) await _drain();
+    await Future.wait(
+      _localReads.values.toList().map((f) async {
+        try {
+          await f;
+        } on Object {}
+      }),
+    );
+  }
+
+  static bool _sameAmount(CitizenAccountBalance? a, CitizenAccountBalance b) =>
+      a != null && a.freeFen == b.freeFen && a.reservedFen == b.reservedFen;
 
   Future<CitizenAccountBalance?> read(String accountId) async {
     _requireAccountId(accountId);
+    if (_closed || _removing.contains(accountId)) throw StateError('余额读取已失效');
+    final epoch = _epochs[accountId];
     final current = accountState(accountId).value;
     if (current != null) return current;
     final running = _localReads[accountId];
@@ -979,6 +1105,10 @@ final class CitizenBalances {
     _localReads[accountId] = reading;
     try {
       final value = await reading;
+      if (_closed ||
+          _removing.contains(accountId) ||
+          epoch != _epochs[accountId])
+        throw StateError('余额读取已失效');
       // 在途数据库旧读不能覆盖已经刷新完成的内存值。
       final state = accountState(accountId);
       if (state.value == null && value != null) state._accept(value);
@@ -998,6 +1128,7 @@ final class CitizenBalances {
     final id = value.accountId;
     final current = accountState(id).value;
     if (current != null) _requireCurrent(value, current);
+    if (_sameAmount(current, value)) return value;
     await _storage?.write(id, (raw) {
       final record = _decodeRecord(raw);
       final previous = _decodeChain(record['chain'], id);
@@ -1031,9 +1162,7 @@ final class CitizenBalances {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return {};
-      return {
-        if (decoded['chain'] is Map) 'chain': decoded['chain'],
-      };
+      return {if (decoded['chain'] is Map) 'chain': decoded['chain']};
     } on FormatException {
       return {};
     }
@@ -1090,7 +1219,6 @@ final class CitizenBalances {
     }
   }
 }
-
 
 final class _ChainSync {
   _ChainSync(this._read);

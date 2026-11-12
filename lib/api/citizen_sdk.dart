@@ -32,8 +32,8 @@ final class CitizenSdk with WidgetsBindingObserver {
 
   final CitizenBalanceStorage? _balanceStorage;
   late final balances = CitizenBalances(
-    getAccountBalance: _readAccountBalance,
     getAccountBalances: _readAccountBalances,
+    getFinalizedHead: getFinalizedHead,
     storage: _balanceStorage,
   );
   static const _methods = MethodChannel('citizen/sdk/core/v2');
@@ -131,12 +131,11 @@ final class CitizenSdk with WidgetsBindingObserver {
       sdk = CitizenSdk._(id, handle, credentialProvider, balanceStorage);
       sdk._attach();
       _instances[id] = sdk;
-      if (credentialProvider != null) {
-        sdk._foreground =
-            WidgetsBinding.instance.lifecycleState == null ||
-            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-        WidgetsBinding.instance.addObserver(sdk);
-      }
+      sdk._foreground =
+          WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      sdk.balances.setForeground(sdk._foreground);
+      WidgetsBinding.instance.addObserver(sdk);
       for (final event in _early.remove(id) ?? <List<Object?>>[]) {
         sdk._nativeEvent(event);
       }
@@ -329,10 +328,12 @@ final class CitizenSdk with WidgetsBindingObserver {
           case 5:
             _events.add(CitizenSdkHistoryChanged(sequence: sequence));
           case 6:
+            final block = _withMemory((m) => _readBlock(m, result));
+            balances.finalized(block);
             _events.add(
               CitizenSdkFinalizedBlockChanged(
                 sequence: sequence,
-                finalized: _withMemory((m) => _readBlock(m, result)),
+                finalized: block,
               ),
             );
           case 7:
@@ -662,6 +663,7 @@ final class CitizenSdk with WidgetsBindingObserver {
   Future<void> _close() async {
     _closing = true;
     _sync.close();
+    final closingBalances = balances.close();
     try {
       // 先请求取消，再等待提交资源释放；释放会等待真实终态，不能挡住取消本身。
       for (final id in _pending.keys.toList()) {
@@ -678,6 +680,7 @@ final class CitizenSdk with WidgetsBindingObserver {
         if (code != 0 && code != 4 && code != 7) throw _failure(code);
       }
       await _cancelCredentials();
+      await closingBalances;
       await _closeResources();
       while (_pending.isNotEmpty) {
         await Future.wait(_pending.values.map((p) => p.finished));
@@ -712,6 +715,7 @@ final class CitizenSdk with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
+    balances.setForeground(_foreground);
     if (!_foreground) unawaited(_cancelCredentials().catchError((Object _) {}));
   }
 
