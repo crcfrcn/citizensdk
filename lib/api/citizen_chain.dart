@@ -29,22 +29,39 @@ extension Chain on CitizenSdk {
         _api.citizensdk_get_finalized_block_at(_handle, _u64(number), out),
     _readBlock,
   );
-  Future<List<CitizenBlockRef>> getFinalizedBlockRange(BigInt start, BigInt end) => _request(
-    (m, out) => _api.citizensdk_get_finalized_block_range(_handle, _u64(start), _u64(end), out),
+  Future<List<CitizenBlockRef>> getFinalizedBlockRange(
+    BigInt start,
+    BigInt end,
+  ) => _request(
+    (m, out) => _api.citizensdk_get_finalized_block_range(
+      _handle,
+      _u64(start),
+      _u64(end),
+      out,
+    ),
     (m, result) {
       final count = m.alloc<Uint32>(4);
-      _status(_api.citizensdk_result_get_block_range(result, 0, count, nullptr));
+      _status(
+        _api.citizensdk_result_get_block_range(result, 0, count, nullptr),
+      );
       final expected = end - start + BigInt.one;
       if (BigInt.from(count.value) != expected) throw _failure(9);
-      final block = m.struct<c.citizensdk_block_ref>(sizeOf<c.citizensdk_block_ref>());
-      return List.unmodifiable(List.generate(count.value, (i) {
-        _status(_api.citizensdk_result_get_block_range(result, i, count, block));
-        final value = _block(block.ref);
-        if (value.finality != CitizenBlockFinality.finalized || value.number != start + BigInt.from(i)) {
-          throw _failure(9);
-        }
-        return value;
-      }));
+      final block = m.struct<c.citizensdk_block_ref>(
+        sizeOf<c.citizensdk_block_ref>(),
+      );
+      return List.unmodifiable(
+        List.generate(count.value, (i) {
+          _status(
+            _api.citizensdk_result_get_block_range(result, i, count, block),
+          );
+          final value = _block(block.ref);
+          if (value.finality != CitizenBlockFinality.finalized ||
+              value.number != start + BigInt.from(i)) {
+            throw _failure(9);
+          }
+          return value;
+        }),
+      );
     },
   );
 
@@ -58,6 +75,7 @@ extension Chain on CitizenSdk {
         ),
         _readBlock,
       );
+
   /// 每个会话只有一个同步状态采样器；订阅者共享最近快照。
   Stream<CitizenChainSyncStatus> watchSyncStatus() => _sync.watch();
 
@@ -151,32 +169,60 @@ extension Chain on CitizenSdk {
         },
       );
   Future<CitizenEvmAccount> resolveEvmAddress(String address) =>
-      resolveCitizenEvmAddress(address, getFinalizedHead, getRuntimeContext, getStorage);
+      resolveCitizenEvmAddress(
+        address,
+        getFinalizedHead,
+        getRuntimeContext,
+        getStorage,
+      );
 
-  Future<Uint8List> buildCall(String pallet, String method, Object args) async =>
-      (await getRuntimeContext(await getBestHead())).encodeCall(pallet, method, args);
+  Future<Uint8List> buildCall(
+    String pallet,
+    String method,
+    Object args,
+  ) async => (await getRuntimeContext(
+    await getBestHead(),
+  )).encodeCall(pallet, method, args);
 
-  Future<Uint8List?> readStorage(CitizenBlockRef block, String pallet, String entry,
-      [List<Object> keys = const []]) async {
+  Future<Uint8List?> readStorage(
+    CitizenBlockRef block,
+    String pallet,
+    String entry, [
+    List<Object> keys = const [],
+  ]) async {
     final runtime = await getRuntimeContext(block);
     return getStorage(block, runtime.storageKey(pallet, entry, keys));
   }
 
-  Future<List<Uint8List?>> readStorageBatch(CitizenBlockRef block, String pallet,
-      String entry, List<List<Object>> keys) async {
+  Future<List<Uint8List?>> readStorageBatch(
+    CitizenBlockRef block,
+    String pallet,
+    String entry,
+    List<List<Object>> keys,
+  ) async {
     if (keys.isEmpty) return const [];
     final runtime = await getRuntimeContext(block);
-    return getStorageBatch(block, keys.map((key) => runtime.storageKey(pallet, entry, key)).toList());
+    return getStorageBatch(
+      block,
+      keys.map((key) => runtime.storageKey(pallet, entry, key)).toList(),
+    );
   }
 
   Future<List<Uint8List>> readStorageKeys(
-    CitizenBlockRef block, String pallet, String entry, {
+    CitizenBlockRef block,
+    String pallet,
+    String entry, {
     List<Object> keys = const [],
     Uint8List? startKey,
     required int limit,
   }) async {
     final runtime = await getRuntimeContext(block);
-    return getStorageKeysPaged(block, runtime.storageKey(pallet, entry, keys), startKey: startKey, limit: limit);
+    return getStorageKeysPaged(
+      block,
+      runtime.storageKey(pallet, entry, keys),
+      startKey: startKey,
+      limit: limit,
+    );
   }
 
   Future<int> getBlockTimestamp(CitizenBlockRef block) =>
@@ -260,10 +306,13 @@ extension Chain on CitizenSdk {
         _api.citizensdk_get_system_events_at(_handle, m.block(block), out),
     _readStorage,
   );
+
   /// 从 SDK 已验证块读取与解码 System.Events。
   Future<List<CitizenSystemEvent>> getFinalizedEvents(CitizenBlockRef block) =>
       readCitizenFinalizedEvents(
-        block, readEvents: getSystemEvents, readRuntime: getRuntimeContext,
+        block,
+        readEvents: getSystemEvents,
+        readRuntime: getRuntimeContext,
       );
 
   /// 发现指定账户在本块的转账和实扣。无相关交易时无需读取区块正文。
@@ -271,7 +320,10 @@ extension Chain on CitizenSdk {
     CitizenBlockRef block,
     Iterable<String> accountIds,
   ) => readCitizenWalletEvents(
-    block, accountIds, readEvents: getFinalizedEvents, readBody: getBlockBody,
+    block,
+    accountIds,
+    readEvents: getFinalizedEvents,
+    readBody: getBlockBody,
   );
 
   Future<CitizenChainState> exportState() =>
@@ -425,17 +477,22 @@ void _requireEventBlock(CitizenBlockRef block, CitizenBlockRef evidence) {
 Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
   CitizenBlockRef block,
   Iterable<String> accountIds, {
-  required Future<List<CitizenSystemEvent>> Function(CitizenBlockRef) readEvents,
+  required Future<List<CitizenSystemEvent>> Function(CitizenBlockRef)
+  readEvents,
   required Future<CitizenBlockBody> Function(CitizenBlockRef) readBody,
 }) async {
   if (block.finality != CitizenBlockFinality.finalized) {
     throw StateError('钱包事件读取需要 finalized 块');
   }
-  final accounts = accountIds.map((id) =>
-      citizenAccountIdFromBytes(citizenAccountIdBytes(id))).toSet();
-  final events = accounts.isEmpty ? const <CitizenSystemEvent>[] : await readEvents(block);
+  final accounts = accountIds
+      .map((id) => citizenAccountIdFromBytes(citizenAccountIdBytes(id)))
+      .toSet();
+  final events = accounts.isEmpty
+      ? const <CitizenSystemEvent>[]
+      : await readEvents(block);
   final outcomes = <int, CitizenExecutionStatus>{};
-  final transfers = <int, (CitizenSystemEvent, String, String, BigInt, String?)>{};
+  final transfers =
+      <int, (CitizenSystemEvent, String, String, BigInt, String?)>{};
   final unmatched = <(int?, String, String, BigInt), List<int>>{};
   final fees = <(CitizenSystemEvent, String, BigInt)>[];
   for (final event in events) {
@@ -446,7 +503,8 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
           throw const FormatException('System 执行终态缺少索引或存在重复');
         }
         outcomes[index] = event.name == 'ExtrinsicSuccess'
-            ? CitizenExecutionStatus.success : CitizenExecutionStatus.failed;
+            ? CitizenExecutionStatus.success
+            : CitizenExecutionStatus.failed;
       case ('OnchainTransaction', 'FeePaid'):
         final payer = citizenAccountIdFromBytes(event.fieldBytes('account_id'));
         if (!accounts.contains(payer)) continue;
@@ -458,12 +516,12 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
       case ('Balances', 'Transfer'):
       case ('OnchainTransaction', 'TransferWithRemark'):
         final plain = event.pallet == 'Balances';
-        final from = citizenAccountIdFromBytes(event.fieldBytes(
-          plain ? 'from' : 'from_account_id',
-        ));
-        final to = citizenAccountIdFromBytes(event.fieldBytes(
-          plain ? 'to' : 'beneficiary_account_id',
-        ));
+        final from = citizenAccountIdFromBytes(
+          event.fieldBytes(plain ? 'from' : 'from_account_id'),
+        );
+        final to = citizenAccountIdFromBytes(
+          event.fieldBytes(plain ? 'to' : 'beneficiary_account_id'),
+        );
         if (!accounts.contains(from) && !accounts.contains(to)) continue;
         final amount = event.fieldUnsigned('amount');
         if (amount == BigInt.zero) {
@@ -482,7 +540,10 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
           final principal = transfers[eventIndex]!.$1;
           final remark = event.fieldBytes('remark');
           transfers[eventIndex] = (
-            principal, from, to, amount,
+            principal,
+            from,
+            to,
+            amount,
             remark.isEmpty ? null : utf8.decode(remark, allowMalformed: true),
           );
         }
@@ -496,13 +557,12 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
         (throw const FormatException('钱包事件缺少同索引的 System 执行结果'));
   }
 
-  final confirmed = transfers.values.where((transfer) =>
-      status(transfer.$1) != CitizenExecutionStatus.failed).toList();
+  final confirmed = transfers.values
+      .where((transfer) => status(transfer.$1) != CitizenExecutionStatus.failed)
+      .toList();
   final indices = <int>{
-    for (final (event, _, _, _, _) in confirmed)
-      ?event.extrinsicIndex,
-    for (final (event, _, _) in fees)
-      ?event.extrinsicIndex,
+    for (final (event, _, _, _, _) in confirmed) ?event.extrinsicIndex,
+    for (final (event, _, _) in fees) ?event.extrinsicIndex,
   };
   final hashes = <int, String>{};
   if (indices.isNotEmpty) {
@@ -517,17 +577,24 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
     transfers: [
       for (final (event, from, to, amount, remark) in confirmed)
         (
-          fromAccountId: from, toAccountId: to, amountFen: amount, remark: remark,
-          eventIndex: event.eventIndex, extrinsicIndex: event.extrinsicIndex,
+          fromAccountId: from,
+          toAccountId: to,
+          amountFen: amount,
+          remark: remark,
+          eventIndex: event.eventIndex,
+          extrinsicIndex: event.extrinsicIndex,
           transactionHash: hashes[event.extrinsicIndex],
         ),
     ],
     fees: [
       for (final (event, payer, amount) in fees)
         (
-          accountId: payer, feeFen: amount, eventIndex: event.eventIndex,
+          accountId: payer,
+          feeFen: amount,
+          eventIndex: event.eventIndex,
           extrinsicIndex: event.extrinsicIndex,
-          transactionHash: hashes[event.extrinsicIndex], status: status(event),
+          transactionHash: hashes[event.extrinsicIndex],
+          status: status(event),
         ),
     ],
   );
@@ -552,7 +619,8 @@ Future<CitizenEvmAccount> resolveCitizenEvmAddress(
     throw StateError('收款地址解析必须使用最终确认区块');
   }
   final runtime = await readRuntime(block);
-  if (runtime.block.finality != block.finality || runtime.block.hash != block.hash ||
+  if (runtime.block.finality != block.finality ||
+      runtime.block.hash != block.hash ||
       runtime.block.number != block.number) {
     throw StateError('收款地址元数据区块不一致');
   }
@@ -569,9 +637,13 @@ Future<CitizenEvmAccount> resolveCitizenEvmAddress(
   if (mapped != null && mapped.length != 32) {
     throw const FormatException('链上以太坊账户映射必须为32字节');
   }
-  final account = mapped ?? Uint8List.fromList([...bytes, ...List.filled(12, 0xee)]);
-  return (accountId: citizenAccountIdFromBytes(account),
-          ss58Address: citizenSs58FromAccountIdBytes(account), block: block);
+  final account =
+      mapped ?? Uint8List.fromList([...bytes, ...List.filled(12, 0xee)]);
+  return (
+    accountId: citizenAccountIdFromBytes(account),
+    ss58Address: citizenSs58FromAccountIdBytes(account),
+    block: block,
+  );
 }
 
 /// 固定链协议的 Timestamp.Now，严格使用调用方交付的同一块。
@@ -582,25 +654,34 @@ Future<int> readCitizenBlockTimestamp(
   if (block.finality != CitizenBlockFinality.finalized) {
     throw const FormatException('链时间需要 finalized 块');
   }
-  return decodeCitizenTimestamp(await read(block, CitizenScale.storagePrefix('Timestamp', 'Now')));
+  return decodeCitizenTimestamp(
+    await read(block, CitizenScale.storagePrefix('Timestamp', 'Now')),
+  );
 }
 
 int decodeCitizenTimestamp(Uint8List? value) {
-  if (value == null || value.length != 8) throw const FormatException('已验证区块缺少准确 Timestamp.Now');
+  if (value == null || value.length != 8) {
+    throw const FormatException('已验证区块缺少准确 Timestamp.Now');
+  }
   final number = CitizenScale.readUnsigned(value, 0, 8);
-  if (number <= BigInt.zero || !number.isValidInt) throw const FormatException('链时间超出整数范围');
+  if (number <= BigInt.zero || !number.isValidInt) {
+    throw const FormatException('链时间超出整数范围');
+  }
   return number.toInt();
 }
 
 /// 找到已验证范围内第一个不早于时间锚的高度；未达到时返回末高度加一。
 Future<int> firstCitizenBlockAtOrAfter(
-  CitizenBlockRef head, BigInt timestamp,
+  CitizenBlockRef head,
+  BigInt timestamp,
   Future<CitizenBlockRef> Function(BigInt) blockAt,
-  Future<int> Function(CitizenBlockRef) timeAt,
-  {bool Function()? active}
-) async {
-  if (head.finality != CitizenBlockFinality.finalized || !head.number.isValidInt ||
-      timestamp <= BigInt.zero || !timestamp.isValidInt) {
+  Future<int> Function(CitizenBlockRef) timeAt, {
+  bool Function()? active,
+}) async {
+  if (head.finality != CitizenBlockFinality.finalized ||
+      !head.number.isValidInt ||
+      timestamp <= BigInt.zero ||
+      !timestamp.isValidInt) {
     throw StateError('查找区块的高度或时间锚无效');
   }
   var low = 1, high = head.number.toInt() + 1;
@@ -608,7 +689,8 @@ Future<int> firstCitizenBlockAtOrAfter(
     if (active?.call() == false) throw StateError('区块查找已取消');
     final middle = low + ((high - low) ~/ 2);
     final block = await blockAt(BigInt.from(middle));
-    if (block.finality != CitizenBlockFinality.finalized || block.number != BigInt.from(middle)) {
+    if (block.finality != CitizenBlockFinality.finalized ||
+        block.number != BigInt.from(middle)) {
       throw StateError('区块与 finalized 请求高度不一致');
     }
     if (BigInt.from(await timeAt(block)) < timestamp) {
@@ -619,7 +701,6 @@ Future<int> firstCitizenBlockAtOrAfter(
   }
   return low;
 }
-
 
 CitizenBlockRef _block(c.citizensdk_block_ref value) => CitizenBlockRef(
   hash: _hex(value.hash, 32),
@@ -845,8 +926,9 @@ final class CitizenBalances {
 
   void finalized(CitizenBlockRef block) {
     if (_closed) return;
-    if (block.finality != CitizenBlockFinality.finalized)
+    if (block.finality != CitizenBlockFinality.finalized) {
       throw StateError('余额需要 finalized 区块');
+    }
     final old = _head;
     if (old != null && block.number < old.number) return;
     if (old != null && block.number == old.number) {
@@ -908,7 +990,9 @@ final class CitizenBalances {
           ].map((value) async {
             try {
               await value;
-            } on Object {}
+            } on Object {
+              // 原读请求自行交付失败；清理仍等待结束后继续移除。
+            }
           }),
         );
         await _storage?.write(id, (_) => null);
@@ -974,8 +1058,9 @@ final class CitizenBalances {
       await _latest(forceRefresh);
     } catch (error) {
       for (final id in ids) {
-        if (!_closed && !_removing.contains(id) && epochs[id] == _epochs[id])
+        if (!_closed && !_removing.contains(id) && epochs[id] == _epochs[id]) {
           accountState(id)._fail(error);
+        }
       }
       rethrow;
     }
@@ -989,8 +1074,9 @@ final class CitizenBalances {
       final futures = <Future<CitizenAccountBalance>>[];
       for (var i = 0; i < ids.length; i++) {
         final id = ids[i];
-        if (_closed || _removing.contains(id) || epochs[id] != _epochs[id])
+        if (_closed || _removing.contains(id) || epochs[id] != _epochs[id]) {
           throw StateError('余额读取已失效');
+        }
         final value = accountState(id).value;
         if (_current(value) && !(forceRefresh && _getFinalizedHead == null)) {
           accountState(id)._accept(value!);
@@ -1052,8 +1138,9 @@ final class CitizenBalances {
         finalized(values.first.block);
         for (var i = 0; i < ids.length; i++) {
           final id = ids[i];
-          if (_closed || _removing.contains(id) || epochs[id] != _epochs[id])
+          if (_closed || _removing.contains(id) || epochs[id] != _epochs[id]) {
             throw StateError('余额读取已失效');
+          }
           final value = await _put(values[i]);
           if (_closed || _removing.contains(id) || epochs[id] != _epochs[id]) {
             throw StateError('余额读取已失效');
@@ -1063,14 +1150,19 @@ final class CitizenBalances {
         }
       } catch (error, stack) {
         for (final id in ids) {
-          if (!_closed && !_removing.contains(id) && epochs[id] == _epochs[id])
+          if (!_closed &&
+              !_removing.contains(id) &&
+              epochs[id] == _epochs[id]) {
             accountState(id)._fail(error);
-          if (!pending[id]!.isCompleted)
+          }
+          if (!pending[id]!.isCompleted) {
             pending[id]!.completeError(error, stack);
+          }
         }
       } finally {
         for (final id in ids) {
-          _inflight.remove(id);
+          // 仅移除已结束任务的引用，不启动或再次等待这个Future。
+          final _ = _inflight.remove(id);
         }
       }
     }
@@ -1085,7 +1177,9 @@ final class CitizenBalances {
       _localReads.values.toList().map((f) async {
         try {
           await f;
-        } on Object {}
+        } on Object {
+          // 原调用方保留读取失败；关闭只负责等待全部已发请求结束。
+        }
       }),
     );
   }
@@ -1107,8 +1201,9 @@ final class CitizenBalances {
       final value = await reading;
       if (_closed ||
           _removing.contains(accountId) ||
-          epoch != _epochs[accountId])
+          epoch != _epochs[accountId]) {
         throw StateError('余额读取已失效');
+      }
       // 在途数据库旧读不能覆盖已经刷新完成的内存值。
       final state = accountState(accountId);
       if (state.value == null && value != null) state._accept(value);
@@ -1256,9 +1351,13 @@ final class _ChainSync {
     try {
       final value = await _read();
       _value = value;
-      for (final out in _listeners.toList()) { out.add(value); }
+      for (final out in _listeners.toList()) {
+        out.add(value);
+      }
     } on Object catch (error, stack) {
-      for (final out in _listeners.toList()) { out.addError(error, stack); }
+      for (final out in _listeners.toList()) {
+        out.addError(error, stack);
+      }
     } finally {
       _pending = null;
       if (!_closed && _listeners.isNotEmpty) {
