@@ -3,6 +3,23 @@ use crate::system_events::decode_metadata_strict;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 
+#[test]
+fn account_evm_address_matches_runtime_vectors_and_rejects_wrong_lengths() {
+    let fixture: serde_json::Value = serde_json::from_str(
+        include_str!("citizenchain-evm-address-v1.json"),
+    ).unwrap();
+    for row in fixture["vectors"].as_array().unwrap() {
+        let account = hex::decode(row["account_id"].as_str().unwrap().trim_start_matches("0x")).unwrap();
+        let request = serde_json::json!({"op":"account_evm_address","account_id":account});
+        let address = super::chain_codec(&[], &serde_json::to_vec(&request).unwrap()).unwrap();
+        assert_eq!(format!("0x{}", hex::encode(address)), row["ethereum_address"].as_str().unwrap());
+    }
+    for length in [0, 20, 31, 33, 64] {
+        let request = serde_json::json!({"op":"account_evm_address","account_id":vec![0u8;length]});
+        assert!(super::chain_codec(&[], &serde_json::to_vec(&request).unwrap()).is_err());
+    }
+}
+
 fn metadata() -> Metadata {
     let text = METADATA_HEX
         .trim()
@@ -46,7 +63,7 @@ fn call_indices(metadata: &Metadata, pallet_name: &str, call_name: &str) -> (u8,
 
 #[test]
 fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
-    // 金标来自第6步准确WASM导出，不能用手写metadata掩盖升级编码变化。
+    // 金标来自本次候选 Runtime 的 metadata_at_version(15) 实际导出，不能用手写metadata掩盖升级编码变化。
     let text = include_str!("citizenchain-revive-v15-metadata.hex").trim();
     let hex = text.strip_prefix("0x").expect("metadata prefix");
     let bytes = (0..hex.len())
@@ -196,7 +213,7 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
         expected
     );
 
-    let id = 42_u64;
+    let id = 42_u128;
     let mut prefix = get_address_root_bytes(&dynamic("InternalVote", "InternalVotesByTicket", ()));
     let id_bytes = id.to_le_bytes();
     prefix.extend_from_slice(&crate::types::account::blake2b::<16>(&id_bytes));
@@ -229,4 +246,19 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
         assert_eq!(call[..2], [19, index]);
         assert_eq!(call[2..], 4660_u128.to_le_bytes());
     }
+}
+
+#[test]
+fn p1_vote_calls_encode_full_u128_compact_from_real_runtime_metadata() {
+    use subxt_core::ext::codec::{Compact,Encode};
+    let raw=hex::decode(include_str!("citizenchain-revive-v15-metadata.hex").trim().trim_start_matches("0x")).unwrap();
+    let metadata=decode_metadata_strict(&raw).unwrap();
+    for id in [0,63,64,16383,16384,(1u128<<30)-1,1u128<<30,u128::MAX] {
+        let request=serde_json::json!({"op":"call","pallet":"JointVote","method":"cast_referendum","args":{"kind":"sequence","value":[{"kind":"integer","value":id.to_string()},{"kind":"bool","value":true}]}});
+        let bytes=super::chain_codec(&raw,&serde_json::to_vec(&request).unwrap()).unwrap();
+        let mut expected=vec![21,1];expected.extend(Compact(id).encode());expected.push(1);
+        assert_eq!(bytes,expected);
+        validate_opaque_runtime_call(&metadata,&OpaqueTransactionCall::try_new(bytes).unwrap()).unwrap();
+    }
+    assert!(validate_opaque_runtime_call(&metadata,&OpaqueTransactionCall::try_new(vec![21,1,1,0,1]).unwrap()).is_err());
 }

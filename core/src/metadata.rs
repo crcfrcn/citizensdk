@@ -85,6 +85,7 @@ enum CodecRequest {
     Call { pallet: String, method: String, args: Field },
     EvmKey { address: Vec<u8> },
     EvmAddress { address: String },
+    AccountEvmAddress { account_id: Vec<u8> },
 }
 
 #[derive(serde::Deserialize)]
@@ -213,6 +214,18 @@ pub(crate) fn chain_codec(metadata: &[u8], request: &[u8]) -> Result<Vec<u8>, En
                 .map_err(|error| invalid_call(error.to_string()));
         }
 
+        CodecRequest::AccountEvmAddress { account_id } => {
+            use sha3::{Digest, Keccak256};
+            if account_id.len() != 32 {
+                return Err(invalid_call("AccountId 必须为 32 字节"));
+            }
+            // Match the pinned Runtime AccountId32Mapper byte for byte.
+            return Ok(if account_id[20..] == [0xee; 12] {
+                account_id[..20].to_vec()
+            } else {
+                Keccak256::digest(&account_id)[12..].to_vec()
+            });
+        }
         CodecRequest::EvmAddress { address } => {
             use sha3::{Digest, Keccak256};
             let value = address.strip_prefix("0x").ok_or_else(|| invalid_call("EVM 地址缺少 0x"))?;

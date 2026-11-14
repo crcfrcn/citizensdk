@@ -185,6 +185,27 @@ void main() {
       }
     }
   });
+  test('原生AccountId和以太坊派生账户共用Runtime地址金标', () {
+    final fixture =
+        jsonDecode(
+              File(
+                'core/tests/citizenchain-evm-address-v1.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    for (final row in fixture['vectors'] as List<dynamic>) {
+      expect(
+        citizenEvmAddressFromAccountId(row['account_id'] as String),
+        row['ethereum_address'],
+      );
+    }
+    for (final invalid in ['0x1234', '0x${'aa' * 33}', '0x${'AA' * 32}']) {
+      expect(
+        () => citizenEvmAddressFromAccountId(invalid),
+        throwsFormatException,
+      );
+    }
+  });
   test('账户文本、字节与 SS58 的无效输入均由正式入口拒绝', () {
     final id = account(0xab);
     for (final invalid in [

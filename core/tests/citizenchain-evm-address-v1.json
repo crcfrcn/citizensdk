@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "vectors": [
+    {
+      "account_id": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "ethereum_address": "0x88386fc84ba6bc95484008f6362f93160ef3e563"
+    },
+    {
+      "account_id": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ethereum_address": "0x8fb9007a8537c8dfdb6a3f8c2cfd64db19d2ec90"
+    },
+    {
+      "account_id": "0x1111111111111111111111111111111111111111eeeeeeeeeeeeeeeeeeeeeeee",
+      "ethereum_address": "0x1111111111111111111111111111111111111111"
+    }
+  ]
+}

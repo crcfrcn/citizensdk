@@ -189,3 +189,28 @@ fn default_account_payload_matches_the_independent_wallet_layout() {
         &SigningTransform::Blake2Domain(DEFAULT_ACCOUNT_CHANGE_DOMAIN.to_vec())
     );
 }
+
+#[test]
+fn u32_year_cid_uses_the_original_fixed_admin_slots() {
+    // 规范 u32 最大年份 CID 恰好占满既有 32 字节；旧短 CID 金标仍保留在原测试中。
+    let cid = "GD001-CGOVU-000000001-4294967295";
+    assert_eq!(cid.len(), 32);
+    let activate = encode_signing_payload(SigningPayload::ActivateAdmin {
+        cid_number: cid, institution_code: *b"CGOV", kind: 0,
+        signer_public_key: [7; 32], timestamp: 123, nonce: [8; 16],
+    }).unwrap();
+    assert_eq!(activate.len(), 97);
+    assert_eq!(&activate[4..36], cid.as_bytes());
+    assert_eq!(&activate[36..40], b"CGOV");
+    assert_eq!(&activate[41..73], &[7; 32]);
+    assert_eq!(&activate[73..81], &123u64.to_le_bytes());
+    assert_eq!(&activate[81..97], &[8; 16]);
+    let decrypt = encode_signing_payload(SigningPayload::DecryptAdmin {
+        cid_number: cid, signer_public_key: [7; 32], timestamp: 123, nonce: [8; 16],
+    }).unwrap();
+    assert_eq!(decrypt.len(), 92);
+    assert_eq!(&decrypt[4..36], cid.as_bytes());
+    assert_eq!(&decrypt[36..68], &[7; 32]);
+    assert_eq!(&decrypt[68..76], &123u64.to_le_bytes());
+    assert_eq!(&decrypt[76..92], &[8; 16]);
+}

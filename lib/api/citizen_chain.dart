@@ -7,6 +7,22 @@ extension Chain on CitizenSdk {
     return _withMemory((m) => _readCapabilities(this, m));
   }
 
+  /// Return a receive address only after finalized state resolves it to this account.
+  /// Computing a candidate address alone never proves that it can receive funds.
+  Future<String> getEvmReceiveAddress(String accountId) async {
+    final address = citizenEvmAddressFromAccountId(accountId);
+    final resolved = await resolveCitizenEvmAddress(
+      address,
+      getFinalizedHead,
+      getRuntimeContext,
+      getStorage,
+    );
+    if (resolved.accountId != accountId) {
+      throw StateError('以太坊收款地址尚未映射到当前账户');
+    }
+    return address;
+  }
+
   Future<String> getGenesisHash() async {
     _requireOpen();
     return _withMemory((m) {
@@ -600,6 +616,15 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
   );
 }
 
+/// Derive the candidate Ethereum representation; readiness requires a chain check.
+String citizenEvmAddressFromAccountId(String accountId) {
+  final bytes = _chainCodec({
+    'op': 'account_evm_address',
+    'account_id': citizenAccountIdBytes(accountId),
+  });
+  return '0x${bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join()}';
+}
+
 /// 统一 EVM 地址校验、精确 metadata 键和无映射规则。
 Future<CitizenEvmAccount> resolveCitizenEvmAddress(
   String address,
@@ -636,6 +661,17 @@ Future<CitizenEvmAccount> resolveCitizenEvmAddress(
   final mapped = await readStorage(block, key);
   if (mapped != null && mapped.length != 32) {
     throw const FormatException('链上以太坊账户映射必须为32字节');
+  }
+  if (mapped == null) {
+    final progress = await readStorage(
+      block,
+      Uint8List.fromList(
+        utf8.encode(':citizenchain:evm-account-mapping:progress:v1'),
+      ),
+    );
+    if (progress != null) {
+      throw StateError('以太坊地址映射正在更新，请稍后重试');
+    }
   }
   final account =
       mapped ?? Uint8List.fromList([...bytes, ...List.filled(12, 0xee)]);

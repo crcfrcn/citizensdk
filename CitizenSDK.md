@@ -1468,7 +1468,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
 - 字段：
   - `cast_popular_vote`: `[pallet=22, call=2] + proposal_id + candidate_subject`
   - `cast_mutual_vote`: `[pallet=22, call=3] + proposal_id + voter_role_code + candidate_subject`
-- 编码：裸 SCALE call data；`proposal_id` 为 `u64`，`candidate_subject` 固定按 `CitizenSubject { cid_number, account_id }` 的同名字段顺序编码，Runtime 当前实现为唯一真源。
+- 编码：裸 SCALE call data；`proposal_id` 为 `u128`，`candidate_subject` 固定按 `CitizenSubject { cid_number, account_id }` 的同名字段顺序编码，Runtime 当前实现为唯一真源。
 - 签名/验签规则：外层链交易由快照内有效选民钱包签名；Popular 从 citizen-identity 的历史资格解析完整选民 `CitizenSubject`，并按 `(proposal_id, voter cid_number)` 防重；Mutual 使用 `institution cid_number + role_code + 当前管理员 account_id` 的机构岗位票据。候选快照和当选结果保存完整 `CitizenSubject`，候选计票以候选 `cid_number` 为唯一键；候选账户必须仍与该 CID 的竞选身份闭环。
 - 禁止兼容：底层 `create_popular_election` / `create_mutual_election` 外部调用物理删除，不保留旧创建载荷或过渡入口。
 - 禁止事项：
@@ -2204,3 +2204,17 @@ SDK 直接消费 CitizenSdkFinalizedBlockChanged，对订阅账户去重并批�
 同金额新证明只更新内存锚点，不重绘金额或重复持久化；重启恢复的磁盘锚仍须重新检查。账户删除先失效并排空在途读取，再移除快照；关闭后不接收新的刷新或迟到写回。交易历史、充值回执与 App 业务事件不再负责触发余额刷新，旧 afterFinalized 接口已移除。
 
 余额调度测试统一注册在lib/test/platform/ffi_test.dart的真实FFI阶段，使用产品既有宿主入口交付的原生库和同一账户编解码。全部余额断言只执行一次；独立的无原生库余额测试入口已删除。完整Rust/Dart检查与真实宿主/FFI检查均完成，才可发起正式自动化；macOS单项检查不能替代完整检查。
+
+### 双格式收款地址
+
+`citizenEvmAddressFromAccountId` 通过既有 Core 编解码 ABI 的 `account_evm_address` 操作派生候选20字节EVM地址；与 Runtime AccountId32Mapper 规则一致，不产生新账户或签名权限。输入只接受规范32字节AccountId，金标为 `core/tests/citizenchain-evm-address-v1.json`。
+
+`CitizenSdk.getEvmReceiveAddress(accountId)` 复用同一最终确认区块的 metadata 和 OriginalAccount 存储读取，只有反解结果严格等于原 AccountId 才返回地址。未登记、冲突、读取失败和错误链状态不能作为可收款成功；纯派生函数不承诺链上已就绪。公开 C ABI、头文件和 FFI 生成签名保持不变。历史回填进行中，缺失映射时还读取同一最终确认块的迁移游标，禁止将旧原生账户误降级为补0xEE的另一个账户；节点原生收款解析使用相同门控。
+
+本轮地址映射消费回归：Rust库310通过、4项原有忽略；真实Core/SQLite/ZXing FFI的Dart回归49通过，Dart分析无问题。Runtime和SDK的地址JSON金标逐字节一致。
+
+
+2026-11-14 提案编号类型调整：复用现有metadata驱动的u128/BigInt能力，不增加C ABI。现有V15 metadata金标同步候选Runtime：proposal_id为u128，year为u32，seq_in_year为u64；提案键/调用ID槽16字节。JSON边界使用十进制字符串；SS58/EVM地址映射不变。
+
+
+2026-11-14 CID年份u32：CID年份由链端生成/解析为u32，CID本体仍为原字符串。最大年份对应32字节完整CID，现有管理员激活/解密32字节槽继续复用，旧CID右补零、签名域及字段偏移不变。仅补充现有签名测试边界夹具，不修改SDK生产接口、ABI或metadata类型。
