@@ -308,7 +308,7 @@ public struct CitizenWalletState: Equatable, Sendable {
 public struct CitizenSignature: Equatable, Sendable {
     public let bytes: Data
     internal init(_ bytes: Data) throws {
-        try CitizenSDKChecks.require(bytes.count == 64, "sr25519 signature must contain exactly 64 bytes")
+        try CitizenSDKChecks.require((bytes.count == 64 || bytes.count == 5261), "账户签名信封必须为 sr 的 64 字节或 PQ 的 5261 字节")
         self.bytes = bytes
     }
 }
@@ -426,3 +426,5 @@ public struct CitizenTransactionHistoryPage: Equatable, Sendable {
     public let records: [CitizenTransactionHistoryRecord]
     public let nextBeforeExecutionID: String?
 }
+
+public enum CitizenAccountDerivation: UInt32, Sendable { case automatic = 0, sr25519 = 1, mldsa65 = 2 }

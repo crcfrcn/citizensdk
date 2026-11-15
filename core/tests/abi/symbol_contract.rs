@@ -1,8 +1,13 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-// 独立显式金标固定154项；各函数与公开头逐项一致，不从生产头生成预期。
-const EXPECTED_EXPORTS: [&str; 154] = [
+// 独立显式金标固定159项；各函数与公开头逐项一致，不从生产头生成预期。
+const EXPECTED_EXPORTS: [&str; 159] = [
+    "citizensdk_add_next_wallet_account_with_algorithm",
+    "citizensdk_add_wallet_accounts_with_algorithm",
+    "citizensdk_default_account_algorithm",
+    "citizensdk_qr_consume_sign_response_bytes",
+    "citizensdk_result_get_signature_bytes",
     "citizensdk_account_id_decode",
     "citizensdk_account_id_encode",
     "citizensdk_ss58_decode",
@@ -304,7 +309,7 @@ fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
         .into_keys()
         .collect();
 
-    assert_eq!(header.len(), 154, "C declaration count changed");
+    assert_eq!(header.len(), 159, "C declaration count changed");
     assert_eq!(rust, expected, "Rust export set changed");
     assert_eq!(header, expected, "C declaration set changed");
     assert!(!rust.contains("citizensdk_set_default_wallet_account"));
@@ -323,6 +328,8 @@ fn product_header_has_only_the_reviewed_mnemonic_crossings() {
         mnemonic_crossings,
         BTreeSet::from([
             "citizensdk_add_wallet_accounts",
+            "citizensdk_add_wallet_accounts_with_algorithm",
+            "citizensdk_add_next_wallet_account_with_algorithm",
             "citizensdk_import_wallet",
             "citizensdk_prepared_wallet_copy_mnemonic",
             "citizensdk_add_next_wallet_account",

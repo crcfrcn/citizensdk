@@ -1260,6 +1260,7 @@ fn generic_signing_intent_routes_hot_and_cold_accounts_without_business_payload_
         let harness = Harness::new();
         let profile = harness.service.import(&known_mnemonic(), "").await.unwrap();
         let hot = profile.master_account_id();
+        let quantum = profile.accounts()[1].account_id();
         let cold = AccountId32::from_bytes([0xaf; 32]);
         harness
             .service
@@ -1311,6 +1312,7 @@ fn hot_default_account_change_signs_the_frozen_order_and_commits_once() {
         let harness = Harness::new();
         let profile = harness.service.import(&known_mnemonic(), "").await.unwrap();
         let hot = profile.master_account_id();
+        let quantum = profile.accounts()[1].account_id();
         let cold = AccountId32::from_bytes([0xb0; 32]);
         harness
             .service
@@ -1320,17 +1322,17 @@ fn hot_default_account_change_signs_the_frozen_order_and_commits_once() {
         let engine = harness.engine(Modules::try_new(Modules::WALLET | Modules::SIGNING).unwrap());
         let before = engine.wallet_state().await.unwrap();
         let authorization = engine
-            .prepare_default_wallet_account_change(before.revision(), vec![cold, hot], 120)
+            .prepare_default_wallet_account_change(before.revision(), vec![cold, hot, quantum], 120)
             .await
             .unwrap();
 
-        assert_eq!(authorization.before_account_ids(), &[hot, cold]);
-        assert_eq!(authorization.ordered_account_ids(), &[cold, hot]);
+        assert_eq!(authorization.before_account_ids(), &[hot, quantum, cold]);
+        assert_eq!(authorization.ordered_account_ids(), &[cold, hot, quantum]);
         let committed = engine
             .authorize_hot_default_wallet_account_change(authorization)
             .await
             .unwrap();
-        assert_eq!(committed.ordered_account_ids(), &[cold, hot]);
+        assert_eq!(committed.ordered_account_ids(), &[cold, hot, quantum]);
         assert_eq!(committed.default_account_id(), Some(cold));
         assert_eq!(committed.revision(), before.revision() + 1);
         engine.dispose().unwrap();
@@ -1391,6 +1393,7 @@ fn default_account_authorization_rejects_stale_or_expired_snapshots() {
         let harness = Harness::new();
         let profile = harness.service.import(&known_mnemonic(), "").await.unwrap();
         let hot = profile.master_account_id();
+        let quantum = profile.accounts()[1].account_id();
         let cold = AccountId32::from_bytes([0xb2; 32]);
         harness
             .service
@@ -1400,7 +1403,7 @@ fn default_account_authorization_rejects_stale_or_expired_snapshots() {
         let engine = harness.engine(Modules::try_new(Modules::WALLET | Modules::SIGNING).unwrap());
         let before = engine.wallet_state().await.unwrap();
         let stale_authorization = engine
-            .prepare_default_wallet_account_change(before.revision(), vec![cold, hot], 120)
+            .prepare_default_wallet_account_change(before.revision(), vec![cold, hot, quantum], 120)
             .await
             .unwrap();
         engine
@@ -1420,7 +1423,7 @@ fn default_account_authorization_rejects_stale_or_expired_snapshots() {
         let current = engine.wallet_state().await.unwrap();
         let expired_authorization = harness
             .service
-            .prepare_default_account_change(current.revision(), vec![cold, hot], 1)
+            .prepare_default_account_change(current.revision(), vec![cold, hot, quantum], 1)
             .await
             .unwrap();
         harness
@@ -1458,8 +1461,9 @@ fn hot_wallet_changes_preserve_cold_accounts_and_cross_mode_duplicates_fail() {
         let mnemonic = known_mnemonic();
         let hot = harness.service.import(&mnemonic, "").await.unwrap();
         let hot_id = hot.master_account_id();
+        let quantum_id = hot.accounts()[1].account_id();
         let state = harness.profiles.snapshot();
-        assert_eq!(state.ordered_account_ids(), &[cold_id, hot_id]);
+        assert_eq!(state.ordered_account_ids(), &[cold_id, hot_id, quantum_id]);
         assert_eq!(state.cold_accounts().len(), 1);
         assert_contract_code(
             harness
@@ -1480,10 +1484,10 @@ fn hot_wallet_changes_preserve_cold_accounts_and_cross_mode_duplicates_fail() {
             .account_id();
         assert_eq!(
             harness.profiles.snapshot().ordered_account_ids(),
-            &[cold_id, hot_id, child]
+            &[cold_id, hot_id, quantum_id, child]
         );
         let removed = harness.service.sign_and_delete_wallet().await.unwrap();
-        assert_eq!(removed.removed_accounts().len(), 2);
+        assert_eq!(removed.removed_accounts().len(), 3);
         assert!(!removed.removed_accounts().contains(&cold_id));
         let state = harness.profiles.snapshot();
         assert!(state.profile().is_none());
@@ -1827,13 +1831,39 @@ fn every_supported_word_count_round_trips_backup_import_accounts_and_deletion() 
 }
 
 #[test]
+fn creating_or_importing_both_zero_accounts_opens_the_hardware_vault_once() {
+    block_on(async {
+        for create in [true, false] {
+            let harness = Harness::new();
+            let profile = if create {
+                create_confirmed(&harness.service, WalletWordCount::Words12, "")
+                    .await
+                    .0
+            } else {
+                harness.service.import(&known_mnemonic(), "").await.unwrap()
+            };
+            assert_eq!(profile.accounts().len(), 2);
+            assert_eq!(harness.secrets.envelope_count(), 2);
+            assert_eq!(harness.vault.ensure_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(harness.vault.open_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(harness.vault.authorize_calls.load(Ordering::SeqCst), 0);
+            // 两份账户密文与持久归属均须保留，不能以少存一个账户来减少认证。
+            for account in profile.accounts() {
+                assert!(harness.secrets.has_envelope(account.secret_ref()));
+                assert_eq!(account.index(), 0);
+            }
+        }
+    });
+}
+
+#[test]
 fn create_add_accounts_usability_and_local_signing_form_one_complete_lifecycle() {
     block_on(async {
         let harness = Harness::new();
         let (created_profile, mnemonic) =
             create_confirmed(&harness.service, WalletWordCount::Words12, "Aa1!中华").await;
         assert_eq!(created_profile.origin(), WalletOrigin::Created);
-        assert_eq!(created_profile.accounts().len(), 1);
+        assert_eq!(created_profile.accounts().len(), 2);
         assert_eq!(
             harness.service.usable_profile().await.unwrap(),
             Some(created_profile.clone())
@@ -1880,7 +1910,7 @@ fn create_add_accounts_usability_and_local_signing_form_one_complete_lifecycle()
             .await
             .expect("重命名账户");
         assert_eq!(renamed.account_by_id(child_one).unwrap().name(), "日常账户");
-        assert_eq!(harness.secrets.envelope_count(), 3);
+        assert_eq!(harness.secrets.envelope_count(), 4);
         assert_eq!(
             harness.service.usable_profile().await.unwrap(),
             Some(renamed)
@@ -2010,7 +2040,7 @@ fn public_profile_and_rename_need_no_unlock_and_invalid_names_never_commit() {
             .await
             .is_err());
         assert_eq!(harness.profiles.snapshot(), before);
-        assert_eq!(harness.secrets.envelope_count(), 1);
+        assert_eq!(harness.secrets.envelope_count(), 2);
         assert_eq!(harness.vault.delete_wallet_calls.load(Ordering::SeqCst), 0);
     });
 }
@@ -2134,7 +2164,7 @@ fn create_converges_when_profile_and_ciphertext_cas_throw_after_writing() {
             harness.service.usable_profile().await.unwrap(),
             Some(profile)
         );
-        assert_eq!(harness.secrets.envelope_count(), 1);
+        assert_eq!(harness.secrets.envelope_count(), 2);
     });
 }
 
@@ -2219,7 +2249,7 @@ fn signed_deletion_authorizes_account_zero_but_plain_wipe_does_not_open_a_secret
             .unwrap();
         let opens = wipe.vault.open_calls.load(Ordering::SeqCst);
         let receipt = wipe.service.wipe_wallets(Ok(())).await.unwrap();
-        assert_eq!(receipt.removed_accounts().len(), 2);
+        assert_eq!(receipt.removed_accounts().len(), 3);
         assert!(receipt.removed_accounts().contains(&cold));
         assert!(receipt
             .removed_accounts()
@@ -2252,7 +2282,7 @@ fn wallet_wipe_receipt_preserves_committed_scope_when_cleanup_fails() {
         *harness.secrets.next_fault.lock().unwrap() = WriteFault::BeforeWrite;
         let receipt = harness.service.wipe_wallets(Ok(())).await.unwrap();
         assert!(receipt.ordered_account_ids().is_empty());
-        assert_eq!(receipt.removed_accounts().len(), 2);
+        assert_eq!(receipt.removed_accounts().len(), 3);
         assert!(receipt
             .removed_accounts()
             .contains(&hot.master_account_id()));
@@ -2312,7 +2342,7 @@ fn headless_next_account_is_atomic_and_does_not_reuse_a_deleted_hole() {
             second.unwrap().accounts().len(),
         ];
         counts.sort();
-        assert_eq!(counts, [2, 3]);
+        assert_eq!(counts, [3, 4]);
         let profile = harness.service.profile().await.unwrap().unwrap();
         harness
             .service
@@ -2449,7 +2479,7 @@ fn concurrent_instances_loser_never_deletes_the_winner_wallet() {
         assert!(harness
             .vault
             .has_key(winner.wallet_index(), winner.generation()));
-        assert_eq!(harness.secrets.envelope_count(), 1);
+        assert_eq!(harness.secrets.envelope_count(), 2);
     });
 }
 
@@ -2518,7 +2548,7 @@ fn add_accounts_write_after_errors_preserve_active_and_every_added_account() {
                 .iter()
                 .map(|account| account.index())
                 .collect::<Vec<_>>(),
-            vec![0, 1, 2, 3]
+            vec![0, 0, 1, 2, 3]
         );
 
         let current = harness.service.profile().await.unwrap().unwrap();
@@ -2530,7 +2560,7 @@ fn add_accounts_write_after_errors_preserve_active_and_every_added_account() {
                 .iter()
                 .map(|account| account.index())
                 .collect::<Vec<_>>(),
-            vec![0, 1, 2, 3]
+            vec![0, 0, 1, 2, 3]
         );
         assert!(current
             .accounts()
@@ -3202,7 +3232,7 @@ fn append_reuses_original_key_for_next_and_explicit_accounts() {
             .unwrap();
         assert_eq!(first.generation(), generation);
         assert_eq!(final_profile.generation(), generation);
-        assert_eq!(final_profile.accounts().len(), 4);
+        assert_eq!(final_profile.accounts().len(), 5);
         assert_eq!(
             harness.vault.ensure_calls.load(Ordering::SeqCst),
             1,
@@ -3345,7 +3375,7 @@ fn invalid_append_and_cancelled_authentication_leave_no_new_facts() {
         );
         assert_eq!(h.vault.authorize_calls.load(Ordering::SeqCst), 1);
         assert_eq!(h.profiles.snapshot(), before);
-        assert_eq!(h.secrets.envelope_count(), 1);
+        assert_eq!(h.secrets.envelope_count(), 2);
     });
 }
 
@@ -3389,7 +3419,7 @@ fn append_rejects_late_authorization_after_cancellation_or_state_replacement() {
                     ContractErrorCode::AuthenticationCancelled
                 },
             );
-            assert_eq!(h.secrets.envelope_count(), 1);
+            assert_eq!(h.secrets.envelope_count(), 2);
             assert_eq!(h.vault.authorize_calls.load(Ordering::SeqCst), 1);
             if !replace {
                 assert_eq!(h.profiles.snapshot(), before);
@@ -3412,7 +3442,7 @@ fn append_storage_failure_rolls_back_without_another_authentication() {
             .await
             .is_err());
         assert_eq!(h.service.profile().await.unwrap(), Some(base));
-        assert_eq!(h.secrets.envelope_count(), 1);
+        assert_eq!(h.secrets.envelope_count(), 2);
         assert_eq!(h.vault.authorize_calls.load(Ordering::SeqCst), 1);
         assert_eq!(h.vault.open_calls.load(Ordering::SeqCst), opens);
         h.service
@@ -3453,7 +3483,7 @@ fn sparse_high_indices_roundtrip_sign_and_stop_sequential_append_at_upper_bound(
             .add_accounts(&mnemonic, "", &[max - 1, 1990, 1989])
             .await
             .unwrap();
-        assert_eq!(profile.accounts().len(), 4);
+        assert_eq!(profile.accounts().len(), 5);
         let profile = h.service.add_next_account(&mnemonic, "").await.unwrap();
         assert!(profile.account_by_index(max).is_some());
         let before = h.profiles.snapshot();
@@ -3463,7 +3493,7 @@ fn sparse_high_indices_roundtrip_sign_and_stop_sequential_append_at_upper_bound(
         // 到顶只禁止max+1，仍可指定空缺；回读和签名只使用实际选择的账户。
         h.service.add_accounts(&mnemonic, "", &[8]).await.unwrap();
         let reloaded = h.service.profile().await.unwrap().unwrap();
-        assert_eq!(reloaded.accounts().len(), 6);
+        assert_eq!(reloaded.accounts().len(), 7);
         for index in [8, 1989, 1990, max - 1, max] {
             h.signing_service()
                 .sign(
@@ -3473,5 +3503,78 @@ fn sparse_high_indices_roundtrip_sign_and_stop_sequential_append_at_upper_bound(
                 .await
                 .unwrap();
         }
+    });
+}
+
+#[test]
+fn shared_mnemonic_creates_both_zero_accounts_and_appends_the_selected_algorithm() {
+    use crate::types::{Modules, SigningIntent, SigningTransform};
+    block_on(async {
+        let harness = Harness::new();
+        let profile = harness.service.import(&known_mnemonic(), "").await.unwrap();
+        assert_eq!(
+            profile
+                .accounts()
+                .iter()
+                .map(|item| item.index())
+                .collect::<Vec<_>>(),
+            vec![0, 0]
+        );
+        assert_eq!(profile.accounts()[0].name(), "经典账户0");
+        assert_eq!(profile.accounts()[1].name(), "量子账户0");
+        let account = profile.accounts()[1].account_id();
+        assert_eq!(
+            hex::encode(account.as_bytes()),
+            "2bf4ba2c02f8ed54231f3fa5b969f74af25c1176e031f420279e07c9dbdc9013"
+        );
+        let appended = harness
+            .service
+            .add_next_account_with_algorithm(
+                &known_mnemonic(),
+                "",
+                mldsa::AccountAlgorithm::Mldsa65,
+            )
+            .await
+            .unwrap();
+        assert_eq!(appended.master_account_id(), profile.master_account_id());
+        let next = appended.accounts().last().unwrap().account_id();
+        assert_ne!(next, account);
+        let both = harness
+            .service
+            .add_next_account_with_algorithm(
+                &known_mnemonic(),
+                "",
+                mldsa::AccountAlgorithm::Sr25519,
+            )
+            .await
+            .unwrap();
+        let classic = both.accounts().last().unwrap();
+        assert_eq!(classic.index(), 1);
+        assert_eq!(classic.name(), "经典账户1");
+        assert_ne!(classic.account_id(), next);
+        assert!(harness
+            .service
+            .add_accounts_with_algorithm(
+                &known_mnemonic(),
+                "",
+                &[1],
+                mldsa::AccountAlgorithm::Mldsa65
+            )
+            .await
+            .is_err());
+        let engine = harness.engine(Modules::try_new(Modules::WALLET | Modules::SIGNING).unwrap());
+        for id in [account, next] {
+            let intent = SigningIntent::try_new(
+                id,
+                b"PQ signing regression".to_vec(),
+                SigningTransform::Raw,
+            )
+            .unwrap();
+            let result = engine.sign_wallet_intent(intent).await.unwrap();
+            assert_eq!(result.signature().to_wire().len(), 5261);
+            assert!(crate::sign::verify(id, b"PQ signing regression", result.signature()).unwrap());
+            assert!(!crate::sign::verify(id, b"changed", result.signature()).unwrap());
+        }
+        engine.dispose().unwrap();
     });
 }

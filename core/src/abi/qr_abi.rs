@@ -43,6 +43,8 @@ mod enabled {
     #[derive(Default)]
     struct OwnerSessions {
         outbound: Option<Sessions>,
+        frames: Vec<String>,
+        frame_started: Option<std::time::Instant>,
         // 通用签名、低层QR会话与钱包修改各自绑定所有权，
         // 任何公开consume入口都不能跨流程解释其它会话。
         generic_signing: HashSet<String>,
@@ -79,7 +81,7 @@ mod enabled {
         Ok(runtime)
     }
     unsafe fn qr_text(view: CitizenSdkBytesView, name: &str) -> FfiResult<String> {
-        let bytes = copy_view(view, name, MAX_QR_TEXT_BYTES)?;
+        let bytes = copy_view(view, name, MAX_QR_JSON_BYTES)?;
         String::from_utf8(bytes).map_err(|_| FfiError::invalid("二维码文本必须是 UTF-8"))
     }
     fn map_qr_error(error: QrError) -> FfiError {
@@ -358,7 +360,7 @@ mod enabled {
         response_text: &str,
     ) -> FfiResult<(
         DefaultAccountChangeAuthorization,
-        crate::types::Sr25519Signature,
+        crate::types::AccountSignature,
     )> {
         let QrCode::SignResponse(response) = parse(response_text).map_err(map_qr_error)? else {
             return Err(FfiError::invalid("external response 不是 QR_V1 签名响应"));
@@ -431,7 +433,23 @@ mod enabled {
             } else {
                 Some(crate::qr::QrScanPurpose::try_from(purpose).map_err(map_qr_error)?)
             };
-            let code = parse(&qr_text(text, "qr text")?).map_err(map_qr_error)?;
+            let raw = qr_text(text, "qr text")?;
+            let raw = if raw.starts_with("GMBQR1:") {
+                mldsa::qr_join(&raw).map_err(FfiError::invalid)?;
+                let mut registry = lock_sessions()?;
+                let owner = registry.entry(handle).or_default();
+                if owner.frame_started.is_none_or(|start| start.elapsed().as_secs() > 300) { owner.frames.clear(); owner.frame_started = Some(std::time::Instant::now()); }
+                if owner.frames.first().is_some_and(|first| first.split(':').nth(1) != raw.split(':').nth(1)) { owner.frames.clear(); owner.frame_started = Some(std::time::Instant::now()); }
+                if !owner.frames.contains(&raw) {
+                    if owner.frames.len() >= mldsa::QR_MAX_FRAMES { return Err(FfiError::invalid("QR frame bound")) }
+                    owner.frames.push(raw);
+                }
+                match mldsa::qr_join(&owner.frames.join("\n")).map_err(FfiError::invalid)? {
+                    Some(complete) => complete,
+                    None => return Err(FfiError::new(CitizenSdkErrorCode::Busy, "QR frames pending")),
+                }
+            } else { raw };
+            let code = parse(&raw).map_err(map_qr_error)?;
             if purpose.is_some_and(|purpose| !code.permits(purpose)) {
                 return Err(FfiError::invalid("二维码用途不符"));
             }
@@ -731,11 +749,31 @@ mod enabled {
             let store = owner.outbound.as_mut().ok_or_else(|| {
                 FfiError::new(CitizenSdkErrorCode::Conflict, "没有对应二维码请求会话")
             })?;
+            if response.signature.algorithm() != 1 { return Err(FfiError::invalid("PQ response requires bounded signature getter")) }
             // 软件验签无宿主 await，短锁确保先验证、后消费、最后输出的原子顺序。
             let (_, signature) = store
                 .verify_and_consume_response(&response)
                 .map_err(map_qr_error)?;
             ptr::copy_nonoverlapping(signature.as_bytes().as_ptr(), out_signature, 64);
+            Ok(())
+        })
+    }
+
+    /// # 安全要求
+    /// 输入与输出缓冲区须在各自声明的长度内有效。
+    #[no_mangle]
+    pub unsafe extern "C" fn citizensdk_qr_consume_sign_response_bytes(handle: CitizenSdkHandle, text: CitizenSdkBytesView, buffer: *mut u8, capacity: u64, required: *mut u64) -> i32 {
+        ffi_status(|| {
+            runtime_with(handle, Modules::QR)?;
+            let QrCode::SignResponse(response) = parse(&qr_text(text, "sign response")?).map_err(map_qr_error)? else { return Err(FfiError::invalid("not a sign response")) };
+            let mut registry = lock_sessions()?;
+            let owner = registry.get_mut(&handle).ok_or_else(|| FfiError::invalid("missing QR session"))?;
+            if owner.default_changes.contains_key(&response.request_id) || owner.generic_signing.contains(&response.request_id) { return Err(FfiError::invalid("session has a dedicated completion route")) }
+            let store = owner.outbound.as_mut().ok_or_else(|| FfiError::invalid("missing QR session"))?;
+            let (_, signature) = store.verify_response(&response).map_err(map_qr_error)?;
+            let bytes = signature.to_wire();
+            copy_to_host(&bytes, buffer, capacity, required)?;
+            if !buffer.is_null() { store.consume_verified(&response.request_id).map_err(map_qr_error)?; }
             Ok(())
         })
     }
@@ -899,3 +937,7 @@ qr_unavailable!(citizensdk_qr_encode_account_id(handle: CitizenSdkHandle, accoun
 qr_unavailable!(citizensdk_qr_encode_document(handle: CitizenSdkHandle, input: CitizenSdkBytesView, output: *mut u8, capacity: u64, required: *mut u64));
 #[cfg(not(feature = "qr"))]
 qr_unavailable!(citizensdk_qr_prepare_account_authorization(handle: CitizenSdkHandle, action: u32, payload: CitizenSdkBytesView, account: CitizenSdkBytesView, output: *mut u8, capacity: u64, required: *mut u64));
+
+#[cfg(not(feature = "qr"))]
+#[no_mangle]
+pub unsafe extern "C" fn citizensdk_qr_consume_sign_response_bytes(_: crate::abi::types::CitizenSdkHandle, _: crate::abi::types::CitizenSdkBytesView, _: *mut u8, _: u64, _: *mut u64) -> i32 { crate::abi::types::CitizenSdkErrorCode::Unsupported as i32 }

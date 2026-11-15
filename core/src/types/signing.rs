@@ -35,7 +35,7 @@ pub const MAX_DEFAULT_ACCOUNT_CHANGE_ACCOUNTS: usize = 256;
 pub enum SigningTransform {
     /// Sign the opaque payload byte-for-byte.
     Raw,
-    /// Match Substrate `SignedPayload::using_encoded`: hash only when length is greater than 256.
+    /// 原生交易审阅材料；两种算法均签署账户绑定的 V5 摘要。
     SubstrateSigningPayload,
     /// Sign `blake2_256(domain || payload)` without assigning meaning to the domain bytes.
     Blake2Domain(Vec<u8>),
@@ -91,7 +91,7 @@ impl SigningIntent {
 
     /// Rebuild the exact bytes that the selected account must sign.
     pub fn signing_message(&self) -> ContractResult<Vec<u8>> {
-        apply_signing_transform(&self.payload, &self.transform)
+        signing_message_for_account(self.account_id, &self.payload, &self.transform, 0)
     }
 
     /// Stable correlation hash over the original opaque payload, independent of its transform.
@@ -112,8 +112,7 @@ pub fn apply_signing_transform(
     transform.validate()?;
     match transform {
         SigningTransform::Raw => Ok(payload.to_vec()),
-        SigningTransform::SubstrateSigningPayload if payload.len() <= 256 => Ok(payload.to_vec()),
-        SigningTransform::SubstrateSigningPayload => Ok(blake2_256(payload)?.to_vec()),
+        SigningTransform::SubstrateSigningPayload => Err(invalid("V5 交易签名必须指定账户")),
         SigningTransform::Blake2Domain(domain) => {
             let mut bytes = Vec::with_capacity(domain.len() + payload.len());
             bytes.extend_from_slice(domain);
@@ -127,19 +126,19 @@ pub fn apply_signing_transform(
 pub struct SigningCompletion {
     account_id: AccountId32,
     payload_hash: Hash32,
-    signature: Sr25519Signature,
+    signature: AccountSignature,
 }
 
 impl SigningCompletion {
-    pub const fn new(
+    pub fn new(
         account_id: AccountId32,
         payload_hash: Hash32,
-        signature: Sr25519Signature,
+        signature: impl Into<AccountSignature>,
     ) -> Self {
         Self {
             account_id,
             payload_hash,
-            signature,
+            signature: signature.into(),
         }
     }
 
@@ -151,11 +150,11 @@ impl SigningCompletion {
         self.payload_hash
     }
 
-    pub const fn signature(&self) -> Sr25519Signature {
-        self.signature
+    pub fn signature(&self) -> AccountSignature {
+        self.signature.clone()
     }
 
-    pub const fn signature_bytes(&self) -> &[u8; 64] {
+    pub fn signature_bytes(&self) -> &[u8] {
         self.signature.as_bytes()
     }
 }
@@ -443,6 +442,19 @@ impl Sr25519PublicKey {
     }
 }
 
+impl From<Sr25519PublicKey> for mldsa::AccountPublicKey {
+    fn from(public: Sr25519PublicKey) -> Self {
+        Self::Sr25519(*public.as_bytes())
+    }
+}
+
+/// 保留既有 sr 调用方式；sr 公钥原字节本身就是该算法派生的 AccountId。
+impl From<Sr25519PublicKey> for AccountId32 {
+    fn from(public: Sr25519PublicKey) -> Self {
+        Self::from_bytes(*public.as_bytes())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Sr25519Signature([u8; 64]);
 
@@ -453,5 +465,78 @@ impl Sr25519Signature {
 
     pub const fn as_bytes(&self) -> &[u8; 64] {
         &self.0
+    }
+}
+
+/// 公开签名结果携带首次认证或冷签传输所需的 PQ 公钥，不携带私密材料。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountSignature {
+    Sr25519(Sr25519Signature),
+    Mldsa65(std::sync::Arc<(mldsa::PublicKey, mldsa::Signature)>),
+}
+impl From<Sr25519Signature> for AccountSignature {
+    fn from(value: Sr25519Signature) -> Self {
+        Self::Sr25519(value)
+    }
+}
+impl AccountSignature {
+    pub const fn from_bytes(bytes: [u8; 64]) -> Self {
+        Self::Sr25519(Sr25519Signature::from_bytes(bytes))
+    }
+    pub fn pq(public: mldsa::PublicKey, signature: mldsa::Signature) -> Self {
+        Self::Mldsa65(std::sync::Arc::new((public, signature)))
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Sr25519(value) => value.as_bytes(),
+            Self::Mldsa65(value) => &value.1 .0,
+        }
+    }
+    pub fn public_key(&self) -> Option<&mldsa::PublicKey> {
+        match self {
+            Self::Mldsa65(value) => Some(&value.0),
+            _ => None,
+        }
+    }
+    pub const fn algorithm(&self) -> u8 {
+        match self {
+            Self::Sr25519(_) => 1,
+            Self::Mldsa65(_) => 2,
+        }
+    }
+}
+
+pub fn signing_message_for_account(
+    account: AccountId32,
+    payload: &[u8],
+    transform: &SigningTransform,
+    algorithm: u8,
+) -> ContractResult<Vec<u8>> {
+    if !matches!(algorithm, 0 | 1 | 2) { return Err(invalid("未知账户签名算法")); }
+    if matches!(transform, SigningTransform::SubstrateSigningPayload) {
+        Ok(mldsa::review_message(account.as_bytes(), payload).to_vec())
+    } else {
+        apply_signing_transform(payload, transform)
+    }
+}
+
+impl AccountSignature {
+    pub fn to_wire(&self) -> Vec<u8> {
+        match self {
+            Self::Sr25519(value) => value.as_bytes().to_vec(),
+            Self::Mldsa65(value) => mldsa::encode_pq_signature(&value.0, &value.1),
+        }
+    }
+    pub fn from_wire(bytes: &[u8]) -> ContractResult<Self> {
+        let (public, signature) = mldsa::signature_parts(bytes).map_err(invalid)?;
+        if public.is_none() {
+            return Ok(Self::from_bytes(
+                signature
+                    .try_into()
+                    .map_err(|_| invalid("签名类型转换失败"))?,
+            ));
+        }
+        let (public, signature) = mldsa::decode_pq_signature(bytes).map_err(invalid)?;
+        Ok(Self::pq(public, signature))
     }
 }

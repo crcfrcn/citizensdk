@@ -643,15 +643,16 @@ fn assert_integrity<T>(result: Result<T, EngineError>) {
 // 经过真实 Engine 准备与冷签执行入口，验证执行不再二次读取链状态或 nonce。
 #[test]
 fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation() {
-    check_prepared_execution(METADATA_HEX);
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    check_prepared_execution(fixture["metadata"].as_str().unwrap(), true);
 }
 
 #[test]
-fn current_revive_metadata_reaches_native_cold_signing_without_more_nonce_reads() {
-    check_prepared_execution(include_str!("citizenchain-revive-v15-metadata.hex"));
+fn old_metadata_cannot_prepare_a_new_v5_native_transaction() {
+    check_prepared_execution(include_str!("citizenchain-revive-v15-metadata.hex"), false);
 }
 
-fn check_prepared_execution(metadata_hex: &str) {
+fn check_prepared_execution(metadata_hex: &str, supported: bool) {
     use citizensdk::types::{
         citizen_ss58_address, CapabilityName, ColdWalletAccount, TransactionExecutionId,
         TransactionHistoryCursor, TransactionHistoryIndex, TransactionHistoryMutation,
@@ -848,9 +849,9 @@ fn check_prepared_execution(metadata_hex: &str) {
                 .collect(),
         )
         .expect("running capabilities");
-    let prepared =
-        futures::executor::block_on(engine.prepare_transaction(account, call_data.clone()))
-            .expect("one preparation");
+    let result = futures::executor::block_on(engine.prepare_transaction(account, call_data.clone()));
+    if !supported { assert!(result.is_err(), "旧交易合同不得继续准备原生交易"); return; }
+    let prepared = result.expect("one V5 preparation");
     let reads = chain.reads.load(Ordering::SeqCst);
     assert_eq!(nonce.0.load(Ordering::SeqCst), 1);
     assert!(

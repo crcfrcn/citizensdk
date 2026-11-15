@@ -178,7 +178,7 @@ mod enabled {
         let request = create(
             handle,
             &account,
-            &bytes(vector["expected"]["signing_message"].as_str().unwrap()),
+            &bytes(vector["expected"]["review_payload"].as_str().unwrap()),
         );
         let signature: [u8; 64] = bytes(
             vector["public_test_signature"]["signature"]
@@ -192,11 +192,11 @@ mod enabled {
             request_id: request.request_id.clone(),
             expires_at: request.expires_at,
             signer_public_key: request.require_signer().unwrap(),
-            signature: Sr25519Signature::from_bytes(signature),
+            signature: Sr25519Signature::from_bytes(signature).into(),
         };
         let mut output = [0xa5; 64];
         let mut invalid = response.clone();
-        invalid.signature = Sr25519Signature::from_bytes([0; 64]);
+        invalid.signature = Sr25519Signature::from_bytes([0; 64]).into();
         let encoded = invalid.encode().unwrap();
         assert_eq!(
             unsafe {

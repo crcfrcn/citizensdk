@@ -136,9 +136,7 @@ pub(crate) fn decode_review(
         return Err(decode("链审阅 action 与实际 Runtime call 索引不一致"));
     }
     let metadata = decode_metadata_strict(context.metadata())?;
-    if !metadata.extrinsic().supported_versions().contains(&4) {
-        return Err(unsupported("Runtime 未提供已验证的 V4 签名载荷合同"));
-    }
+    crate::metadata::native_extensions(&metadata)?;
     let pallet = metadata
         .pallet_by_index((request.action >> 8) as u8)
         .ok_or_else(|| decode("动作 pallet 不存在"))?;
@@ -159,10 +157,7 @@ pub(crate) fn decode_review(
     }
     let mut extensions = Vec::new();
     let mut unique = BTreeSet::new();
-    for extension in metadata
-        .extrinsic()
-        .transaction_extensions_to_use_for_encoding()
-    {
+    for extension in crate::metadata::native_extensions(&metadata)? {
         if !unique.insert(extension.identifier().to_owned()) {
             return Err(decode("重复的交易扩展"));
         }
@@ -185,7 +180,8 @@ pub(crate) fn decode_review(
             | "CheckNonZeroSender"
             | "CheckNonStakeSender"
             | "CheckWeight"
-            | "WeightReclaim" => {
+            | "WeightReclaim"
+            | "EthSetOrigin" => {
                 require_empty(extra)?;
                 require_empty(additional)?;
             }

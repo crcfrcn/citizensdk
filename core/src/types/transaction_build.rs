@@ -1,10 +1,12 @@
-//! Product-independent immutable signing payload and signed extrinsic value objects.
+//! 与产品无关的不可变签名载荷和已编码交易值对象。
 //!
-//! Opaque RuntimeCall bytes remain uninterpreted; applications own their business schema.
+//! RuntimeCall 字节保持不透明，业务载荷格式由应用持有。
 
 use crate::types::account::require_citizenchain_identity;
 use crate::types::AccountId32;
 use crate::types::AccountNonce;
+use crate::types::AccountPublicKey;
+use crate::types::AccountSignature;
 use crate::types::ChainIdentity;
 use crate::types::ContractError;
 use crate::types::ContractErrorCode;
@@ -13,24 +15,22 @@ use crate::types::Hash32;
 use crate::types::RuntimeContext;
 use crate::types::RuntimeVersion;
 use crate::types::SignedExtrinsic;
-use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
 use crate::types::VerifiedBlockRef;
 
-/// Current CitizenSDK transaction preparation uses an immortal era.
+/// 当前交易准备使用永久有效期。
 pub const IMMORTAL_ERA: u8 = 0;
 
-/// Engine 交给 sr25519 的最终 immortal 签名消息及其完整公开来源轨迹。
+/// 最终签名消息及其公开来源轨迹，账户标识与真实签名公钥分别记录。
 ///
-/// `signing_message` 是经过 metadata registry 编码、并已应用 Substrate 长载荷规则的最终
-/// 消息；绑定层不得自行重编码。该对象刻意不实现任何秘密接口。
+/// sr 公钥为 32 字节，PQ 公钥为完整 1952 字节；由 mldsa 核对公钥派生的 AccountId。
+/// `signing_message` 已应用对应算法的消息规则，消费端不得再次变换，也不接收私密材料。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImmortalSigningPayload {
     block: VerifiedBlockRef,
     runtime_version: RuntimeVersion,
     genesis_hash: Hash32,
     signer_account_id: AccountId32,
-    signer_public_key: Sr25519PublicKey,
+    signer_public_key: AccountPublicKey,
     nonce: u64,
     call_data: Vec<u8>,
     signing_message: Vec<u8>,
@@ -43,11 +43,12 @@ impl ImmortalSigningPayload {
         runtime_context: &RuntimeContext,
         nonce: AccountNonce,
         signer_account_id: AccountId32,
-        signer_public_key: Sr25519PublicKey,
+        signer_public_key: impl Into<AccountPublicKey>,
         call_data: Vec<u8>,
         signing_message: Vec<u8>,
     ) -> ContractResult<Self> {
         require_citizenchain_identity(identity)?;
+        let signer_public_key = signer_public_key.into();
         if runtime_context.block() != nonce.best_block() {
             return Err(ContractError::new(
                 ContractErrorCode::Integrity,
@@ -55,11 +56,11 @@ impl ImmortalSigningPayload {
             ));
         }
         if signer_account_id != nonce.account_id()
-            || signer_account_id.as_bytes() != signer_public_key.as_bytes()
+            || signer_account_id.into_bytes() != signer_public_key.account_id()
         {
             return Err(ContractError::new(
                 ContractErrorCode::InvalidArgument,
-                "签名账户、公钥与 nonce 账户不一致",
+                "签名公钥派生账户、源账户与 nonce 账户不一致",
             ));
         }
         if call_data.is_empty() || signing_message.is_empty() {
@@ -96,8 +97,8 @@ impl ImmortalSigningPayload {
         self.signer_account_id
     }
 
-    pub const fn signer_public_key(&self) -> Sr25519PublicKey {
-        self.signer_public_key
+    pub const fn signer_public_key(&self) -> &AccountPublicKey {
+        &self.signer_public_key
     }
 
     pub const fn nonce(&self) -> u64 {
@@ -113,26 +114,25 @@ impl ImmortalSigningPayload {
     }
 }
 
-/// 一笔已完成 sr25519 签名和 SCALE extrinsic 编码的构造结果。
+/// 一笔已完成账户签名和 SCALE 交易编码的构造结果。
 ///
-/// 构造器只封装 Engine 已核验的公开结果；密码学验签仍由 同一sr25519函数完成，合同层不另造
-/// 第二份 sr25519 实现。
+/// 仅封装已核验的公开结果；sr 沿用既有实现，PQ 复用 mldsa，类型合同不重复实现算法。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignedTransactionBuild {
     payload: ImmortalSigningPayload,
-    signature: Sr25519Signature,
+    signature: AccountSignature,
     extrinsic: SignedExtrinsic,
 }
 
 impl SignedTransactionBuild {
-    pub const fn new(
+    pub fn new(
         payload: ImmortalSigningPayload,
-        signature: Sr25519Signature,
+        signature: impl Into<AccountSignature>,
         extrinsic: SignedExtrinsic,
     ) -> Self {
         Self {
             payload,
-            signature,
+            signature: signature.into(),
             extrinsic,
         }
     }
@@ -141,8 +141,8 @@ impl SignedTransactionBuild {
         &self.payload
     }
 
-    pub const fn signature(&self) -> Sr25519Signature {
-        self.signature
+    pub fn signature(&self) -> AccountSignature {
+        self.signature.clone()
     }
 
     pub const fn extrinsic(&self) -> &SignedExtrinsic {

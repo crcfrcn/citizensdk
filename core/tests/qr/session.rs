@@ -1,3 +1,4 @@
+use crate::types::AccountSignature as Sr25519Signature;
 use super::*;
 use crate::types::SecretBuffer;
 
@@ -18,9 +19,9 @@ fn response(request: &SignRequest) -> SignResponse {
         signer_public_key: request.require_signer().unwrap(),
         signature: crate::sign::sign(
             &SecretBuffer::try_new(vec![7; 32]).unwrap(),
-            &request.review_payload,
+            &request.signing_message().unwrap(),
         )
-        .unwrap(),
+        .unwrap().into(),
     }
 }
 fn request(store: &mut QrSessionStore<FixedClock>) -> SignRequest {
@@ -28,7 +29,7 @@ fn request(store: &mut QrSessionStore<FixedClock>) -> SignRequest {
 }
 fn invalid(response: &SignResponse) -> SignResponse {
     let mut value = response.clone();
-    let mut signature = *value.signature.as_bytes();
+    let mut signature: [u8; 64] = value.signature.as_bytes().try_into().unwrap();
     signature[0] ^= 1;
     value.signature = Sr25519Signature::from_bytes(signature);
     value
@@ -170,4 +171,30 @@ fn creation_keeps_expiry_in_cross_platform_signed_integer_domain() {
             .code(),
         QrErrorCode::InvalidField
     );
+}
+
+#[test]
+fn pq_response_round_trips_shared_frames_and_is_consumed_once() {
+    let child = [7; 32];
+    let public = mldsa::public_key(&child);
+    let account = mldsa::account_id(&public);
+    let mut store = QrSessionStore::new(FixedClock(10));
+    let request = store.create(0x0400, Sr25519PublicKey::from_bytes(account), vec![4, 0, 3], 30).unwrap();
+    let message = mldsa::review_message(&account, &request.review_payload);
+    let answer = SignResponse {
+        current_account: None, request_id: request.request_id.clone(), expires_at: request.expires_at,
+        signer_public_key: request.require_signer().unwrap(),
+        signature: crate::types::AccountSignature::pq(public, mldsa::sign(&child, &message).unwrap()),
+    };
+    let encoded = answer.encode().unwrap();
+    let parsed = crate::qr::codec::parse_at(&encoded, 10).unwrap();
+    let normalized = parsed.normalized().unwrap();
+    let frames = normalized["qr_frames"].as_array().unwrap().iter().map(|item| item.as_str().unwrap()).collect::<Vec<_>>();
+    assert!(frames.len() > 1);
+    assert!(frames.iter().all(|frame| frame.len() <= 2331));
+    assert_eq!(mldsa::qr_join(&frames.join("\n")).unwrap(), Some(encoded));
+    assert_eq!(normalized["signature"].as_str().unwrap().len(), 2 + 5261 * 2);
+    let (_, signature) = store.verify_and_consume_response(&answer).unwrap();
+    assert_eq!(signature.to_wire().len(), 5261);
+    assert!(store.verify_and_consume_response(&answer).is_err());
 }

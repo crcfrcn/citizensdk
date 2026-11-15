@@ -6,12 +6,13 @@
 
 use std::collections::HashMap;
 
-use crate::types::apply_signing_transform;
 use crate::types::AccountId32;
 use crate::types::AccountNonce;
 use crate::types::AccountNonceSource;
 use crate::types::ChainIdentity;
 
+use crate::types::AccountPublicKey;
+use crate::types::AccountSignature;
 use crate::types::ContractErrorCode;
 use crate::types::Hash32;
 use crate::types::ImmortalSigningPayload;
@@ -22,26 +23,12 @@ use crate::types::SignedExtrinsic;
 use crate::types::SignedTransactionBuild;
 use crate::types::SigningIntent;
 use crate::types::SigningTransform;
-use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
 use crate::types::TransactionExecutionRecord;
 use crate::types::TransactionPreparationId;
 use crate::types::VerifiedChainClient;
 use crate::types::MAX_PREPARED_TRANSACTIONS;
-use subxt_core::config::substrate::SubstrateExtrinsicParams;
-use subxt_core::config::substrate::SubstrateExtrinsicParamsBuilder;
-use subxt_core::config::substrate::H256;
-use subxt_core::config::ExtrinsicParams;
-use subxt_core::config::ExtrinsicParamsEncoder;
-use subxt_core::config::SubstrateConfig;
 use subxt_core::ext::codec::Compact;
-use subxt_core::ext::codec::Decode;
-use subxt_core::tx;
-use subxt_core::tx::ClientState;
-use subxt_core::tx::RuntimeVersion as SubxtRuntimeVersion;
-use subxt_core::tx::TransactionVersion;
-use subxt_core::utils::AccountId32 as SubxtAccountId32;
-use subxt_core::utils::MultiSignature;
+use subxt_core::ext::codec::{Decode, Encode};
 use zeroize::Zeroize;
 use zeroize::Zeroizing;
 
@@ -60,9 +47,8 @@ pub(crate) struct PreparedTransaction {
     nonce: AccountNonce,
     call_data: Zeroizing<Vec<u8>>,
     full_signing_payload: Zeroizing<Vec<u8>>,
-    signing_message: Zeroizing<Vec<u8>>,
-    extrinsic_template: Zeroizing<Vec<u8>>,
-    signature_offset: usize,
+    extension_bytes: Vec<u8>,
+    pq_registered: bool,
     signed_extensions: Vec<String>,
     generation: u64,
 }
@@ -108,9 +94,13 @@ impl PreparedTransaction {
     pub(crate) fn call_data(&self) -> &[u8] {
         &self.call_data
     }
-    /// 签名只覆盖模板中的固定 64-byte 槽，因此签名前即可精确知道持久 extrinsic 长度。
+    /// 在签名器确定使用 sr 或 PQ 前，预留足够的交易历史容量。
     pub(crate) fn signed_extrinsic_len(&self) -> usize {
-        self.extrinsic_template.len()
+        self.call_data.len()
+            + self.extension_bytes.len()
+            + mldsa::PUBLIC_KEY_BYTES
+            + mldsa::SIGNATURE_BYTES
+            + 40
     }
     pub(crate) const fn identity(&self) -> &ChainIdentity {
         &self.identity
@@ -122,15 +112,20 @@ impl PreparedTransaction {
         self.nonce
     }
 
-    /// Fill the single frozen signature slot after an independently completed hot/QR signature.
+    /// 核对签名账户与冻结消息后，完成热签或冷签交易组装。
     pub(crate) fn complete_with_signature(
         self,
 
-        signature: Sr25519Signature,
+        signature: AccountSignature,
     ) -> Result<SignedTransactionBuild, EngineError> {
-        let public_key =
-            Sr25519PublicKey::from_bytes(self.summary.source_account_id().into_bytes());
-        if !crate::sign::verify(public_key, self.signing_message.as_slice(), signature)? {
+        let signer_account_id = self.summary.source_account_id();
+        let message = crate::types::signing_message_for_account(
+            self.summary.source_account_id(),
+            &self.full_signing_payload,
+            &SigningTransform::SubstrateSigningPayload,
+            signature.algorithm(),
+        )?;
+        if !crate::sign::verify(signer_account_id, &message, signature.clone())? {
             return Err(EngineError::contract(
                 ContractErrorCode::Integrity,
                 "transaction signature 与冻结 signer message/source 不一致",
@@ -139,25 +134,37 @@ impl PreparedTransaction {
         self.finish(signature)
     }
 
-    fn finish(self, signature: Sr25519Signature) -> Result<SignedTransactionBuild, EngineError> {
-        let mut encoded = self.extrinsic_template.to_vec();
-        let end = self
-            .signature_offset
-            .checked_add(64)
-            .ok_or_else(|| EngineError::contract(ContractErrorCode::Internal, "签名偏移溢出"))?;
-        encoded
-            .get_mut(self.signature_offset..end)
-            .ok_or_else(|| EngineError::contract(ContractErrorCode::Integrity, "签名槽无效"))?
-            .copy_from_slice(signature.as_bytes());
+    fn finish(self, signature: AccountSignature) -> Result<SignedTransactionBuild, EngineError> {
+        let account = self.summary.source_account_id().into_bytes();
+        let message = crate::types::signing_message_for_account(
+            self.summary.source_account_id(),
+            &self.full_signing_payload,
+            &SigningTransform::SubstrateSigningPayload,
+            signature.algorithm(),
+        )?;
+        let proof = match &signature {
+            AccountSignature::Sr25519(value) => mldsa::Proof::Sr25519 {
+                account,
+                signature: *value.as_bytes(),
+            },
+            AccountSignature::Mldsa65(value) => {
+                mldsa::transaction_proof(account, &value.0, &value.1, self.pq_registered)
+            }
+        };
+        let encoded = mldsa::encode_transaction(&proof, &self.extension_bytes, &self.call_data);
         let extrinsic = SignedExtrinsic::try_new(encoded)?;
+        let signer_public_key = match &signature {
+            AccountSignature::Sr25519(_) => AccountPublicKey::Sr25519(account),
+            AccountSignature::Mldsa65(value) => AccountPublicKey::from(value.0.clone()),
+        };
         let payload = ImmortalSigningPayload::try_new(
             &self.identity,
             &self.runtime_context,
             self.nonce,
             self.summary.source_account_id(),
-            Sr25519PublicKey::from_bytes(self.summary.source_account_id().into_bytes()),
+            signer_public_key,
             self.call_data.to_vec(),
-            self.signing_message.to_vec(),
+            message,
         )?;
         Ok(SignedTransactionBuild::new(payload, signature, extrinsic))
     }
@@ -310,69 +317,33 @@ pub(crate) async fn build_prepared_transaction(
             "AccountNonceSource 返回了不同账户或不同 best 块的 nonce",
         ));
     }
-    if tx::suggested_version(&metadata)
-        .map_err(|error| EngineError::InvalidMetadata(error.to_string()))?
-        != TransactionVersion::V4
-    {
-        return Err(EngineError::contract(
-            ContractErrorCode::Unsupported,
-            "当前链 extrinsic 格式不受交易准备器支持",
-        ));
-    }
+    let full_metadata = &metadata;
+    crate::metadata::native_extensions(&metadata)?;
+    let address = subxt_core::dynamic::storage(
+        "Mldsa",
+        "PqPublicKey",
+        vec![subxt_core::dynamic::Value::from_bytes(
+            source_account_id.as_bytes(),
+        )],
+    );
+    let key = subxt_core::storage::get_address_bytes(&address, full_metadata)
+        .map_err(|e| EngineError::InvalidMetadata(e.to_string()))?;
+    let finalized = chain_client.get_finalized_head().await?;
+    let pq_registered = chain_client
+        .get_finalized_storage_at(finalized, key)
+        .await?
+        .is_some();
     let extensions = signed_extension_identifiers(&metadata);
-    let state = ClientState::<SubstrateConfig> {
-        genesis_hash: H256::from(identity.genesis_hash().into_bytes()),
-        runtime_version: SubxtRuntimeVersion {
-            spec_version: runtime_context.version().spec_version(),
-            transaction_version: runtime_context.version().transaction_version(),
-        },
-        metadata,
-    };
-    let params = SubstrateExtrinsicParamsBuilder::<SubstrateConfig>::new()
-        .immortal()
-        .nonce(nonce.value())
-        .tip(0)
-        .build();
-    let full_params =
-        <SubstrateExtrinsicParams<SubstrateConfig> as ExtrinsicParams<SubstrateConfig>>::new(
-            &state,
-            SubstrateExtrinsicParamsBuilder::<SubstrateConfig>::new()
-                .immortal()
-                .nonce(nonce.value())
-                .tip(0)
-                .build(),
-        )
-        .map_err(|error| map_extrinsic_parameter_error(error.to_string()))?;
-    let mut full_signing_payload = call.as_bytes().to_vec();
-    full_params.encode_signer_payload_value_to(&mut full_signing_payload);
-    full_params.encode_implicit_to(&mut full_signing_payload);
-    let raw_call = ExactCallData(call.as_bytes());
-    let partial = tx::create_v4_signed(&raw_call, &state, params)
-        .map_err(|error| map_extrinsic_parameter_error(error.to_string()))?;
-    if partial.call_data() != call.as_bytes() {
-        return Err(EngineError::contract(
-            ContractErrorCode::Integrity,
-            "交易构造器改写了已验证的 opaque callData",
-        ));
-    }
-    let signing_message = partial.signer_payload();
-    let derived_signing_message = apply_signing_transform(
-        &full_signing_payload,
-        &SigningTransform::SubstrateSigningPayload,
+    let (extension_bytes, implicit) = crate::metadata::native_extension_bytes(
+        &metadata,
+        identity.genesis_hash().into_bytes(),
+        runtime_context.version().spec_version(),
+        runtime_context.version().transaction_version(),
+        nonce.value(),
     )?;
-    if signing_message != derived_signing_message {
-        return Err(EngineError::contract(
-            ContractErrorCode::Integrity,
-            "完整 SigningPayload 与交易构造器 signer message 不一致",
-        ));
-    }
-    let template = partial
-        .sign_with_account_and_signature(
-            SubxtAccountId32(source_account_id.into_bytes()),
-            &MultiSignature::Sr25519([0; 64]),
-        )
-        .into_encoded();
-    let signature_offset = validate_template_and_signature_offset(&template)?;
+    let mut full_signing_payload = call.as_bytes().to_vec();
+    full_signing_payload.extend_from_slice(&extension_bytes);
+    full_signing_payload.extend_from_slice(&implicit);
     let summary = PreparedTransactionSummary::try_new(
         preparation_id,
         source_account_id,
@@ -388,9 +359,8 @@ pub(crate) async fn build_prepared_transaction(
         nonce,
         call_data: Zeroizing::new(call.into_bytes()),
         full_signing_payload: Zeroizing::new(full_signing_payload),
-        signing_message: Zeroizing::new(signing_message),
-        extrinsic_template: Zeroizing::new(template),
-        signature_offset,
+        extension_bytes,
+        pq_registered,
         signed_extensions: extensions,
         generation,
     };
@@ -403,10 +373,11 @@ pub(crate) async fn build_prepared_transaction(
 /// Recovery never signs again. This check proves that the stored account, call, nonce, runtime,
 /// signature and complete encoded extrinsic are the same bytes originally authorized before the
 /// caller is allowed to resubmit those bytes.
-pub(crate) fn validate_persisted_transaction_execution(
+pub(crate) async fn validate_persisted_transaction_execution(
     record: &TransactionExecutionRecord,
     identity: &ChainIdentity,
     runtime_context: &RuntimeContext,
+    chain: &dyn VerifiedChainClient,
 ) -> Result<(), EngineError> {
     if identity.genesis_hash() != record.genesis_hash()
         || runtime_context.version() != record.runtime_version()
@@ -423,117 +394,83 @@ pub(crate) fn validate_persisted_transaction_execution(
         &metadata,
         &OpaqueTransactionCall::try_new(record.call_data().to_vec())?,
     )?;
-    if tx::suggested_version(&metadata)
-        .map_err(|error| EngineError::InvalidMetadata(error.to_string()))?
-        != TransactionVersion::V4
-    {
-        return Err(EngineError::contract(
-            ContractErrorCode::Unsupported,
-            "通用交易恢复只接受已冻结的 signed extrinsic V4",
-        ));
-    }
-    let state = ClientState::<SubstrateConfig> {
-        genesis_hash: H256::from(identity.genesis_hash().into_bytes()),
-        runtime_version: SubxtRuntimeVersion {
-            spec_version: runtime_context.version().spec_version(),
-            transaction_version: runtime_context.version().transaction_version(),
-        },
-        metadata,
-    };
-    let partial = tx::create_v4_signed(
-        &ExactCallData(record.call_data()),
-        &state,
-        SubstrateExtrinsicParamsBuilder::<SubstrateConfig>::new()
-            .immortal()
-            .nonce(record.nonce())
-            .tip(0)
-            .build(),
-    )
-    .map_err(|error| map_extrinsic_parameter_error(error.to_string()))?;
+    let (explicit, implicit) = crate::metadata::native_extension_bytes(
+        &metadata,
+        identity.genesis_hash().into_bytes(),
+        runtime_context.version().spec_version(),
+        runtime_context.version().transaction_version(),
+        record.nonce(),
+    )?;
     let mut body = record.signed_extrinsic().as_bytes();
     let declared = Compact::<u32>::decode(&mut body)
-        .map_err(|_| {
-            EngineError::contract(ContractErrorCode::Integrity, "恢复 extrinsic 长度无效")
-        })?
+        .map_err(|e| EngineError::InvalidMetadata(e.to_string()))?
         .0 as usize;
-    if declared != body.len() || body.len() < 99 || body[0] != 0x84 || body[1] != 0 || body[34] != 1
-    {
+    if declared != body.len() || !body.starts_with(&[0x45, mldsa::EXTENSION_VERSION]) {
         return Err(EngineError::contract(
             ContractErrorCode::Integrity,
-            "恢复 extrinsic 不是准确 sr25519 V4",
+            "恢复交易不符合唯一 V5 合同",
         ));
     }
-    let mut signature = [0_u8; 64];
-    signature.copy_from_slice(&body[35..99]);
-    let encoded = partial
-        .sign_with_account_and_signature(
-            SubxtAccountId32(record.account_id().into_bytes()),
-            &MultiSignature::Sr25519(signature),
-        )
-        .into_encoded();
-    if encoded != record.signed_extrinsic().as_bytes()
-        || !crate::sign::verify(
-            Sr25519PublicKey::from_bytes(record.account_id().into_bytes()),
-            partial.signer_payload(),
-            Sr25519Signature::from_bytes(signature),
-        )?
+    let proof = mldsa::Proof::decode(&mut &body[2..])
+        .map_err(|e| EngineError::InvalidMetadata(e.to_string()))?;
+    let account = record.account_id().into_bytes();
+    let implication = mldsa::transaction_implication(record.call_data(), &explicit, &implicit);
+    let message = mldsa::transaction_message(&account, &implication);
+    let valid = match &proof {
+        mldsa::Proof::Sr25519 {
+            account: signer,
+            signature,
+        } => {
+            *signer == account
+                && crate::sign::verify(
+                    record.account_id(),
+                    &message,
+                    AccountSignature::from_bytes(*signature),
+                )?
+        }
+        mldsa::Proof::First {
+            account: signer,
+            public,
+            signature,
+        } => {
+            *signer == account
+                && mldsa::verify_account_signature(&account, public, &message, signature)
+        }
+        mldsa::Proof::Stored {
+            account: signer,
+            signature,
+        } => {
+            let address = subxt_core::dynamic::storage(
+                "Mldsa",
+                "PqPublicKey",
+                vec![subxt_core::dynamic::Value::from_bytes(account)],
+            );
+            let key = subxt_core::storage::get_address_bytes(&address, &metadata)
+                .map_err(|e| EngineError::InvalidMetadata(e.to_string()))?;
+            let bytes = chain
+                .get_storage_at(runtime_context.block(), key)
+                .await?
+                .ok_or_else(|| {
+                    EngineError::contract(ContractErrorCode::Integrity, "缺少已登记 PQ 公钥")
+                })?;
+            let mut remaining = bytes.as_slice();
+            let public = mldsa::PublicKey::decode(&mut remaining)
+                .map_err(|e| EngineError::InvalidMetadata(e.to_string()))?;
+            remaining.is_empty()
+                && *signer == account
+                && mldsa::verify_account_signature(&account, &public, &message, signature)
+        }
+    };
+    if !valid
+        || mldsa::encode_transaction(&proof, &explicit, record.call_data())
+            != record.signed_extrinsic().as_bytes()
     {
         return Err(EngineError::contract(
             ContractErrorCode::Integrity,
-            "恢复 extrinsic 的账户、调用、nonce 或签名不一致",
+            "恢复交易的账户、调用、nonce 或签名不一致",
         ));
     }
     Ok(())
-}
-
-fn validate_template_and_signature_offset(template: &[u8]) -> Result<usize, EngineError> {
-    let mut body = template;
-    let length = Compact::<u32>::decode(&mut body)
-        .map_err(|_| {
-            EngineError::contract(ContractErrorCode::Integrity, "extrinsic 模板长度前缀无效")
-        })?
-        .0 as usize;
-    if length != body.len() {
-        return Err(EngineError::contract(
-            ContractErrorCode::Integrity,
-            "extrinsic 模板长度前缀与正文不一致",
-        ));
-    }
-    let prefix = template.len().checked_sub(body.len()).ok_or_else(|| {
-        EngineError::contract(ContractErrorCode::Internal, "extrinsic 模板前缀溢出")
-    })?;
-    if body.len() < 99 || body[0] != 0x84 || body[1] != 0 || body[34] != 1 {
-        return Err(EngineError::contract(
-            ContractErrorCode::Integrity,
-            "extrinsic 模板不是预期的 sr25519 signed Substrate 形状",
-        ));
-    }
-    prefix
-        .checked_add(35)
-        .ok_or_else(|| EngineError::contract(ContractErrorCode::Internal, "签名槽偏移溢出"))
-}
-
-fn map_extrinsic_parameter_error(message: String) -> EngineError {
-    if message.contains("unknown transaction extension")
-        || message.contains("UnknownTransactionExtension")
-    {
-        EngineError::contract(ContractErrorCode::Unsupported, message)
-    } else {
-        EngineError::InvalidMetadata(message)
-    }
-}
-
-struct ExactCallData<'a>(&'a [u8]);
-
-impl tx::payload::Payload for ExactCallData<'_> {
-    fn encode_call_data_to(
-        &self,
-        _metadata: &subxt_core::Metadata,
-        output: &mut Vec<u8>,
-    ) -> Result<(), subxt_core::Error> {
-        output.extend_from_slice(self.0);
-        Ok(())
-    }
 }
 
 #[cfg(test)]

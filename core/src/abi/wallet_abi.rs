@@ -1532,10 +1532,10 @@ pub unsafe extern "C" fn citizensdk_delete_account(
 }
 
 #[no_mangle]
-/// Creates a non-persistent, SDK-owned recovery-phrase session.
+/// 创建由SDK持有、尚未持久化的助记词会话。
 ///
 /// # Safety
-/// `password` is borrowed only for this call and `out_request_id` is writable.
+/// 密码只在调用期间借用，请求编号输出指针必须可写。
 pub unsafe extern "C" fn citizensdk_prepare_wallet_creation(
     handle: CitizenSdkHandle,
     word_count: u32,
@@ -1724,10 +1724,10 @@ pub unsafe extern "C" fn citizensdk_commit_wallet_creation(
 }
 
 #[no_mangle]
-/// Imports a wallet from a borrowed recovery phrase and optional password.
+/// 用同一助记词与可选密码导入钱包；开发期同时建立两种账户0。
 ///
 /// # Safety
-/// Secret views are borrowed only for this call; `out_request_id` is writable.
+/// 秘密只在调用期间借用，请求编号输出指针必须可写。
 pub unsafe extern "C" fn citizensdk_import_wallet(
     handle: CitizenSdkHandle,
     mnemonic: CitizenSdkBytesView,
@@ -1762,16 +1762,41 @@ pub unsafe extern "C" fn citizensdk_import_wallet(
 }
 
 #[no_mangle]
-/// Derives and persists additional `//index` accounts for the current wallet.
+/// 为当前钱包派生并保存指定序号的默认签名方式账户。
 ///
-/// # Safety
-/// Secret/index inputs are borrowed only for this call; output is writable.
+/// # 安全
+/// 秘密和序号只在调用期间借用，输出指针必须可写。
 pub unsafe extern "C" fn citizensdk_add_wallet_accounts(
     handle: CitizenSdkHandle,
     mnemonic: CitizenSdkBytesView,
     password: CitizenSdkBytesView,
     indices: *const u32,
     index_count: u32,
+    out_request_id: *mut CitizenSdkRequestId,
+) -> i32 {
+    citizensdk_add_wallet_accounts_with_algorithm(
+        handle,
+        mnemonic,
+        password,
+        indices,
+        index_count,
+        0,
+        out_request_id,
+    )
+}
+
+#[no_mangle]
+/// 按指定签名方式添加账户；0 为当前构建默认方式，1 为经典，2 为量子。
+///
+/// # 安全
+/// 输入只在调用期间借用，输出请求指针必须可写。
+pub unsafe extern "C" fn citizensdk_add_wallet_accounts_with_algorithm(
+    handle: CitizenSdkHandle,
+    mnemonic: CitizenSdkBytesView,
+    password: CitizenSdkBytesView,
+    indices: *const u32,
+    index_count: u32,
+    algorithm: u32,
     out_request_id: *mut CitizenSdkRequestId,
 ) -> i32 {
     #[cfg(not(feature = "wallet"))]
@@ -1782,6 +1807,7 @@ pub unsafe extern "C" fn citizensdk_add_wallet_accounts(
             password,
             indices,
             index_count,
+            algorithm,
             out_request_id,
         );
         ffi_status(|| {
@@ -1794,6 +1820,8 @@ pub unsafe extern "C" fn citizensdk_add_wallet_accounts(
     #[cfg(feature = "wallet")]
     {
         ffi_status(|| {
+            let algorithm = mldsa::AccountAlgorithm::from_option(algorithm)
+                .map_err(|message| FfiError::new(CitizenSdkErrorCode::Unsupported, message))?;
             let runtime = handles::get(handle)?;
             let mnemonic =
                 secret_buffer(mnemonic, "wallet mnemonic", MAX_WALLET_SECRET_INPUT_BYTES)?;
@@ -1807,11 +1835,12 @@ pub unsafe extern "C" fn citizensdk_add_wallet_accounts(
                     runtime.refresh_local_wallet_capabilities()?;
                     let cancelled = runtime.request_cancellation_flag(request_id)?;
                     let profile = runtime.drive_local(add_accounts_or_cancellation(
-                        runtime.engine().add_wallet_accounts(
+                        runtime.engine().add_wallet_accounts_with_algorithm(
                             mnemonic,
                             password,
                             indices,
                             Arc::clone(&cancelled),
+                            algorithm,
                         ),
                         cancellation,
                         cancelled,
@@ -1834,14 +1863,31 @@ pub unsafe extern "C" fn citizensdk_add_next_wallet_account(
     password: CitizenSdkBytesView,
     out_request_id: *mut CitizenSdkRequestId,
 ) -> i32 {
+    citizensdk_add_next_wallet_account_with_algorithm(handle, mnemonic, password, 0, out_request_id)
+}
+
+#[no_mangle]
+/// 按指定签名方式添加账户；0 为当前构建默认方式，1 为经典，2 为量子。
+///
+/// # 安全
+/// 输入只在调用期间借用，输出请求指针必须可写。
+pub unsafe extern "C" fn citizensdk_add_next_wallet_account_with_algorithm(
+    handle: CitizenSdkHandle,
+    mnemonic: CitizenSdkBytesView,
+    password: CitizenSdkBytesView,
+    algorithm: u32,
+    out_request_id: *mut CitizenSdkRequestId,
+) -> i32 {
     #[cfg(not(feature = "wallet"))]
     {
-        let _ = (handle, mnemonic, password, out_request_id);
+        let _ = (handle, mnemonic, password, algorithm, out_request_id);
         ffi_status(|| Err(module_unsupported("wallet")))
     }
     #[cfg(feature = "wallet")]
     {
         ffi_status(|| {
+            let algorithm = mldsa::AccountAlgorithm::from_option(algorithm)
+                .map_err(|message| FfiError::new(CitizenSdkErrorCode::Unsupported, message))?;
             let runtime = handles::get(handle)?;
             let mnemonic =
                 secret_buffer(mnemonic, "wallet mnemonic", MAX_WALLET_SECRET_INPUT_BYTES)?;
@@ -1854,10 +1900,11 @@ pub unsafe extern "C" fn citizensdk_add_next_wallet_account(
                     runtime.refresh_local_wallet_capabilities()?;
                     let cancelled = runtime.request_cancellation_flag(request_id)?;
                     let profile = runtime.drive_local(add_accounts_or_cancellation(
-                        runtime.engine().add_next_wallet_account(
+                        runtime.engine().add_next_wallet_account_with_algorithm(
                             mnemonic,
                             password,
                             Arc::clone(&cancelled),
+                            algorithm,
                         ),
                         cancellation,
                         cancelled,
@@ -2260,7 +2307,7 @@ pub unsafe extern "C" fn citizensdk_consume_external_signature(
             let response = utf8(
                 response,
                 "external signing response",
-                crate::qr::MAX_QR_TEXT_BYTES,
+                crate::qr::MAX_QR_JSON_BYTES,
             )?;
             accept_and_write(runtime, out_request_id, move |_, _, _| {
                 let completion = crate::abi::qr_abi::consume_external_qr_session(
@@ -2435,7 +2482,7 @@ pub unsafe extern "C" fn citizensdk_consume_default_account_change(
             let response = utf8(
                 response,
                 "default change response",
-                crate::qr::MAX_QR_TEXT_BYTES,
+                crate::qr::MAX_QR_JSON_BYTES,
             )?;
             accept_wallet_change_and_write(runtime, out_request_id, false, move |runtime, _, _| {
                 let (authorization, signature) =
@@ -2958,6 +3005,7 @@ pub unsafe extern "C" fn citizensdk_result_get_signing_outcome(
         let ResultPayload::SigningOutcome(outcome) = &owned.payload else {
             return Err(wrong_result("signing outcome"));
         };
+        let signature_wire = match outcome { SigningOutcomePayload::Completed(completion) => completion.signature().to_wire(), _ => Vec::new() };
         let (info, signature, session_id, transport_request) = match outcome {
             SigningOutcomePayload::Completed(completion) => (
                 CitizenSdkSigningOutcomeInfo {
@@ -2965,10 +3013,10 @@ pub unsafe extern "C" fn citizensdk_result_get_signing_outcome(
                     transport: CitizenSdkExternalSignerTransport::None as u32,
                     account_id: account_id_to_abi(completion.account_id()),
                     payload_hash: completion.payload_hash().into_bytes(),
-                    signature_len: 64,
+                    signature_len: signature_wire.len() as u64,
                     ..CitizenSdkSigningOutcomeInfo::default()
                 },
-                completion.signature_bytes().as_slice(),
+                signature_wire.as_slice(),
                 &[][..],
                 &[][..],
             ),
@@ -3252,6 +3300,7 @@ pub unsafe extern "C" fn citizensdk_result_get_signature(
         let ResultPayload::Signature(signature) = owned.payload else {
             return Err(wrong_result("sr25519 signature"));
         };
+        if signature.as_bytes().len() != 64 { return Err(FfiError::invalid("ML-DSA signature requires the bounded bytes getter")) }
         ptr::copy_nonoverlapping(signature.as_bytes().as_ptr(), out_signature_64, 64);
         Ok(())
     })
@@ -3568,3 +3617,18 @@ mod tests;
 #[cfg(all(test, not(feature = "chain")))]
 #[path = "../../tests/abi/disabled.rs"]
 mod no_chain_tests;
+
+#[no_mangle]
+/// 复制携带算法所需公钥的签名信封，输出缓冲区由调用方持有。
+/// # 安全要求
+/// 输出缓冲区须在声明容量内可写，所需长度指针也须可写。
+pub unsafe extern "C" fn citizensdk_result_get_signature_bytes(result: CitizenSdkResultHandle, buffer: *mut u8, capacity: u64, required: *mut u64) -> i32 {
+    ffi_status(|| {
+        let owned = ownership::get(result)?;
+        let ResultPayload::Signature(signature) = &owned.payload else { return Err(wrong_result("signature")) };
+        copy_to_host(&signature.to_wire(), buffer, capacity, required)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn citizensdk_default_account_algorithm() -> u32 { mldsa::AccountAlgorithm::default() as u32 }

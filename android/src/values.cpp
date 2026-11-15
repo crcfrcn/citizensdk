@@ -402,7 +402,7 @@ jobject signing(JNIEnv *env, uint64_t result, bool change) {
     account = normal.account_id.bytes;
     hash = normal.payload_hash;
   }
-  if (signatureSize > 64 || sessionSize > 128 || requestSize > 2331) {
+  if (signatureSize > 5261 || sessionSize > 128 || requestSize > 2331) {
     throw_sdk(env, CITIZENSDK_ERROR_INTEGRITY, "Core签名文本超界");
     throw JavaFailure{};
   }
@@ -679,8 +679,11 @@ jobject result_value(JNIEnv *env, CitizenSdkHostBridge *bridge,
     return accounts.value;
   }
   case CITIZENSDK_RESULT_SIGNATURE: {
-    std::array<uint8_t, 64> value{};
-    require(env, citizensdk_result_get_signature(result, value.data()));
+    uint64_t required = 0;
+    require(env, citizensdk_result_get_signature_bytes(result, nullptr, 0, &required));
+    if (required != 64 && required != 5261) { throw std::runtime_error("invalid signature envelope"); }
+    std::vector<uint8_t> value(required);
+    require(env, citizensdk_result_get_signature_bytes(result, value.data(), value.size(), &required));
     return model(env, "CitizenSignature", "([B)V",
                  bytes(env, value.data(), value.size()));
   }

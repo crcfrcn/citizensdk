@@ -186,3 +186,26 @@ fn wallet_profile_rebuild_helpers_preserve_identity_and_delete_only_children() {
             .is_err());
     }
 }
+
+#[test]
+fn wallet_profile_allows_two_algorithms_at_one_index_but_keeps_account_ids_unique() {
+    let master = AccountId32::from_bytes([1; 32]);
+    let build = |accounts| {
+        WalletProfile::try_new(
+            0,
+            VaultGeneration::from_bytes([1; 16]),
+            master,
+            WalletOrigin::Created,
+            100,
+            master,
+            accounts,
+        )
+    };
+    let accounts = vec![wallet_account(0, 1, 3), wallet_account(0, 2, 4)];
+    assert!(build(accounts.clone()).is_ok());
+    let mut three = accounts.clone();
+    three.push(wallet_account(0, 5, 6));
+    assert!(build(three).is_err());
+    let duplicate = vec![accounts[0].clone(), accounts[0].clone()];
+    assert!(build(duplicate).is_err());
+}

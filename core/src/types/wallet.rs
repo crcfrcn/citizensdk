@@ -279,12 +279,15 @@ impl WalletProfile {
                 "公民链热钱包必须使用 wallet index 0 且至少包含一个账户",
             ));
         }
-        let indices: BTreeSet<_> = accounts.iter().map(WalletAccount::index).collect();
+        let mut indices = std::collections::BTreeMap::new();
+        for account in &accounts {
+            *indices.entry(account.index()).or_insert(0_usize) += 1;
+        }
         let account_ids: BTreeSet<_> = accounts.iter().map(WalletAccount::account_id).collect();
-        if indices.len() != accounts.len() || account_ids.len() != accounts.len() {
+        if indices.values().any(|count| *count > 2) || account_ids.len() != accounts.len() {
             return Err(ContractError::new(
                 ContractErrorCode::InvalidArgument,
-                "钱包账户 index 与 AccountId 必须唯一",
+                "钱包 AccountId 必须唯一，每个序号最多包含经典、量子两个账户",
             ));
         }
         let account_zero_matches_master = accounts
@@ -382,6 +385,7 @@ impl WalletProfile {
             .find(|account| account.account_id() == account_id)
     }
 
+    /// 同序号并存时返回保存顺序中的首个账户；精确定位使用账户标识。
     pub fn account_by_index(&self, index: u32) -> Option<&WalletAccount> {
         self.accounts
             .iter()
@@ -810,13 +814,8 @@ impl WalletRecord {
         match self {
             Self::Account { ss58_address, .. } => Some(ss58_address),
             Self::Profile { accounts, .. } => {
-                let mut anchors = accounts.iter().filter(|account| account.index == 0);
-                let first = anchors.next()?;
-                if anchors.next().is_some() {
-                    None
-                } else {
-                    Some(first.ss58_address.as_str())
-                }
+                accounts.iter().find(|account| account.account_id == self.account_id())
+                    .map(|account| account.ss58_address.as_str())
             }
         }
     }

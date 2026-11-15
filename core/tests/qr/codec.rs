@@ -1,3 +1,4 @@
+use crate::types::AccountSignature as Sr25519Signature;
 use super::*;
 // 只有纯协议测试可注入时间；生产入口始终读取 SDK 时钟。
 use super::parse_at as parse;
@@ -349,7 +350,7 @@ fn rejects_expired_and_oversized_values() {
         QrErrorCode::Expired
     );
     assert_eq!(
-        parse(&"x".repeat(MAX_QR_TEXT_BYTES + 1), 0)
+        parse(&"x".repeat(MAX_QR_JSON_BYTES + 1), 0)
             .unwrap_err()
             .code(),
         QrErrorCode::CapacityExceeded
@@ -386,4 +387,14 @@ fn expiry_uses_the_same_exact_positive_i64_domain_in_every_wire_kind() {
         response.encode().unwrap_err().code(),
         QrErrorCode::InvalidField
     );
+}
+
+#[test]
+fn chain_review_signature_message_binds_the_exact_account_and_full_payload() {
+    let account = crate::types::Sr25519PublicKey::from_bytes([7; 32]);
+    let request = crate::qr::SignRequest { request_id: "v5-review".into(), expires_at: u64::MAX, action: 0x0400,
+        signer_public_key: Some(account), review_payload: vec![3; 400] };
+    assert_eq!(request.signing_message().unwrap(), mldsa::review_message(account.as_bytes(), &request.review_payload));
+    let mut changed = request.clone(); changed.signer_public_key = Some(crate::types::Sr25519PublicKey::from_bytes([8; 32]));
+    assert_ne!(changed.signing_message().unwrap(), request.signing_message().unwrap());
 }

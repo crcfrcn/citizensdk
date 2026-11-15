@@ -114,6 +114,7 @@ final class CitizenQrDocument {
   CitizenQrDocument({
     required this.kind,
     required this.canonicalText,
+    this.qrFrames = const [],
     this.requestId,
     this.expiresAt,
     this.action,
@@ -143,6 +144,7 @@ final class CitizenQrDocument {
 
   final CitizenQrKind kind;
   final String canonicalText;
+  final List<String> qrFrames;
   final String? requestId;
   final int? expiresAt;
   final int? action;
@@ -184,6 +186,7 @@ final class CitizenQrSigned {
   CitizenQrSigned({
     required this.canonicalText,
     required this.qrImage,
+    this.qrImages = const [],
     required this.requestId,
     required this.signerAccountId,
     required Uint8List signature,
@@ -192,6 +195,9 @@ final class CitizenQrSigned {
 
   final String canonicalText;
   final CitizenQrImage qrImage;
+
+  /// 按顺序播放传输帧，sr 响应仅有一张二维码。
+  final List<CitizenQrImage> qrImages;
   final String requestId;
   final String signerAccountId;
   final Uint8List signature;
@@ -313,7 +319,7 @@ extension Qr on CitizenSdk {
         m.text(
           (b, cap, n) => _api.citizensdk_qr_parse(
             _handle,
-            m.view(text, 2331),
+            m.view(text, 65536),
             0,
             b,
             cap,
@@ -336,7 +342,7 @@ extension Qr on CitizenSdk {
           m.text(
             (b, cap, n) => _api.citizensdk_qr_parse(
               _handle,
-              m.view(text, 2331),
+              m.view(text, 65536),
               purpose.value,
               b,
               cap,
@@ -457,7 +463,7 @@ extension Qr on CitizenSdk {
         _api.citizensdk_qr_validate_sign_response(
           _handle,
           m.view(sessionId, 128),
-          m.view(response, 2331),
+          m.view(response, 65536),
         ),
       ),
     );
@@ -465,17 +471,19 @@ extension Qr on CitizenSdk {
 
   Future<Uint8List> consumeSignResponse(String response) async {
     _requireOpen();
-    return _withMemory((m) {
-      final out = m.alloc<Uint8>(64);
-      _status(
-        _api.citizensdk_qr_consume_sign_response(
-          _handle,
-          m.view(response, 2331),
-          out,
-        ),
-      );
-      return Uint8List.fromList(out.asTypedList(64)).asUnmodifiableView();
-    });
+    return _withMemory(
+      (m) => m.copy(
+        (buffer, capacity, required) =>
+            _api.citizensdk_qr_consume_sign_response_bytes(
+              _handle,
+              m.view(response, 65536),
+              buffer,
+              capacity,
+              required,
+            ),
+        5261,
+      ),
+    );
   }
 
   Future<bool> cancelSignRequest(String requestId) async {
@@ -662,9 +670,14 @@ extension Qr on CitizenSdk {
             document.signRequest == null) {
           throw _failure(9);
         }
+        final images = document.qrFrames
+            .map((text) => _encodeQr(m, text, 4))
+            .toList(growable: false);
+        if (images.isEmpty) throw _failure(9);
         return CitizenQrSigned(
           canonicalText: document.canonicalText,
-          qrImage: _encodeQr(m, document.canonicalText, 4),
+          qrImage: images.first,
+          qrImages: List.unmodifiable(images),
           requestId: document.requestId!,
           signerAccountId: document.signerAccountId!,
           signature: document.signature!,
@@ -730,15 +743,20 @@ CitizenQrDocument _documentMap(Map<String, Object?> value) {
   }
   final result = CitizenQrDocument(
     kind: kind,
-    canonicalText: _jsonString(value['canonical_text'], 2331),
+    canonicalText: _jsonString(value['canonical_text'], 65536),
+    qrFrames: List.unmodifiable(
+      (value['qr_frames'] as List<Object?>? ?? []).map(
+        (item) => _jsonString(item, 2331),
+      ),
+    ),
     requestId: string('request_id', 128),
     expiresAt: expiry?.toInt(),
     action: value['action'] == null ? null : _jsonInt(value['action']),
     signerAccountId: string('signer_account_id', 66),
     reviewPayload: bytes('review_payload', 1920),
-    signature: bytes('signature', 64),
+    signature: bytes('signature', 5261),
     accountId: string('account_id', 66),
-    signRequest: string('sign_request', 2331),
+    signRequest: string('sign_request', 65536),
     scanPurposeMask: mask,
     cidNumber: string('cid_number', 256),
     amount: string('amount', 2331),
@@ -761,7 +779,8 @@ CitizenQrDocument _documentMap(Map<String, Object?> value) {
       if (result.requestId == null ||
           result.expiresAt == null ||
           result.signerAccountId == null ||
-          result.signature?.length != 64) {
+          (result.signature?.length != 64 &&
+              result.signature?.length != 5261)) {
         throw _failure(9);
       }
     case CitizenQrKind.userContact:
@@ -818,7 +837,7 @@ CitizenQrImage _encodeQr(_Memory m, String text, int scale) {
   final width = m.alloc<Uint32>(4),
       height = m.alloc<Uint32>(4),
       count = m.alloc<Size>(sizeOf<Size>()),
-      value = m.view(text, 2331);
+      value = m.view(text, 65536);
   final code = _api.citizensdk_qr_image_encode_text(
     value.data,
     value.len,

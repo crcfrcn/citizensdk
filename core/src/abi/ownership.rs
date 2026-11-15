@@ -16,7 +16,7 @@ use crate::types::Hash32;
 use crate::types::PreparedTransactionSummary;
 use crate::types::RuntimeContext;
 use crate::types::SigningCompletion;
-use crate::types::Sr25519Signature;
+use crate::types::AccountSignature;
 use crate::types::TransactionExecutionCompleted;
 use crate::types::TransactionExecutionId;
 use crate::types::TransactionHistoryPage;
@@ -98,7 +98,7 @@ pub enum ResultPayload {
     #[cfg(feature = "chain")]
     FeeSnapshot(BestFeeSnapshot),
     WalletProfile(Option<WalletProfile>),
-    Signature(Sr25519Signature),
+    Signature(AccountSignature),
     PreparedWallet(u64),
     TransactionHistoryPage(TransactionHistoryPage),
     #[cfg(feature = "qr")]
@@ -194,7 +194,7 @@ impl ResultPayload {
             Self::BlockHeader(header) => header.digest().len() as u64,
             Self::BlockBody(body) => body.extrinsics().iter().map(Vec::len).sum::<usize>() as u64,
             Self::ExportedState(state) => state.database().len() as u64,
-            Self::Signature(_) => 64,
+            Self::Signature(signature) => signature.to_wire().len() as u64,
             #[cfg(feature = "qr")]
             Self::QrReview(review) => review.json.len() as u64,
             #[cfg(feature = "qr")]

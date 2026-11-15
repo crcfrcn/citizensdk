@@ -140,7 +140,8 @@ public struct CitizenQRScanResult: Sendable, Equatable {
 /// 安全签名的完整结果；响应文档与二维码由同一次 Core 结果生成。
 public struct CitizenQRSigned: Sendable, Equatable {
     public let document: CitizenQRDocument
-    public let qrImage: CitizenQRImage
+    public let qrImages: [CitizenQRImage]
+    public var qrImage: CitizenQRImage { qrImages[0] }
 }
 
 /// 字段只来自 Rust 展开结果，不解析 QR_V1 短键，也不在平台复算签名载荷。
@@ -156,6 +157,7 @@ public struct CitizenQRDocument: Sendable, Equatable {
     }
     public let kind: UInt32
     public let canonicalText: String
+    public let qrFrames: [String]
     public let content: Content
     public let currentAccountID: String?
     public let currentAccountSignature: String?
@@ -168,6 +170,7 @@ public struct CitizenQRDocument: Sendable, Equatable {
     internal init(coreJSON: String) throws {
         let value = try CitizenSDKQrProjection.decode(coreJSON)
         self.coreJSON = coreJSON; kind = value.kind; canonicalText = value.canonical_text
+        qrFrames = value.qr_frames ?? [value.canonical_text]
         signRequest = value.sign_request
         guard (value.current_account_id == nil) == (value.current_account_signature == nil) else {
             throw CitizenSDKError(.integrity, "Current account proof is incomplete")
@@ -191,7 +194,7 @@ public struct CitizenQRDocument: Sendable, Equatable {
             content = .signResponse(requestID: try value.required(value.request_id),
                 expiresAt: try value.required(value.expires_at),
                 signerAccountID: try value.hex(value.signer_account_id, count: 32),
-                signature: try value.hex(value.signature, count: 64))
+                signature: try value.signatureHex(value.signature))
         case 5: content = .accountID(try value.hex(value.account_id, count: 32))
         case 3: content = .userContact(cidNumber: try value.required(value.cid_number), accountID: try value.hex(value.account_id, count: 32))
         case 4: content = .userTransfer(requestID: try value.required(value.request_id), expiresAt: try value.required(value.expires_at),
@@ -206,6 +209,7 @@ public struct CitizenQRDocument: Sendable, Equatable {
 internal struct CitizenSDKQrProjection: Decodable {
     let kind: UInt32
     let canonical_text: String
+    let qr_frames: [String]?
     let scan_purpose_mask: UInt8
     let cid_number: String?
     let amount: String?
@@ -238,7 +242,7 @@ internal struct CitizenSDKQrProjection: Decodable {
         guard !data.isEmpty, data.count <= 65_536 else { throw CitizenSDKError(.integrity, "Core QR JSON length is invalid") }
         do {
             let value = try JSONDecoder().decode(Self.self, from: data)
-            guard !value.canonical_text.isEmpty, value.canonical_text.utf8.count <= 2_331 else {
+            guard !value.canonical_text.isEmpty, value.canonical_text.utf8.count <= 65_536 else {
                 throw CitizenSDKError(.integrity, "Core QR canonical text is invalid")
             }
             return value
@@ -250,6 +254,11 @@ internal struct CitizenSDKQrProjection: Decodable {
         return value
     }
 
+    func signatureHex(_ value: String?) throws -> String {
+        let text = try hex(value)
+        guard text.utf8.count == 130 || text.utf8.count == 10524 else { throw CitizenSDKError(.integrity, "invalid signature envelope") }
+        return text
+    }
     func hex(_ value: String?, count: Int? = nil) throws -> String {
         let value = try required(value)
         let bytes = Array(value.utf8)

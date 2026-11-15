@@ -117,6 +117,9 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_result_copy_qr(
 CITIZENSDK_API int32_t citizensdk_qr_validate_sign_response(
     citizensdk_handle_t handle, citizensdk_bytes_view_t session_id,
     citizensdk_bytes_view_t sign_response);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_consume_sign_response_bytes(
+    citizensdk_handle_t handle, citizensdk_bytes_view_t text, uint8_t *buffer, uint64_t capacity, uint64_t *required);
+
 CITIZENSDK_API citizensdk_error_code_t citizensdk_qr_consume_sign_response(
     citizensdk_handle_t handle, citizensdk_bytes_view_t sign_response,
     uint8_t *out_signature);
@@ -443,6 +446,8 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_rename_account(
 CITIZENSDK_API citizensdk_error_code_t citizensdk_delete_account(
     citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
     citizensdk_request_id_t *out_request_id);
+CITIZENSDK_API uint32_t citizensdk_default_account_algorithm(void);
+
 CITIZENSDK_API citizensdk_error_code_t citizensdk_prepare_wallet_creation(
     citizensdk_handle_t handle, citizensdk_wallet_word_count_t word_count,
     citizensdk_bytes_view_t password,
@@ -471,6 +476,14 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_add_wallet_accounts(
 CITIZENSDK_API citizensdk_error_code_t citizensdk_add_next_wallet_account(
     citizensdk_handle_t handle, citizensdk_bytes_view_t mnemonic,
     citizensdk_bytes_view_t password, citizensdk_request_id_t *out_request_id);
+/* 按签名方式独立追加：0为当前构建默认值，1为经典，2为量子。 */
+CITIZENSDK_API citizensdk_error_code_t citizensdk_add_wallet_accounts_with_algorithm(
+    citizensdk_handle_t handle, citizensdk_bytes_view_t mnemonic,
+    citizensdk_bytes_view_t password, const uint32_t *indices,
+    uint32_t index_count, uint32_t algorithm, citizensdk_request_id_t *out_request_id);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_add_next_wallet_account_with_algorithm(
+    citizensdk_handle_t handle, citizensdk_bytes_view_t mnemonic,
+    citizensdk_bytes_view_t password, uint32_t algorithm, citizensdk_request_id_t *out_request_id);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_set_active_wallet_account(
     citizensdk_handle_t handle, const citizensdk_account_id_t *account_id,
     citizensdk_request_id_t *out_request_id);
@@ -662,6 +675,9 @@ CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_wallet_account(
     uint64_t ss58_capacity, uint64_t *out_ss58_required,
     uint8_t *name_buffer, uint64_t name_capacity,
     uint64_t *out_name_required);
+CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_signature_bytes(
+    citizensdk_result_handle_t result, uint8_t *buffer, uint64_t capacity, uint64_t *required);
+
 CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_signature(
     citizensdk_result_handle_t result, uint8_t *out_signature_64);
 CITIZENSDK_API citizensdk_error_code_t citizensdk_result_get_prepared_wallet(

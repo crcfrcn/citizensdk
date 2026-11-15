@@ -2,7 +2,7 @@
 
 ## 当前实现
 
-CitizenSDK是通用无UI区块链SDK。链同步、Runtime、交易准备/执行/历史、钱包、sr25519和二维码协议只在同一Rust Core实现。App拥有页面、展示、业务载荷和用户确认；系统资源由SDK各平台实际拥有者提供。聊天客户端归公民App的chat本地包。
+CitizenSDK是通用无UI区块链SDK。链同步、Runtime、交易准备/执行/历史、钱包、账户签名和二维码协议由同一Rust Core提供。App拥有页面、展示、业务载荷和用户确认；系统资源由SDK各平台实际拥有者提供。聊天客户端归公民App的chat本地包。
 
 源码只保留一个根Cargo包citizensdk；Pub、Cargo、Gradle、podspec与桌面CMake同一基准版本2.0.0，`[lib] path="core/src/lib.rs"`。C ABI=2。Core唯一构造是`citizensdk_create(options, modules, stores, out_handle)`；调用方显式交付所选模块所需真实资源。旧构造、旧包、业务Host回调、自定义Store装配、内存会话仓储、签名器对象及兼容路径均删除。
 
@@ -326,7 +326,7 @@ a = (pallet_index << 8) | call_index
 4. `g != 1`。
 5. `u` 不是 32B 公钥。
 6. `d` 为空。
-7. 链 payload >256B 但扫码端未按 Substrate 规则签 `blake2_256(payload)`。
+7. 链交易未按账户、管线和完整审阅材料生成统一V5摘要。
 8. action 没有中文动作名。
 9. decoder 输出字段缺少中文字段名。
 10. 普通链交易 `d` 只有 32B hash/signing bytes,导致无法完整中文展示。
@@ -459,8 +459,8 @@ a = (pallet_index << 8) | call_index
 | 字段 | 类型 | 必填 | 注释 |
 |---|---|---|---|
 | `a` | int | 是 | 业务动作码,见 `qr-action-registry.md` |
-| `g` | int | 是 | 签名算法码,当前只允许 `1 = sr25519` |
-| `u` | string | 是 | 压缩传输键；内部唯一语义名为 `signer_public_key`，通常是期望签名者 32 字节公钥的 base64url 无填充编码；仅 `citizen_occupy/citizen_rebind` 必须为空字符串，由钱包在 `d` 的账户零槽原位填入所选账户 |
+| `g` | int | 是 | 算法提示：`0` 按目标账户选择，`1` 指定 sr25519，`2` 指定 ML-DSA-65；默认 `0` |
+| `u` | string | 是 | 压缩传输键；内部唯一语义名为 `signer_public_key`，表示期望签名账户的 32 字节 AccountId，以 base64url 无填充编码；仅 `citizen_occupy/citizen_rebind` 必须为空字符串，由钱包在 `d` 的账户零槽原位填入所选账户 |
 | `d` | string | 是 | `review_payload` 原始字节,base64url 无填充;除 Runtime 升级 hash-only 外,必须可被扫码端完整解码和中文展示 |
 
 `review_payload` 与签名字节必须分离:
@@ -468,13 +468,13 @@ a = (pallet_index << 8) | call_index
 | 名称 | 含义 | 规则 |
 |---|---|---|
 | `review_payload` | QR `b.d` 携带、给用户审阅和中文展示的完整载荷 | 普通交易必须完整可解码;不得用 32B hash 冒充 |
-| `signing_bytes` | 钱包实际交给 sr25519 签名的字节 | 由扫码端根据 action 和 `review_payload` 本地计算 |
+| `signing_bytes` | 钱包交给该账户签名算法的字节 | sr 沿用既有载荷规则；PQ 链交易由统一 mldsa 核心生成包含账户、管线版本和完整审阅载荷的域隔离消息 |
 
 签名字节规则:
 
 | 场景 | `a` 规则 | 签名字节 |
 |---|---|---|
-| 普通链交易 | `a = (pallet_index << 8) | call_index` | `d` 必须是生成方用当前 runtime 类型构造的完整 `SignedPayload` 原始三元组 SCALE 字节;长度 ≤256B 签原文,>256B 签 `blake2_256(review_payload)` |
+| 普通链交易 | `a = (pallet_index << 8) | call_index` | `d` 必须是生成方用当前 runtime 类型构造的完整审阅三元组 SCALE 字节;sr与ML均使用统一核心生成账户及管线绑定的V5摘要 |
 | 登录 | `a = 1` | 签 payload 原文 |
 | 公民链上身份确认 | `a = 2` | `d` 必须是 `VotingIdentityPayload` SCALE bytes,签 `blake2_256(GMB || 0x10 || d)` |
 | 注册局首次绑定 | `a = 10 citizen_occupy` | `d = genesis_hash + bounded cid + 32B 零 account_id 槽 + revision=0(u64 LE) + expires_at(u64 LE)`；钱包严格解码且确认无尾字节后原位填入账户，签 `blake2_256(GMB || 0x12 || 完整授权)` |
@@ -508,7 +508,7 @@ CitizenWallet 自己出示账户码即可完成，不得要求联网热钱包参
 `onchina`；不得生成空 `b.u`，不得允许扫码钱包自行选择其它账户。登录响应仍使用
 `k=2`，其 `b.u` 必须与请求目标和数据库目标账户一致。
 
-链交易生成方不得手写拼接 `call_data/era/nonce/tip/additional_signed` 或 signed extrinsic。citizenchain node、CitizenApp 热钱包、OnChina 和其它链交易生成方必须统一使用当前 runtime 类型构造 `TxExtension`、`SignedPayload` 和 `UncheckedExtrinsic`；QR `b.d` 放入完整 `review_payload`，实际签名输入单独按 `SignedPayload::using_encoded` 计算。
+链交易生成方不得手写拼接 `call_data/era/nonce/tip/additional_signed` 或 signed extrinsic。citizenchain node、CitizenApp 热钱包、OnChina 和其它链交易生成方必须统一使用当前 runtime 类型构造完整审阅材料、现有业务检查及唯一V5交易；QR `b.d` 放入完整 `review_payload`，实际签名输入统一由mldsa的账户绑定V5约束生成。
 
 普通链交易若 `b.d` 只有 32 字节且不能按 action registry 解码为完整业务 payload,扫码端必须红色拒绝,不得展示“载荷 32 字节”后继续签名。
 
@@ -529,8 +529,9 @@ CitizenWallet 自己出示账户码即可完成，不得要求联网热钱包参
 
 | 字段 | 类型 | 必填 | 注释 |
 |---|---|---|---|
-| `u` | string | 是 | 压缩传输键；内部唯一语义名为 `signer_public_key`，值是实际签名者 32 字节公钥的 base64url 无填充编码 |
-| `s` | string | 是 | 64 字节 sr25519 签名,base64url 无填充 |
+| `u` | string | 是 | 压缩传输键；内部唯一语义名为 `signer_public_key`，值是实际签名账户的 32 字节 AccountId，以 base64url 无填充编码 |
+| `s` | string | 是 | 原始签名，sr 为 64 字节，PQ 为 3309 字节，base64url 无填充 |
+| `q` | string | PQ 必填 | ML-DSA-65 完整公钥，1952 字节，base64url 无填充；sr 响应省略 |
 
 生成方验签必须使用本地 session:
 
@@ -540,7 +541,9 @@ CitizenWallet 自己出示账户码即可完成，不得要求联网热钱包参
 4. `e` 未过期
 5. `b.u == 本地 expected signer_public_key`
 6. 按本地 session 重新计算 payload hash,必须等于生成请求时保存的 `expected_payload_hash`
-7. 按本地 session 的 `a + payload` 计算签名字节后验证 `b.s`
+7. 按本地 session 的载荷与签名变换规则验签；PQ 的 `q/s` 交给 mldsa 统一编解码，并核对公钥派生 AccountId 等于 `b.u`。
+
+单张二维码内容上限与完整响应文本上限分别处理：单帧 2331 字节，完整规范响应最多 65536 字节；PQ 响应由 mldsa 分帧并合并，C、Dart、Swift、Kotlin 的完成入口均接收完整响应。公开签名信封为 sr64 字节或 PQ5261 字节。
 
 同一业务操作只允许一次密钥签名。扫码端进入签名中状态后必须阻止重复触发；生成出首个 `k=2` 响应二维码后不得对同一 `i` 再次调用密钥或生成第二个响应。需要重试时必须由发起方创建新的请求 id，而不是在原请求上追加确认签名。
 
@@ -637,7 +640,7 @@ UI(否则 `v` 恒为空串,该码与账户码无差别),以及扫码侧 `e` 过�
 
 | 键 | 含义 | 类型 | 必填 | 注释 |
 |---|---|---|---|---|
-| `n` | account_id | string | 是 | 账户唯一标识；小写 `0x` 加 64 位十六进制，即 sr25519 公钥原字节 |
+| `n` | account_id | string | 是 | 账户唯一标识；小写 `0x` 加 64 位十六进制。sr 为公钥原字节，PQ 为公钥的域隔离哈希 |
 
 **不得携带账户名、昵称、CID、SS58 或任何时效字段**:本机账户标签可随意改写,
 进码即被扫码端当成对方公开身份显示。展示用 SS58 由扫码端从 `n` 自行派生。
@@ -716,19 +719,19 @@ citizenchain/crates/qr-protocol/registry/reject_reasons.yaml
 
 ```text
 
-citizenwallet/lib/qr/generated/qr_bodies.g.dart
-citizenchain/node/frontend/shared/qr/qrBodies.g.ts
-citizenchain/onchina/frontend/core/qrBodies.g.ts
-citizenchain/onchina/src/core/qr/generated.rs
+citizenwallet/lib/protocol/generated/qr_bodies.g.dart
+citizenchain/node/frontend/client/qrBodies.g.ts
+citizenchain/onchina/platformweb/qr/qrBodies.g.ts
+citizenchain/onchina/platform/qr/generated.rs
 ```
 
 ##### 12.1 载荷字段编解码代码真源(2026-07-30 收归)
 
-QR body 里的定长字段(公钥 `b.u` 32 字节、签名 `b.s` 64 字节)统一用 base64url(no padding)
+QR body 的账户 `b.u` 为 32 字节；`b.s` 为 sr64 字节或 PQ3309 字节，PQ 另带公钥 `b.q` 1952 字节。字段统一用 base64url(no padding)
 承载,进入 Rust 侧后一律转成 ADR-040 规范文本(小写 `0x` + 十六进制)。host 侧唯一实现:
 
 ```text
-citizenchain/crates/qr-protocol/src/codec.rs
+citizenchain/crates/protocol/src/codec.rs
   b64_to_prefixed_hex(value, expected_len, field)  # 解码 + 长度校验
   bytes_to_b64(bytes)                              # 编码
   public_key_b64(bytes, field)                     # 32 字节公钥编码(长度不符即拒)
@@ -778,12 +781,12 @@ citizenchain/crates/qr-protocol/src/codec.rs
 2. `k == 1`
 3. `i` 合法且未过期
 4. `b.a` 是已登记动作码
-5. `b.g == 1`
-6. `b.u` 解码为 32 字节公钥；仅已登记的 `citizen_occupy/citizen_rebind` 必须为空，
+5. `b.g` 为 `0/1/2`；0 按目标账户选择，显式算法必须与该账户派生来源一致
+6. `b.u` 解码为 32 字节 AccountId；仅已登记的 `citizen_occupy/citizen_rebind` 必须为空，
    由钱包选择账户并填入 `b.d` 的 32 字节零槽
 7. `b.d` 解码为非空 `review_payload`
-8. 普通动作要求当前钱包 `account_id` 等于规范化后的 `b.u`；当前 sr25519
-   `AccountId32` 直接取签名公钥 32 字节。占号/换绑则要求完整模板严格解码、外层
+8. 普通动作要求当前钱包 `account_id` 等于规范化后的 `b.u`；sr AccountId 为公钥原字节，
+   PQ AccountId 为公钥域隔离哈希。占号/换绑则要求完整模板严格解码、外层
    `e == expires_at`，并禁止换绑当前账户与新账户相同
 
 业务识别:
@@ -799,15 +802,15 @@ citizenchain/crates/qr-protocol/src/codec.rs
 3. `i == session.request_id`
 4. `e` 未过期
 5. `b.u == session.expected_signer_public_key`
-6. `b.s` 解码为 64 字节
+6. sr 的 `b.s` 解码为 64 字节；PQ 的 `b.s` 为 3309 字节且 `b.q` 为 1952 字节公钥
 7. 生成方用本地 session 重新计算 `review_payload` hash,必须等于 session.expected_payload_hash
-8. 按 session 的 `a + review_payload` 计算签名字节后 sr25519 验签通过
+8. 按 session 的载荷与签名变换规则，使用目标账户对应的 sr25519 或 ML-DSA-65 算法验签；PQ 同时核对公钥派生的 AccountId
 
 CitizenWallet 对同一已扫描请求只允许调用一次钱包密钥：签名进行中时忽略重复点击，首个响应二维码生成后彻底禁用再次签名。同一业务操作不叠加“字段确认签名”“周期确认签名”或其它第二签名。
 
 签名响应中不得出现 payload、payload hash、签名时间、摘要字段。若出现旧字段,解析器应报错。
 
-citizenchain node 的链交易冷签路径和热钱包路径必须统一调用 `citizenchain/crates/chain-signing` 构造 runtime `TxExtension`、`SignedPayload`、`UncheckedExtrinsic`。普通链交易 QR 只放完整 `review_payload`，实际签名字节由同一真源按 Substrate `using_encoded` 规则计算。任何模块手写拼接 SCALE 字节都属于第二真源,会导致扫码端绿签但链端 `BadProof`。
+citizenchain node 的链交易冷签路径和热钱包路径必须统一调用 `citizenchain/crates/chain-signing` 构造完整审阅材料、现有业务检查及唯一V5交易。普通链交易 QR 只放完整 `review_payload`，实际签名字节由同一核心按账户绑定的V5约束生成。任何模块手写拼接 SCALE 字节都属于第二真源,会导致扫码端绿签但链端 `BadProof`。
 
 #### 4. 登录签名
 
@@ -847,7 +850,7 @@ AccountId 同时命中链上同一条 Active 管理员记录，再生成 `k=1,a=
 6. payload 无法解码。
 7. action、字段或枚举值缺少中文翻译。
 8. 普通交易 QR 只携带 32B hash/signing bytes,导致扫码端无法完整中文展示。
-9. 链 payload >256B 却签原文而不是 `blake2_256(payload)`。
+9. 链交易签名遗漏账户或V5完整签名约束。
 10. UI 只能显示动作数字、英文 action key、原始 hex 或“载荷 N 字节”。
 11. 生成方重算的 session payload hash 与请求保存值不一致。
 12. 签名响应签名校验失败。
@@ -865,7 +868,7 @@ AccountId 同时命中链上同一条 Active 管理员记录，再生成 `k=1,a=
 
 - runtime 账户类型统一为 `AccountId`；单一账户字段统一为 `account_id`。
 - 同一结构存在多个业务角色账户时统一为 `<role>_account_id`，例如 `actor_account_id`、`voter_account_id`、`payer_account_id`、`beneficiary_account_id`；这些字段只表达签名、付款、收款或不可变交易事实，不得用作 CID 用户身份主键。
-- 签名公钥统一为 `public_key`；当前签名者公钥为 `signer_public_key`；凭证签名者公钥为 `credential_signer_public_key`。
+- 签名公钥统一为 `public_key`；当前签名者公钥为 `signer_public_key`；凭证签名者公钥为 `credential_signer_public_key`。QR 兼容字段 `signer_public_key` / `u` 表示目标 AccountId，完整 PQ 公钥单独位于 `q`，不能据兼容字段名把 PQ 账户哈希当作公钥。
 - SS58 字段统一为 `ss58_address`，只用于展示和边界输入输出；授权、索引、存储主键和缓存 key 必须使用账户字节对应的 `account_id`。
 - 账户文本由 Rust Core 的 `AccountId32` 编解码，SS58 由同一 Core 钱包编解码器处理。钱包、二维码和 Dart 公开入口共用这两项实现。Dart 通过无状态 C ABI 查询公民链前缀、校验规范账户文本并在账户文本、32 字节和 SS58 之间转换。解码仅在成功时写入账户输出。
 - `account_id` 和 32 字节公钥的跨端文本编码唯一为小写 `0x` 加 64 位十六进制，校验式为 `^0x[0-9a-f]{64}$`。
@@ -1287,10 +1290,10 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
 - 消费者：`citizenwallet`、`citizenapp`
 - 字段：
   - `b.a`:业务动作码
-  - `b.g`:签名算法码,当前 `1 = sr25519`
-  - `b.u`:压缩传输键；端内唯一语义名为 `signer_public_key`，值为 32B 签名者公钥的 base64url 无填充编码
+  - `b.g`:算法提示，`0` 按账户选择、`1` 指定 sr25519、`2` 指定 ML-DSA-65；默认 `0`
+  - `b.u`:兼容命名 `signer_public_key` 的账户传输键，内容为目标 32 字节 AccountId 的 base64url 无填充编码；完整 PQ 公钥位于响应 `q`，不把账户哈希解释为公钥
   - `b.d`:payload bytes,base64url 无填充
-- 编码：外层 JSON；`b.d` 内部是具体链上 call data 或已登记的链下业务载荷
+- 编码：外层 JSON；`b.d` 内部是完整链交易审阅载荷或已登记的链下业务载荷，普通链交易不接受裸 call data
 - 签名/验签规则：
   - `b.a` 必须已登记
   - `b.d` 必须能被扫码端 decoder 按对应交易载荷格式完整解码
@@ -1299,7 +1302,7 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - 用户确认页的账户字段必须展示 SS58 地址，禁止把原始公钥 hex 当作普通用户确认字段展示
   - `activate_admin_account` 载荷中的 `institution_code` 必须用共享机构码编码，禁止各端手写第二套字节映射。
   - **OnChina 塔塔控制台链写动作码（`b.d`=裸 SCALE call data，CitizenWallet 解码核对并只签名一次、显示响应二维码，OnChina 回扫响应后通过统一入口提交）**：链交易统一 `a=(pallet<<8)|call`(禁止扁平小整数,会撞非链动作码 1..9)。本机构治理=公权 `0x1e08`/私权 `0x1f08`，注册局直接登记管理员=公权 `0x1e09`/私权 `0x1f09`(见 P-TX-012);公民投票身份注册=`0x0a00`(CitizenIdentity 10/call 0,见 P-TX-011);公民参选身份上链=`0x0a01`(CitizenIdentity 10/call 1,见 P-TX-011);注册局代办首次绑定=`0x0a06`，注册局代办换绑=`0x0a07`；个人多签管理员集合变更为 `0x1d00`(PersonalAdmins 29/call 0,见 P-TX-007);平台调价提案=`0x2205`(SquarePost 34/call 5,见 P-TX-014);CREG 市注册局无独立链动作码；非链文本治理统一使用 registry 的 `a=3 onchina_admin_action`（`onchina_admin_governance` JSON）。`0x1e05`、`0x1f05` 已永久留洞，旧机构直接创建载荷不得进入 QR。动作码由 `onchina/src/core/institution_call.rs::chain_action_code(pallet,call)` 与 call data 同源派生，非链动作码从 `qr-protocol` registry 读取，均与 `qr-action-registry.md` 同步；动作码 `8` 已取消登记，Chat 设备绑定不得进入 QR。
-  - Substrate 交易 payload 长度 >256B 时必须签 `blake2_256(payload)`
+  - 普通原生交易必须签账户绑定的V5摘要，完整审阅材料不按256字节分界截断
 - 禁止兼容：开发期严格模式，不做别名兼容
 - 禁止事项：
   - 禁止恢复 `display` / `summary` / `fields`
@@ -1641,12 +1644,12 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - signed extension `CheckEra` 使用 immortal era 单字节 `0x00`
   - `CheckEra` additional signed hash 使用创世块哈希，即 `block_hash(0)`
 - 适用范围：
-  - 本协议仅约束 **sr25519 外层签名**的 signed extrinsic；PQC(ML-DSA-65)交易不走本协议，见下方 ADR-022 注与 P-TX-008/009。
+  - 本协议同时约束sr和ML的统一V5原生交易，二者使用同一业务检查管线。
 - 签名/验签规则：
   - 签名前 payload 与最终 extrinsic body 必须使用同一份 immortal era 字节
   - 使用 polkadart 时必须传 `eraPeriod: 0`
   - `SigningPayload.blockHash` 必须传 `genesisHash`，不得传最新块 hash
-  - 抗量子升级(ADR-022):PQC 交易改走 General Transaction(无外层 sr25519 签名),由自定义 `GmbPqcAuth` TransactionExtension 携带 ML-DSA-65 签名(proof 在扩展 extra),验签后把 origin 转 `Signed(account)`;未绑定账户首次走 bootstrap(post_dispatch 写 `AccountPqcKey`)无感绑定;AccountId 仍为原 sr25519 锚点。详见 P-TX-008/009。
+  - sr与ML统一使用V5 General及AccountAuth；认证后origin为Signed(account)。ML首次普通交易验证后只存一份公钥，后续按已登记公钥验签；不转换sr账户。
 - 禁止兼容：开发期不兼容热钱包 mortal era
 - 禁止事项：
   - 禁止业务 service 自己保留 `_eraPeriod = 64`
@@ -2127,62 +2130,27 @@ Serve既有独立广播接口为`POST /api/chain/extrinsics`，实现归`chain/r
   - `cargo test -p public-manage --lib`
   - `cargo test -p private-manage --lib`
 
-##### P-TX-008：GmbPqcAuth bootstrap（未绑定账户首次无感绑定+执行）
+##### P-TX-008：PQ 首次普通交易
 
-- 状态：草案（ADR-022，待实现）
-- 类型：交易载荷格式（General Transaction + `GmbPqcAuth` 扩展 `extra`）
-- 唯一真源：`GmbPqcAuth` TransactionExtension + `account-keys` pallet（待实现）
-- 详细文档：`../citizenwallet/CitizenWallet.md`
-- 生产者：`citizenapp`、`citizenwallet`　消费者：`GmbPqcAuth` 扩展 + `account-keys`、`citizenwallet` decoder
-- 字段（扩展 extra）：`account`、`pqc_pubkey`(ML-DSA-65,~1952B)、`alg`(0x02)、`key_version`、`nonce`、`sr25519_bootstrap_signature`、`ml_dsa_signature`（业务 call 是普通 General Transaction call）
-- 编码：General Transaction + `GmbPqcAuth` 扩展 `extra`（**非 pallet call**）
-- payload 使用 bootstrap 专用 `op_tag` 并调用 `signing_message(op_tag)`；字段集与普通 PQC 交易对齐：`genesis_hash`、`spec_version`、`transaction_version`、`account`、`pqc_pubkey_hash`、`key_version`、`nonce`、`era_or_deadline`、`tip`、`call_hash`、`following_extensions_hash`
-- 规则（验序钉死，hash 全 `blake2_256`）：
-  - ① `blake2_256(body.pqc_pubkey) == payload.pqc_pubkey_hash`
-  - ② `sr25519_bootstrap_signature = sr25519_sign(signing_message(bootstrap_op_tag, SCALE(genesis_hash,spec_version,transaction_version,account,pqc_pubkey_hash,key_version,nonce,call_hash,following_extensions_hash)))`——**sr25519 必须覆盖 pqc_pubkey_hash**（防 body 公钥替换），`account`=sr25519 公钥派生的当前 AccountId
-  - ③ `ml_dsa_signature` 验交易 payload + `call_hash==blake2_256(body.call)`，且**反向覆盖 `blake2_256(sr25519_bootstrap_signature)`**（双向交叉绑定）
-  - 三验过 → origin 转 `Signed(account)` → nonce/扣费/业务 dispatch；**绑定写 `AccountPqcKey` 在 `post_dispatch`**
-  - 失败语义：绑定在 post_dispatch（nonce/扣费已跑），**内层 call 失败绑定仍保留、内层失败照常收费**；🔴 **post_dispatch 绝不返回 Err**（否则作废整区块），冲突（已绑定不同值）判定前移 validate 拒
-  - 🔴 bootstrap 账户须 providers/sufficients>0（否则 CheckNonce 以 Payment 先拒）；body 长度上限硬校验 + 未绑定按 (account,source) 限速
-  - 已绑定账户拒绝再次 sr25519 覆盖（first-bind-wins）
-  - extrinsic body 携带完整 ML-DSA 公钥（~1952B）+ sr25519 bootstrap 签名（64B）+ ML-DSA 交易签名（~3309B）
-- 禁止：扩 `MultiSignature`；用 PQC 公钥/hash 派生新 AccountId；CID 托管助记词/私钥
-- 必跑测试：bootstrap 双签成功/拒绝、已绑定拒覆盖、写表+派发原子性
+唯一实现为 `citizenchain/runtime/transaction/mldsa`，SDK 与钱包通过该模块主清单直接依赖同一份源码；源码构建优先复用同级公民链；缺少时构建入口把公民链 main 浅克隆到本轮临时目录并直接引用主清单，客户端不启用 `runtime` 特性。只组装已有原生件时不拉取源码。
+AccountId32 保持稳定：sr 是 sr 公钥32字节；PQ 是 `blake2_256("GMB/account/ml-dsa-65/v1" || public_key)`。
+SDK 的 `ImmortalSigningPayload` 分别记录 `signer_account_id` 与真实的 `AccountPublicKey`：sr 公钥32字节，PQ 公钥完整1952字节，以共享引用持有。公钥到 AccountId 的关系由 mldsa 核对，不能用 PQ 账户哈希填充公钥字段。通用验签入口接收 AccountId；原 sr 公钥输入保留兼容转换。
+创建/助记词导入不选择签名方式；开发期在同一钱包内建立「经典账户0」「量子账户0」两个 `//0`，默认选中经典账户0。追加时通过 `addAccounts` / `addNextAccount` 的 `derivation` 参数选择签名方式，两种方式分别递增序号并允许相同序号并存，默认名称为「经典账户N」「量子账户N」。ML-DSA-65 仍复用相同 child `//index`、HKDF-SHA512 和统一核心，与离线钱包一致。运行期构建仅创建和追加量子账户。 创建／导入仍逐份验证账户派生归属、AES-GCM封装结果和持久化密文；同代际硬件解封只验收主账户一次，不因同时建立两个账户0增加认证次数，不缓存认证或私钥。App菜单仅依据SDK公开的 `accountDerivations` 展示可用入口。
 
-##### P-TX-009：GmbPqcAuth PQC 交易（已绑定账户）
+sr与ML统一使用V5 General Transaction、pipeline version1，扩展为 `(AccountAuth, 既有业务检查)`。sr证明仅携原AccountId及64字节签名；首次 `Proof::First` 仅携 AccountId32、公钥1952字节、签名3309字节；签名覆盖域隔离账户、pipeline版本、call、其余扩展 explicit/implicit。validate 验哈希与签名但不写状态，prepare 在正常 nonce/费用检查通过后写公钥一次。业务 call 内失败仍依标准交易语义收费并保留认证公钥；交易本身无效不写。
 
-- 状态：草案（ADR-022，待实现）
-- 类型：交易载荷格式（General Transaction + `GmbPqcAuth` 扩展 `extra`）
-- 唯一真源：`GmbPqcAuth` TransactionExtension（待实现）
-- 详细文档：`../citizenwallet/CitizenWallet.md`
-- 生产者：`citizenapp`、`citizenwallet`　消费者：`GmbPqcAuth` 扩展、`citizenwallet` decoder
-- 字段（扩展 extra）：`account`、`sig`(ML-DSA-65；公钥由链端按 account 从 `AccountPqcKey` 读，交易不带公钥)、`auth_mode`、`key_version`（业务 call 是普通 General Transaction call）
-- 编码：General Transaction + `GmbPqcAuth` 扩展 `extra`（**非 pallet call**）
-- payload 使用普通 PQC 交易专用 `op_tag` 并调用 `signing_message(op_tag)`：`genesis_hash`、`spec_version`、`transaction_version`、`account`、`nonce`、`era_or_deadline`、`tip`、`call_hash`、`key_version`、`following_extensions_hash`（`ss58_format` 为纯展示字段，链上无对应 implicit，不参与一致性比对）
-- 规则（路线 A 定稿）：
-  - `GmbPqcAuth` 读 `AccountPqcKey[account].pubkey` 验 ML-DSA 签名 + `call_hash==blake2_256(body.call)` + `alg==AccountPqcKey.alg`（防降级） → **把 origin 转 `Signed(account)`** → 后续 `CheckNonce`/`ChargeTransactionPayment` 走系统标准逻辑
-  - 🔴 `following_extensions_hash` = SDK `inherited_implication` **精确递归编码**（`ImplicationParts{base,explicit,implicit}`，非扁平拼接；嵌套 tuple 下与链端 `inherited_implication.encode()` 逐字节对拍 `mod.rs:712-869`），覆盖 CheckGenesis/CheckMortality(immortal→genesis)/CheckNonce/ChargeTransactionPayment/CheckMetadataHash(Disabled→None)/WeightReclaim 等 implicit
-  - 🔴 **tuple 12 上限**：嵌套 `(GmbPqcAuth, AuthorizeCall)` 占第一项槽位，不加第 13 项；`GmbPqcAuth` 兼管"已绑定拒 sr25519"；`extra=None` 透明放行原 origin 给 AuthorizeCall
-  - txpool `provides=(account,nonce)` 由 CheckNonce 自动产生（GmbPqcAuth 不重复设）；**era 默认 immortal**（CheckMortality.implicit 仍 genesis，纳入 hash）
-  - `weight()` 按 extra 变体路由 card1 benchmark 常量（禁读 state）；PqcPolicy 缺失 fail-open（不冻结全链）；`validate` 轻量无副作用
-- 禁止：跳过 `nonce`/`genesis_hash` 域隔离；decoder 解码后仍有剩余字节
-- 必跑测试：authorize 成功/拒绝、nonce 防重放、`citizenwallet` decoder
+##### P-TX-009：PQ 后续普通交易与阶段切换
 
-##### P-STORAGE-005：account-keys.AccountPqcKey
+`Proof::Stored` 仅携 AccountId32 与3309字节签名，按链上已验证公钥验签；缺公钥拒绝。
+SDK 在可信 finalized 状态判定是否携首次公钥，保留 nonce、era、费用和业务 call 原有处理。SDK只按真实V5管线1准备和恢复交易；删除外层签名模板、签名偏移注入及metadata版本过滤，不回退其他格式。
+开发期 sr 账户只用 sr 签名、PQ 账户只用 PQ 签名；一次 `operation` runtime 升级切换既有 ChainPhase 并关闭开发升级入口，运行期拒绝 sr 交易，无账户扫描或重写。
+SDK `operation` feature 将创建/导入默认改为 PQ，并拒绝显式 sr 派生及 sr 账户签名；不转换现有账户。
 
-- 状态：草案（ADR-022，待实现）
-- 类型：storage 契约　唯一真源：account-keys pallet（待实现）
-- 详细文档：`../citizenwallet/CitizenWallet.md`
-- 生产者：`GmbPqcAuth`（bootstrap `post_dispatch` 写）+ `account-keys`（轮换 call 写）　消费者：`GmbPqcAuth`（PQC 交易验签读）、`offchain-transaction`（批签取公钥）
-- **pallet_index=35**（契约真源；当前 runtime 最高 idx=34，下一空号=35）
-- 字段：
-  - key：`AccountId`（sr25519 锚点）
-  - value：`alg:u8`(0x02)、`key_version:u32`、`pubkey:BoundedVec<u8,ConstU32<2048>>`(完整 ML-DSA-65 公钥 ~1952B)、`bound_at:BlockNumber`（**删 bootstrap_mode**）
-  - 另有 `PqcPolicy` storage（phase/bootstrap_deadline/reject_sr25519_when_bound/allow_bootstrap_unbound，安全默认 phase=B/reject=false/allow=true/deadline=None）
-- 编码：SCALE，`StorageMap<Blake2_128Concat, AccountId, AccountPqcKeyRecord>`
-- 规则：存完整公钥（非 hash）；first-bind-wins（冲突在 validate 拒）；**轮换双签**：当前 PQC 私钥授权 + 新私钥对 `(新公钥+key_version+account+genesis)` 自签 PoP，两签过才 `key_version++`；**账户不派生 ML-KEM**（决策3）；绑定后无 sr25519 回退恢复（决策1/2）
-- 禁止：存私钥；用 PQC 公钥（或其 hash）当 AccountId；给账户加签名算法 state 字段（阶段策略在链层 A/B/C/D 治理，不做 per-account 状态切换）
-- 必跑测试：`account-keys` pallet 单测、`offchain-transaction` 批签集成测试
+##### P-STORAGE-005：Mldsa.PqPublicKey
+
+pallet index 36（35 已为 Revive）。唯一新增账户状态为 `StorageMap<Identity, AccountId32, [u8;1952]>`，key 已为经验证 PQ 公钥的密码学哈希，无需再加16字节存储哈希前缀。无算法、版本、绑定时间、账户模式或轮换表，无跨算法授权、绑定与额外注册交易。链阶段复用 GenesisPallet 原状态。
+
+QR 请求 `g=0` 让签名器按目标账户选择来源；PQ 响应 `q` 是公钥、`s` 是3309字节签名。C/Flutter/Swift/Kotlin 返回完整有界签名信封（sr64字节；PQ公钥+签名5261字节），原64字节接口对PQ明确拒绝。大响应的传输帧只由 mldsa 核心生成和核对；SDK公开 `qrFrames` / `qrImages`，扫码自动合并，用户无额外授权步骤。
 
 #### 6. 登记维护要求
 
@@ -2218,3 +2186,9 @@ SDK 直接消费 CitizenSdkFinalizedBlockChanged，对订阅账户去重并批�
 
 
 2026-11-14 CID年份u32：CID年份由链端生成/解析为u32，CID本体仍为原字符串。最大年份对应32字节完整CID，现有管理员激活/解密32字节槽继续复用，旧CID右补零、签名域及字段偏移不变。仅补充现有签名测试边界夹具，不修改SDK生产接口、ABI或metadata类型。
+
+### V5准备、审阅和恢复
+
+原生交易统一为V5 General、认证管线1，认证扩展为AccountAuth；证明仅有sr25519、ML首次公钥、ML已登记公钥三种分支。sr账户仍是原公钥32字节，ML账户派生及PqPublicKey存储保持；不转换账户、不迁移余额。两种算法共用账户绑定的签名约束：blake2_256(TRANSACTION_DOMAIN || AccountId || SCALE(ImplicationParts))；ImplicationParts覆盖管线版本、call及全部后续扩展的explicit/implicit，审阅端保留完整业务字段。nonce、权限、费用、质押保护、资源检查及上限保持；运行阶段仍拒绝sr。
+
+SDK按实际metadata逐项核对认证和业务检查，不修改注册表来迁就客户端。完整审阅材料及最终摘要分开保存，QR传完整材料；恢复只核对原字节及原授权，不重签、不改编码。旧metadata不能继续创建新原生交易；原历史数据不删除。测试向量来自当前FRAME实现，账户派生向量及冻结创世不改。

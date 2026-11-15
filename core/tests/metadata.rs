@@ -306,3 +306,14 @@ fn voting_calls_preserve_fixed_u128_ids_and_reject_invalid_boundaries() {
         }
     }
 }
+
+#[test]
+fn v5_native_contract_requires_real_account_authentication_metadata() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    let raw = hex::decode(fixture["metadata"].as_str().unwrap()).unwrap();
+    let metadata = decode_metadata_strict(&raw).unwrap();
+    let checks = native_extensions(&metadata).unwrap();
+    assert!(checks.iter().any(|ext| ext.identifier() == "CheckNonce"));
+    assert!(checks.iter().any(|ext| ext.identifier() == "CheckWeight"));
+    assert!(native_extensions(&super::tests::metadata()).is_err());
+}

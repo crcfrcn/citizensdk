@@ -789,8 +789,8 @@ pub struct CitizenSdkWalletStateAccountInfo {
     pub name_len: u64,
 }
 
-/// Fixed part of a generic signing result. Variable bytes are copied atomically by the dedicated
-/// result getter; a completed result has 64 signature bytes and no session/request text.
+/// 通用签名结果的固定部分，变长字节由专用结果接口原子复制。
+/// 完成结果不带会话或请求文本；签名信封为 sr64 字节或 PQ5261 字节。
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CitizenSdkSigningOutcomeInfo {

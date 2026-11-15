@@ -500,7 +500,7 @@ pub unsafe extern "C" fn citizensdk_transaction_execution_consume_qr_response(
             let response = String::from_utf8(copy_view(
                 response,
                 "QR_V1 response",
-                crate::qr::MAX_QR_TEXT_BYTES,
+                crate::qr::MAX_QR_JSON_BYTES,
             )?)
             .map_err(|_| FfiError::invalid("QR_V1 response 必须是 UTF-8"))?;
             let runtime = handles::get(handle)?;

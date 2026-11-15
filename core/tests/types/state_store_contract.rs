@@ -477,7 +477,7 @@ fn wallet_profile_rejects_duplicate_or_cross_generation_secret_refs() {
         "first",
         100,
     ));
-    let duplicate_index = value_or_panic(WalletAccount::try_new(
+    let same_index = value_or_panic(WalletAccount::try_new(
         0,
         AccountId32::from_bytes([5; 32]),
         secret_ref(2, 5),
@@ -492,9 +492,9 @@ fn wallet_profile_rejects_duplicate_or_cross_generation_secret_refs() {
         WalletOrigin::Created,
         100,
         first_id,
-        vec![first.clone(), duplicate_index],
+        vec![first.clone(), same_index],
     )
-    .is_err());
+    .is_ok());
 
     let foreign_ref = SecretRef::account_mini_secret(
         1,

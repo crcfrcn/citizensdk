@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use crate::types::apply_signing_transform;
+
 
 use crate::types::SigningTransform;
 use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
+use crate::types::AccountSignature;
 
 use crate::qr::QrError;
 use crate::qr::QrErrorCode;
@@ -169,7 +169,7 @@ impl<C: QrClock> QrSessionStore<C> {
         Ok(request)
     }
 
-    /// 核对关联、账户、期限和实际 sr25519 签名后原子消费响应。
+    /// 核对关联、账户、期限和对应算法的实际签名后原子消费响应。
     ///
     /// 无效签名绝不改变会话状态；同一请求只有首次有效响应可以成功。
     /// 只验证原会话，不消费；预检与最终消费共用同一账户、期限和transform校验。
@@ -177,7 +177,7 @@ impl<C: QrClock> QrSessionStore<C> {
         &self,
 
         response: &SignResponse,
-    ) -> Result<(SignRequest, Sr25519Signature), QrError> {
+    ) -> Result<(SignRequest, AccountSignature), QrError> {
         let session = self.sessions.get(&response.request_id).ok_or_else(|| {
             QrError::new(QrErrorCode::MismatchedRequest, "签名响应没有对应的本地请求")
         })?;
@@ -204,19 +204,20 @@ impl<C: QrClock> QrSessionStore<C> {
             ));
         }
         let request = session.request.clone();
-        let message = apply_signing_transform(&request.review_payload, &session.transform)
+        let signer_account_id = crate::types::AccountId32::from_bytes(*response.signer_public_key.as_bytes());
+        let message = crate::types::signing_message_for_account(signer_account_id, &request.review_payload, &session.transform, response.signature.algorithm())
             .map_err(|_| QrError::new(QrErrorCode::InvalidField, "签名 transform 或载荷无效"))?;
-        let verified = crate::sign::verify(response.signer_public_key, message, response.signature)
+        let verified = crate::sign::verify(signer_account_id, message, response.signature.clone())
             .map_err(|_| {
                 QrError::new(
                     QrErrorCode::InvalidSignature,
-                    "签名响应无法通过 sr25519 验证",
+                    "签名响应无法通过账户验签",
                 )
             })?;
         if !verified {
             return Err(QrError::new(
                 QrErrorCode::InvalidSignature,
-                "签名响应无法通过 sr25519 验证",
+                "签名响应无法通过账户验签",
             ));
         }
         let verified_at = self.clock.now_epoch_seconds();
@@ -229,7 +230,7 @@ impl<C: QrClock> QrSessionStore<C> {
         if request.expires_at <= verified_at {
             return Err(QrError::new(QrErrorCode::Expired, "验签完成时请求已过期"));
         }
-        Ok((request, response.signature))
+        Ok((request, response.signature.clone()))
     }
 
     /// 预检不是可复用授权：每次消费重新执行同一校验，再单次标记消费。
@@ -237,19 +238,18 @@ impl<C: QrClock> QrSessionStore<C> {
         &mut self,
 
         response: &SignResponse,
-    ) -> Result<(SignRequest, Sr25519Signature), QrError> {
+    ) -> Result<(SignRequest, AccountSignature), QrError> {
         let verified = self.verify_response(response)?;
-        let session = self.sessions.get_mut(&response.request_id).ok_or_else(|| {
-            QrError::new(QrErrorCode::MismatchedRequest, "签名响应没有对应的本地请求")
-        })?;
-        if session.consumed {
-            return Err(QrError::new(
-                QrErrorCode::AlreadyConsumed,
-                "签名请求已经消费",
-            ));
-        }
-        session.consumed = true;
+        self.consume_verified(&response.request_id)?;
         Ok(verified)
+    }
+
+    /// 仅在持有所属会话锁并刚完成验签后使用。
+    pub(crate) fn consume_verified(&mut self, request_id: &str) -> Result<(), QrError> {
+        let session = self.sessions.get_mut(request_id).ok_or_else(|| QrError::new(QrErrorCode::MismatchedRequest, "missing QR session"))?;
+        if session.consumed { return Err(QrError::new(QrErrorCode::AlreadyConsumed, "QR session consumed")) }
+        session.consumed = true;
+        Ok(())
     }
 
     pub fn cancel(&mut self, request_id: &str) -> bool {

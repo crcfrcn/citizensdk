@@ -16,6 +16,7 @@ path = "core/src/lib.rs"
 crate-type = ["rlib"]
 
 [features]
+operation = ["mldsa/pq-only"]
 default = ["wallet", "signing", "chain", "transactions", "history", "qr"]
 wallet = ["signing"]
 signing = []
@@ -25,6 +26,7 @@ qr = []
 chain = ["dep:blake2-rfc", "dep:bytes", "dep:hex", "dep:http", "dep:http-body-util", "dep:hyper-rustls", "dep:hyper-util", "dep:parking_lot", "dep:rustls", "dep:smoldot-light", "dep:subxt-core", "dep:tokio", "dep:url"]
 
 [dependencies]
+mldsa = { path = "../citizenchain/runtime/transaction/mldsa", default-features = false, features = ["signing", "std", "ffi"] }
 aes = { version = "=0.8.4", features = ["zeroize"] }
 aes-gcm = { version = "=0.10.3", features = ["zeroize"] }
 base64 = { version = "=0.22.1" }
@@ -55,6 +57,7 @@ serde_json = { version = "=1.0.151" }
 sha2 = { version = "=0.10.9" }
 sha3 = "=0.10.9"
 smoldot-light = { path = "smoldot/light-base", default-features = false, features = ["std"], optional = true }
+frame-metadata = { version = "=23.0.1", features = ["current", "decode"] }
 subxt-core = { version = "=0.43.0", default-features = true, optional = true }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "sync", "time", "net"], optional = true }
 unicode-normalization = { version = "=0.1.25" }

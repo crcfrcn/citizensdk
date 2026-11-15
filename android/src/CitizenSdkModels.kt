@@ -278,7 +278,7 @@ class CitizenWalletState(
 }
 
 class CitizenSignature(signature: ByteArray) {
-    private val value = signature.requireSize(64, "sr25519 signature")
+    private val value = signature.copyOf().also { require(it.size == 64 || it.size == 5261) { "invalid account signature" } }
     fun bytes(): ByteArray = value.clone()
 }
 
@@ -481,3 +481,5 @@ object CitizenSdkModules {
     const val QR = 32
     const val FULL = 63
 }
+
+enum class CitizenAccountDerivation(val value: Int) { AUTOMATIC(0), SR25519(1), MLDSA65(2) }

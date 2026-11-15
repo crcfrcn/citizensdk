@@ -567,6 +567,46 @@ class Bindings {
             int Function(int, citizensdk_bytes_view_t, citizensdk_bytes_view_t)
           >();
 
+  int citizensdk_qr_consume_sign_response_bytes(
+    int handle,
+    citizensdk_bytes_view_t text,
+    ffi.Pointer<ffi.Uint8> buffer,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> required,
+  ) {
+    return _citizensdk_qr_consume_sign_response_bytes(
+      handle,
+      text,
+      buffer,
+      capacity,
+      required,
+    );
+  }
+
+  late final _citizensdk_qr_consume_sign_response_bytesPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_handle_t,
+            citizensdk_bytes_view_t,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_qr_consume_sign_response_bytes');
+  late final _citizensdk_qr_consume_sign_response_bytes =
+      _citizensdk_qr_consume_sign_response_bytesPtr
+          .asFunction<
+            int Function(
+              int,
+              citizensdk_bytes_view_t,
+              ffi.Pointer<ffi.Uint8>,
+              int,
+              ffi.Pointer<ffi.Uint64>,
+            )
+          >();
+
   int citizensdk_qr_consume_sign_response(
     int handle,
     citizensdk_bytes_view_t sign_response,
@@ -2611,6 +2651,17 @@ class Bindings {
         )
       >();
 
+  int citizensdk_default_account_algorithm() {
+    return _citizensdk_default_account_algorithm();
+  }
+
+  late final _citizensdk_default_account_algorithmPtr =
+      _lookup<ffi.NativeFunction<ffi.Uint32 Function()>>(
+        'citizensdk_default_account_algorithm',
+      );
+  late final _citizensdk_default_account_algorithm =
+      _citizensdk_default_account_algorithmPtr.asFunction<int Function()>();
+
   int citizensdk_prepare_wallet_creation(
     int handle,
     int word_count,
@@ -2843,6 +2894,94 @@ class Bindings {
               int,
               citizensdk_bytes_view_t,
               citizensdk_bytes_view_t,
+              ffi.Pointer<citizensdk_request_id_t>,
+            )
+          >();
+
+  int citizensdk_add_wallet_accounts_with_algorithm(
+    int handle,
+    citizensdk_bytes_view_t mnemonic,
+    citizensdk_bytes_view_t password,
+    ffi.Pointer<ffi.Uint32> indices,
+    int index_count,
+    int algorithm,
+    ffi.Pointer<citizensdk_request_id_t> out_request_id,
+  ) {
+    return _citizensdk_add_wallet_accounts_with_algorithm(
+      handle,
+      mnemonic,
+      password,
+      indices,
+      index_count,
+      algorithm,
+      out_request_id,
+    );
+  }
+
+  late final _citizensdk_add_wallet_accounts_with_algorithmPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_handle_t,
+            citizensdk_bytes_view_t,
+            citizensdk_bytes_view_t,
+            ffi.Pointer<ffi.Uint32>,
+            ffi.Uint32,
+            ffi.Uint32,
+            ffi.Pointer<citizensdk_request_id_t>,
+          )
+        >
+      >('citizensdk_add_wallet_accounts_with_algorithm');
+  late final _citizensdk_add_wallet_accounts_with_algorithm =
+      _citizensdk_add_wallet_accounts_with_algorithmPtr
+          .asFunction<
+            int Function(
+              int,
+              citizensdk_bytes_view_t,
+              citizensdk_bytes_view_t,
+              ffi.Pointer<ffi.Uint32>,
+              int,
+              int,
+              ffi.Pointer<citizensdk_request_id_t>,
+            )
+          >();
+
+  int citizensdk_add_next_wallet_account_with_algorithm(
+    int handle,
+    citizensdk_bytes_view_t mnemonic,
+    citizensdk_bytes_view_t password,
+    int algorithm,
+    ffi.Pointer<citizensdk_request_id_t> out_request_id,
+  ) {
+    return _citizensdk_add_next_wallet_account_with_algorithm(
+      handle,
+      mnemonic,
+      password,
+      algorithm,
+      out_request_id,
+    );
+  }
+
+  late final _citizensdk_add_next_wallet_account_with_algorithmPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_handle_t,
+            citizensdk_bytes_view_t,
+            citizensdk_bytes_view_t,
+            ffi.Uint32,
+            ffi.Pointer<citizensdk_request_id_t>,
+          )
+        >
+      >('citizensdk_add_next_wallet_account_with_algorithm');
+  late final _citizensdk_add_next_wallet_account_with_algorithm =
+      _citizensdk_add_next_wallet_account_with_algorithmPtr
+          .asFunction<
+            int Function(
+              int,
+              citizensdk_bytes_view_t,
+              citizensdk_bytes_view_t,
+              int,
               ffi.Pointer<citizensdk_request_id_t>,
             )
           >();
@@ -4316,6 +4455,42 @@ class Bindings {
               ffi.Pointer<ffi.Uint8>,
               int,
               ffi.Pointer<ffi.Uint64>,
+              ffi.Pointer<ffi.Uint8>,
+              int,
+              ffi.Pointer<ffi.Uint64>,
+            )
+          >();
+
+  int citizensdk_result_get_signature_bytes(
+    int result,
+    ffi.Pointer<ffi.Uint8> buffer,
+    int capacity,
+    ffi.Pointer<ffi.Uint64> required,
+  ) {
+    return _citizensdk_result_get_signature_bytes(
+      result,
+      buffer,
+      capacity,
+      required,
+    );
+  }
+
+  late final _citizensdk_result_get_signature_bytesPtr =
+      _lookup<
+        ffi.NativeFunction<
+          citizensdk_error_code_t Function(
+            citizensdk_result_handle_t,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint64>,
+          )
+        >
+      >('citizensdk_result_get_signature_bytes');
+  late final _citizensdk_result_get_signature_bytes =
+      _citizensdk_result_get_signature_bytesPtr
+          .asFunction<
+            int Function(
+              int,
               ffi.Pointer<ffi.Uint8>,
               int,
               ffi.Pointer<ffi.Uint64>,

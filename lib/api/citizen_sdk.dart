@@ -65,6 +65,19 @@ final class CitizenSdk with WidgetsBindingObserver {
   _CatalogRead? _catalogRead;
   late final _sync = _ChainSync(getSyncStatus);
 
+  static CitizenAccountDerivation get defaultAccountDerivation {
+    _checkAbi();
+    final code = _api.citizensdk_default_account_algorithm();
+    return CitizenAccountDerivation.values.firstWhere(
+      (value) => value.value == code,
+    );
+  }
+
+  static List<CitizenAccountDerivation> get accountDerivations =>
+      defaultAccountDerivation == CitizenAccountDerivation.mldsa65
+      ? const [CitizenAccountDerivation.mldsa65]
+      : CitizenAccountDerivation.values;
+
   static void _checkAbi() {
     try {
       if (_api.citizensdk_abi_version() != c.CITIZENSDK_ABI_VERSION ||
@@ -627,7 +640,7 @@ final class CitizenSdk with WidgetsBindingObserver {
       _status(
         _api.citizensdk_verify_signature(
           m.account(accountId),
-          m.view(signature, 64),
+          m.view(signature, 5261),
           m.view(payload),
           out,
         ),

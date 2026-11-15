@@ -284,6 +284,7 @@ citizensdk_error_code_t capture_image_error(citizensdk_qr_image_status_t code) {
 std::vector<uint8_t> capture_document(citizensdk_handle_t sdk, const uint8_t *bytes, std::size_t size, uint32_t purpose) {
   uint64_t required = 0;
   auto code = citizensdk_qr_parse(sdk, {bytes, size}, purpose, nullptr, 0, &required);
+  if (code == CITIZENSDK_ERROR_BUSY) return {};
   require(code == CITIZENSDK_OK, code, "二维码解析失败");
   require(required > 0 && required <= 65536, CITIZENSDK_ERROR_INTEGRITY, "二维码文档大小无效");
   std::vector<uint8_t> result(static_cast<std::size_t>(required));
@@ -446,6 +447,7 @@ void QrCapture::receive(uint64_t generation, QrFrame frame) noexcept {
     require(status == CITIZENSDK_QR_IMAGE_OK, capture_image_error(status), "二维码图像复制失败");
     require(required == text.size(), CITIZENSDK_ERROR_INTEGRITY, "二维码图像复制大小变化");
     const auto document = capture_document(impl_->sdk, text.data(), text.size(), impl_->purpose);
+    if (document.empty()) return;
     {
       std::lock_guard<std::mutex> guard(impl_->mutex);
       if (impl_->closing || impl_->paused || generation != impl_->generation) return;

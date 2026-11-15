@@ -31,8 +31,7 @@ use crate::types::SecretOwner;
 use crate::types::SecretRef;
 use crate::types::SecretVault;
 use crate::types::SigningPayload;
-use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
+use crate::types::AccountSignature;
 use crate::types::VaultAvailability;
 use crate::types::VaultGeneration;
 use crate::types::WalletAccount;
@@ -335,7 +334,7 @@ impl SigningService {
         &self,
         account_id: AccountId32,
         message: Vec<u8>,
-    ) -> Result<Sr25519Signature, EngineError> {
+    ) -> Result<AccountSignature, EngineError> {
         self.sign_guarded(account_id, message, &|| Ok(())).await
     }
 
@@ -345,20 +344,30 @@ impl SigningService {
         account_id: AccountId32,
         message: Vec<u8>,
         ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
-    ) -> Result<Sr25519Signature, EngineError> {
+    ) -> Result<AccountSignature, EngineError> {
         let gate_span = crate::transaction_diagnostic::Span::start("wallet_lock");
         let _guard = wallet_operation_gate().lock().await;
         gate_span.finish();
         self.sign_locked(account_id, message, ensure_current).await
     }
 
-    /// 调用者持有钱包操作门；复合动作复用实际签名路径，不重入锁或复制验权。
-    async fn sign_locked(
+    pub(crate) async fn sign_intent_guarded(&self, intent: &crate::types::SigningIntent, ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync)) -> Result<AccountSignature, EngineError> {
+        let _guard = wallet_operation_gate().lock().await;
+        self.sign_locked_transformed(intent.account_id(), intent.payload().to_vec(), ensure_current, Some(intent.transform())).await
+    }
+
+    async fn sign_locked(&self, account_id: AccountId32, message: Vec<u8>, ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync)) -> Result<AccountSignature, EngineError> {
+        self.sign_locked_transformed(account_id, message, ensure_current, None).await
+    }
+
+    /// 调用方已持有钱包操作锁，一次金库解封覆盖消息选择与签名。
+    async fn sign_locked_transformed(
         &self,
         account_id: AccountId32,
         message: Vec<u8>,
         ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
-    ) -> Result<Sr25519Signature, EngineError> {
+        transform: Option<&crate::types::SigningTransform>,
+    ) -> Result<AccountSignature, EngineError> {
         ensure_current()?;
         require_secure_device(self.vault.as_ref()).await?;
         let (profile, account) = current_account(self.profiles.as_ref(), account_id, None).await?;
@@ -385,28 +394,24 @@ impl SigningService {
         if current.secret_ref() != account.secret_ref() {
             return Err(conflict("签名账户 SecretRef 已改变"));
         }
-        self.sign_verified_secret(account_id, &secret, message, ensure_current)
-            .await
+        let message = if let Some(transform) = transform {
+            let algorithm = if crate::sign::public_key(&secret)?.as_bytes() == account_id.as_bytes() { 1 } else { 2 };
+            crate::types::signing_message_for_account(account_id, &message, transform, algorithm)?
+        } else { message };
+        self.sign_verified_secret(account_id, &secret, message, ensure_current).await
     }
 
-    /// 普通签名与模式验证共用这一实际签名叶子：先核公钥，再走唯一同步sr25519函数。
+    /// 普通签名与账户校验共用此入口，按账户派生来源调用对应的同步签名实现。
     async fn sign_verified_secret(
         &self,
         account_id: AccountId32,
         secret: &SecretBuffer,
         message: Vec<u8>,
         ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
-    ) -> Result<Sr25519Signature, EngineError> {
-        let public_key = crate::sign::public_key(secret)?;
-        if public_key.as_bytes() != account_id.as_bytes() {
-            return Err(error(
-                ContractErrorCode::Integrity,
-                "设备密文与钱包 AccountId 不一致",
-            ));
-        }
+    ) -> Result<AccountSignature, EngineError> {
         ensure_current()?;
         let span = crate::transaction_diagnostic::Span::start("sr25519_sign");
-        let result = crate::sign::sign(secret, message).map_err(EngineError::from);
+        let result = crate::sign::sign_account(secret, account_id, &message).map_err(EngineError::from);
         if result.is_ok() {
             span.finish();
         }
@@ -551,8 +556,7 @@ impl WalletService {
                 "账户秘密长度不符合安全查看合同",
             ));
         }
-        let public_key = crate::sign::public_key(&secret)?;
-        if public_key.as_bytes() != view.account.account_id().as_bytes() {
+        if !crate::sign::matches_account(&secret, view.account.account_id())? {
             return Err(error(
                 ContractErrorCode::Integrity,
                 "设备密文与钱包 AccountId 不一致",
@@ -706,8 +710,8 @@ impl WalletService {
         let account = profile
             .accounts()
             .iter()
-            .find(|account| account.index() == 0)
-            .ok_or_else(|| error(ContractErrorCode::Integrity, "钱包缺少唯一账户0"))?;
+            .find(|account| account.account_id() == profile.master_account_id())
+            .ok_or_else(|| error(ContractErrorCode::Integrity, "钱包缺少主账户0"))?;
         require_secure_device(self.vault.as_ref()).await?;
         let mut challenge = Zeroizing::new([0u8; 32]);
         self.entropy.fill(&mut challenge[..])?;
@@ -735,8 +739,7 @@ impl WalletService {
                     &|| Ok(()),
                 )
                 .await?;
-            let public_key = Sr25519PublicKey::from_bytes(*profile.master_account_id().as_bytes());
-            if !crate::sign::verify(public_key, message.as_slice(), signature)? {
+            if !crate::sign::verify(profile.master_account_id(), message.as_slice(), signature)? {
                 return Err(error(ContractErrorCode::Integrity, "热钱包控制权验证失败"));
             }
         } // 真实解锁秘密到此归还并清零，不进入目录CAS/返回数据。
@@ -1072,13 +1075,13 @@ impl WalletService {
     pub async fn commit_default_account_change(
         &self,
         authorization: &DefaultAccountChangeAuthorization,
-        signature: Sr25519Signature,
+        signature: impl Into<AccountSignature>,
     ) -> Result<WalletState, EngineError> {
         self.require_default_change_current(authorization)?;
         let intent = authorization.signing_intent()?;
         let message = intent.signing_message()?;
         let verified = crate::sign::verify(
-            Sr25519PublicKey::from_bytes(authorization.current_default_account_id().into_bytes()),
+            authorization.current_default_account_id(),
             message,
             signature,
         )?;
@@ -1313,46 +1316,56 @@ impl WalletService {
             .ok_or_else(|| error(ContractErrorCode::Integrity, "导入钱包完成后 profile 缺失"))
     }
 
-    /// 追加 `//index` 账户。账户按 index 排序追加，写后异常必须由公开事实回读收敛。
+    /// 按所选签名方式追加账户；旧入口保留默认派生方式。
     pub async fn add_accounts(
         &self,
         mnemonic: &SecretBuffer,
         password: &str,
         indices: &[u32],
     ) -> Result<WalletProfile, EngineError> {
+        self.add_accounts_with_algorithm(
+            mnemonic,
+            password,
+            indices,
+            mldsa::AccountAlgorithm::default(),
+        )
+        .await
+    }
+
+    pub async fn add_accounts_with_algorithm(
+        &self,
+        mnemonic: &SecretBuffer,
+        password: &str,
+        indices: &[u32],
+        algorithm: mldsa::AccountAlgorithm,
+    ) -> Result<WalletProfile, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         require_secure_device(self.vault.as_ref()).await?;
         let state = self.reconcile_locked().await?;
-        self.add_accounts_locked(mnemonic, password, indices, state)
+        self.add_accounts_locked(mnemonic, password, Some(indices), algorithm, state)
             .await
     }
 
-    /// 读取最高编号、校验钱包归属及提交处于同一操作门；不接受App的max+1推算。
+    /// 在同一操作门内计算所选签名方式的下一个序号并提交。
     pub async fn add_next_account(
         &self,
         mnemonic: &SecretBuffer,
         password: &str,
     ) -> Result<WalletProfile, EngineError> {
+        self.add_next_account_with_algorithm(mnemonic, password, mldsa::AccountAlgorithm::default())
+            .await
+    }
+
+    pub async fn add_next_account_with_algorithm(
+        &self,
+        mnemonic: &SecretBuffer,
+        password: &str,
+        algorithm: mldsa::AccountAlgorithm,
+    ) -> Result<WalletProfile, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
         require_secure_device(self.vault.as_ref()).await?;
         let state = self.reconcile_locked().await?;
-        let profile = state
-            .profile()
-            .ok_or_else(|| error(ContractErrorCode::NotFound, "钱包不存在"))?;
-        let next = profile
-            .accounts()
-            .iter()
-            .map(WalletAccount::index)
-            .max()
-            .and_then(|index| index.checked_add(1))
-            .filter(|index| *index <= MAX_WALLET_ACCOUNT_INDEX)
-            .ok_or_else(|| {
-                error(
-                    ContractErrorCode::InvalidArgument,
-                    "没有可追加的下一个账户编号",
-                )
-            })?;
-        self.add_accounts_locked(mnemonic, password, &[next], state)
+        self.add_accounts_locked(mnemonic, password, None, algorithm, state)
             .await
     }
 
@@ -1360,54 +1373,114 @@ impl WalletService {
         &self,
         mnemonic: &SecretBuffer,
         password: &str,
-        indices: &[u32],
+        indices: Option<&[u32]>,
+        algorithm: mldsa::AccountAlgorithm,
         state: WalletState,
     ) -> Result<WalletProfile, EngineError> {
-        // 本机C接口既有批次边界独立于可选序号，不能按整个序号范围处理一批。
-        if indices.is_empty() || indices.len() > 1990 {
+        mldsa::AccountAlgorithm::from_option(algorithm as u32)
+            .map_err(|message| error(ContractErrorCode::Unsupported, message))?;
+        if indices.is_some_and(|items| items.is_empty() || items.len() > 1990) {
             return Err(error(
                 ContractErrorCode::InvalidArgument,
-                "追加账户 index 列表必须包含 1..1990 项",
+                "追加账户序号列表必须包含 1..1990 项",
             ));
         }
         let profile = state
             .profile()
             .cloned()
             .ok_or_else(|| error(ContractErrorCode::NotFound, "钱包不存在"))?;
-
-        let existing: BTreeSet<_> = profile
-            .accounts()
-            .iter()
-            .map(WalletAccount::index)
-            .collect();
         let mut unique = BTreeSet::new();
-        for index in indices {
-            if *index == 0
-                || *index > MAX_WALLET_ACCOUNT_INDEX
-                || !unique.insert(*index)
-                || existing.contains(index)
-            {
-                return Err(error(
-                    ContractErrorCode::InvalidArgument,
-                    "追加账户 index 必须唯一、尚不存在且位于 1..19890604",
-                ));
+        if let Some(indices) = indices {
+            for index in indices {
+                if *index == 0 || *index > MAX_WALLET_ACCOUNT_INDEX || !unique.insert(*index) {
+                    return Err(error(
+                        ContractErrorCode::InvalidArgument,
+                        "追加账户序号必须唯一且位于 1..19890604",
+                    ));
+                }
             }
         }
         self.require_existing_profile_secrets(&profile).await?;
 
-        // 助记词/password 必须先由账户0公钥反证属于当前钱包。
-        let owner_check = derive_wallet_accounts(mnemonic, password, &[0])?;
-        let owner_public_key = owner_check
-            .first()
-            .ok_or_else(|| error(ContractErrorCode::Internal, "账户0归属派生结果缺失"))?
-            .public_key();
-        if owner_public_key.as_bytes() != profile.master_account_id().as_bytes() {
+        // 一次派生同时核对钱包归属和序号；不保存算法标签，也不按显示名称判断算法。
+        let check_indices: Vec<_> = std::iter::once(0)
+            .chain(if indices.is_none() {
+                profile
+                    .accounts()
+                    .iter()
+                    .map(WalletAccount::index)
+                    .collect::<Vec<_>>()
+            } else {
+                unique.iter().copied().collect()
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let checked = derive_wallet_accounts(mnemonic, password, &check_indices)?;
+        let zero = checked
+            .iter()
+            .find(|item| item.index() == 0)
+            .ok_or_else(|| error(ContractErrorCode::Internal, "账户0归属派生结果缺失"))?;
+        if zero.public_key().as_bytes() != profile.master_account_id().as_bytes()
+            && zero.pq_account_id()? != profile.master_account_id()
+        {
             return Err(error(
                 ContractErrorCode::AuthenticationRequired,
                 "助记词或 password 与当前钱包不符",
             ));
         }
-
+        if indices.is_none() {
+            let classical: std::collections::BTreeMap<_, _> = checked
+                .iter()
+                .map(|item| (item.index(), item.public_key()))
+                .collect();
+            let highest = profile
+                .accounts()
+                .iter()
+                .filter(|account| {
+                    let is_sr = classical
+                        .get(&account.index())
+                        .is_some_and(|key| key.as_bytes() == account.account_id().as_bytes());
+                    is_sr == (algorithm == mldsa::AccountAlgorithm::Sr25519)
+                })
+                .map(WalletAccount::index)
+                .max();
+            let next = highest
+                .map_or(Some(0), |index| index.checked_add(1))
+                .filter(|index| *index <= MAX_WALLET_ACCOUNT_INDEX)
+                .ok_or_else(|| {
+                    error(
+                        ContractErrorCode::InvalidArgument,
+                        "没有可追加的下一个账户编号",
+                    )
+                })?;
+            unique.insert(next);
+        }
+        let sorted_indices: Vec<_> = unique.iter().copied().collect();
+        let derived = if indices.is_some() {
+            checked
+                .into_iter()
+                .filter(|item| unique.contains(&item.index()))
+                .collect::<Vec<_>>()
+        } else {
+            derive_wallet_accounts(mnemonic, password, &sorted_indices)?
+        };
+        let mut candidates = Vec::with_capacity(derived.len());
+        for child in derived {
+            let account_id = match algorithm {
+                mldsa::AccountAlgorithm::Sr25519 => {
+                    AccountId32::from_bytes(*child.public_key().as_bytes())
+                }
+                mldsa::AccountAlgorithm::Mldsa65 => child.pq_account_id()?,
+            };
+            if profile.account_by_id(account_id).is_some() {
+                return Err(error(
+                    ContractErrorCode::InvalidArgument,
+                    "所选签名方式的账户序号已存在",
+                ));
+            }
+            candidates.push((child, account_id));
+        }
         let generation = profile.generation();
         let mut forbidden: BTreeSet<[u8; 16]> = profile
             .accounts()
@@ -1422,7 +1495,6 @@ impl WalletService {
             owners.push(SecretOwner::from_bytes(owner));
         }
         let operation_id = mint_owner(self.entropy.as_ref(), &forbidden)?;
-        let sorted_indices: Vec<_> = unique.into_iter().collect();
         // 一次认证覆盖本请求固定的完整序号集合；不打开已有账户秘密。
         self.require_add_active()?;
         self.vault
@@ -1432,12 +1504,10 @@ impl WalletService {
         if self.profiles.load().await? != state {
             return Err(conflict("追加认证期间钱包状态已变化"));
         }
-        let derived = derive_wallet_accounts(mnemonic, password, &sorted_indices)?;
         let created_at = self.clock.now_millis()?;
-        let mut added = Vec::with_capacity(derived.len());
-        let mut pending = Vec::with_capacity(derived.len());
-        for (derived, owner) in derived.into_iter().zip(owners) {
-            let account_id = AccountId32::from_bytes(*derived.public_key().as_bytes());
+        let mut added = Vec::with_capacity(candidates.len());
+        let mut pending = Vec::with_capacity(candidates.len());
+        for ((derived, account_id), owner) in candidates.into_iter().zip(owners) {
             let secret_ref =
                 SecretRef::account_mini_secret(CITIZEN_WALLET_INDEX, generation, owner, account_id);
             let account = WalletAccount::try_new(
@@ -1445,7 +1515,15 @@ impl WalletService {
                 account_id,
                 secret_ref,
                 citizen_ss58_address(account_id),
-                format!("账户{}", derived.index()),
+                format!(
+                    "{}账户{}",
+                    if algorithm == mldsa::AccountAlgorithm::Sr25519 {
+                        "经典"
+                    } else {
+                        "量子"
+                    },
+                    derived.index()
+                ),
                 created_at,
             )?;
             added.push(account);
@@ -1701,8 +1779,7 @@ impl WalletService {
         let signature = signing
             .sign_locked(profile.master_account_id(), challenge.clone(), &|| Ok(()))
             .await?;
-        let public_key = Sr25519PublicKey::from_bytes(*profile.master_account_id().as_bytes());
-        if !crate::sign::verify(public_key, challenge, signature)? {
+        if !crate::sign::verify(profile.master_account_id(), challenge, signature)? {
             return Err(error(
                 ContractErrorCode::Integrity,
                 "删除钱包授权签名验证失败",
@@ -1733,51 +1810,68 @@ impl WalletService {
         let generation_bytes = mint_owner(self.entropy.as_ref(), &BTreeSet::new())?;
         let generation = VaultGeneration::from_bytes(generation_bytes);
         let mut forbidden = BTreeSet::from([generation_bytes]);
-        let owner_bytes = mint_owner(self.entropy.as_ref(), &forbidden)?;
-        forbidden.insert(owner_bytes);
-        let operation_id = mint_owner(self.entropy.as_ref(), &forbidden)?;
-        let owner = SecretOwner::from_bytes(owner_bytes);
-        let mut derived = derive_wallet_accounts(mnemonic, password, &[0])?.into_iter();
-        let derived = derived
-            .next()
+        let derived = derive_wallet_accounts(mnemonic, password, &[0])?
+            .pop()
             .ok_or_else(|| error(ContractErrorCode::Internal, "账户0派生未返回结果"))?;
-        let account_id = AccountId32::from_bytes(*derived.public_key().as_bytes());
-        let secret_ref =
-            SecretRef::account_mini_secret(CITIZEN_WALLET_INDEX, generation, owner, account_id);
+        let sr_id = AccountId32::from_bytes(*derived.public_key().as_bytes());
+        let pq_id = derived.pq_account_id()?;
+        // 开发期同一助记词建立两种账户0；运行期仅建立量子账户0。
+        let account_ids = if mldsa::legacy_derivation_allowed() {
+            vec![(sr_id, "经典账户0"), (pq_id, "量子账户0")]
+        } else {
+            vec![(pq_id, "量子账户0")]
+        };
+        let primary_id = match mldsa::AccountAlgorithm::default() {
+            mldsa::AccountAlgorithm::Sr25519 => sr_id,
+            mldsa::AccountAlgorithm::Mldsa65 => pq_id,
+        };
         let created_at = self.clock.now_millis()?;
-        let account = WalletAccount::try_new(
-            0,
-            account_id,
-            secret_ref,
-            citizen_ss58_address(account_id),
-            "账户0",
-            created_at,
-        )?;
+        let secret = derived.into_secret();
+        let mut accounts = Vec::with_capacity(account_ids.len());
+        let mut pending = Vec::with_capacity(account_ids.len());
+        for (account_id, name) in account_ids {
+            let owner_bytes = mint_owner(self.entropy.as_ref(), &forbidden)?;
+            forbidden.insert(owner_bytes);
+            let secret_ref = SecretRef::account_mini_secret(
+                CITIZEN_WALLET_INDEX,
+                generation,
+                SecretOwner::from_bytes(owner_bytes),
+                account_id,
+            );
+            accounts.push(WalletAccount::try_new(
+                0,
+                account_id,
+                secret_ref,
+                citizen_ss58_address(account_id),
+                name,
+                created_at,
+            )?);
+            // 金库密文按真实账户绑定；受控缓冲区只在封装期间持有秘密副本。
+            pending.push(PendingSecret {
+                secret_ref,
+                secret: secret.with_secret(|bytes| SecretBuffer::try_new(bytes.to_vec()))?,
+            });
+        }
+        let operation_id = mint_owner(self.entropy.as_ref(), &forbidden)?;
+        let refs = accounts.iter().map(WalletAccount::secret_ref).collect();
         let profile = WalletProfile::try_new(
             CITIZEN_WALLET_INDEX,
             generation,
-            account_id,
+            primary_id,
             origin,
             created_at,
-            account_id,
-            vec![account],
+            primary_id,
+            accounts,
         )?;
         let plan = WalletProvisioningPlan::try_new(
             operation_id,
             CITIZEN_WALLET_INDEX,
             generation,
             None,
-            vec![secret_ref],
+            refs,
             true,
         )?;
-        Ok((
-            profile,
-            vec![PendingSecret {
-                secret_ref,
-                secret: derived.into_secret(),
-            }],
-            plan,
-        ))
+        Ok((profile, pending, plan))
     }
 
     async fn finish_provisioning(
@@ -1807,8 +1901,7 @@ impl WalletService {
             }
             let secret_ref = pending_secret.secret_ref;
             // 账户身份在加密前由真实派生秘密反证，不能只相信调用方的公开字段。
-            let public_key = crate::sign::public_key(&pending_secret.secret)?;
-            if public_key.as_bytes() != secret_ref.account_id().as_bytes() {
+            if !crate::sign::matches_account(&pending_secret.secret, secret_ref.account_id())? {
                 return Err(error(
                     ContractErrorCode::Integrity,
                     "待保存秘密与账户不一致",
@@ -1978,10 +2071,18 @@ impl WalletService {
                     "账户密文持久回读不一致",
                 ));
             }
-            // 新建/导入保持原硬件解封验收；追加已独立授权并核对加密结果和持久字节。
-            if plan.previous_profile().is_none() {
-                self.require_secret_matches(*secret_ref).await?;
-            }
+        }
+        if plan.previous_profile().is_none() {
+            // 所有账户已逐份核对派生归属、封装结果与持久字节；同代际硬件解封只验收主账户一次。
+            // 不按账户数量重复请求认证，也不缓存认证结果；追加继续沿用原整批认证。
+            let profile = persisted
+                .profile()
+                .ok_or_else(|| conflict("新钱包验收缺少公开账户事实"))?;
+            let (primary_ref, _) = saved
+                .iter()
+                .find(|(secret_ref, _)| secret_ref.account_id() == profile.master_account_id())
+                .ok_or_else(|| conflict("新钱包验收缺少主账户密文"))?;
+            self.require_secret_matches(*primary_ref).await?;
         }
         Ok(())
     }
@@ -2044,8 +2145,7 @@ impl WalletService {
             .cloned()
             .ok_or_else(|| error(ContractErrorCode::NotFound, "账户设备密文不存在"))?;
         let secret = self.vault.open(secret_ref, envelope).await?;
-        let public_key = crate::sign::public_key(&secret)?;
-        if public_key.as_bytes() != secret_ref.account_id().as_bytes() {
+        if !crate::sign::matches_account(&secret, secret_ref.account_id())? {
             return Err(error(
                 ContractErrorCode::Integrity,
                 "设备密文与 AccountId 不一致",
@@ -2062,8 +2162,7 @@ impl WalletService {
             return Ok(false);
         };
         let secret = self.vault.open(secret_ref, envelope).await?;
-        let public_key = crate::sign::public_key(&secret)?;
-        Ok(public_key.as_bytes() == secret_ref.account_id().as_bytes())
+        crate::sign::matches_account(&secret, secret_ref.account_id()).map_err(EngineError::from)
     }
 
     fn operation_id_for_profile(&self, profile: &WalletProfile) -> Result<[u8; 16], EngineError> {

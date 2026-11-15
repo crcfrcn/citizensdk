@@ -921,3 +921,16 @@ ABI_FUNCTION(citizensdk_result_copy_block_body_extrinsic,
              citizensdk_error_code_t, citizensdk_result_handle_t, uint32_t,
              uint8_t *, uint64_t, uint64_t *);
 _Static_assert(CITIZENSDK_ABI_VERSION == 2, "Core ABI2");
+
+/* 按签名方式追加账户及有界长签名接口，固定真实C函数类型。 */
+ABI_FUNCTION(citizensdk_default_account_algorithm, uint32_t, void);
+ABI_FUNCTION(citizensdk_add_wallet_accounts_with_algorithm, citizensdk_error_code_t,
+             citizensdk_handle_t, citizensdk_bytes_view_t, citizensdk_bytes_view_t,
+             const uint32_t *, uint32_t, uint32_t, citizensdk_request_id_t *);
+ABI_FUNCTION(citizensdk_add_next_wallet_account_with_algorithm, citizensdk_error_code_t,
+             citizensdk_handle_t, citizensdk_bytes_view_t, citizensdk_bytes_view_t,
+             uint32_t, citizensdk_request_id_t *);
+ABI_FUNCTION(citizensdk_result_get_signature_bytes, citizensdk_error_code_t,
+             citizensdk_result_handle_t, uint8_t *, uint64_t, uint64_t *);
+ABI_FUNCTION(citizensdk_qr_consume_sign_response_bytes, citizensdk_error_code_t,
+             citizensdk_handle_t, citizensdk_bytes_view_t, uint8_t *, uint64_t, uint64_t *);

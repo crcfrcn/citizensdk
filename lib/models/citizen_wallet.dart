@@ -166,7 +166,7 @@ final class CitizenWalletProfile {
     return null;
   }
 
-  /// 仅供原副标题显示；不能把此提示当作提交编号，真正分配由Core操作门完成。
+  /// 兼容性最高序号提示；各签名方式的实际下一序号由核心在操作门内分别计算。
   int? get nextAccountIndex {
     if (accounts.isEmpty) return null;
     final maximum = accounts
@@ -281,11 +281,19 @@ final class CitizenWalletState {
 final class CitizenWalletSignature {
   CitizenWalletSignature({required this.accountId, required Uint8List bytes})
     : bytes = Uint8List.fromList(bytes) {
-    if (this.bytes.length != 64) {
+    if (this.bytes.length != 64 && this.bytes.length != 5261) {
       throw ArgumentError.value(this.bytes.length, 'bytes', '必须是 64 字节');
     }
   }
 
   final String accountId;
   final Uint8List bytes;
+}
+
+enum CitizenAccountDerivation {
+  sr25519(1),
+  mldsa65(2);
+
+  const CitizenAccountDerivation(this.value);
+  final int value;
 }

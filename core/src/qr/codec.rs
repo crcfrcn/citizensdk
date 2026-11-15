@@ -1,10 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::types::apply_signing_transform;
 use crate::types::AccountId32;
-use crate::types::SigningTransform;
+use crate::types::AccountSignature;
 use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use serde::de;
@@ -21,8 +19,8 @@ use crate::qr::SystemQrClock;
 
 pub const QR_V1: &str = "QR_V1";
 /// QR Code Model 2、纠错等级 M 的最大字节容量。
-pub const MAX_QR_TEXT_BYTES: usize = 2_331;
-pub const MAX_QR_JSON_BYTES: usize = 65_536;
+pub const MAX_QR_TEXT_BYTES: usize = mldsa::QR_SINGLE_CODE_BYTES;
+pub const MAX_QR_JSON_BYTES: usize = mldsa::QR_MAX_BYTES;
 const MAX_REVIEW_PAYLOAD_BYTES: usize = 1_920;
 const MAX_REQUEST_ID_BYTES: usize = 128;
 
@@ -76,7 +74,8 @@ pub struct SignRequest {
     pub request_id: String,
     pub expires_at: u64,
     pub action: u16,
-    /// 原a10/a11允许由签名端选择账户；None不能伪装成全零账户。
+    /// 旧版 Rust 类型的兼容账户槽，仅表示目标 AccountId，不表示真实 PQ 公钥。
+    /// 原 a10/a11 允许签名端选择账户，None 不能伪装成全零账户。
     pub signer_public_key: Option<Sr25519PublicKey>,
     pub review_payload: Vec<u8>,
 }
@@ -85,10 +84,11 @@ pub struct SignRequest {
 pub struct SignResponse {
     pub request_id: String,
     pub expires_at: u64,
+    /// 与请求相同的兼容 AccountId 槽；完整 PQ 公钥由 signature 持有并通过 q 传输。
     pub signer_public_key: Sr25519PublicKey,
-    pub signature: Sr25519Signature,
+    pub signature: AccountSignature,
     /// 原换绑响应o/r同时有无，类型上禁止只持有其中一半。
-    pub current_account: Option<(AccountId32, Sr25519Signature)>,
+    pub current_account: Option<(AccountId32, AccountSignature)>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,10 +171,10 @@ pub fn parse(raw: &str) -> QrResult<QrCode> {
 }
 
 pub(crate) fn parse_at(raw: &str, now_epoch_seconds: u64) -> QrResult<QrCode> {
-    if raw.is_empty() || raw.len() > MAX_QR_TEXT_BYTES {
+    if raw.is_empty() || raw.len() > MAX_QR_JSON_BYTES {
         return Err(QrError::new(
             QrErrorCode::CapacityExceeded,
-            "二维码文本为空或超过单码容量",
+            "二维码完整文本为空或超过传输上限",
         ));
     }
     let value = serde_json::from_str::<StrictValue>(raw)
@@ -280,7 +280,7 @@ pub fn encode_document(input_json: &str) -> QrResult<Value> {
                 (Value::Null, Value::Null) => None,
                 (Value::String(_), Value::String(_)) => Some((
                     account("current_account_id")?,
-                    Sr25519Signature::from_bytes(
+                    AccountSignature::from_bytes(
                         fixed("current_account_signature", 64)?
                             .try_into()
                             .map_err(|_| invalid_field("签名长度无效"))?,
@@ -292,11 +292,11 @@ pub fn encode_document(input_json: &str) -> QrResult<Value> {
                 request_id: string(fields, "request_id")?.to_owned(),
                 expires_at: expiry(fields)?,
                 signer_public_key: signer("signer_account_id")?,
-                signature: Sr25519Signature::from_bytes(
-                    fixed("signature", 64)?
-                        .try_into()
-                        .map_err(|_| invalid_field("签名长度无效"))?,
-                ),
+                signature: AccountSignature::from_wire(&decode_hex(
+                    string(fields, "signature")?,
+                    5261,
+                )?)
+                .map_err(|_| invalid_field("signature envelope"))?,
                 current_account,
             })
         }
@@ -489,9 +489,9 @@ impl QrCode {
                 "kind": 2, "canonical_text": v.encode()?, "request_id": v.request_id,
                 "expires_at": v.expires_at,
                 "signer_account_id": AccountId32::from_bytes(*v.signer_public_key.as_bytes()).to_string(),
-                "signature": hex(v.signature.as_bytes()),
-                "current_account_id": v.current_account.map(|(account, _)| account.to_string()),
-                "current_account_signature": v.current_account.map(|(_, signature)| hex(signature.as_bytes())),
+                "signature": hex(&v.signature.to_wire()),
+                "current_account_id": v.current_account.as_ref().map(|(account, _)| account.to_string()),
+                "current_account_signature": v.current_account.as_ref().map(|(_, signature)| hex(signature.as_bytes())),
             }),
             Self::AccountId(v) => serde_json::json!({
                 "kind": 5, "canonical_text": v.encode()?, "account_id": v.account_id.to_string(),
@@ -511,6 +511,14 @@ impl QrCode {
         if !value.is_object() {
             return Err(invalid_field("二维码公开投影不是对象"));
         }
+        if let Self::SignResponse(_) = self {
+            let text = value["canonical_text"]
+                .as_str()
+                .ok_or_else(|| invalid_field("canonical response"))?;
+            value["qr_frames"] =
+                serde_json::to_value(mldsa::qr_frames(text).map_err(invalid_field)?)
+                    .map_err(|_| invalid_field("QR frames"))?;
+        }
         value["scan_purpose_mask"] = Value::from(self.scan_purpose_mask());
         Ok(std::mem::take(&mut value))
     }
@@ -527,15 +535,15 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 impl SignRequest {
-    /// 普通链签名/固定账户会话必须有确切签名者，不能对匿名模板猜默认账户。
+    /// 读取目标 AccountId 的兼容账户槽；普通链签名不能对匿名模板猜默认账户。
     pub fn require_signer(&self) -> QrResult<Sr25519PublicKey> {
         self.signer_public_key
-            .ok_or_else(|| invalid_field("请求尚未绑定签名账户"))
+            .ok_or_else(|| invalid_field("请求尚未指定签名账户"))
     }
     /// 仅供 SDK Rust 审阅/验签管线使用，不是公开语言绑定的拆分签名入口。
     #[doc(hidden)]
     pub fn signing_message(&self) -> QrResult<Vec<u8>> {
-        signing_bytes(&self.review_payload)
+        signing_bytes(self.require_signer()?.as_bytes(), &self.review_payload)
     }
 
     pub fn encode(&self) -> QrResult<String> {
@@ -553,14 +561,14 @@ impl SignRequest {
                 "审阅载荷超过单码安全上限",
             ));
         }
-        checked_json(serde_json::json!({
+        checked_request_json(serde_json::json!({
             "p": QR_V1,
             "k": 1,
             "i": self.request_id,
             "e": self.expires_at,
             "b": {
                 "a": self.action,
-                "g": 1,
+                "g": 0,
                 "u": self.signer_public_key.map_or_else(String::new, |key| URL_SAFE_NO_PAD.encode(key.as_bytes())),
                 "d": URL_SAFE_NO_PAD.encode(&self.review_payload),
             }
@@ -576,7 +584,10 @@ impl SignResponse {
             "u": URL_SAFE_NO_PAD.encode(self.signer_public_key.as_bytes()),
             "s": URL_SAFE_NO_PAD.encode(self.signature.as_bytes()),
         });
-        if let Some((account, signature)) = self.current_account {
+        if let Some(public) = self.signature.public_key() {
+            body["q"] = Value::from(URL_SAFE_NO_PAD.encode(public.0));
+        }
+        if let Some((account, signature)) = &self.current_account {
             body["o"] = Value::from(URL_SAFE_NO_PAD.encode(account.as_bytes()));
             body["r"] = Value::from(URL_SAFE_NO_PAD.encode(signature.as_bytes()));
         }
@@ -624,13 +635,15 @@ impl UserTransferCode {
     }
 }
 
-/// Substrate `SignedPayload::using_encoded` 的唯一签名字节规则。
-pub(crate) fn signing_bytes(review_payload: &[u8]) -> QrResult<Vec<u8>> {
+/// 原生交易统一签署绑定明确账户的 V5 摘要。
+pub(crate) fn signing_bytes(account: &[u8; 32], review_payload: &[u8]) -> QrResult<Vec<u8>> {
     if review_payload.len() > MAX_REVIEW_PAYLOAD_BYTES {
         return Err(invalid_field("review_payload 长度无效"));
     }
-    apply_signing_transform(review_payload, &SigningTransform::SubstrateSigningPayload)
-        .map_err(|_| invalid_field("review_payload 长度无效"))
+    if review_payload.is_empty() {
+        return Err(invalid_field("review_payload 不能为空"));
+    }
+    Ok(mldsa::review_message(account, review_payload).to_vec())
 }
 
 fn parse_sign_request(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCode> {
@@ -643,7 +656,7 @@ fn parse_sign_request(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCod
     exact_keys(body, &["a", "g", "u", "d"])?;
     let action =
         u16::try_from(unsigned(body, "a")?).map_err(|_| invalid_field("签名动作超出 u16"))?;
-    if unsigned(body, "g")? != 1 {
+    if ![0, 1, 2].contains(&unsigned(body, "g")?) {
         return Err(invalid_field("签名算法只允许 sr25519"));
     }
     let signer_text = string(body, "u")?;
@@ -675,21 +688,33 @@ fn parse_sign_response(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCo
     let expires_at = unsigned(envelope, "e")?;
     validate_expiry(expires_at, now)?;
     let body = object(field(envelope, "b")?, "签名响应 body 必须是对象")?;
-    let current_account = if body.contains_key("o") || body.contains_key("r") {
-        exact_keys(body, &["u", "s", "o", "r"])?;
+    let has_pq = body.contains_key("q");
+    let mut keys = vec!["u", "s"];
+    if has_pq {
+        keys.push("q");
+    }
+    if body.contains_key("o") || body.contains_key("r") {
+        keys.extend(["o", "r"]);
+    }
+    exact_keys(body, &keys)?;
+    let current_account = if body.contains_key("o") {
         Some((
-            AccountId32::from_bytes(decode_fixed::<32>(
-                string(body, "o")?,
-                "当前账户长度或编码无效",
-            )?),
-            Sr25519Signature::from_bytes(decode_fixed::<64>(
+            AccountId32::from_bytes(decode_fixed::<32>(string(body, "o")?, "current account")?),
+            AccountSignature::from_bytes(decode_fixed::<64>(
                 string(body, "r")?,
-                "当前账户签名长度或编码无效",
+                "current signature",
             )?),
         ))
     } else {
-        exact_keys(body, &["u", "s"])?;
         None
+    };
+    let signature = if has_pq {
+        AccountSignature::pq(
+            mldsa::PublicKey(decode_fixed::<1952>(string(body, "q")?, "PQ public key")?),
+            mldsa::Signature(decode_fixed::<3309>(string(body, "s")?, "PQ signature")?),
+        )
+    } else {
+        AccountSignature::from_bytes(decode_fixed::<64>(string(body, "s")?, "signature")?)
     };
     Ok(QrCode::SignResponse(SignResponse {
         current_account,
@@ -697,12 +722,9 @@ fn parse_sign_response(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCo
         expires_at,
         signer_public_key: Sr25519PublicKey::from_bytes(decode_fixed::<32>(
             string(body, "u")?,
-            "signer_public_key 长度或编码无效",
+            "account",
         )?),
-        signature: Sr25519Signature::from_bytes(decode_fixed::<64>(
-            string(body, "s")?,
-            "signature 长度或编码无效",
-        )?),
+        signature,
     }))
 }
 
@@ -890,10 +912,10 @@ fn validate_expiry_value(expires_at: u64) -> QrResult<()> {
 fn checked_json(value: Value) -> QrResult<String> {
     let encoded = serde_json::to_string(&value)
         .map_err(|_| QrError::new(QrErrorCode::InvalidFormat, "二维码编码失败"))?;
-    if encoded.len() > MAX_QR_TEXT_BYTES {
+    if encoded.len() > MAX_QR_JSON_BYTES {
         return Err(QrError::new(
             QrErrorCode::CapacityExceeded,
-            "二维码文本超过单码容量",
+            "二维码完整文本超过传输上限",
         ));
     }
     Ok(encoded)
@@ -963,3 +985,14 @@ const fn invalid_field(message: &'static str) -> QrError {
 #[cfg(test)]
 #[path = "../../tests/qr/codec.rs"]
 mod tests;
+
+fn checked_request_json(value: Value) -> QrResult<String> {
+    let text = checked_json(value)?;
+    if text.len() > MAX_QR_TEXT_BYTES {
+        return Err(QrError::new(
+            QrErrorCode::CapacityExceeded,
+            "signing review exceeds one QR",
+        ));
+    }
+    Ok(text)
+}

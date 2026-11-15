@@ -88,6 +88,10 @@ impl DerivedWalletAccount {
         self.public_key
     }
 
+    pub fn pq_account_id(&self) -> ContractResult<crate::types::AccountId32> {
+        Ok(crate::types::AccountId32::from_bytes(mldsa::account_id(&crate::sign::pq_public_key(&self.secret)?)))
+    }
+
     pub fn into_secret(self) -> SecretBuffer {
         self.secret
     }

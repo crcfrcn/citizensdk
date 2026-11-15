@@ -18,8 +18,8 @@ use crate::types::VerifiedBlockRef;
 pub const MAX_TRANSACTION_CALL_DATA_BYTES: usize = 1024 * 1024;
 /// Maximum live or in-flight preparations retained by one Engine instance.
 pub const MAX_PREPARED_TRANSACTIONS: usize = 256;
-/// A signed V4 extrinsic adds only bounded address/signature/extensions framing to callData.
-pub const MAX_TRANSACTION_SIGNED_EXTRINSIC_BYTES: usize = MAX_TRANSACTION_CALL_DATA_BYTES + 512;
+/// V5 原生交易仅增加有界认证证明与交易扩展，不改变 callData。
+pub const MAX_TRANSACTION_SIGNED_EXTRINSIC_BYTES: usize = MAX_TRANSACTION_CALL_DATA_BYTES + 8192;
 
 /// Unpredictable, instance-bound identity for one non-persistent preparation.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

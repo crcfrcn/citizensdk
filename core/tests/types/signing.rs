@@ -88,7 +88,7 @@ fn transforms_have_exact_boundaries_and_domain_separation() {
             SigningTransform::SubstrateSigningPayload,
         )
         .unwrap();
-        assert_eq!(intent.signing_message().unwrap(), payload);
+        assert_eq!(intent.signing_message().unwrap(), mldsa::review_message(account(1).as_bytes(), &payload));
     }
     let payload = vec![0x55; 257];
     let intent = SigningIntent::try_new(
@@ -99,7 +99,7 @@ fn transforms_have_exact_boundaries_and_domain_separation() {
     .unwrap();
     assert_eq!(
         intent.signing_message().unwrap(),
-        blake2_256(&payload).unwrap()
+        mldsa::review_message(account(1).as_bytes(), &payload)
     );
 
     let first = SigningIntent::try_new(

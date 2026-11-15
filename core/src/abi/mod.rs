@@ -464,17 +464,14 @@ pub unsafe extern "C" fn citizensdk_verify_signature(
         }
         #[cfg(feature = "signing")]
         {
-            use crate::types::{Sr25519PublicKey, Sr25519Signature};
+            use crate::types::{AccountId32, AccountSignature};
             if account_id.is_null() {
                 return Err(FfiError::invalid("account_id is null"));
             }
-            let public_key = Sr25519PublicKey::from_bytes(ptr::read(account_id).bytes);
-            let signature: [u8; 64] = copy_view(signature, "signature", 64)?
-                .try_into()
-                .map_err(|_| FfiError::invalid("signature must be exactly 64 bytes"))?;
+            let signer_account_id = AccountId32::from_bytes(ptr::read(account_id).bytes);
+            let signature = AccountSignature::from_wire(&copy_view(signature, "signature", 5261)?)?;
             let message = copy_view(message, "message", MAX_ABI_INPUT_BYTES)?;
-            let valid =
-                crate::sign::verify(public_key, message, Sr25519Signature::from_bytes(signature))?;
+            let valid = crate::sign::verify(signer_account_id, message, signature)?;
             ptr::write(out_valid, u8::from(valid));
             Ok(())
         }

@@ -176,7 +176,7 @@ final class CitizenSDKCoreAbiTests: XCTestCase {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         })
-        XCTAssertEqual(names.count, 154)
+        XCTAssertEqual(names.count, 159)
         XCTAssertTrue(names.isSuperset(of: [
             "citizensdk_wallet_state_get_removed_account", "citizensdk_chain_codec",
             "citizensdk_get_finalized_block_range", "citizensdk_result_get_block_range",

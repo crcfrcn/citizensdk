@@ -408,10 +408,11 @@ internal enum CitizenSDKRead {
 
     static func signature(_ result: UInt64) throws -> CitizenSignature {
         try inspect(result, kind: 14) {
-            var bytes = Data(count: 64)
-            let code = bytes.withUnsafeMutableBytes {
-                citizensdk_result_get_signature(result, $0.bindMemory(to: UInt8.self).baseAddress)
-            }
+            var required: UInt64 = 0
+            try CitizenSDKChecks.requireOK(citizensdk_result_get_signature_bytes(result, nil, 0, &required), "signature size")
+            guard required == 64 || required == 5261 else { throw CitizenSDKError(.integrity, "invalid signature size") }
+            var bytes = Data(count: Int(required))
+            let code = bytes.withUnsafeMutableBytes { citizensdk_result_get_signature_bytes(result, $0.bindMemory(to: UInt8.self).baseAddress, required, &required) }
             try CitizenSDKChecks.requireOK(code, "Core signature result is invalid")
             return try CitizenSignature(bytes)
         }
@@ -433,7 +434,7 @@ internal enum CitizenSDKRead {
                     &sessionRequired, nil, 0, &requestRequired),
                 "Core signing outcome size query failed"
             )
-            guard signatureRequired <= 64, sessionRequired <= 128, requestRequired <= 2_331 else {
+            guard signatureRequired <= 5261, sessionRequired <= 128, requestRequired <= 2_331 else {
                 throw CitizenSDKError(.integrity, "Core signing outcome exceeds its limits")
             }
             let values = try copyThree(signatureRequired, sessionRequired, requestRequired) {
@@ -449,7 +450,7 @@ internal enum CitizenSDKRead {
             let payloadHash = fixed(info.payload_hash, 32)
             switch info.status {
             case CITIZENSDK_SIGNING_COMPLETED:
-                guard values.0.count == 64, values.1.isEmpty, values.2.isEmpty else {
+                guard (values.0.count == 64 || values.0.count == 5261), values.1.isEmpty, values.2.isEmpty else {
                     throw CitizenSDKError(.integrity, "Core completed signing outcome is inconsistent")
                 }
                 return .completed(accountID: accountID, payloadHash: payloadHash,

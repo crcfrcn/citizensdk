@@ -122,29 +122,33 @@ extension Wallet on CitizenSdk {
   CitizenSdkOperation<CitizenWalletProfile> addAccounts({
     required String mnemonic,
     String password = '',
+    CitizenAccountDerivation? derivation,
     required List<int> indices,
   }) => _operation((m, out) {
     final values = m.alloc<Uint32>(indices.length * 4);
     for (var i = 0; i < indices.length; i++) {
       values[i] = _u32(indices[i]);
     }
-    return _api.citizensdk_add_wallet_accounts(
+    return _api.citizensdk_add_wallet_accounts_with_algorithm(
       _handle,
       m.view(mnemonic, 1024),
       m.view(password, 1024),
       values,
       indices.length,
+      derivation?.value ?? 0,
       out,
     );
   }, _requiredProfile);
   CitizenSdkOperation<CitizenWalletProfile> addNextAccount({
     required String mnemonic,
     String password = '',
+    CitizenAccountDerivation? derivation,
   }) => _operation(
-    (m, out) => _api.citizensdk_add_next_wallet_account(
+    (m, out) => _api.citizensdk_add_next_wallet_account_with_algorithm(
       _handle,
       m.view(mnemonic, 1024),
       m.view(password, 1024),
+      derivation?.value ?? 0,
       out,
     ),
     _requiredProfile,
@@ -274,7 +278,7 @@ extension Wallet on CitizenSdk {
     (m, out) => _api.citizensdk_consume_default_account_change(
       _handle,
       m.view(sessionId, 128),
-      m.view(response, 2331),
+      m.view(response, 65536),
       out,
     ),
     (m, r) {
@@ -294,12 +298,17 @@ extension Wallet on CitizenSdk {
       out,
     ),
     (m, r) {
-      final signature = m.alloc<Uint8>(64);
-      _status(_api.citizensdk_result_get_signature(r, signature));
-      return CitizenWalletSignature(
-        accountId: accountId,
-        bytes: signature.asTypedList(64),
+      final signature = m.copy(
+        (buffer, capacity, required) =>
+            _api.citizensdk_result_get_signature_bytes(
+              r,
+              buffer,
+              capacity,
+              required,
+            ),
+        5261,
       );
+      return CitizenWalletSignature(accountId: accountId, bytes: signature);
     },
   );
   CitizenSdkOperation<CitizenSigningOutcome> beginSigning(
@@ -325,7 +334,7 @@ extension Wallet on CitizenSdk {
     (m, out) => _api.citizensdk_consume_external_signature(
       _handle,
       m.view(sessionId, 128),
-      m.view(response, 2331),
+      m.view(response, 65536),
       out,
     ),
     (m, r) {
@@ -561,9 +570,13 @@ CitizenWalletState _readWallet(_Memory m, int result) {
     );
   });
   final removedCount = p.ref.removed_account_count;
-  final removedId = m.alloc<c.citizensdk_account_id>(sizeOf<c.citizensdk_account_id>());
+  final removedId = m.alloc<c.citizensdk_account_id>(
+    sizeOf<c.citizensdk_account_id>(),
+  );
   final removed = List<String>.generate(removedCount, (i) {
-    _status(_api.citizensdk_wallet_state_get_removed_account(result, i, removedId));
+    _status(
+      _api.citizensdk_wallet_state_get_removed_account(result, i, removedId),
+    );
     return _accountIdText(removedId.ref.bytes);
   });
   final removedSet = removed.toSet();
@@ -590,9 +603,9 @@ CitizenSigningOutcome _readSigning(_Memory m, int result) {
   final p = m.struct<c.citizensdk_signing_outcome_info>(
         sizeOf<c.citizensdk_signing_outcome_info>(),
       ),
-      signature = m.alloc<Uint8>(64),
+      signature = m.alloc<Uint8>(5261),
       session = m.alloc<Uint8>(128),
-      request = m.alloc<Uint8>(2331),
+      request = m.alloc<Uint8>(65536),
       sn = m.alloc<Uint64>(8),
       rn = m.alloc<Uint64>(8),
       bn = m.alloc<Uint64>(8);
@@ -601,31 +614,31 @@ CitizenSigningOutcome _readSigning(_Memory m, int result) {
       result,
       p,
       signature,
-      64,
+      5261,
       bn,
       session,
       128,
       sn,
       request,
-      2331,
+      65536,
       rn,
     ),
   );
   final v = p.ref;
   if (bn.value < 0 ||
-      bn.value > 64 ||
+      bn.value > 5261 ||
       sn.value < 0 ||
       sn.value > 128 ||
       rn.value < 0 ||
-      rn.value > 2331) {
+      rn.value > 65536) {
     throw _failure(9);
   }
   if (v.status == 1) {
-    if (bn.value != 64) throw _failure(9);
+    if (bn.value != 64 && bn.value != 5261) throw _failure(9);
     return CitizenSigningCompleted(
       accountId: _accountIdText(v.account_id.bytes),
       payloadHash: _hex(v.payload_hash, 32),
-      signature: signature.asTypedList(64),
+      signature: signature.asTypedList(bn.value),
     );
   }
   if (v.status != 2 || v.transport != 1) throw _failure(9);
@@ -644,7 +657,7 @@ CitizenDefaultAccountChangeOutcome _readDefaultChange(_Memory m, int result) {
         sizeOf<c.citizensdk_default_account_change_info>(),
       ),
       session = m.alloc<Uint8>(128),
-      request = m.alloc<Uint8>(2331),
+      request = m.alloc<Uint8>(65536),
       sn = m.alloc<Uint64>(8),
       rn = m.alloc<Uint64>(8);
   _status(
@@ -655,12 +668,12 @@ CitizenDefaultAccountChangeOutcome _readDefaultChange(_Memory m, int result) {
       128,
       sn,
       request,
-      2331,
+      65536,
       rn,
     ),
   );
   final v = p.ref;
-  if (sn.value < 0 || sn.value > 128 || rn.value < 0 || rn.value > 2331) {
+  if (sn.value < 0 || sn.value > 128 || rn.value < 0 || rn.value > 65536) {
     throw _failure(9);
   }
   if (v.status == 1) {

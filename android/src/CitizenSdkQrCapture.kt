@@ -278,7 +278,7 @@ class CitizenSdkQrCapture internal constructor(
             } finally { luminance.fill(0) }
         } catch (error: CitizenSdkException) {
             // 未识别到码不是错误；码型不符或无效内容报告后继续采集，不能提前结束资源。
-            if (error.code != CitizenSdkErrorCode.NOT_FOUND) main.post { if (!revoked.get() && !paused.get() && generation.get() == capturedGeneration) listener.onError(error) }
+            if (error.code != CitizenSdkErrorCode.NOT_FOUND && error.code != CitizenSdkErrorCode.BUSY) main.post { if (!revoked.get() && !paused.get() && generation.get() == capturedGeneration) listener.onError(error) }
         } catch (error: Throwable) {
             main.post { if (!revoked.get() && !paused.get() && generation.get() == capturedGeneration) listener.onError(cameraError(error)) }
         } finally { image.close() }

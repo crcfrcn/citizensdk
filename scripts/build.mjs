@@ -6,7 +6,7 @@ import {cpus,loadavg,totalmem,freemem,release} from 'node:os';
 import {createReadStream,mkdirSync,mkdtempSync,rmdirSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,renameSync,symlinkSync,existsSync,realpathSync,lstatSync,readdirSync,utimesSync,readlinkSync} from 'node:fs';
 import {join,dirname,resolve,basename,relative,sep,isAbsolute,win32} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {manifest as configuration,tools} from './config.mjs';
+import {manifest as configuration,tools,chainRepository} from './config.mjs';
 export function sdkName(version){return '公民SDK·SDK·v'+version;}
 
 function id(value){if(!['string','number'].includes(typeof value))throw Error('SDK Run或产物身份无效');if(typeof value==='string'&&!/^[1-9]\d*$/u.test(value))throw Error('SDK Run或产物身份无效');const result=Number(value);if(!Number.isSafeInteger(result)||result<=0)throw Error('SDK Run或产物身份无效');return result;}
@@ -514,6 +514,13 @@ export async function build({target,test=false,testDevice,simulator,performance=
  try{
   if(cache.project)rmSync(cache.project,{recursive:true,force:true});
   const project=createFlutterSourceView(root,cache.project||join(work,'project')),env={RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1'},headers=privateHeaders(project,work);
+  if(!native){
+   // 直接引用唯一核心；缺少本机源码时仅为本轮构建浅克隆公民链，不复制或生成模块实现。
+   const localChain=resolve(root,'../citizenchain'),chain=existsSync(join(localChain,'runtime/transaction/mldsa/Cargo.toml'))?localChain:join(work,'citizenchain');
+   if(chain!==localChain)await run('git',['clone','--depth=1','--branch','main','https://github.com/'+chainRepository+'.git',chain],{env});
+   const sharedMldsa=relative(project,join(chain,'runtime/transaction/mldsa')).split(sep).join('/');
+   writeFileSync(join(project,'Cargo.toml'),readFileSync(join(project,'Cargo.toml'),'utf8').replace('path = "../citizenchain/runtime/transaction/mldsa"','path = '+JSON.stringify(sharedMldsa)));
+  }
   if(test)Object.assign(env,sqliteLinkEnv(env,process.env.CITIZENSDK_SQLITE_ARCHIVE));
   await headerChecks(project,{env});
   if(test&&!target){

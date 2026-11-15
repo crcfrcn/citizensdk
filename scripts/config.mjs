@@ -13,6 +13,8 @@ export function describeConfiguration(){return JSON.parse(JSON.stringify(manifes
 
 // SDK是唯一公开平台；其它名称仅为包内真实宿主编译目标。
 export const repository='crcfrcn/citizensdk';
+// 共享交易认证核心的源码仓库；构建时优先复用本机公民链源码。
+export const chainRepository='crcfrcn/citizenchain';
 export const tools=Object.freeze({node:'25.2.1',rust:'1.97.1',flutter:'3.47.2',ndk:'28.2.13676358',gradle:'9.1.0',cmake:'3.31.6'});
 
 // C/C++宿主依赖沿用原来源版本，由工作流使用官方构建命令准备。

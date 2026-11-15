@@ -170,7 +170,7 @@ impl FinalizedHistoryRuntime {
                 guard,
             )
             .await??;
-            validate_persisted_transaction_execution(&record, &identity, &runtime)?;
+            validate_persisted_transaction_execution(&record, &identity, &runtime, self.chain_client.as_ref()).await?;
             if signed_extrinsic_hash(&runtime, record.signed_extrinsic())?
                 != record.transaction_hash()
             {

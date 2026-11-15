@@ -199,7 +199,7 @@ final class CitizenSigningCompleted extends CitizenSigningOutcome {
     required super.payloadHash,
     required Uint8List signature,
   }) : signature = Uint8List.fromList(signature).asUnmodifiableView() {
-    if (this.signature.length != 64) {
+    if (this.signature.length != 64 && this.signature.length != 5261) {
       throw ArgumentError.value(
         this.signature.length,
         'signature',

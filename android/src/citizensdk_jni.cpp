@@ -32,7 +32,7 @@ constexpr uint32_t kMaxWalletAccountIndex = 19890604;
 constexpr uint32_t kMaxWalletAccounts = kMaxWalletAccountIndex + 1;
 constexpr uint32_t kMaxColdAccounts = 1990;
 constexpr uint32_t kMaxCatalogAccounts = kMaxWalletAccounts + kMaxColdAccounts;
-constexpr size_t kMaxQrTextBytes = 2331;
+constexpr size_t kMaxQrTextBytes = 65536;
 constexpr size_t kMaxQrReviewBytes = 1920;
 constexpr size_t kMaxQrImageBytes = 16U * 1024U * 1024U;
 std::mutex g_bridges_mutex;
@@ -1182,7 +1182,7 @@ jboolean native_verify(JNIEnv *env, jclass, jbyteArray account_bytes,
   std::vector<uint8_t> signature;
   std::vector<uint8_t> message;
   if (signature_bytes == nullptr ||
-      env->GetArrayLength(signature_bytes) != 64 || message_bytes == nullptr ||
+      (env->GetArrayLength(signature_bytes) != 64 && env->GetArrayLength(signature_bytes) != 5261) || message_bytes == nullptr ||
       env->GetArrayLength(message_bytes) > 16 * 1024 * 1024) {
     throw_sdk(env, CITIZENSDK_ERROR_INVALID_ARGUMENT,
               "Verification input length is invalid");
@@ -1441,7 +1441,7 @@ jlong native_import(JNIEnv *env, jobject, jlong raw, jbyteArray mnemonic_bytes,
 
 jlong native_add_accounts(JNIEnv *env, jobject, jlong raw,
                           jbyteArray mnemonic_bytes, jbyteArray password_bytes,
-                          jintArray index_values) {
+                          jintArray index_values, jint algorithm) {
   auto bridge = bridge_from(env, raw);
   SensitiveBytes mnemonic;
   SensitiveBytes password;
@@ -1452,16 +1452,16 @@ jlong native_add_accounts(JNIEnv *env, jobject, jlong raw,
       !take_ints(env, index_values, &indices))
     return 0;
   return begin_request(
-      env, bridge, [&mnemonic, &password, &indices](auto handle, auto *out) {
-        return citizensdk_add_wallet_accounts(
+      env, bridge, [&mnemonic, &password, &indices, algorithm](auto handle, auto *out) {
+        return citizensdk_add_wallet_accounts_with_algorithm(
             handle, view(mnemonic.value()), view(password.value()),
-            indices.data(), static_cast<uint32_t>(indices.size()), out);
+            indices.data(), static_cast<uint32_t>(indices.size()), static_cast<uint32_t>(algorithm), out);
       });
 }
 
 jlong native_add_next_account(JNIEnv *env, jobject, jlong raw,
                               jbyteArray mnemonic_bytes,
-                              jbyteArray password_bytes) {
+                              jbyteArray password_bytes, jint algorithm) {
   auto bridge = bridge_from(env, raw);
   SensitiveBytes mnemonic;
   SensitiveBytes password;
@@ -1470,9 +1470,9 @@ jlong native_add_next_account(JNIEnv *env, jobject, jlong raw,
       !take_wallet_secret(env, password_bytes, password.out()))
     return 0;
   return begin_request(
-      env, bridge, [&mnemonic, &password](auto handle, auto *out) {
-        return citizensdk_add_next_wallet_account(
-            handle, view(mnemonic.value()), view(password.value()), out);
+      env, bridge, [&mnemonic, &password, algorithm](auto handle, auto *out) {
+        return citizensdk_add_next_wallet_account_with_algorithm(
+            handle, view(mnemonic.value()), view(password.value()), static_cast<uint32_t>(algorithm), out);
       });
 }
 
@@ -1751,14 +1751,9 @@ jbyteArray native_qr_consume_response(JNIEnv *env, jobject, jlong raw,
   if (!bridge || !qr_input(env, text_bytes, kMaxQrTextBytes, &text,
                            "QR sign response is invalid"))
     return nullptr;
-  std::vector<uint8_t> signature(64);
-  const auto code = citizensdk_qr_consume_sign_response(
-      bridge->handle(), view(text), signature.data());
-  if (code != kOk) {
-    throw_sdk(env, code, "QR sign response was rejected");
-    return nullptr;
-  }
-  return to_byte_array(env, signature);
+  return qr_core_bytes(env, bridge, [&](uint8_t *out, uint64_t capacity, uint64_t *required) {
+      return citizensdk_qr_consume_sign_response_bytes(bridge->handle(), view(text), out, capacity, required);
+  }, 0, 5261);
 }
 
 jboolean native_qr_cancel_request(JNIEnv *env, jobject, jlong raw,
@@ -2138,10 +2133,10 @@ const JNINativeMethod kMethods[] = {
     {const_cast<char *>("nativeImportWallet"), const_cast<char *>("(J[B[B)J"),
      reinterpret_cast<void *>(native_import)},
     {const_cast<char *>("nativeAddWalletAccounts"),
-     const_cast<char *>("(J[B[B[I)J"),
+     const_cast<char *>("(J[B[B[II)J"),
      reinterpret_cast<void *>(native_add_accounts)},
     {const_cast<char *>("nativeAddNextWalletAccount"),
-     const_cast<char *>("(J[B[B)J"),
+     const_cast<char *>("(J[B[BI)J"),
      reinterpret_cast<void *>(native_add_next_account)},
     {const_cast<char *>("nativeCopyPreparedMnemonic"),
      const_cast<char *>("(JJ)[B"),

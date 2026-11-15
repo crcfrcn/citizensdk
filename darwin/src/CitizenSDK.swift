@@ -706,7 +706,7 @@ internal final class CitizenSDKCore: @unchecked Sendable {
 
 
     static func verify(accountID: Data, signature: Data, message: Data) throws -> Bool {
-        guard accountID.count == 32, signature.count == 64 else {
+        guard accountID.count == 32, (signature.count == 64 || signature.count == 5261) else {
             throw CitizenSDKError(.invalidArgument, "accountId/signature length is invalid")
         }
         var account = citizensdk_account_id_t()
@@ -2114,19 +2114,11 @@ var account = try core.cAccount((signerAccountID))
     public func qrConsumeSignResponse(_ text: String) throws -> Data {
         let core=self.core
 
-        return try (core.callLock.withLock {
-            try core.requireOpen()
-            var signature = Data(count: 64)
-            try core.withView(Data((text).utf8)) { view in
-                try signature.withUnsafeMutableBytes { bytes in
-                    try CitizenSDKChecks.requireOK(
-                        citizensdk_qr_consume_sign_response(core.handle, view, bytes.bindMemory(to: UInt8.self).baseAddress),
-                        "QR sign response was rejected"
-                    )
-                }
+        return try core.withView(Data(text.utf8)) { view in
+            try core.qrOutput(maximum: 5261) { output, capacity, required in
+                citizensdk_qr_consume_sign_response_bytes(core.handle, view, output, capacity, required)
             }
-            return signature
-        })
+        }
     }
 
     public func qrCancelSignRequest(_ requestID: String) throws -> Bool {
@@ -2257,7 +2249,7 @@ guard let first = try core.qrDecodeLuminanceAll(data, width: width, height: heig
                 return value
             })
         }
-        return operation.map{[self] document in CitizenQRSigned(document:document,qrImage:try self.qrEncode(document.canonicalText,scale:4))}
+        return operation.map{[self] document in CitizenQRSigned(document:document,qrImages:try document.qrFrames.map { try self.qrEncode($0,scale:4) })}
     }
     public func reviewQrRequest(_ text: String) throws -> CitizenSDKOperation<CitizenQRReview> {
         let core=self.core
@@ -2379,8 +2371,8 @@ var sourceAccount = try core.cAccount((CitizenSDKInputLimits.accountID(sourceAcc
 
     public func consumePreparedTransactionQrResponse(executionID: String, response: String)
         async throws -> CitizenTransactionExecutionCompleted {
-        guard (1...2_331).contains(response.utf8.count) else {
-            throw CitizenSDKError(.invalidArgument, "response must contain 1...2331 UTF-8 bytes")
+        guard (1...65_536).contains(response.utf8.count) else {
+            throw CitizenSDKError(.invalidArgument, "response must contain 1...65536 UTF-8 bytes")
         }
         let value = try await core
             .consumePreparedTransactionQrResponse(executionID, response: response).value()
@@ -2575,7 +2567,7 @@ var sourceAccount = try core.cAccount((CitizenSDKInputLimits.accountID(sourceAcc
         }
     }
 
-    public func addAccounts(mnemonic: String, password: String = "", indices: [UInt32]) throws -> CitizenSDKOperation<CitizenWalletProfile> {
+    public func addAccounts(mnemonic: String, password: String = "", indices: [UInt32], derivation: CitizenAccountDerivation = .automatic) throws -> CitizenSDKOperation<CitizenWalletProfile> {
         let core=self.core
 
         let indices = try CitizenSDKInputLimits.additionalIndices(indices)
@@ -2583,8 +2575,8 @@ var sourceAccount = try core.cAccount((CitizenSDKInputLimits.accountID(sourceAcc
             try (core.withSensitiveViews((mnemonic), (password)) { mnemonicView, passwordView in
             try (indices).withUnsafeBufferPointer { values in
                 try core.begin(accept: {
-                    citizensdk_add_wallet_accounts(core.handle, mnemonicView, passwordView,
-                                                   values.baseAddress, UInt32(values.count), $0)
+                    citizensdk_add_wallet_accounts_with_algorithm(core.handle, mnemonicView, passwordView,
+                                                   values.baseAddress, UInt32(values.count), derivation.rawValue, $0)
                 }, decode: { result in
                     guard let profile = try CitizenSDKRead.profile(result) else {
                         throw CitizenSDKError(.integrity, "add accounts returned no profile")
@@ -2597,12 +2589,12 @@ var sourceAccount = try core.cAccount((CitizenSDKInputLimits.accountID(sourceAcc
     }
 
     /// 下一编号由Core同一次身份校验和提交决定，宿主不能先读max+1再提交。
-    public func addNextAccount(mnemonic: String, password: String = "") throws -> CitizenSDKOperation<CitizenWalletProfile> {
+    public func addNextAccount(mnemonic: String, password: String = "", derivation: CitizenAccountDerivation = .automatic) throws -> CitizenSDKOperation<CitizenWalletProfile> {
         let core=self.core
 
         return try withWalletInputs(mnemonic: mnemonic, password: password) { mnemonic, password in
             try (core.withSensitiveViews((mnemonic), (password)) { mnemonicView, passwordView in
-            try core.begin(accept: { citizensdk_add_next_wallet_account(core.handle, mnemonicView, passwordView, $0) }, decode: { result in
+            try core.begin(accept: { citizensdk_add_next_wallet_account_with_algorithm(core.handle, mnemonicView, passwordView, derivation.rawValue, $0) }, decode: { result in
                 guard let profile = try CitizenSDKRead.profile(result) else { throw CitizenSDKError(.integrity, "add next account returned no profile") }
                 return profile
             })
@@ -2777,7 +2769,7 @@ var account = try core.cAccount((intent).accountID)
 
     internal static func validateExternal(sessionID: String, response: String) throws {
         guard (1...128).contains(sessionID.utf8.count),
-              (1...2_331).contains(response.utf8.count) else {
+              (1...65_536).contains(response.utf8.count) else {
             throw CitizenSDKError(.invalidArgument, "external signing response is invalid")
         }
     }

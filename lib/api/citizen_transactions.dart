@@ -84,7 +84,7 @@ extension Transactions on CitizenSdk {
         (m, out) => _api.citizensdk_transaction_execution_consume_qr_response(
           _handle,
           m.executionId(executionId),
-          m.view(response, 2331),
+          m.view(response, 65536),
           out,
         ),
         (m, r) {

@@ -154,9 +154,10 @@ internal object Bindings {
         mnemonic: ByteArray,
         password: ByteArray,
         indices: IntArray,
+        algorithm: Int,
     ): Long
     @JvmStatic external fun nativeCopyPreparedMnemonic(bridge: Long, token: Long): ByteArray
-    @JvmStatic external fun nativeAddNextWalletAccount(bridge: Long, mnemonic: ByteArray, password: ByteArray): Long
+    @JvmStatic external fun nativeAddNextWalletAccount(bridge: Long, mnemonic: ByteArray, password: ByteArray, algorithm: Int): Long
     @JvmStatic external fun nativeCommitPreparedWallet(bridge: Long, token: Long): Long
     @JvmStatic external fun nativeReleasePreparedWallet(bridge: Long, token: Long)
     @JvmStatic external fun nativeDestroy(bridge: Long)

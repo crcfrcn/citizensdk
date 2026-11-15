@@ -108,6 +108,10 @@ class CitizenQrDocument internal constructor(
     @get:JvmSynthetic internal val scanPurposeMask: Int,
     @get:JvmSynthetic internal val signedImage: CitizenQrImage? = null,
 ) {
+    val qrFrames: List<String> get() {
+        val value = JSONObject(coreJson).optJSONArray("qr_frames") ?: return listOf(canonicalText)
+        return List(value.length()) { value.getString(it) }
+    }
     internal fun withSignedImage(image: CitizenQrImage) = CitizenQrDocument(kind, canonicalText, content, signRequest, coreJson, scanPurposeMask, image)
     sealed class Content {
         data class SignRequest(val requestId: String, val expiresAt: Long, val action: Int,
@@ -124,13 +128,13 @@ class CitizenQrDocument internal constructor(
         fun parse(json: String): CitizenQrDocument = projection {
             val value = objectValue(json)
             val kind = value.getInt("kind")
-            val canonical = value.text("canonical_text").also { check(it.toByteArray(Charsets.UTF_8).size in 1..2331) }
+            val canonical = value.text("canonical_text").also { check(it.toByteArray(Charsets.UTF_8).size in 1..65536) }
             val content = when (kind) {
                 1 -> Content.SignRequest(value.text("request_id"), value.expiration(),
                     value.getInt("action").also { check(it in 0..65535) },
                     if (value.isNull("signer_account_id")) null else value.hex("signer_account_id", 32), value.hex("review_payload"))
                 2 -> Content.SignResponse(value.text("request_id"), value.expiration(),
-                    value.hex("signer_account_id", 32), value.hex("signature", 64),
+                    value.hex("signer_account_id", 32), value.hex("signature").also { check(it.length == 130 || it.length == 10524) },
                     if (value.isNull("current_account_id")) null else value.hex("current_account_id", 32),
                     if (value.isNull("current_account_signature")) null else value.hex("current_account_signature", 64)).also {
                         check(value.has("current_account_id") && value.has("current_account_signature"))
@@ -209,7 +213,9 @@ class CitizenQrReview internal constructor(
 }
 
 /** ZXing-C++ 生成的 8 位灰度 QR Code Model 2 图像。 */
-data class CitizenQrSigned(val document: CitizenQrDocument, val qrImage: CitizenQrImage)
+data class CitizenQrSigned(val document: CitizenQrDocument, val qrImages: List<CitizenQrImage>) {
+    val qrImage: CitizenQrImage get() = qrImages.first()
+}
 
 /** ZXing-C++ 生成的 8 位灰度 QR Code Model 2 图像。 */
 data class CitizenQrImage(val width: Int, val height: Int, val luminance: ByteArray) {

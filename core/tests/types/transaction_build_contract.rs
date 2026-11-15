@@ -123,3 +123,49 @@ fn signed_build_exposes_only_public_trace_signature_and_extrinsic() {
     assert_eq!(build.signature().as_bytes(), &[3; 64]);
     assert_eq!(build.extrinsic().as_bytes(), &[0x04, 0x84, 0x01]);
 }
+
+#[test]
+fn pq_payload_keeps_account_id_and_real_public_key_separate() {
+    let identity = ChainIdentity::citizenchain();
+    let best = VerifiedBlockRef::best(Hash32::from_bytes([7; 32]), 51);
+    let public = mldsa::public_key(&[7; 32]);
+    let account_id = AccountId32::from_bytes(mldsa::account_id(&public));
+    let runtime = value_or_panic(RuntimeContext::try_new(
+        best,
+        RuntimeVersion::new(42, 7),
+        vec![1],
+    ));
+    let nonce = value_or_panic(AccountNonce::try_new(&identity, best, account_id, 9));
+    let payload = value_or_panic(ImmortalSigningPayload::try_new(
+        &identity,
+        &runtime,
+        nonce,
+        account_id,
+        public.clone(),
+        vec![4, 0],
+        vec![1],
+    ));
+
+    assert_eq!(payload.signer_account_id(), account_id);
+    assert_eq!(payload.signer_public_key().as_bytes(), public.0.as_slice());
+    assert_eq!(
+        payload.signer_public_key().as_bytes().len(),
+        mldsa::PUBLIC_KEY_BYTES
+    );
+    assert_eq!(
+        payload.signer_public_key().account_id(),
+        account_id.into_bytes()
+    );
+
+    // 完整公钥必须派生到目标账户，不能用另一把 PQ 公钥代替。
+    assert!(ImmortalSigningPayload::try_new(
+        &identity,
+        &runtime,
+        nonce,
+        account_id,
+        mldsa::public_key(&[8; 32]),
+        vec![4, 0],
+        vec![1],
+    )
+    .is_err());
+}

@@ -581,7 +581,7 @@ class CitizenSdk private constructor(
         synchronized(lifecycleGate) { requireOpen(); (call { Bindings.nativeQrValidateSignResponse(it, sessionId.toByteArray(Charsets.UTF_8), response.toByteArray(Charsets.UTF_8)) }) }
 
     fun qrConsumeSignResponse(text: String): ByteArray =
-        synchronized(lifecycleGate) { requireOpen(); (call { Bindings.nativeQrConsumeSignResponse(it, text.toByteArray(Charsets.UTF_8)).also { bytes -> check(bytes.size == 64) } }) }
+        synchronized(lifecycleGate) { requireOpen(); (call { Bindings.nativeQrConsumeSignResponse(it, text.toByteArray(Charsets.UTF_8)).also { bytes -> check(bytes.size == 64 || bytes.size == 5261) } }) }
 
     fun qrCancelSignRequest(requestId: String): Boolean =
         synchronized(lifecycleGate) { requireOpen(); (call { Bindings.nativeQrCancelSignRequest(it, requestId.toByteArray(Charsets.UTF_8)) }) }
@@ -656,7 +656,7 @@ class CitizenSdk private constructor(
         val operation = review.withHandle(this) { token ->
             requestOperation({ (call { Bindings.nativeSignQrRequest(it, token) }) }) {
                 val document=CitizenQrDocument.parse(it.value as String)
-                CitizenQrSigned(document,qrEncode(document.canonicalText))
+                CitizenQrSigned(document,document.qrFrames.map { qrEncode(it) })
             }
         }
         // Core原子领取阻止重复签名；显式release单独归还引用，清理失败不掩盖已接纳操作。
@@ -739,8 +739,8 @@ class CitizenSdk private constructor(
         require(sessionId.toByteArray(Charsets.UTF_8).size in 1..128) {
             "external signing sessionId must contain 1..128 UTF-8 bytes"
         }
-        require(response.toByteArray(Charsets.UTF_8).size in 1..2331) {
-            "external signing response must contain 1..2331 UTF-8 bytes"
+        require(response.toByteArray(Charsets.UTF_8).size in 1..65536) {
+            "external signing response must contain 1..65536 UTF-8 bytes"
         }
     }
 
@@ -800,8 +800,8 @@ class CitizenSdk private constructor(
         response: String,
     ): CompletableFuture<CitizenTransactionExecution.Completed> {
         val id = executionIdBytes(executionId)
-        require(response.toByteArray(Charsets.UTF_8).size in 1..2331) {
-            "response must contain 1..2331 UTF-8 bytes"
+        require(response.toByteArray(Charsets.UTF_8).size in 1..65536) {
+            "response must contain 1..65536 UTF-8 bytes"
         }
         return request({ run { val nativeArg1 = response.toByteArray(Charsets.UTF_8); call { Bindings.nativeConsumePreparedTransactionQrResponse(it, id, nativeArg1) } } }) {
             val value = (it.value as CitizenTransactionExecution)
@@ -903,21 +903,22 @@ class CitizenSdk private constructor(
         mnemonic: ByteArray,
         password: ByteArray = byteArrayOf(),
         indices: IntArray,
+        derivation: CitizenAccountDerivation = CitizenAccountDerivation.AUTOMATIC,
     ): CitizenSdkOperation<CitizenWalletProfile> {
         CitizenSdkInputLimits.requireAddAccountIndices(indices)
         return requestOperation({
             CitizenSdkInputLimits.requireWalletSecret("mnemonic", mnemonic.size)
             CitizenSdkInputLimits.requireWalletSecret("password", password.size)
-            (call { Bindings.nativeAddWalletAccounts(it, mnemonic, password, indices) })
+            (call { Bindings.nativeAddWalletAccounts(it, mnemonic, password, indices, derivation.value) })
         }) { requireWalletProfile(it, "add wallet accounts") }
     }
 
     /** 编号由Core在同一操作门内分配，绑定层不读max+1，也不进行追加后的二次查询。 */
-    fun addNextWalletAccount(mnemonic: ByteArray, password: ByteArray = byteArrayOf()): CitizenSdkOperation<CitizenWalletProfile> =
+    fun addNextWalletAccount(mnemonic: ByteArray, password: ByteArray = byteArrayOf(), derivation: CitizenAccountDerivation = CitizenAccountDerivation.AUTOMATIC): CitizenSdkOperation<CitizenWalletProfile> =
         requestOperation({
             CitizenSdkInputLimits.requireWalletSecret("mnemonic", mnemonic.size)
             CitizenSdkInputLimits.requireWalletSecret("password", password.size)
-            (call { Bindings.nativeAddNextWalletAccount(it, mnemonic, password) })
+            (call { Bindings.nativeAddNextWalletAccount(it, mnemonic, password, derivation.value) })
         }) { requireWalletProfile(it, "add next wallet account") }
 
     private fun commitPreparedWallet(prepared: CitizenSdkPreparedWallet): CitizenSdkOperation<CitizenWalletProfile> =
@@ -1202,7 +1203,7 @@ class CitizenSdk private constructor(
         fun verify(accountId: ByteArray, signature: ByteArray, message: ByteArray): Boolean {
             CitizenSdkInputLimits.requireSignPayload(message.size)
             return Bindings.verifySignature(
-                accountId.requireSize(32, "accountId"), signature.requireSize(64, "signature"), message,
+                accountId.requireSize(32, "accountId"), signature.copyOf().also { require(it.size == 64 || it.size == 5261) { "invalid signature" } }, message,
             )
         }
         @JvmStatic

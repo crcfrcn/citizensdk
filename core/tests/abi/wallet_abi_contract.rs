@@ -81,7 +81,7 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
     assert!(base.remove("citizensdk_android_init_tls"));
     let wallet = rust_exports(include_str!("../../src/abi/wallet_abi.rs"));
     let qr = rust_exports(include_str!("../../src/abi/qr_abi.rs"));
-    // 钱包、账户编解码和交易事件工具按同一 154 项公开 C 符号集合核对。
+    // 钱包、账户编解码和交易事件工具按同一 159 项公开 C 符号集合核对。
     assert_eq!(base.len(), 62);
     for symbol in [
         "citizensdk_account_id_decode",
@@ -97,13 +97,16 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
             "missing base ABI symbol: {symbol}"
         );
     }
-    assert_eq!(wallet.len(), 70);
-    assert_eq!(qr.len(), 11);
+    assert_eq!(wallet.len(), 74);
+    assert_eq!(qr.len(), 12);
     assert!(base.is_disjoint(&wallet));
     assert!(base.is_disjoint(&qr));
     assert!(wallet.is_disjoint(&qr));
 
     let expected_wallet: BTreeSet<_> = [
+        "citizensdk_add_next_wallet_account_with_algorithm",
+        "citizensdk_add_wallet_accounts_with_algorithm",
+        "citizensdk_default_account_algorithm",
         "citizensdk_add_next_wallet_account",
         "citizensdk_delete_diagnostic_wallet",
         "citizensdk_encode_signing_payload",
@@ -171,6 +174,7 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
         "citizensdk_result_get_wallet_account_count",
         "citizensdk_result_get_wallet_account",
         "citizensdk_result_get_signature",
+        "citizensdk_result_get_signature_bytes",
         "citizensdk_result_get_signing_outcome",
         "citizensdk_result_get_default_account_change",
         "citizensdk_result_get_prepared_wallet",

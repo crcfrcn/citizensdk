@@ -1,3 +1,4 @@
+use crate::types::SigningTransform;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -39,8 +40,7 @@ use crate::types::SecretVault;
 use crate::types::SignedExtrinsic;
 use crate::types::SigningCompletion;
 use crate::types::SigningIntent;
-use crate::types::Sr25519PublicKey;
-use crate::types::Sr25519Signature;
+use crate::types::AccountSignature;
 use crate::types::StateImportReceipt;
 use crate::types::SubmittedExtrinsic;
 use crate::types::TransactionExecutionCompleted;
@@ -1008,7 +1008,7 @@ impl CitizenEngine {
     pub fn complete_external_transaction_execution(
         &self,
         execution_id: TransactionExecutionId,
-        signature: Sr25519Signature,
+        signature: AccountSignature,
         cancellation: TransactionExecutionCancellation,
     ) -> EngineFuture<'_, TransactionExecutionCompleted> {
         let claimed = self
@@ -1079,7 +1079,7 @@ impl CitizenEngine {
         execution_id: TransactionExecutionId,
         preparation_id: TransactionPreparationId,
         prepared: PreparedTransaction,
-        signature: Sr25519Signature,
+        signature: AccountSignature,
         cancellation: Option<&TransactionExecutionCancellation>,
     ) -> Result<TransactionExecutionCompleted, EngineError> {
         let summary = prepared.summary();
@@ -1381,6 +1381,23 @@ impl CitizenEngine {
         indices: Vec<u32>,
         cancelled: Arc<AtomicBool>,
     ) -> EngineFuture<'_, WalletProfile> {
+        self.add_wallet_accounts_with_algorithm(
+            mnemonic,
+            password,
+            indices,
+            cancelled,
+            mldsa::AccountAlgorithm::default(),
+        )
+    }
+
+    pub fn add_wallet_accounts_with_algorithm(
+        &self,
+        mnemonic: SecretBuffer,
+        password: Zeroizing<String>,
+        indices: Vec<u32>,
+        cancelled: Arc<AtomicBool>,
+        algorithm: mldsa::AccountAlgorithm,
+    ) -> EngineFuture<'_, WalletProfile> {
         let service = self.local_wallet_service(&[
             CapabilityName::WalletProfile,
             CapabilityName::HardwareVault,
@@ -1390,7 +1407,7 @@ impl CitizenEngine {
             self.with_wallet_monitor_paused(
                 service?
                     .with_add_cancellation(cancelled)
-                    .add_accounts(&mnemonic, &password, &indices),
+                    .add_accounts_with_algorithm(&mnemonic, &password, &indices, algorithm),
             )
             .await
         })
@@ -1403,6 +1420,21 @@ impl CitizenEngine {
         password: Zeroizing<String>,
         cancelled: Arc<AtomicBool>,
     ) -> EngineFuture<'_, WalletProfile> {
+        self.add_next_wallet_account_with_algorithm(
+            mnemonic,
+            password,
+            cancelled,
+            mldsa::AccountAlgorithm::default(),
+        )
+    }
+
+    pub fn add_next_wallet_account_with_algorithm(
+        &self,
+        mnemonic: SecretBuffer,
+        password: Zeroizing<String>,
+        cancelled: Arc<AtomicBool>,
+        algorithm: mldsa::AccountAlgorithm,
+    ) -> EngineFuture<'_, WalletProfile> {
         let service = self.local_wallet_service(&[
             CapabilityName::WalletProfile,
             CapabilityName::HardwareVault,
@@ -1412,7 +1444,7 @@ impl CitizenEngine {
             self.with_wallet_monitor_paused(
                 service?
                     .with_add_cancellation(cancelled)
-                    .add_next_account(&mnemonic, &password),
+                    .add_next_account_with_algorithm(&mnemonic, &password, algorithm),
             )
             .await
         })
@@ -1440,7 +1472,7 @@ impl CitizenEngine {
         &self,
         account_id: AccountId32,
         message: Vec<u8>,
-    ) -> EngineFuture<'_, Sr25519Signature> {
+    ) -> EngineFuture<'_, AccountSignature> {
         Box::pin(async move {
             self.require_local_capabilities(&[
                 CapabilityName::LocalSigning,
@@ -1521,13 +1553,13 @@ impl CitizenEngine {
                     .cloned()
                     .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?,
             );
-            let message = intent.signing_message()?;
-            let signature = service.sign(intent.account_id(), message.clone()).await?;
+            let signature = service.sign_intent_guarded(&intent, &|| Ok(())).await?;
+            let message = crate::types::signing_message_for_account(intent.account_id(), intent.payload(), intent.transform(), signature.algorithm())?;
 
             if !crate::sign::verify(
-                Sr25519PublicKey::from_bytes(intent.account_id().into_bytes()),
+                intent.account_id(),
                 message,
-                signature,
+                signature.clone(),
             )? {
                 return Err(EngineError::contract(
                     ContractErrorCode::Integrity,
@@ -1561,9 +1593,10 @@ impl CitizenEngine {
     pub fn commit_default_wallet_account_change<'a>(
         &'a self,
         authorization: &'a DefaultAccountChangeAuthorization,
-        signature: Sr25519Signature,
+        signature: impl Into<AccountSignature> + Send + 'a,
     ) -> EngineFuture<'a, WalletState> {
         let service = self.local_wallet_service(&[CapabilityName::WalletProfile]);
+        let signature = signature.into();
         Box::pin(async move {
             service?
                 .commit_default_account_change(authorization, signature)
@@ -1606,7 +1639,7 @@ impl CitizenEngine {
         &'a self,
         review: crate::QrReview,
         ensure_current: impl Fn() -> Result<(), EngineError> + Send + Sync + 'a,
-    ) -> EngineFuture<'a, Sr25519Signature> {
+    ) -> EngineFuture<'a, AccountSignature> {
         Box::pin(async move {
             let lease = self.begin_qr_operation()?;
             self.require_local_capabilities(&[
@@ -1642,19 +1675,17 @@ impl CitizenEngine {
             let message = review.request().signing_message().map_err(|_| {
                 EngineError::contract(ContractErrorCode::Decode, "二维码签名载荷无效")
             })?;
-            let public_key = review.request().require_signer().map_err(|_| {
-                EngineError::contract(ContractErrorCode::Decode, "二维码未绑定签名账户")
-            })?;
-            let signature = service
-                .sign_guarded(
-                    AccountId32::from_bytes(*public_key.as_bytes()),
-                    message.clone(),
-                    &guard,
-                )
-                .await?;
+            let signer_account_id = AccountId32::from_bytes(*review.request().require_signer().map_err(|_| {
+                EngineError::contract(ContractErrorCode::Decode, "二维码未指定签名账户")
+            })?.as_bytes());
+            let transform = if review.request().action >= 256 { SigningTransform::SubstrateSigningPayload } else { SigningTransform::Raw };
+            let signing_payload = if review.request().action >= 256 { review.request().review_payload.clone() } else { message.clone() };
+            let intent = SigningIntent::try_new(signer_account_id, signing_payload, transform)?;
+            let signature = service.sign_intent_guarded(&intent, &guard).await?;
+            let message = crate::types::signing_message_for_account(intent.account_id(), intent.payload(), intent.transform(), signature.algorithm())?;
             guard()?;
 
-            if !crate::sign::verify(public_key, message, signature)? {
+            if !crate::sign::verify(signer_account_id, message, signature.clone())? {
                 return Err(EngineError::contract(
                     ContractErrorCode::Integrity,
                     "二维码签名未通过原账户和已审阅载荷复核",

@@ -30,7 +30,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-const METADATA: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
+const METADATA: &str = include_str!("mldsa-runtime-v16.json");
 const VECTOR: &str = include_str!("citizenchain-transfer-build-v1.json");
 
 fn bytes(text: &str) -> Vec<u8> {
@@ -52,13 +52,13 @@ fn fixture() -> (SignRequest, RuntimeContext, usize) {
                 .try_into()
                 .unwrap(),
         )),
-        review_payload: bytes(vector["expected"]["signing_message"].as_str().unwrap()),
+        review_payload: bytes(vector["expected"]["review_payload"].as_str().unwrap()),
     };
     let finalized = FinalizedBlockRef::from_parts(Hash32::from_bytes([0x33; 32]), 77);
     let context = RuntimeContext::try_new(
         finalized.verified(),
         RuntimeVersion::new(0, 0),
-        bytes(METADATA),
+        bytes(serde_json::from_str::<serde_json::Value>(METADATA).unwrap()["metadata"].as_str().unwrap()),
     )
     .unwrap();
     let call_len = bytes(vector["expected"]["call_data"].as_str().unwrap()).len();
