@@ -135,7 +135,13 @@ fn field_value(field: Field, metadata: &Metadata, type_id: u32) -> Result<scale_
         let value = decode_scale(&mut bytes, metadata, type_id)?;
         if !bytes.is_empty() { return Err(invalid_call("SCALE 字段存在尾部字节")); }
         Ok(value)
-    } else { field.into_value() }
+    } else {
+        let value = field.into_value()?;
+        // 动态调用编码器假定字段符合 metadata；在进入其 expect 前返回类型或范围错误。
+        value.encode_as_type_to(type_id, metadata.types(), &mut Vec::new())
+            .map_err(|error| invalid_call(error.to_string()))?;
+        Ok(value)
+    }
 }
 
 fn storage_key(

@@ -63,7 +63,8 @@ fn call_indices(metadata: &Metadata, pallet_name: &str, call_name: &str) -> (u8,
 
 #[test]
 fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
-    // 金标来自本次候选 Runtime 的 metadata_at_version(15) 实际导出，不能用手写metadata掩盖升级编码变化。
+    // 金标来自公民链 WASM v4 的 Metadata_metadata_at_version(15) 实际导出。
+    // compact WASM SHA-256: f36e7d58f1a6bc730eace2d6b27f5c98e288bc79ce88bf4eb4f3b802b1e58b92。
     let text = include_str!("citizenchain-revive-v15-metadata.hex").trim();
     let hex = text.strip_prefix("0x").expect("metadata prefix");
     let bytes = (0..hex.len())
@@ -71,6 +72,12 @@ fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("metadata hex"))
         .collect::<Vec<_>>();
     let current = decode_metadata_strict(&bytes).expect("current WASM metadata");
+    use subxt_core::ext::codec::Decode;
+    let mut version = current.pallet_by_name("System").unwrap()
+        .constant_by_name("Version").unwrap().value();
+    let version_fields = <(String, String, u32, u32, u32, Vec<([u8; 8], u32)>, u32, u8)>::decode(&mut version).unwrap();
+    assert!(version.is_empty());
+    assert_eq!((version_fields.0.as_str(), version_fields.3, version_fields.6), ("citizenchain", 4, 3));
     assert_eq!(
         current.pallet_by_name("Revive").expect("Revive").index(),
         35
@@ -249,16 +256,53 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
 }
 
 #[test]
-fn p1_vote_calls_encode_full_u128_compact_from_real_runtime_metadata() {
-    use subxt_core::ext::codec::{Compact,Encode};
-    let raw=hex::decode(include_str!("citizenchain-revive-v15-metadata.hex").trim().trim_start_matches("0x")).unwrap();
-    let metadata=decode_metadata_strict(&raw).unwrap();
-    for id in [0,63,64,16383,16384,(1u128<<30)-1,1u128<<30,u128::MAX] {
-        let request=serde_json::json!({"op":"call","pallet":"JointVote","method":"cast_referendum","args":{"kind":"sequence","value":[{"kind":"integer","value":id.to_string()},{"kind":"bool","value":true}]}});
-        let bytes=super::chain_codec(&raw,&serde_json::to_vec(&request).unwrap()).unwrap();
-        let mut expected=vec![21,1];expected.extend(Compact(id).encode());expected.push(1);
-        assert_eq!(bytes,expected);
-        validate_opaque_runtime_call(&metadata,&OpaqueTransactionCall::try_new(bytes).unwrap()).unwrap();
+fn voting_calls_preserve_fixed_u128_ids_and_reject_invalid_boundaries() {
+    use serde_json::json;
+    use subxt_core::ext::codec::Encode;
+    let metadata = hex::decode(
+        include_str!("citizenchain-revive-v15-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let parsed = decode_metadata_strict(&metadata).unwrap();
+    let cid = b"LN001-NRC0G-944805165-2026".to_vec();
+    let role = b"COMMITTEE_MEMBER".to_vec();
+    let cases = [
+        ("InternalVote", "cast", vec![json!({"kind":"variant","value":["Personal",[]]}), json!({"kind":"bool","value":true})], (0u8, true).encode()),
+        ("JointVote", "cast_admin", vec![json!({"kind":"bytes","value":cid}), json!({"kind":"bytes","value":role}), json!({"kind":"bool","value":true})], (cid.clone(), role.clone(), true).encode()),
+        ("JointVote", "cast_referendum", vec![json!({"kind":"bool","value":true})], true.encode()),
+        ("LegislationVote", "cast_representative_vote", vec![json!({"kind":"bytes","value":role}), json!({"kind":"bool","value":true})], (role.clone(), true).encode()),
+        ("LegislationVote", "cast_referendum_vote", vec![json!({"kind":"bool","value":true})], true.encode()),
+        ("LegislationVote", "executive_sign", vec![json!({"kind":"bool","value":true})], true.encode()),
+        ("LegislationVote", "override_sign", vec![json!({"kind":"bool","value":true})], true.encode()),
+        ("LegislationVote", "guard_vote", vec![json!({"kind":"bool","value":true})], true.encode()),
+    ];
+    for (pallet, method, fields, tail) in cases {
+        let call = |id: String| {
+            let mut args = vec![json!({"kind":"integer","value":id})];
+            args.extend(fields.clone());
+            super::chain_codec(&metadata, &serde_json::to_vec(&json!({
+                "op":"call", "pallet":pallet, "method":method,
+                "args":{"kind":"sequence","value":args},
+            })).unwrap())
+        };
+        let indices = call_indices(&parsed, pallet, method);
+        for id in [0, 63, 64, 16_383, 16_384, 9_007_199_254_740_993, u64::MAX as u128 + 1, u128::MAX] {
+            let encoded = call(id.to_string()).unwrap();
+            let mut expected = vec![indices.0, indices.1];
+            expected.extend(id.to_le_bytes());
+            expected.extend_from_slice(&tail);
+            assert_eq!(encoded, expected, "{pallet}::{method} id={id}");
+            validate_opaque_runtime_call(&parsed, &OpaqueTransactionCall::try_new(encoded.clone()).unwrap()).unwrap();
+            let mut trailing = encoded.clone();
+            trailing.push(0);
+            for invalid in [encoded[..encoded.len() - 1].to_vec(), trailing] {
+                assert!(validate_opaque_runtime_call(&parsed, &OpaqueTransactionCall::try_new(invalid).unwrap()).is_err());
+            }
+        }
+        for invalid in ["-1", "340282366920938463463374607431768211456"] {
+            assert!(call(invalid.into()).is_err(), "{pallet}::{method} must reject {invalid}");
+        }
     }
-    assert!(validate_opaque_runtime_call(&metadata,&OpaqueTransactionCall::try_new(vec![21,1,1,0,1]).unwrap()).is_err());
 }
