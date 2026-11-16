@@ -432,9 +432,9 @@ fn live_idle_chain_rejects_inherent_without_a_new_block() {
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 };
-                // SCALE长度4、unsigned v4、Timestamp(1)::set(0)、compact时刻0。
+                // SCALE长度4、V5 Bare、Timestamp(1)::set(0)、compact时刻0。
                 // 格式合法，Executive 在外部验证中以 MandatoryValidation 拒绝，绝不执行调用。
-                let inherent = SignedExtrinsic::try_new(vec![16, 4, 1, 0, 0]).inspect_err(|error| observe_error(error, "idle_inherent_input")).ok()?;
+                let inherent = SignedExtrinsic::try_new(vec![16, 5, 1, 0, 0]).inspect_err(|error| observe_error(error, "idle_inherent_input")).ok()?;
                 let mut watch = provider.watch_extrinsic(inherent);
                 let first = tokio::time::timeout(Duration::from_secs(45), watch.next())
                     .await

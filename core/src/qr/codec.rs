@@ -657,7 +657,7 @@ fn parse_sign_request(envelope: &Map<String, Value>, now: u64) -> QrResult<QrCod
     let action =
         u16::try_from(unsigned(body, "a")?).map_err(|_| invalid_field("签名动作超出 u16"))?;
     if ![0, 1, 2].contains(&unsigned(body, "g")?) {
-        return Err(invalid_field("签名算法只允许 sr25519"));
+        return Err(invalid_field("签名算法只允许 0、sr25519 或 ML-DSA-65"));
     }
     let signer_text = string(body, "u")?;
     let signer_public_key = if signer_text.is_empty() && matches!(action, 10 | 11) {

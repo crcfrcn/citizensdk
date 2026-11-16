@@ -2,7 +2,7 @@
 //!
 //! Callers own the meaning and encoding of every opaque payload. CitizenSDK only applies a
 //! bounded, explicitly selected byte transform, routes the account by its stored sign mode, and
-//! verifies the resulting sr25519 signature. No consumer action registry belongs in this module.
+//! verifies the resulting sr25519 or ML-DSA-65 signature. No consumer action registry belongs in this module.
 
 use std::collections::BTreeSet;
 
@@ -512,7 +512,13 @@ pub fn signing_message_for_account(
     transform: &SigningTransform,
     algorithm: u8,
 ) -> ContractResult<Vec<u8>> {
-    if !matches!(algorithm, 0 | 1 | 2) { return Err(invalid("未知账户签名算法")); }
+    if payload.is_empty() || payload.len() > MAX_SIGNING_PAYLOAD_BYTES {
+        return Err(invalid("签名载荷长度必须位于 1..16MiB"));
+    }
+    transform.validate()?;
+    if !matches!(algorithm, 0 | 1 | 2) {
+        return Err(invalid("未知账户签名算法"));
+    }
     if matches!(transform, SigningTransform::SubstrateSigningPayload) {
         Ok(mldsa::review_message(account.as_bytes(), payload).to_vec())
     } else {

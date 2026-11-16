@@ -653,3 +653,83 @@ fn transaction_watch_receiver_cancel_is_distinct_from_overflow() {
     ));
     assert!(overflow.is_some());
 }
+
+// 只构造 provider，不启动、连接节点或发起交易。
+fn v5_broadcast_provider() -> std::sync::Arc<SmoldotVerifiedChainClient> {
+    SmoldotVerifiedChainClient::new(
+        crate::chain::SmoldotProviderConfig::try_new(
+            include_str!("../../../chain/chainspec.json"),
+            "V5 directed test",
+            "1.0.0",
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn v5_provider_accepts_both_algorithms_and_keeps_lifecycle_closed() {
+    let provider = v5_broadcast_provider();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../mldsa-runtime-v16.json")).unwrap();
+    let mut cases: Vec<_> = ["sr_extrinsic", "first", "stored"]
+        .into_iter()
+        .map(|name| hex::decode(fixture[name].as_str().unwrap()).unwrap())
+        .collect();
+    // V5 Bare 与 General 管线 0 保留外层格式；是否能执行仍由 runtime 判定。
+    cases.extend([vec![16, 5, 1, 0, 0], vec![20, 0x45, 0, 35, 0, 0]]);
+    for bytes in cases {
+        let signed = SignedExtrinsic::try_new(bytes).unwrap();
+        signed.validate_v5_submission().unwrap();
+        let error =
+            futures::executor::block_on(provider.submit_extrinsic(signed.clone())).unwrap_err();
+        assert_eq!(error.code(), ContractErrorCode::NotReady);
+        let mut stream = provider.watch_extrinsic(signed);
+        let error = futures::executor::block_on(stream.next())
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code(), ContractErrorCode::NotReady);
+        assert!(futures::executor::block_on(stream.next()).is_none());
+    }
+}
+
+#[test]
+fn v5_provider_rejects_old_and_malformed_frames_without_starting_rpc() {
+    let provider = v5_broadcast_provider();
+    for bytes in [
+        vec![16, 4, 1, 0, 0],
+        vec![16, 0x84, 1, 0, 0],
+        vec![16, 0x85, 1, 0, 0],
+        vec![20, 5, 1, 0, 0],
+        vec![17, 0, 5, 1, 0, 0],
+        vec![1],
+        vec![0],
+        vec![4, 5],
+        vec![4, 0x45],
+        vec![8, 0x45, 1],
+    ] {
+        let signed = SignedExtrinsic::try_new(bytes).unwrap();
+        let error =
+            futures::executor::block_on(provider.submit_extrinsic(signed.clone())).unwrap_err();
+        assert_eq!(error.code(), ContractErrorCode::InvalidArgument);
+        let mut stream = provider.watch_extrinsic(signed);
+        let error = futures::executor::block_on(stream.next())
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code(), ContractErrorCode::InvalidArgument);
+        assert!(futures::executor::block_on(stream.next()).is_none());
+        assert_eq!(
+            provider.lifecycle().unwrap(),
+            crate::chain::ProviderLifecycle::Created
+        );
+        assert!(provider.lock_state().unwrap().running.is_none());
+    }
+}
+
+#[test]
+fn v5_broadcast_gate_does_not_rewrite_historical_bytes() {
+    let bytes = vec![16, 4, 1, 0, 0];
+    let historical = SignedExtrinsic::try_new(bytes.clone()).unwrap();
+    assert!(historical.validate_v5_submission().is_err());
+    assert_eq!(historical.into_bytes(), bytes);
+}

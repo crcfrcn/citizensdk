@@ -22,6 +22,30 @@ impl SignedExtrinsic {
         Ok(Self(bytes))
     }
 
+    /// 新广播只接受规范 SCALE 长度的 V5；历史字节值对象保持原样。
+    /// 此处只检查外层格式，认证和业务安全检查继续由 runtime 执行。
+    #[cfg(feature = "chain")]
+    pub(crate) fn validate_v5_submission(&self) -> ContractResult<()> {
+        use subxt_core::ext::codec::{Compact, Decode, Encode};
+        let invalid = || {
+            ContractError::new(
+                ContractErrorCode::InvalidArgument,
+                "广播仅接受规范 SCALE 长度的 V5 交易",
+            )
+        };
+        let mut body = self.0.as_slice();
+        let length = Compact::<u32>::decode(&mut body).map_err(|_| invalid())?;
+        let prefix_len = self.0.len() - body.len();
+        if length.0 as usize != body.len() || length.encode() != self.0[..prefix_len] {
+            return Err(invalid());
+        }
+        match body {
+            // 保留 V5 固有交易及 General 外层；不接受 Signed/V4 外层。
+            [0x05, _, _, ..] | [0x45, _, _, _, ..] => Ok(()),
+            _ => Err(invalid()),
+        }
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }

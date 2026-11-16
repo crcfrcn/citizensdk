@@ -642,6 +642,7 @@ impl VerifiedChainClient for SmoldotVerifiedChainClient {
     ) -> ContractFuture<'_, SubmittedExtrinsic> {
         let running = self.running();
         Box::pin(async move {
+            extrinsic.validate_v5_submission()?;
             let running = running?;
             let encoded = format!("0x{}", hex::encode(extrinsic.as_bytes()));
             let result = running
@@ -665,6 +666,10 @@ impl VerifiedChainClient for SmoldotVerifiedChainClient {
             futures_util::stream::once(async move { failed.await.ok().map(Err) })
                 .filter_map(futures_util::future::ready),
         );
+        if let Err(error) = extrinsic.validate_v5_submission() {
+            let _ = send_watch_event(&mut sender, &mut overflow, Err(error));
+            return Box::pin(receiver);
+        }
         let running = match self.running() {
             Ok(running) => running,
             Err(error) => {

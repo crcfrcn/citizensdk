@@ -1848,6 +1848,7 @@ impl CitizenEngine {
                     .require_recorded_before_broadcast(transaction_hash)
                     .await?;
             }
+            extrinsic.validate_v5_submission()?;
             self.chain_client()?
                 .submit_extrinsic(extrinsic)
                 .await
@@ -1871,6 +1872,8 @@ impl CitizenEngine {
                 "组合钱包组件后禁止原始 submit-and-watch；钱包交易必须使用高层交易入口",
             ));
         }
+        #[cfg(feature = "chain")]
+        extrinsic.validate_v5_submission()?;
         Ok(self.chain_client()?.watch_extrinsic(extrinsic))
     }
 

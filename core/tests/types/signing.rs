@@ -88,7 +88,10 @@ fn transforms_have_exact_boundaries_and_domain_separation() {
             SigningTransform::SubstrateSigningPayload,
         )
         .unwrap();
-        assert_eq!(intent.signing_message().unwrap(), mldsa::review_message(account(1).as_bytes(), &payload));
+        assert_eq!(
+            intent.signing_message().unwrap(),
+            mldsa::review_message(account(1).as_bytes(), &payload)
+        );
     }
     let payload = vec![0x55; 257];
     let intent = SigningIntent::try_new(
@@ -196,9 +199,14 @@ fn u32_year_cid_uses_the_original_fixed_admin_slots() {
     let cid = "GD001-CGOVU-000000001-4294967295";
     assert_eq!(cid.len(), 32);
     let activate = encode_signing_payload(SigningPayload::ActivateAdmin {
-        cid_number: cid, institution_code: *b"CGOV", kind: 0,
-        signer_public_key: [7; 32], timestamp: 123, nonce: [8; 16],
-    }).unwrap();
+        cid_number: cid,
+        institution_code: *b"CGOV",
+        kind: 0,
+        signer_public_key: [7; 32],
+        timestamp: 123,
+        nonce: [8; 16],
+    })
+    .unwrap();
     assert_eq!(activate.len(), 97);
     assert_eq!(&activate[4..36], cid.as_bytes());
     assert_eq!(&activate[36..40], b"CGOV");
@@ -206,11 +214,43 @@ fn u32_year_cid_uses_the_original_fixed_admin_slots() {
     assert_eq!(&activate[73..81], &123u64.to_le_bytes());
     assert_eq!(&activate[81..97], &[8; 16]);
     let decrypt = encode_signing_payload(SigningPayload::DecryptAdmin {
-        cid_number: cid, signer_public_key: [7; 32], timestamp: 123, nonce: [8; 16],
-    }).unwrap();
+        cid_number: cid,
+        signer_public_key: [7; 32],
+        timestamp: 123,
+        nonce: [8; 16],
+    })
+    .unwrap();
     assert_eq!(decrypt.len(), 92);
     assert_eq!(&decrypt[4..36], cid.as_bytes());
     assert_eq!(&decrypt[36..68], &[7; 32]);
     assert_eq!(&decrypt[68..76], &123u64.to_le_bytes());
     assert_eq!(&decrypt[76..92], &[8; 16]);
+}
+
+#[test]
+fn v5_both_algorithms_keep_payload_bounds_and_bind_the_account() {
+    let transform = SigningTransform::SubstrateSigningPayload;
+    let payload = b"full review";
+    for algorithm in [0, 1, 2] {
+        let message =
+            signing_message_for_account(account(1), payload, &transform, algorithm).unwrap();
+        assert_eq!(
+            message,
+            mldsa::review_message(account(1).as_bytes(), payload)
+        );
+        assert_ne!(
+            message,
+            signing_message_for_account(account(2), payload, &transform, algorithm).unwrap()
+        );
+        assert!(signing_message_for_account(account(1), &[], &transform, algorithm).is_err());
+        assert!(signing_message_for_account(
+            account(1),
+            &vec![1; MAX_SIGNING_PAYLOAD_BYTES + 1],
+            &transform,
+            algorithm
+        )
+        .is_err());
+    }
+    assert!(signing_message_for_account(account(1), payload, &transform, 3).is_err());
+    assert!(apply_signing_transform(payload, &transform).is_err());
 }

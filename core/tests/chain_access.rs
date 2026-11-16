@@ -407,8 +407,7 @@ fn typed_chain_access_is_closed_before_start_and_open_while_running() {
 
     #[cfg(feature = "transactions")]
     {
-        let signed = SignedExtrinsic::try_new(vec![0x08, 0xaa])
-            .unwrap_or_else(|error| panic!("extrinsic fixture failed: {error}"));
+        let signed = v5_broadcast_fixture();
         let submitted = futures::executor::block_on(engine.submit_signed_extrinsic(signed.clone()))
             .unwrap_or_else(|error| panic!("submit failed: {error}"));
         assert_eq!(submitted.hash(), Hash32::from_bytes([0x44; 32]));
@@ -456,8 +455,7 @@ fn raw_broadcast_entries_cannot_bypass_generic_pending_before_broadcast() {
     futures::executor::block_on(engine.complete_provider_start())
         .unwrap_or_else(|error| panic!("complete start failed: {error}"));
 
-    let signed = SignedExtrinsic::try_new(vec![0x08, 0xbb])
-        .unwrap_or_else(|error| panic!("extrinsic fixture failed: {error}"));
+    let signed = v5_broadcast_fixture();
     let error = match futures::executor::block_on(engine.submit_signed_extrinsic(signed.clone())) {
         Err(error) => error,
         Ok(_) => panic!("交易恢复栈不完整时原始提交必须在广播前关闭"),
@@ -474,4 +472,57 @@ fn raw_broadcast_entries_cannot_bypass_generic_pending_before_broadcast() {
         EngineError::Contract(ref error) if error.code() == ContractErrorCode::InvalidState
     ));
     assert_eq!(client.watches.load(Ordering::SeqCst), 0);
+}
+
+// 复用实际 FRAME 生成的 sr V5 向量，不新增金标或手写证明。
+fn v5_broadcast_fixture() -> SignedExtrinsic {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    SignedExtrinsic::try_new(hex::decode(fixture["sr_extrinsic"].as_str().unwrap()).unwrap())
+        .unwrap()
+}
+
+#[test]
+#[cfg(feature = "transactions")]
+fn raw_broadcast_rejects_v4_and_malformed_v5_before_client_calls() {
+    use subxt_core::ext::codec::{Compact, Decode, Encode};
+    let client = Arc::new(CountingClient::new());
+    let engine = engine(client.clone());
+    engine.begin_provider_start().unwrap();
+    futures::executor::block_on(engine.complete_provider_start()).unwrap();
+    let original = v5_broadcast_fixture();
+    let mut body = original.as_bytes();
+    let length = Compact::<u32>::decode(&mut body).unwrap().0;
+    let prefix = original.as_bytes().len() - body.len();
+    let mut v4 = original.as_bytes().to_vec();
+    v4[prefix] = 0x84;
+    let mut signed_v5 = original.as_bytes().to_vec();
+    signed_v5[prefix] = 0x85;
+    let mut wrong_length = Compact(length + 1).encode();
+    wrong_length.extend(body);
+    let mut noncanonical = ((length << 2) | 2).to_le_bytes().to_vec();
+    noncanonical.extend(body);
+    for bytes in [
+        v4,
+        signed_v5,
+        wrong_length,
+        noncanonical,
+        vec![16, 4, 1, 0, 0],
+        vec![1],
+        vec![0],
+        vec![4, 5],
+        vec![4, 0x45],
+        vec![8, 0x45, 1],
+    ] {
+        let signed = SignedExtrinsic::try_new(bytes.clone()).unwrap();
+        assert!(
+            matches!(futures::executor::block_on(engine.submit_signed_extrinsic(signed.clone())),
+            Err(EngineError::Contract(ref e)) if e.code() == ContractErrorCode::InvalidArgument)
+        );
+        assert!(matches!(engine.watch_signed_extrinsic(signed.clone()),
+            Err(EngineError::Contract(ref e)) if e.code() == ContractErrorCode::InvalidArgument));
+        assert_eq!(signed.as_bytes(), bytes);
+        assert_eq!(client.submits.load(Ordering::SeqCst), 0);
+        assert_eq!(client.watches.load(Ordering::SeqCst), 0);
+    }
 }
