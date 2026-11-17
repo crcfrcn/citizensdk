@@ -480,13 +480,68 @@ fn storage_key_pages_enforce_prefix_cursor_order_count_and_bytes() {
         parse_storage_keys_page(&next_page, &[1], Some(&[1, 1]), 2).unwrap(),
         vec![vec![1, 2]],
     );
-    assert!(
-        parse_storage_keys_page(&page, &[1], Some(&[1, 1]), 2).is_err(),
-        "排他 start_key 不能在下一页重复返回",
+    assert_eq!(
+        parse_storage_keys_page(&page, &[1], Some(&[1, 1]), 2).unwrap(),
+        vec![vec![1, 2]]
     );
     assert!(parse_storage_keys_page(&page, &[2], None, 2).is_err());
-    assert!(parse_storage_keys_page(&json!(["0x0102", "0x0101"]), &[1], None, 2).is_err());
-    assert!(parse_storage_keys_page(&page, &[1], None, 1).is_err());
+    assert_eq!(
+        parse_storage_keys_page(&json!(["0x0102", "0x0101"]), &[1], None, 2).unwrap(),
+        vec![vec![1, 1], vec![1, 2]]
+    );
+    assert_eq!(
+        parse_storage_keys_page(&page, &[1], None, 1).unwrap(),
+        vec![vec![1, 1]]
+    );
+    assert!(parse_storage_keys_page(&json!(["0x0101", "0x0101"]), &[1], None, 2).is_err());
+    assert!(
+        parse_storage_keys_page(&json!(["0x0101", "0x0201"]), &[1], None, 1).is_err(),
+        "截取之前也必须验证未返回的键"
+    );
+    assert!(parse_storage_keys_page(&json!(["0x"]), &[1], None, 1).is_err());
+    assert!(parse_storage_keys_page(&json!(["invalid"]), &[1], None, 1).is_err());
+    assert!(parse_storage_keys_page(&json!(null), &[1], None, 1).is_err());
+    assert!(parse_storage_keys_page(
+        &json!([format!("0x{}", "01".repeat(MAX_STORAGE_KEY_BYTES + 1))]),
+        &[1],
+        None,
+        1
+    )
+    .is_err());
+}
+
+#[test]
+fn storage_key_pages_sort_full_set_before_cursor_and_limit() {
+    let full = json!(["0x0105", "0x0102", "0x0104", "0x0101", "0x0103"]);
+    let mut all = Vec::new();
+    let mut cursor: Option<Vec<u8>> = None;
+    loop {
+        let page = parse_storage_keys_page(&full, &[1], cursor.as_deref(), 2).unwrap();
+        if page.is_empty() {
+            break;
+        }
+        assert!(page.windows(2).all(|pair| pair[0] < pair[1]));
+        cursor = page.last().cloned();
+        all.extend(page);
+    }
+    assert_eq!(all, (1..=5).map(|last| vec![1, last]).collect::<Vec<_>>());
+    assert!(parse_storage_keys_page(&full, &[1], Some(&[1, 5]), 2)
+        .unwrap()
+        .is_empty());
+    assert!(parse_storage_keys_page(&json!([]), &[1], None, 2)
+        .unwrap()
+        .is_empty());
+    // 完整集合聚合字节限制不因limit很小而失效。
+    let oversized = Value::Array(
+        (0..=MAX_STORAGE_KEYS_PAGE_BYTES / MAX_STORAGE_KEY_BYTES)
+            .map(|i| {
+                let mut key = vec![1; MAX_STORAGE_KEY_BYTES];
+                key[1..9].copy_from_slice(&(i as u64).to_le_bytes());
+                json!(format!("0x{}", hex::encode(key)))
+            })
+            .collect(),
+    );
+    assert!(parse_storage_keys_page(&oversized, &[1], None, 1).is_err());
 }
 
 #[test]

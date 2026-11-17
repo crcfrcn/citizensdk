@@ -419,13 +419,10 @@ impl VerifiedChainClient for SmoldotVerifiedChainClient {
             let value = running
                 .rpc
                 .request(
-                    "state_getKeysPaged",
+                    // 上游扫描结果不保证顺序，必须取完整集合后由SDK统一分页。
+                    "state_getKeys",
                     json!([
                         format!("0x{}", hex::encode(&prefix)),
-                        limit,
-                        start_key
-                            .as_ref()
-                            .map(|key| format!("0x{}", hex::encode(key))),
                         hash_hex(block.hash()),
                     ]),
                 )
@@ -1204,36 +1201,25 @@ fn parse_storage_keys_page(
     start_key: Option<&[u8]>,
     limit: u32,
 ) -> ContractResult<Vec<Vec<u8>>> {
-    let values = value.as_array().ok_or_else(|| {
-        contract_error(ContractErrorCode::Decode, "state_getKeysPaged 结果不是数组")
-    })?;
-    if values.len() > limit as usize {
+    let values = value
+        .as_array()
+        .ok_or_else(|| contract_error(ContractErrorCode::Decode, "state_getKeys 结果不是数组"))?;
+    validate_storage_keys_page_request(prefix, start_key, limit)?;
+    // 每个合法键至少占一个字节，先限制数量，避免为异常结果预分配无界内存。
+    if values.len() > MAX_STORAGE_KEYS_PAGE_BYTES {
         return Err(contract_error(
             ContractErrorCode::Integrity,
-            "state_getKeysPaged 返回数量超过请求 limit",
+            "storage keys 完整集合数量超过字节上限",
         ));
     }
     let mut total = 0_usize;
     let mut keys = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let key = parse_hex_value(value, "storage key")?;
-        if key.is_empty()
-            || key.len() > MAX_STORAGE_KEY_BYTES
-            || !key.starts_with(prefix)
-            || start_key.is_some_and(|start| key.as_slice() <= start)
-        {
+        if key.is_empty() || key.len() > MAX_STORAGE_KEY_BYTES || !key.starts_with(prefix) {
             return Err(contract_error(
                 ContractErrorCode::Integrity,
-                format!("state_getKeysPaged 第 {index} 项不属于请求页面"),
-            ));
-        }
-        if keys
-            .last()
-            .is_some_and(|previous: &Vec<u8>| previous >= &key)
-        {
-            return Err(contract_error(
-                ContractErrorCode::Integrity,
-                "state_getKeysPaged 结果不是严格升序",
+                format!("state_getKeys 第 {index} 项不属于请求前缀"),
             ));
         }
         total = total.checked_add(key.len()).ok_or_else(|| {
@@ -1247,7 +1233,19 @@ fn parse_storage_keys_page(
         }
         keys.push(key);
     }
-    Ok(keys)
+    // 排序发生在游标过滤和截取之前，禁止逐页排序造成漏键；重复键仍拒绝。
+    keys.sort_unstable();
+    if keys.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(contract_error(
+            ContractErrorCode::Integrity,
+            "storage keys 完整集合存在重复键",
+        ));
+    }
+    Ok(keys
+        .into_iter()
+        .filter(|key| start_key.is_none_or(|start| key.as_slice() > start))
+        .take(limit as usize)
+        .collect())
 }
 
 fn validate_runtime_api_request(method: &str, arguments: &[u8]) -> ContractResult<()> {
