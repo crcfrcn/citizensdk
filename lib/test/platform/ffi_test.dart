@@ -39,6 +39,37 @@ void main() {
   }
 
   String account(int b) => citizenAccountIdFromBytes(List<int>.filled(32, b));
+  test('铸块奖励不读取交易体，按接收账户提供独立事件事实', () async {
+    final block = CitizenBlockRef(
+      hash: '0x${'06' * 32}',
+      number: BigInt.from(7),
+      finality: CitizenBlockFinality.finalized,
+    );
+    final reward = CitizenSystemEvent(
+      eventIndex: 8,
+      extrinsicIndex: null,
+      pallet: 'FullnodeIssuance',
+      name: 'FullnodeIssuanceIssued',
+      fields: {
+        'block': '7',
+        'reward_account_id': List<String>.filled(32, '1'),
+        'miner_account_id': List<String>.filled(32, '2'),
+        'amount': '9007199254740993',
+      },
+    );
+    final facts = await readCitizenWalletEvents(
+      block,
+      [account(1)],
+      readEvents: (_) async => [reward],
+      readBody: (_) async => throw StateError('奖励不得读取交易体'),
+    );
+    expect(facts.rewards.single.accountId, account(1));
+    expect(facts.rewards.single.minerAccountId, account(2));
+    expect(facts.rewards.single.amountFen, BigInt.parse('9007199254740993'));
+    expect(facts.rewards.single.eventIndex, 8);
+    expect(facts.transfers, isEmpty);
+    expect(facts.fees, isEmpty);
+  });
   test('真实事件向量严格解码并复用原始交易哈希', () async {
     Uint8List fixtureBytes(String name) {
       final hex = File('core/tests/$name').readAsStringSync().trim();

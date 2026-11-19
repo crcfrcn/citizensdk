@@ -2194,3 +2194,7 @@ SDK 直接消费 CitizenSdkFinalizedBlockChanged，对订阅账户去重并批�
 原生交易统一为V5 General、认证管线1，认证扩展为AccountAuth；证明仅有sr25519、ML首次公钥、ML已登记公钥三种分支。sr账户仍是原公钥32字节，ML账户派生及PqPublicKey存储保持；不转换账户、不迁移余额。两种算法共用账户绑定的签名约束：blake2_256(TRANSACTION_DOMAIN || AccountId || SCALE(ImplicationParts))；ImplicationParts覆盖管线版本、call及全部后续扩展的explicit/implicit，审阅端保留完整业务字段。nonce、权限、费用、质押保护、资源检查及上限保持；运行阶段仍拒绝sr。
 
 SDK按实际metadata逐项核对认证和业务检查，不修改注册表来迁就客户端。完整审阅材料及最终摘要分开保存，QR传完整材料；恢复只核对原字节及原授权，不重签、不改编码。旧metadata不能继续创建新原生交易；原历史数据不删除。测试向量来自当前FRAME实现，账户派生向量及冻结创世不改。
+
+钱包删除回归按真实账户集合验收：开发期两个账户0共存时，删除子账户后仍拒绝单独删除任一账户0，显式整钱包擦除清理全部密文与硬件密钥；单账户持久化夹具另外覆盖唯一账户0经原删除入口完成整钱包清理。夹具沿用真实导入身份和密文，不修改生产派生规则。
+
+铸块奖励流水使用FullnodeIssuance.FullnodeIssuanceIssued的接收账户、金额和事件身份；奖励无普通交易索引或哈希。App保存正向reward流水，旧事件处理版本游标一次性回退至原startBlock之前并按原32块窗口断点补扫，保留创建/导入时间过滤和既有流水，按账户/区块哈希/事件序号幂等写入。

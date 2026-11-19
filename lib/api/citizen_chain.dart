@@ -511,6 +511,7 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
       <int, (CitizenSystemEvent, String, String, BigInt, String?)>{};
   final unmatched = <(int?, String, String, BigInt), List<int>>{};
   final fees = <(CitizenSystemEvent, String, BigInt)>[];
+  final rewards = <CitizenRewardFact>[];
   for (final event in events) {
     final index = event.extrinsicIndex;
     switch ((event.pallet, event.name)) {
@@ -521,6 +522,26 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
         outcomes[index] = event.name == 'ExtrinsicSuccess'
             ? CitizenExecutionStatus.success
             : CitizenExecutionStatus.failed;
+      case ('FullnodeIssuance', 'FullnodeIssuanceIssued'):
+        final recipient = citizenAccountIdFromBytes(
+          event.fieldBytes('reward_account_id'),
+        );
+        if (!accounts.contains(recipient)) continue;
+        final amount = event.fieldUnsigned('amount');
+        final miner = citizenAccountIdFromBytes(
+          event.fieldBytes('miner_account_id'),
+        );
+        if (amount <= BigInt.zero ||
+            event.fieldUnsigned('block') != block.number ||
+            event.extrinsicIndex != null) {
+          throw const FormatException('铸块奖励金额、高度或事件阶段无效');
+        }
+        rewards.add((
+          accountId: recipient,
+          minerAccountId: miner,
+          amountFen: amount,
+          eventIndex: event.eventIndex,
+        ));
       case ('OnchainTransaction', 'FeePaid'):
         final payer = citizenAccountIdFromBytes(event.fieldBytes('account_id'));
         if (!accounts.contains(payer)) continue;
@@ -590,6 +611,7 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
   }
   return CitizenWalletBlockEvents(
     block: block,
+    rewards: rewards,
     transfers: [
       for (final (event, from, to, amount, remark) in confirmed)
         (

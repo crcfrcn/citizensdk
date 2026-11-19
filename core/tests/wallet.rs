@@ -2618,11 +2618,22 @@ fn child_anchor_and_whole_wallet_deletion_honor_exact_ownership() {
             .delete_account(child_two.account_id())
             .await
             .unwrap();
-        harness
-            .service
-            .delete_account(base.master_account_id())
-            .await
-            .expect("只剩锚点时该入口等价整钱包删除");
+        // 删除子账户不会移除导入时建立的经典/量子账户0。
+        let remaining = harness.service.profile().await.unwrap().unwrap();
+        assert_eq!(remaining.accounts(), base.accounts());
+        for account in remaining.accounts() {
+            assert_contract_code(
+                harness
+                    .service
+                    .delete_account(account.account_id())
+                    .await
+                    .expect_err("另一个账户0仍存在时不得单独删除锚点"),
+                ContractErrorCode::InvalidState,
+            );
+        }
+        assert_eq!(harness.service.profile().await.unwrap().unwrap(), remaining);
+        assert_eq!(harness.secrets.envelope_count(), base.accounts().len());
+        harness.service.wipe_wallets(Ok(())).await.unwrap();
         assert!(harness.service.profile().await.unwrap().is_none());
         assert_eq!(harness.secrets.envelope_count(), 0);
         assert!(!harness
@@ -2637,6 +2648,60 @@ fn child_anchor_and_whole_wallet_deletion_honor_exact_ownership() {
         assert!(!harness
             .vault
             .has_key(replacement.wallet_index(), replacement.generation()));
+    });
+}
+
+#[test]
+fn sole_anchor_deletion_removes_the_whole_wallet() {
+    block_on(async {
+        let harness = Harness::new();
+        let imported = harness.service.import(&known_mnemonic(), "").await.unwrap();
+        // 以真实导入身份和密文构成单账户持久化夹具，不改变正式派生规则。
+        let anchor = imported
+            .account_by_id(imported.master_account_id())
+            .unwrap()
+            .clone();
+        for account in imported.accounts() {
+            if account.account_id() != anchor.account_id() {
+                harness
+                    .secrets
+                    .remove_without_contract(account.secret_ref());
+            }
+        }
+        let profile = crate::types::WalletProfile::try_new(
+            imported.wallet_index(),
+            imported.generation(),
+            imported.master_account_id(),
+            imported.origin(),
+            imported.created_at_millis(),
+            imported.master_account_id(),
+            vec![anchor.clone()],
+        )
+        .unwrap();
+        let before = harness.profiles.snapshot();
+        *harness.profiles.state.lock().unwrap() = WalletState::try_from_parts(
+            before.revision() + 1,
+            Some(profile.clone()),
+            None,
+            None,
+            Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            harness.service.usable_profile().await.unwrap(),
+            Some(profile.clone())
+        );
+        assert_eq!(harness.secrets.envelope_count(), 1);
+        harness
+            .service
+            .delete_account(anchor.account_id())
+            .await
+            .expect("唯一账户0通过原入口删除整钱包");
+        assert!(harness.service.profile().await.unwrap().is_none());
+        assert_eq!(harness.secrets.envelope_count(), 0);
+        assert!(!harness
+            .vault
+            .has_key(profile.wallet_index(), profile.generation()));
     });
 }
 

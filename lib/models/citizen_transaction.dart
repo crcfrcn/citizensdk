@@ -189,16 +189,27 @@ typedef CitizenFeeFact = ({
   CitizenExecutionStatus? status,
 });
 
-/// SDK 对同一 finalized 块交付的原生转账和实际收费。
+/// finalized 区块结束阶段的铸块奖励，不属于普通交易提交。
+typedef CitizenRewardFact = ({
+  String accountId,
+  String minerAccountId,
+  BigInt amountFen,
+  int eventIndex,
+});
+
+/// SDK 对同一 finalized 块交付的转账、实际收费和铸块奖励。
 final class CitizenWalletBlockEvents {
   CitizenWalletBlockEvents({
     required this.block,
     required List<CitizenTransferFact> transfers,
     required List<CitizenFeeFact> fees,
+    required List<CitizenRewardFact> rewards,
   }) : transfers = List.unmodifiable(transfers),
-       fees = List.unmodifiable(fees);
+       fees = List.unmodifiable(fees),
+       rewards = List.unmodifiable(rewards);
 
   final CitizenBlockRef block;
   final List<CitizenTransferFact> transfers;
   final List<CitizenFeeFact> fees;
+  final List<CitizenRewardFact> rewards;
 }
