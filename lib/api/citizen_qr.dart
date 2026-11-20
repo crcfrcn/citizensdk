@@ -6,6 +6,9 @@ abstract final class CitizenQrActions {
   static const int citizenIdentity = 2;
   static const int citizenOccupy = 10;
   static const int citizenRebind = 11;
+
+  /// 原绑定账户的自助换绑授权；区别于注册局动作11及签名域0x11。
+  static const int cidRebind = 19;
   static const int switchDefaultAccount = 12;
   static const int mlsDeviceBind = 13;
   static const int publish = 15;
@@ -433,7 +436,7 @@ extension Qr on CitizenSdk {
     required int action,
     required String signerAccountId,
     required Uint8List reviewPayload,
-    int ttlSeconds = 120,
+    int ttlSeconds = 300,
   }) async {
     _requireOpen();
     return _withMemory(

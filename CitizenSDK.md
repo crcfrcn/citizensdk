@@ -1,5 +1,7 @@
 # CitizenSDK 技术文档
 
+通用CitizenSigningIntent、createSignRequest默认扫码期限和原生交易外部签名会话统一300秒，由设备时钟签发并校验QR_V1外层期限；显式业务期限仍由调用方原合同确定。自助换绑由调用方交付无期限五字段完整授权，仍使用既有blake2Domain(GMB+0x11)。SDK不解释换绑业务、不修改交易nonce及V5账户绑定摘要；当前Runtime metadata夹具必须由修改后的Runtime公开metadata导出，不手改call布局。
+
 ## 当前实现
 
 CitizenSDK是通用无UI区块链SDK。链同步、Runtime、交易准备/执行/历史、钱包、账户签名和二维码协议由同一Rust Core提供。App拥有页面、展示、业务载荷和用户确认；系统资源由SDK各平台实际拥有者提供。聊天客户端归公民App的chat本地包。

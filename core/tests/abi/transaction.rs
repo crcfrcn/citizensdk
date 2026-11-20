@@ -154,3 +154,33 @@ fn transaction_execution_projection_is_a_closed_safe_union() {
     assert_eq!(reason, b"usurped");
     assert!(session.is_empty() && request.is_empty());
 }
+
+/// 真实QR会话采用300秒设备时钟期限，且取消后不保留可消费会话。
+#[cfg(all(feature = "transactions", feature = "qr"))]
+#[test]
+fn native_transaction_qr_session_uses_300_device_seconds() {
+    let owner = u64::MAX - 300;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let intent = crate::types::SigningIntent::try_new(
+        AccountId32::from_bytes([0x31; 32]),
+        vec![10, 9, 1],
+        crate::types::SigningTransform::SubstrateSigningPayload,
+    )
+    .unwrap();
+    let request = crate::abi::qr_abi::create_external_qr_session(
+        owner,
+        0x0a09,
+        &intent,
+        TRANSACTION_QR_TTL_SECONDS,
+    )
+    .unwrap();
+    let after = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert!(request.expires_at >= now + 300 && request.expires_at <= after + 300);
+    assert!(crate::abi::qr_abi::cancel_unified_signing_session(owner, &request.session_id).is_ok());
+}

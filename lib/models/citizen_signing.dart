@@ -170,7 +170,7 @@ final class CitizenSigningIntent {
     required this.transform,
     this.externalSignerTransport,
     this.opaqueAction = 0,
-    this.ttlSeconds = 120,
+    this.ttlSeconds = 300,
   }) : payload = Uint8List.fromList(payload).asUnmodifiableView();
 
   final String accountId;

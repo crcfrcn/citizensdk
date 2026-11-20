@@ -5,14 +5,17 @@ const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex")
 
 #[test]
 fn account_evm_address_matches_runtime_vectors_and_rejects_wrong_lengths() {
-    let fixture: serde_json::Value = serde_json::from_str(
-        include_str!("citizenchain-evm-address-v1.json"),
-    ).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("citizenchain-evm-address-v1.json")).unwrap();
     for row in fixture["vectors"].as_array().unwrap() {
-        let account = hex::decode(row["account_id"].as_str().unwrap().trim_start_matches("0x")).unwrap();
+        let account =
+            hex::decode(row["account_id"].as_str().unwrap().trim_start_matches("0x")).unwrap();
         let request = serde_json::json!({"op":"account_evm_address","account_id":account});
         let address = super::chain_codec(&[], &serde_json::to_vec(&request).unwrap()).unwrap();
-        assert_eq!(format!("0x{}", hex::encode(address)), row["ethereum_address"].as_str().unwrap());
+        assert_eq!(
+            format!("0x{}", hex::encode(address)),
+            row["ethereum_address"].as_str().unwrap()
+        );
     }
     for length in [0, 20, 31, 33, 64] {
         let request = serde_json::json!({"op":"account_evm_address","account_id":vec![0u8;length]});
@@ -63,8 +66,7 @@ fn call_indices(metadata: &Metadata, pallet_name: &str, call_name: &str) -> (u8,
 
 #[test]
 fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
-    // 金标来自公民链 WASM v4 的 Metadata_metadata_at_version(15) 实际导出。
-    // compact WASM SHA-256: f36e7d58f1a6bc730eace2d6b27f5c98e288bc79ce88bf4eb4f3b802b1e58b92。
+    // 金标由当前Runtime源码公开metadata_at_version(15)导出；源码测试版本为0/0，正式升级版本由发布入口指定。
     let text = include_str!("citizenchain-revive-v15-metadata.hex").trim();
     let hex = text.strip_prefix("0x").expect("metadata prefix");
     let bytes = (0..hex.len())
@@ -73,15 +75,55 @@ fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
         .collect::<Vec<_>>();
     let current = decode_metadata_strict(&bytes).expect("current WASM metadata");
     use subxt_core::ext::codec::Decode;
-    let mut version = current.pallet_by_name("System").unwrap()
-        .constant_by_name("Version").unwrap().value();
-    let version_fields = <(String, String, u32, u32, u32, Vec<([u8; 8], u32)>, u32, u8)>::decode(&mut version).unwrap();
+    let mut version = current
+        .pallet_by_name("System")
+        .unwrap()
+        .constant_by_name("Version")
+        .unwrap()
+        .value();
+    let version_fields =
+        <(String, String, u32, u32, u32, Vec<([u8; 8], u32)>, u32, u8)>::decode(&mut version)
+            .unwrap();
     assert!(version.is_empty());
-    assert_eq!((version_fields.0.as_str(), version_fields.3, version_fields.6), ("citizenchain", 4, 3));
+    assert_eq!(
+        (
+            version_fields.0.as_str(),
+            version_fields.3,
+            version_fields.6
+        ),
+        ("citizenchain", 0, 0)
+    );
     assert_eq!(
         current.pallet_by_name("Revive").expect("Revive").index(),
         35
     );
+    let identity = current
+        .pallet_by_name("CitizenIdentity")
+        .expect("identity pallet");
+    let self_rebind = identity
+        .call_variant_by_name("self_rebind_cid_account_id")
+        .expect("call9");
+    assert_eq!(self_rebind.index, 9);
+    assert_eq!(
+        self_rebind
+            .fields
+            .iter()
+            .map(|field| field.name.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            Some("cid_number"),
+            Some("expected_binding_revision"),
+            Some("current_account_signature")
+        ]
+    );
+    let admin_rebind = identity
+        .call_variant_by_name("admin_rebind_cid_account_id")
+        .expect("registrar call7");
+    assert!(admin_rebind
+        .fields
+        .iter()
+        .any(|field| field.name.as_deref() == Some("expires_at")));
+
     let before = metadata();
     for name in [
         "System",
@@ -144,8 +186,15 @@ fn unknown_truncated_and_trailing_calls_fail_closed() {
 #[test]
 fn chain_codec_uses_exact_metadata_for_storage_and_call() {
     use serde_json::json;
-    let metadata = hex::decode(include_str!("citizenchain-revive-v15-metadata.hex").trim().trim_start_matches("0x")).unwrap();
-    let codec = |operation: serde_json::Value| super::chain_codec(&metadata, &serde_json::to_vec(&operation).unwrap());
+    let metadata = hex::decode(
+        include_str!("citizenchain-revive-v15-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let codec = |operation: serde_json::Value| {
+        super::chain_codec(&metadata, &serde_json::to_vec(&operation).unwrap())
+    };
     let account = vec![0x31u8; 32];
     let args = json!({"kind":"sequence","value":[
         {"kind":"bytes","value":account},
@@ -156,17 +205,26 @@ fn chain_codec_uses_exact_metadata_for_storage_and_call() {
     let verified = crate::types::OpaqueTransactionCall::try_new(call.clone()).unwrap();
     let parsed = crate::system_events::decode_metadata_strict(&metadata).unwrap();
     super::validate_opaque_runtime_call(&parsed, &verified).unwrap();
-    let generated = codec(json!({"op":"storage","pallet":"System","entry":"Account","keys":[
-        {"kind":"bytes","value":vec![0x31u8; 32]}
-    ]})).unwrap();
+    let generated = codec(
+        json!({"op":"storage","pallet":"System","entry":"Account","keys":[
+            {"kind":"bytes","value":vec![0x31u8; 32]}
+        ]}),
+    )
+    .unwrap();
     let expected = crate::account_state::system_account_storage_key(
         &parsed,
         crate::types::AccountId32::from_bytes([0x31; 32]),
     )
     .unwrap();
     assert_eq!(generated, expected);
-    assert!(codec(json!({"op":"call","pallet":"OnchainTransaction","method":"not_a_call","args":args})).is_err());
-    assert!(codec(json!({"op":"decode_storage","pallet":"Timestamp","entry":"Now","value":vec![0u8;9]})).is_err());
+    assert!(codec(
+        json!({"op":"call","pallet":"OnchainTransaction","method":"not_a_call","args":args})
+    )
+    .is_err());
+    assert!(codec(
+        json!({"op":"decode_storage","pallet":"Timestamp","entry":"Now","value":vec![0u8;9]})
+    )
+    .is_err());
 }
 
 #[test]
@@ -186,7 +244,10 @@ fn chain_codec_reads_unsigned_constant_from_verified_metadata() {
         super::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
     };
     assert_eq!(read("PersonalManage", "MinCreateAmount").unwrap(), b"111");
-    assert_eq!(read("OnchainTransaction", "MaxTransferRemarkLen").unwrap(), b"99");
+    assert_eq!(
+        read("OnchainTransaction", "MaxTransferRemarkLen").unwrap(),
+        b"99"
+    );
     assert!(read("PersonalManage", "MissingConstant").is_err());
     assert!(read("System", "Version").is_err());
 }
@@ -269,47 +330,122 @@ fn voting_calls_preserve_fixed_u128_ids_and_reject_invalid_boundaries() {
     let cid = b"LN001-NRC0G-944805165-2026".to_vec();
     let role = b"COMMITTEE_MEMBER".to_vec();
     let cases = [
-        ("InternalVote", "cast", vec![json!({"kind":"variant","value":["Personal",[]]}), json!({"kind":"bool","value":true})], (0u8, true).encode()),
-        ("JointVote", "cast_admin", vec![json!({"kind":"bytes","value":cid}), json!({"kind":"bytes","value":role}), json!({"kind":"bool","value":true})], (cid.clone(), role.clone(), true).encode()),
-        ("JointVote", "cast_referendum", vec![json!({"kind":"bool","value":true})], true.encode()),
-        ("LegislationVote", "cast_representative_vote", vec![json!({"kind":"bytes","value":role}), json!({"kind":"bool","value":true})], (role.clone(), true).encode()),
-        ("LegislationVote", "cast_referendum_vote", vec![json!({"kind":"bool","value":true})], true.encode()),
-        ("LegislationVote", "executive_sign", vec![json!({"kind":"bool","value":true})], true.encode()),
-        ("LegislationVote", "override_sign", vec![json!({"kind":"bool","value":true})], true.encode()),
-        ("LegislationVote", "guard_vote", vec![json!({"kind":"bool","value":true})], true.encode()),
+        (
+            "InternalVote",
+            "cast",
+            vec![
+                json!({"kind":"variant","value":["Personal",[]]}),
+                json!({"kind":"bool","value":true}),
+            ],
+            (0u8, true).encode(),
+        ),
+        (
+            "JointVote",
+            "cast_admin",
+            vec![
+                json!({"kind":"bytes","value":cid}),
+                json!({"kind":"bytes","value":role}),
+                json!({"kind":"bool","value":true}),
+            ],
+            (cid.clone(), role.clone(), true).encode(),
+        ),
+        (
+            "JointVote",
+            "cast_referendum",
+            vec![json!({"kind":"bool","value":true})],
+            true.encode(),
+        ),
+        (
+            "LegislationVote",
+            "cast_representative_vote",
+            vec![
+                json!({"kind":"bytes","value":role}),
+                json!({"kind":"bool","value":true}),
+            ],
+            (role.clone(), true).encode(),
+        ),
+        (
+            "LegislationVote",
+            "cast_referendum_vote",
+            vec![json!({"kind":"bool","value":true})],
+            true.encode(),
+        ),
+        (
+            "LegislationVote",
+            "executive_sign",
+            vec![json!({"kind":"bool","value":true})],
+            true.encode(),
+        ),
+        (
+            "LegislationVote",
+            "override_sign",
+            vec![json!({"kind":"bool","value":true})],
+            true.encode(),
+        ),
+        (
+            "LegislationVote",
+            "guard_vote",
+            vec![json!({"kind":"bool","value":true})],
+            true.encode(),
+        ),
     ];
     for (pallet, method, fields, tail) in cases {
         let call = |id: String| {
             let mut args = vec![json!({"kind":"integer","value":id})];
             args.extend(fields.clone());
-            super::chain_codec(&metadata, &serde_json::to_vec(&json!({
-                "op":"call", "pallet":pallet, "method":method,
-                "args":{"kind":"sequence","value":args},
-            })).unwrap())
+            super::chain_codec(
+                &metadata,
+                &serde_json::to_vec(&json!({
+                    "op":"call", "pallet":pallet, "method":method,
+                    "args":{"kind":"sequence","value":args},
+                }))
+                .unwrap(),
+            )
         };
         let indices = call_indices(&parsed, pallet, method);
-        for id in [0, 63, 64, 16_383, 16_384, 9_007_199_254_740_993, u64::MAX as u128 + 1, u128::MAX] {
+        for id in [
+            0,
+            63,
+            64,
+            16_383,
+            16_384,
+            9_007_199_254_740_993,
+            u64::MAX as u128 + 1,
+            u128::MAX,
+        ] {
             let encoded = call(id.to_string()).unwrap();
             let mut expected = vec![indices.0, indices.1];
             expected.extend(id.to_le_bytes());
             expected.extend_from_slice(&tail);
             assert_eq!(encoded, expected, "{pallet}::{method} id={id}");
-            validate_opaque_runtime_call(&parsed, &OpaqueTransactionCall::try_new(encoded.clone()).unwrap()).unwrap();
+            validate_opaque_runtime_call(
+                &parsed,
+                &OpaqueTransactionCall::try_new(encoded.clone()).unwrap(),
+            )
+            .unwrap();
             let mut trailing = encoded.clone();
             trailing.push(0);
             for invalid in [encoded[..encoded.len() - 1].to_vec(), trailing] {
-                assert!(validate_opaque_runtime_call(&parsed, &OpaqueTransactionCall::try_new(invalid).unwrap()).is_err());
+                assert!(validate_opaque_runtime_call(
+                    &parsed,
+                    &OpaqueTransactionCall::try_new(invalid).unwrap()
+                )
+                .is_err());
             }
         }
         for invalid in ["-1", "340282366920938463463374607431768211456"] {
-            assert!(call(invalid.into()).is_err(), "{pallet}::{method} must reject {invalid}");
+            assert!(
+                call(invalid.into()).is_err(),
+                "{pallet}::{method} must reject {invalid}"
+            );
         }
     }
 }
 
 #[test]
 fn v5_native_contract_requires_real_account_authentication_metadata() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
     let raw = hex::decode(fixture["metadata"].as_str().unwrap()).unwrap();
     let metadata = decode_metadata_strict(&raw).unwrap();
     let checks = native_extensions(&metadata).unwrap();

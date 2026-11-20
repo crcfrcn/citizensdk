@@ -2,6 +2,10 @@
 //!
 //! 原生句柄始终绑定单个 CitizenSDK 实例；只有安全摘要跨越 ABI，签名消息、签名和交易模板留在 Engine。
 
+// 原生交易与通用扫码签名使用设备时间300秒会话，不引入业务授权期限。
+#[cfg(all(feature = "transactions", feature = "qr"))]
+const TRANSACTION_QR_TTL_SECONDS: u64 = 300;
+
 use std::collections::HashMap;
 #[cfg(all(feature = "transactions", feature = "qr"))]
 use std::future::Future;
@@ -425,7 +429,7 @@ pub unsafe extern "C" fn citizensdk_execute_prepared_transaction(
                                 runtime.handle(),
                                 action,
                                 &intent,
-                                120,
+                                TRANSACTION_QR_TTL_SECONDS,
                             ) {
                                 Ok(external) => external,
                                 Err(error) => {
