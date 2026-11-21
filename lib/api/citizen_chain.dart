@@ -457,7 +457,7 @@ extension Chain on CitizenSdk {
         feeRateParts: p.ref.fee_rate_parts,
         minimumFeeFen: _u128(p.ref.minimum_fee_fen),
         existentialDepositFen: _u128(p.ref.existential_deposit_fen),
-        voteFeeFen: _u128(p.ref.vote_fee_fen),
+        FLAT_FEE: _u128(p.ref.FLAT_FEE),
         feeFen: _u128(fee.ref),
         minimumSelfPayFen: _u128(minimum.ref),
       );

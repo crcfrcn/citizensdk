@@ -604,6 +604,7 @@ impl Default for CitizenSdkAccountNonceInfo {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(non_snake_case)]
 pub struct CitizenSdkFeeSnapshotInfo {
     pub struct_size: u32,
     pub abi_version: u32,
@@ -612,7 +613,7 @@ pub struct CitizenSdkFeeSnapshotInfo {
     pub reserved: u32,
     pub minimum_fee_fen: CitizenSdkU128,
     pub existential_deposit_fen: CitizenSdkU128,
-    pub vote_fee_fen: CitizenSdkU128,
+    pub FLAT_FEE: CitizenSdkU128,
 }
 
 impl Default for CitizenSdkFeeSnapshotInfo {
@@ -625,7 +626,7 @@ impl Default for CitizenSdkFeeSnapshotInfo {
             reserved: 0,
             minimum_fee_fen: CitizenSdkU128::default(),
             existential_deposit_fen: CitizenSdkU128::default(),
-            vote_fee_fen: CitizenSdkU128::default(),
+            FLAT_FEE: CitizenSdkU128::default(),
         }
     }
 }

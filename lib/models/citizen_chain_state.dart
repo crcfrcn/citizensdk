@@ -266,14 +266,14 @@ final class CitizenAccountNonce {
   final BigInt nonce;
 }
 
-/// 同一 best 块读取的链上费率、最低费用和存续金额。
+/// 同一 best 块读取的链上费率、最低费用、共享 FLAT_FEE 和存续金额，单位为分。
 final class CitizenFeeSnapshot {
   const CitizenFeeSnapshot({
     required this.bestBlock,
     required this.feeRateParts,
     required this.minimumFeeFen,
     required this.existentialDepositFen,
-    required this.voteFeeFen,
+    required this.FLAT_FEE,
     required this.feeFen,
     required this.minimumSelfPayFen,
   });
@@ -282,7 +282,8 @@ final class CitizenFeeSnapshot {
   final int feeRateParts;
   final BigInt minimumFeeFen;
   final BigInt existentialDepositFen;
-  final BigInt voteFeeFen;
+  // ignore: non_constant_identifier_names
+  final BigInt FLAT_FEE;
   final BigInt feeFen;
   final BigInt minimumSelfPayFen;
 }

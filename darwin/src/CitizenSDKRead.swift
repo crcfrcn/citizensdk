@@ -239,7 +239,7 @@ internal enum CitizenSDKRead {
             return CitizenFeeSnapshot(bestBlock: try block(value.best_block), feeRateParts: value.fee_rate_parts,
                                       minimumFeeFen: u128(value.minimum_fee_fen),
                                       existentialDepositFen: u128(value.existential_deposit_fen),
-                                      voteFeeFen: u128(value.vote_fee_fen))
+                                      FLAT_FEE: u128(value.FLAT_FEE))
         }
     }
 

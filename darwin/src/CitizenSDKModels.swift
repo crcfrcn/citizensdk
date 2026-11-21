@@ -229,7 +229,7 @@ public struct CitizenFeeSnapshot: Equatable, Sendable {
     public let feeRateParts: UInt32
     public let minimumFeeFen: CitizenU128
     public let existentialDepositFen: CitizenU128
-    public let voteFeeFen: CitizenU128
+    public let FLAT_FEE: CitizenU128
 }
 
 public struct CitizenWalletAccount: Equatable, Sendable {

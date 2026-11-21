@@ -3,6 +3,7 @@ part of '../citizen_sdk.dart';
 /// QR_V1已有动作数字常量；不携带UI标签，不决定业务资格或允许签名。
 abstract final class CitizenQrActions {
   static const int login = 1;
+  static const int contactsDelete = 20;
   static const int citizenIdentity = 2;
   static const int citizenOccupy = 10;
   static const int citizenRebind = 11;

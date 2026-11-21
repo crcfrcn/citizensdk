@@ -598,7 +598,7 @@ typedef struct citizensdk_fee_snapshot_info {
   uint32_t reserved;
   citizensdk_u128_t minimum_fee_fen;
   citizensdk_u128_t existential_deposit_fen;
-  citizensdk_u128_t vote_fee_fen;
+  citizensdk_u128_t FLAT_FEE;
 } citizensdk_fee_snapshot_info_t;
 
 typedef struct citizensdk_wallet_profile_info {

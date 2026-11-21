@@ -329,7 +329,7 @@ ABI_OFFSET(citizensdk_fee_snapshot_info_t, fee_rate_parts, 64);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, reserved, 68);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, minimum_fee_fen, 72);
 ABI_OFFSET(citizensdk_fee_snapshot_info_t, existential_deposit_fen, 88);
-ABI_OFFSET(citizensdk_fee_snapshot_info_t, vote_fee_fen, 104);
+ABI_OFFSET(citizensdk_fee_snapshot_info_t, FLAT_FEE, 104);
 
 ABI_SIZE(citizensdk_wallet_profile_info_t, 96);
 ABI_ALIGN(citizensdk_wallet_profile_info_t, 8);

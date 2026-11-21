@@ -5992,7 +5992,7 @@ final class citizensdk_fee_snapshot_info extends ffi.Struct {
 
   external citizensdk_u128_t existential_deposit_fen;
 
-  external citizensdk_u128_t vote_fee_fen;
+  external citizensdk_u128_t FLAT_FEE;
 }
 
 typedef citizensdk_fee_snapshot_info_t = citizensdk_fee_snapshot_info;

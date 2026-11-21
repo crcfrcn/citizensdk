@@ -33,7 +33,7 @@ use citizensdk::CapabilityProbe;
 use citizensdk::CitizenEngine;
 use citizensdk::EngineError;
 use serde_json::Value as JsonValue;
-use subxt_core::ext::codec::Decode;
+use subxt_core::ext::codec::{Decode, Encode};
 use subxt_core::Metadata;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
@@ -474,7 +474,7 @@ fn fee_policy_is_decoded_only_from_one_exact_production_runtime_context() {
         snapshot.existential_deposit_fen(),
         integer(&fee["existential_deposit_fen"])
     );
-    assert_eq!(snapshot.vote_fee_fen(), integer(&fee["vote_fee_fen"]));
+    assert_eq!(snapshot.FLAT_FEE(), integer(&fee["FLAT_FEE"]));
     assert_eq!(
         snapshot
             .minimum_self_pay_fen()
@@ -506,6 +506,31 @@ fn fee_policy_is_decoded_only_from_one_exact_production_runtime_context() {
         error,
         EngineError::Contract(ref value) if value.code() == ContractErrorCode::InvalidArgument
     ));
+}
+
+#[test]
+fn fee_snapshot_requires_the_shared_metadata_constant() {
+    let best = VerifiedBlockRef::best(Hash32::from_bytes([0x32; 32]), 32);
+    let mut input = decode_hex(METADATA_HEX);
+    let mut metadata =
+        frame_metadata::RuntimeMetadataPrefixed::decode(&mut input.as_slice()).unwrap();
+    let frame_metadata::RuntimeMetadata::V14(meta) = &mut metadata.1 else {
+        panic!("V14 fixture")
+    };
+    let pallet = meta
+        .pallets
+        .iter_mut()
+        .find(|p| p.name == "OnchainTransaction")
+        .unwrap();
+    let index = pallet
+        .constants
+        .iter()
+        .position(|c| c.name == "FLAT_FEE")
+        .unwrap();
+    pallet.constants.remove(index);
+    input = metadata.encode();
+    let context = RuntimeContext::try_new(best, RuntimeVersion::new(0, 0), input).unwrap();
+    assert!(decode_best_fee_snapshot(&ChainIdentity::citizenchain(), &context).is_err());
 }
 
 #[test]

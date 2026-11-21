@@ -3481,7 +3481,7 @@ fn fee_snapshot_to_abi(snapshot: BestFeeSnapshot) -> CitizenSdkFeeSnapshotInfo {
         fee_rate_parts: snapshot.policy().fee_rate_parts(),
         minimum_fee_fen: u128_to_abi(snapshot.policy().minimum_fee_fen()),
         existential_deposit_fen: u128_to_abi(snapshot.existential_deposit_fen()),
-        vote_fee_fen: u128_to_abi(snapshot.vote_fee_fen()),
+        FLAT_FEE: u128_to_abi(snapshot.FLAT_FEE()),
         ..CitizenSdkFeeSnapshotInfo::default()
     }
 }

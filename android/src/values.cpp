@@ -643,7 +643,7 @@ jobject result_value(JNIEnv *env, CitizenSdkHostBridge *bridge,
                  static_cast<jlong>(value.fee_rate_parts),
                  amount(env, value.minimum_fee_fen),
                  amount(env, value.existential_deposit_fen),
-                 amount(env, value.vote_fee_fen));
+                 amount(env, value.FLAT_FEE));
   }
   case CITIZENSDK_RESULT_WALLET_PROFILE:
     return profile(env, result);

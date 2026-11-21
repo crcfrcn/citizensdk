@@ -193,7 +193,7 @@ class CitizenFeeSnapshot(
     val feeRateParts: Long,
     val minimumFeeFen: CitizenU128,
     val existentialDepositFen: CitizenU128,
-    val voteFeeFen: CitizenU128,
+    val FLAT_FEE: CitizenU128,
 )
 
 class CitizenWalletAccount(

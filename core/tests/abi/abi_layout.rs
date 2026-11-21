@@ -329,7 +329,7 @@ fn account_wallet_and_history_layout_and_constants_are_exact() {
         reserved: 68,
         minimum_fee_fen: 72,
         existential_deposit_fen: 88,
-        vote_fee_fen: 104,
+        FLAT_FEE: 104,
     });
     assert_layout!(CitizenSdkWalletProfileInfo, 96, 8, {
         struct_size: 0,

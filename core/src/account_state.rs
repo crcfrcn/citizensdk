@@ -32,12 +32,13 @@ use crate::system_events::decode_metadata_strict;
 /// 一份绑定准确 best 块的链上费用事实。
 ///
 /// `policy` 保存 Runtime 的 `OnchainFeeRate` 与 `OnchainMinFee`；
-/// ED 和投票定额费取自同一份 Runtime metadata。
+/// ED 和共享 FLAT_FEE 取自同一份 Runtime metadata，金额单位均为分。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(non_snake_case)]
 pub struct BestFeeSnapshot {
     policy: OnchainFeePolicy,
     existential_deposit_fen: u128,
-    vote_fee_fen: u128,
+    FLAT_FEE: u128,
 }
 
 impl BestFeeSnapshot {
@@ -53,8 +54,9 @@ impl BestFeeSnapshot {
         self.existential_deposit_fen
     }
 
-    pub const fn vote_fee_fen(self) -> u128 {
-        self.vote_fee_fen
+    #[allow(non_snake_case)]
+    pub const fn FLAT_FEE(self) -> u128 {
+        self.FLAT_FEE
     }
 
     pub fn estimate_fee_fen(self, amount_fen: u128) -> Result<u128, EngineError> {
@@ -298,6 +300,7 @@ pub fn decode_finalized_account_balance(
 }
 
 /// 解码准确 best Runtime 中的资金常量，不使用本地默认值。
+#[allow(non_snake_case)]
 pub fn decode_best_fee_snapshot(
     identity: &ChainIdentity,
     context: &RuntimeContext,
@@ -320,13 +323,13 @@ pub fn decode_best_fee_snapshot(
         decode_integer_constant(&metadata, "OnchainTransaction", "OnchainMinFee")?;
     let existential_deposit_fen =
         decode_integer_constant(&metadata, "Balances", "ExistentialDeposit")?;
-    let vote_fee_fen = decode_integer_constant(&metadata, "OnchainTransaction", "VoteFlatFee")?;
+    let FLAT_FEE = decode_integer_constant(&metadata, "OnchainTransaction", "FLAT_FEE")?;
     let policy = OnchainFeePolicy::try_new(identity, context.block(), fee_rate, minimum_fee_fen)
         .map_err(EngineError::from)?;
     Ok(BestFeeSnapshot {
         policy,
         existential_deposit_fen,
-        vote_fee_fen,
+        FLAT_FEE,
     })
 }
 
