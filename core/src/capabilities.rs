@@ -1,3 +1,5 @@
+//! 依据模块选择和实际资源探测计算能力支持、就绪状态及失败原因。
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 

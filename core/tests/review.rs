@@ -1,4 +1,5 @@
-//! 固定公开向量只用于回归；生产审阅仅接受 VerifiedChainClient 提供的 Runtime。
+//! 以公开向量验证完整SCALE审阅及链身份、Runtime和异常载荷拒绝。
+
 #![allow(clippy::unwrap_used)]
 
 use crate::qr::SignRequest;
@@ -58,7 +59,11 @@ fn fixture() -> (SignRequest, RuntimeContext, usize) {
     let context = RuntimeContext::try_new(
         finalized.verified(),
         RuntimeVersion::new(0, 0),
-        bytes(serde_json::from_str::<serde_json::Value>(METADATA).unwrap()["metadata"].as_str().unwrap()),
+        bytes(
+            serde_json::from_str::<serde_json::Value>(METADATA).unwrap()["metadata"]
+                .as_str()
+                .unwrap(),
+        ),
     )
     .unwrap();
     let call_len = bytes(vector["expected"]["call_data"].as_str().unwrap()).len();

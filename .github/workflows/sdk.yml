@@ -1,4 +1,5 @@
-# SDK唯一公开平台；四宿主内部传递原生件，完整组包后在同一Run正式交付。
+# 在同一Run汇集四平台原生件并验收、组包和正式交付完整SDK。
+
 name: 公民SDK·SDK
 run-name: 公民SDK·SDK·${{ github.run_number }}
 'on':

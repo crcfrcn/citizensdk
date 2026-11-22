@@ -1,3 +1,5 @@
+//! 验证交易资源归属、尝试代次、取消及安全结果投影和设备期限。
+
 use super::*;
 use crate::types::ExecutionConclusion;
 use crate::types::Hash32;

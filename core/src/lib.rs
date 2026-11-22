@@ -1,4 +1,4 @@
-//! CitizenSDK product-independent Rust Core Engine.
+//! 组织SDK Rust核心、类型化依赖和原生C接口。
 
 #![deny(unsafe_code)]
 

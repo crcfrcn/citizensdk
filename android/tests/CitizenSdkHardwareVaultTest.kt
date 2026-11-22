@@ -1,3 +1,5 @@
+// 验证硬件金库代际、密钥存在性、串行修改及主线程认证分派。
+
 package org.citizen.sdk
 
 import androidx.test.core.app.ApplicationProvider

@@ -1,3 +1,5 @@
+// 验证硬件别名的固定格式、身份隔离和代际长度。
+
 package org.citizen.sdk.internal
 import org.junit.Assert.*
 import org.junit.Test

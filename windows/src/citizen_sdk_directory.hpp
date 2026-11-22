@@ -1,3 +1,5 @@
+// 声明Windows安全目录、句柄持有及有效身份辅助接口。
+
 #ifndef CITIZENSDK_WINDOWS_DIRECTORY_HPP
 #define CITIZENSDK_WINDOWS_DIRECTORY_HPP
 

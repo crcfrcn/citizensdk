@@ -1,3 +1,5 @@
+//! 验证实例请求序号、完成预算、生命周期排空及撤销接收者的资源回收。
+
 #[path = "../store/db.rs"]
 mod db;
 use std::ffi::c_void;
@@ -996,7 +998,7 @@ impl super::NativeRuntime {
             secure: std::ptr::null(),
             vault: std::ptr::null(),
         };
-        let stores = unsafe { crate::store::sqlite::Stores::new(&stores) }?;
+        let stores = unsafe { crate::store::Stores::new(&stores) }?;
         let mut runtime = unsafe {
             Self::new_with_modules(
                 handle,

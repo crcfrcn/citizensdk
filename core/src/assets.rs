@@ -1,3 +1,5 @@
+//! 核验随包链资产清单、摘要及轻节点同步状态。
+
 use blake2::digest::Update;
 use blake2::digest::VariableOutput;
 use blake2::Blake2bVar;

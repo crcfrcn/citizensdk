@@ -1,8 +1,6 @@
-//! 与产品无关的不可变签名载荷和已编码交易值对象。
-//!
-//! RuntimeCall 字节保持不透明，业务载荷格式由应用持有。
+//! 定义不透明调用的不可变签名载荷及已编码交易值对象。
 
-use crate::types::account::require_citizenchain_identity;
+use crate::types::require_citizenchain_identity;
 use crate::types::AccountId32;
 use crate::types::AccountNonce;
 use crate::types::AccountPublicKey;

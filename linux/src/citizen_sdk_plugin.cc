@@ -1,3 +1,5 @@
+// 接入GTK主线程的Flutter方法、事件和相机纹理，管理插件释放。
+
 #include "citizen_sdk_plugin.h"
 
 #include <algorithm>

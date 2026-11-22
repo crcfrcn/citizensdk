@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证错误码和线程本地诊断。
+
 #![allow(unsafe_code)]
 
 use citizensdk::abi::citizensdk_get_capabilities;

@@ -1,3 +1,5 @@
+// 定义Linux Flutter原生装配输入、资源路径和宿主环境接口。
+
 #ifndef CITIZENSDK_FLUTTER_ENVIRONMENT_HPP
 #define CITIZENSDK_FLUTTER_ENVIRONMENT_HPP
 

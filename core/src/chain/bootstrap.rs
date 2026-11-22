@@ -1,5 +1,6 @@
-#![forbid(unsafe_code)]
 //! SDK 启动节点建议。HTTPS 清单不是链状态真源，不能提供 RPC 或替换随包信任资产。
+
+#![forbid(unsafe_code)]
 use crate::types::ContractError;
 use crate::types::ContractErrorCode;
 use crate::types::ContractResult;

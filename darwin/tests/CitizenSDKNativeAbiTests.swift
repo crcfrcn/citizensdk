@@ -1,3 +1,5 @@
+// 调用真实Core和图像桥接，验证Apple原生资源及关闭边界。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

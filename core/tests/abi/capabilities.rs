@@ -1,3 +1,5 @@
+//! 验证模块独立选择、真实资源探测及冷热签名的能力接纳边界。
+
 use super::product_probes;
 use super::ProductCapabilityFacts;
 use crate::types::CapabilityName;

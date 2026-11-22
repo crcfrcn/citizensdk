@@ -1,3 +1,5 @@
+// 声明Windows HANDLE VFS及SQLite同步资源和提交前安全检查。
+
 #ifndef CITIZENSDK_WINDOWS_SQLITE_HPP
 #define CITIZENSDK_WINDOWS_SQLITE_HPP
 

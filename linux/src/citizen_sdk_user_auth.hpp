@@ -1,3 +1,5 @@
+// 声明Linux用户认证结果、凭据请求及独立追加认证接口。
+
 #ifndef CITIZENSDK_LINUX_USER_AUTH_HPP
 #define CITIZENSDK_LINUX_USER_AUTH_HPP
 

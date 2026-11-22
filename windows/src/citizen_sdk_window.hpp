@@ -1,3 +1,5 @@
+// 声明窗口状态租约、生命周期观察及始终排队的UI调用接口。
+
 #ifndef CITIZENSDK_WINDOWS_WINDOW_HPP
 #define CITIZENSDK_WINDOWS_WINDOW_HPP
 

@@ -1,4 +1,5 @@
-// Black-box public ABI regression; only existing public-vector signatures are used.
+//! 通过公开二维码接口验证模块禁用、预检和真实签名响应边界。
+
 #![allow(unsafe_code)]
 
 use citizensdk::abi::citizensdk_qr_parse;

@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 声明共用值模型、调用外壳及凭据字节的编解码接口。
+
 #ifndef CITIZENSDK_VALUE_HPP
 #define CITIZENSDK_VALUE_HPP
 

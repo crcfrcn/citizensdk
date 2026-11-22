@@ -1,8 +1,4 @@
-//! Generic, application-neutral transaction preparation and instance registry.
-//!
-//! The application supplies one opaque SCALE RuntimeCall. CitizenSDK binds it to one exact best
-//! block, runtime, nonce and signed-extension layout. Signer messages and extrinsic templates stay
-//! inside the Engine and are consumed only by the later signing/submission closure.
+//! 将不透明RuntimeCall绑定准确链上下文，构造并登记不可变待签交易。
 
 use std::collections::HashMap;
 
@@ -28,7 +24,7 @@ use crate::types::TransactionPreparationId;
 use crate::types::VerifiedChainClient;
 use crate::types::MAX_PREPARED_TRANSACTIONS;
 use subxt_core::ext::codec::Compact;
-use subxt_core::ext::codec::{Decode, Encode};
+use subxt_core::ext::codec::Decode;
 use zeroize::Zeroize;
 use zeroize::Zeroizing;
 
@@ -51,6 +47,8 @@ pub(crate) struct PreparedTransaction {
     pq_registered: bool,
     signed_extensions: Vec<String>,
     generation: u64,
+    /// 仅自助换绑持有签名前的公开目录；不进入签名、ABI或持久交易格式。
+    rebind_wallet: Option<crate::wallet_service::WalletStateSnapshot>,
 }
 
 impl core::fmt::Debug for PreparedTransaction {
@@ -65,6 +63,32 @@ impl core::fmt::Debug for PreparedTransaction {
 }
 
 impl PreparedTransaction {
+    /// 用真实 metadata 识别自助换绑；SCALE 仍由官方 Decode 完整消费。
+    pub(crate) fn rebind_parameters(&self) -> Result<Option<(Vec<u8>, u64)>, EngineError> {
+        let metadata = decode_metadata_strict(self.runtime_context.metadata())?;
+        let bytes = self.call_data();
+        let Some(pallet) = metadata.pallet_by_index(bytes[0]) else { return Ok(None) };
+        let Some(call) = pallet.call_variant_by_index(bytes[1]) else { return Ok(None) };
+        if pallet.name() != "CitizenIdentity" || call.name != "self_rebind_cid_account_id" {
+            return Ok(None);
+        }
+        let mut remaining = &bytes[2..];
+        let (cid, revision, _signature) = <(Vec<u8>, u64, Vec<u8>)>::decode(&mut remaining)
+            .map_err(|error| EngineError::InvalidMetadata(error.to_string()))?;
+        if !remaining.is_empty() || cid.is_empty() || revision == 0 || revision == u64::MAX {
+            return Err(EngineError::contract(ContractErrorCode::Integrity, "自助换绑参数不完整"));
+        }
+        Ok(Some((cid, revision)))
+    }
+
+    pub(crate) fn freeze_rebind_wallet(&mut self, wallet: crate::wallet_service::WalletStateSnapshot) {
+        self.rebind_wallet = Some(wallet);
+    }
+
+    pub(crate) fn rebind_wallet(&self) -> Option<&crate::wallet_service::WalletStateSnapshot> {
+        self.rebind_wallet.as_ref()
+    }
+
     pub(crate) const fn summary(&self) -> PreparedTransactionSummary {
         self.summary
     }
@@ -183,6 +207,10 @@ pub(crate) struct PreparedTransactionRegistry {
 }
 
 impl PreparedTransactionRegistry {
+    pub(crate) fn rebind_wallet(&self, id: TransactionPreparationId) -> Option<crate::wallet_service::WalletStateSnapshot> {
+        self.entries.get(&id).and_then(|prepared| prepared.rebind_wallet().cloned())
+    }
+
     pub(crate) fn reserve(
         &mut self,
         source: AccountId32,
@@ -363,6 +391,7 @@ pub(crate) async fn build_prepared_transaction(
         pq_registered,
         signed_extensions: extensions,
         generation,
+        rebind_wallet: None,
     };
     preparation_span.finish();
     Ok(prepared)

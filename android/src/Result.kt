@@ -1,3 +1,5 @@
+// 持有Core结果及原生引用，按消费结果释放所有权。
+
 @file:kotlin.jvm.JvmSynthetic
 package org.citizen.sdk.internal
 import java.util.concurrent.atomic.AtomicBoolean

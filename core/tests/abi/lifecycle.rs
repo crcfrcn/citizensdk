@@ -1,3 +1,5 @@
+//! 验证生命周期接纳、状态持久化和准确链结果的ABI转换。
+
 use super::*;
 
 #[cfg(feature = "chain")]

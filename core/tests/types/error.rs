@@ -1,3 +1,5 @@
+//! 验证业务无关的稳定失败阶段及明确边界阶段优先级。
+
 use super::ContractError;
 use super::ContractErrorCode;
 use super::FailureStage;

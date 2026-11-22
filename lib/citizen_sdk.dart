@@ -1,4 +1,7 @@
+// 导出统一Dart SDK接口及公开模型。
+
 // ignore: unnecessary_library_name -- 正式包唯一库标识。
+
 library citizen_sdk;
 
 import 'dart:async';

@@ -1,3 +1,5 @@
+// 声明Android JNI宿主资源、数据库上下文和Core回调桥接。
+
 #ifndef CITIZENSDK_HOST_BRIDGE_HPP
 #define CITIZENSDK_HOST_BRIDGE_HPP
 

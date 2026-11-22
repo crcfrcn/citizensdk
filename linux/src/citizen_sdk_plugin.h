@@ -1,3 +1,5 @@
+// 声明Flutter官方注册器使用的Linux插件注册入口。
+
 #ifndef CITIZENSDK_FLUTTER_PLUGIN_H
 #define CITIZENSDK_FLUTTER_PLUGIN_H
 

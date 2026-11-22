@@ -1,3 +1,5 @@
+//! 验证链资产组合、清单漂移和调用方自行更换检查点的拒绝边界。
+
 use sha2::{Digest, Sha256};
 
 use super::{encode_hex, verify_assets};

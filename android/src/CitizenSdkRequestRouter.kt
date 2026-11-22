@@ -1,3 +1,5 @@
+// 关联Core异步请求与完成事件，协调取消、结果释放和排空。
+
 @file:kotlin.jvm.JvmSynthetic
 
 package org.citizen.sdk.internal

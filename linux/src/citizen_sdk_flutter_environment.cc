@@ -1,3 +1,5 @@
+// 从Linux官方Bundle路径装配所选模块的Flutter原生环境。
+
 #include "citizen_sdk_flutter_environment.hpp"
 
 #include <gio/gio.h>

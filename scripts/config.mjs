@@ -1,4 +1,5 @@
-// 本产品配置需求的公开入口；只登记名称、类型和规则，不保存配置值。
+// 声明SDK公开平台、工具配置、共享认证源码需求及控制台动作。
+
 export const manifest=Object.freeze({
   "schema": 1,
   "product_id": "citizensdk",

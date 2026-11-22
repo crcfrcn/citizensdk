@@ -1,3 +1,5 @@
+// 校验桌面绑定输入并定义可公开的宿主错误。
+
 #ifndef CITIZENSDK_INPUT_HPP
 #define CITIZENSDK_INPUT_HPP
 

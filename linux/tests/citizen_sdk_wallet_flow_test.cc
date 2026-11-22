@@ -1,5 +1,5 @@
-// 直接验证Core输入合同及非UI敏感缓冲的边界、清零与所有权。
-// 私钥receiver的取消/迟到/排空回归由同平台flutter_sessions_test运行生产资源状态机。
+// 验证真实Core钱包输入、非界面敏感缓冲区及资源清零所有权。
+
 #include <array>
 #include <cassert>
 #include <cstring>

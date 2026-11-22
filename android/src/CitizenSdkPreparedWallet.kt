@@ -1,3 +1,5 @@
+// 管理一次性钱包准备资源及接纳后消费和释放的所有权。
+
 package org.citizen.sdk
 
 import org.citizen.sdk.CitizenSdk

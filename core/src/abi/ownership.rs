@@ -1,3 +1,5 @@
+//! 登记公开结果及受控资源的所有权，并限制借用和释放。
+
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;

@@ -1,9 +1,4 @@
-//! CitizenChain 无根热钱包的生命周期协调。
-//!
-//! 这里逐项承接已经在 Dart `WalletService` 验证的公开事实、provisioning/cleanup
-//! 所有权和失败恢复语义。秘密写入前必须先用 `WalletProfileStore` 的 CAS 取得精确
-//! generation/owner 所有权；助记词、master mini-secret 和 child mini-secret 始终只在
-//! Rust [`SecretBuffer`] 中生存。普通签名不导出私钥；显式查看只走独立受控租约和receiver。
+//! 协调钱包创建、账户修改和清理，以精确代际所有权处理机密与失败恢复。
 
 use std::collections::BTreeSet;
 use std::sync::atomic::AtomicBool;
@@ -17,11 +12,12 @@ use std::time::UNIX_EPOCH;
 use crate::types::citizen_ss58_address;
 use crate::types::encode_signing_payload;
 use crate::types::parse_citizen_ss58_address;
-use crate::types::store::EncryptedSecretBlobState;
-use crate::types::store::EncryptedSecretBlobStore;
-use crate::types::store::WalletProfileStore;
 use crate::types::AccountId32;
+use crate::types::EncryptedSecretBlobState;
+use crate::types::EncryptedSecretBlobStore;
+use crate::types::WalletProfileStore;
 
+use crate::types::AccountSignature;
 use crate::types::ColdWalletAccount;
 use crate::types::ContractErrorCode;
 use crate::types::ContractResult;
@@ -31,7 +27,6 @@ use crate::types::SecretOwner;
 use crate::types::SecretRef;
 use crate::types::SecretVault;
 use crate::types::SigningPayload;
-use crate::types::AccountSignature;
 use crate::types::VaultAvailability;
 use crate::types::VaultGeneration;
 use crate::types::WalletAccount;
@@ -48,6 +43,7 @@ use crate::types::DEFAULT_ACCOUNT_CHANGE_NONCE_BYTES;
 use crate::types::MAX_COLD_WALLET_ACCOUNTS;
 use crate::types::MAX_EXTERNAL_SIGNING_TTL_SECONDS;
 use crate::types::MAX_WALLET_ACCOUNT_INDEX;
+use crate::types::MAX_WALLET_ACCOUNT_NAME_SCALARS;
 use futures::lock::Mutex as AsyncMutex;
 use zeroize::Zeroizing;
 
@@ -351,13 +347,29 @@ impl SigningService {
         self.sign_locked(account_id, message, ensure_current).await
     }
 
-    pub(crate) async fn sign_intent_guarded(&self, intent: &crate::types::SigningIntent, ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync)) -> Result<AccountSignature, EngineError> {
+    pub(crate) async fn sign_intent_guarded(
+        &self,
+        intent: &crate::types::SigningIntent,
+        ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
+    ) -> Result<AccountSignature, EngineError> {
         let _guard = wallet_operation_gate().lock().await;
-        self.sign_locked_transformed(intent.account_id(), intent.payload().to_vec(), ensure_current, Some(intent.transform())).await
+        self.sign_locked_transformed(
+            intent.account_id(),
+            intent.payload().to_vec(),
+            ensure_current,
+            Some(intent.transform()),
+        )
+        .await
     }
 
-    async fn sign_locked(&self, account_id: AccountId32, message: Vec<u8>, ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync)) -> Result<AccountSignature, EngineError> {
-        self.sign_locked_transformed(account_id, message, ensure_current, None).await
+    async fn sign_locked(
+        &self,
+        account_id: AccountId32,
+        message: Vec<u8>,
+        ensure_current: &(dyn Fn() -> Result<(), EngineError> + Send + Sync),
+    ) -> Result<AccountSignature, EngineError> {
+        self.sign_locked_transformed(account_id, message, ensure_current, None)
+            .await
     }
 
     /// 调用方已持有钱包操作锁，一次金库解封覆盖消息选择与签名。
@@ -395,10 +407,18 @@ impl SigningService {
             return Err(conflict("签名账户 SecretRef 已改变"));
         }
         let message = if let Some(transform) = transform {
-            let algorithm = if crate::sign::public_key(&secret)?.as_bytes() == account_id.as_bytes() { 1 } else { 2 };
+            let algorithm = if crate::sign::public_key(&secret)?.as_bytes() == account_id.as_bytes()
+            {
+                1
+            } else {
+                2
+            };
             crate::types::signing_message_for_account(account_id, &message, transform, algorithm)?
-        } else { message };
-        self.sign_verified_secret(account_id, &secret, message, ensure_current).await
+        } else {
+            message
+        };
+        self.sign_verified_secret(account_id, &secret, message, ensure_current)
+            .await
     }
 
     /// 普通签名与账户校验共用此入口，按账户派生来源调用对应的同步签名实现。
@@ -411,7 +431,8 @@ impl SigningService {
     ) -> Result<AccountSignature, EngineError> {
         ensure_current()?;
         let span = crate::transaction_diagnostic::Span::start("sr25519_sign");
-        let result = crate::sign::sign_account(secret, account_id, &message).map_err(EngineError::from);
+        let result =
+            crate::sign::sign_account(secret, account_id, &message).map_err(EngineError::from);
         if result.is_ok() {
             span.finish();
         }
@@ -1025,6 +1046,54 @@ impl WalletService {
         .await
     }
 
+    /// 仅由 Engine 的同次自助换绑证明调用；不作为无授权的公开默认账户入口。
+    /// 保留完整目录 CAS，目标移到首项，其余账户相对顺序和付款选择不变。
+    #[cfg(feature = "chain")]
+    pub(crate) async fn commit_finalized_rebind(
+        &self,
+        before: &WalletStateSnapshot,
+        target: AccountId32,
+        ensure_current: impl Fn() -> Result<(), EngineError>,
+    ) -> Result<WalletState, EngineError> {
+        let _guard = wallet_operation_gate().lock().await;
+        ensure_current()?;
+        let state = self.catalog_mutation_state().await?;
+        if state.revision() != before.revision()
+            || state.default_account_id() != before.default_account_id()
+            || state.ordered_account_ids() != before.ordered_account_ids()
+        {
+            return Err(conflict(
+                "链上已换绑，钱包目录已变化；本机默认账户未同步，禁止重发交易",
+            ));
+        }
+        if !state.ordered_account_ids().contains(&target)
+            || state.default_account_id() == Some(target)
+        {
+            return Err(error(
+                ContractErrorCode::Integrity,
+                "换绑目标不属于冻结的其他本机账户",
+            ));
+        }
+        let order = std::iter::once(target)
+            .chain(
+                state
+                    .ordered_account_ids()
+                    .iter()
+                    .copied()
+                    .filter(|id| *id != target),
+            )
+            .collect();
+        ensure_current()?;
+        self.commit_catalog_state(
+            &state,
+            state.cold_accounts().to_vec(),
+            order,
+            state.next_cold_wallet_index(),
+            state.active_wallet_index(),
+        )
+        .await
+    }
+
     /// Freeze an SDK-owned default-account mutation before either hot or external signing.
     ///
     /// The snapshot binds the exact revision and complete account set. No app identity, CID,
@@ -1510,20 +1579,24 @@ impl WalletService {
         for ((derived, account_id), owner) in candidates.into_iter().zip(owners) {
             let secret_ref =
                 SecretRef::account_mini_secret(CITIZEN_WALLET_INDEX, generation, owner, account_id);
+            let algorithm_label = if algorithm == mldsa::AccountAlgorithm::Sr25519 {
+                "经典"
+            } else {
+                "量子"
+            };
+            let full_name = format!("{algorithm_label}账户{}", derived.index());
+            // 长编号仍保留完整数值；仅缩短本机标签前缀，不改变派生路径或编号上限。
+            let name = if full_name.chars().count() <= MAX_WALLET_ACCOUNT_NAME_SCALARS {
+                full_name
+            } else {
+                format!("{algorithm_label}{}", derived.index())
+            };
             let account = WalletAccount::try_new(
                 derived.index(),
                 account_id,
                 secret_ref,
                 citizen_ss58_address(account_id),
-                format!(
-                    "{}账户{}",
-                    if algorithm == mldsa::AccountAlgorithm::Sr25519 {
-                        "经典"
-                    } else {
-                        "量子"
-                    },
-                    derived.index()
-                ),
+                name,
                 created_at,
             )?;
             added.push(account);
@@ -2561,6 +2634,11 @@ impl WalletService {
         })?;
         // 原冷导入页没有名称输入；默认标签由真实分配编号生成，不让App预读推算。
         let default_name = format!("钱包{wallet_index}");
+        let default_name = if default_name.chars().count() <= MAX_WALLET_ACCOUNT_NAME_SCALARS {
+            default_name
+        } else {
+            wallet_index.to_string()
+        };
         let name = if name.is_empty() {
             default_name.as_str()
         } else {

@@ -1,3 +1,5 @@
+// 验证SQLite类型绑定、事务回滚和重开后的持久记录。
+
 package org.citizen.sdk
 
 import androidx.test.core.app.ApplicationProvider

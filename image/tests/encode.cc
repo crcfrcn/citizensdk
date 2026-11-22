@@ -1,3 +1,5 @@
+// 验证真实二维码编码容量及中文、转义字符的逐字节回读。
+
 #include "citizensdk_qr_image.h"
 
 #include <algorithm>

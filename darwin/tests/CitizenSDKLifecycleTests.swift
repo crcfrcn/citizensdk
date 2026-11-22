@@ -1,3 +1,5 @@
+// 验证Apple实例及回调的存活、重入、排空和关闭协调。
+
 import XCTest
 @testable import CitizenSDK
 

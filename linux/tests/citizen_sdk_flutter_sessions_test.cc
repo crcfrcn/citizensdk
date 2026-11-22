@@ -1,3 +1,5 @@
+// 验证Linux Flutter资源的早到完成、身份绑定和关闭排空。
+
 #include <cassert>
 #include <functional>
 #include <memory>

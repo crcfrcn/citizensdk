@@ -1,4 +1,5 @@
-// 实际Host请求/凭据回调拥有者，不定义第二套业务结果。
+// 管理Core宿主请求和凭据回调的所有权、清零及排空。
+
 #ifndef CITIZENSDK_REQUEST_HPP
 #define CITIZENSDK_REQUEST_HPP
 #include "environment.hpp"

@@ -1,3 +1,5 @@
+// 验证Apple钱包准备、恢复与异步操作的资源生命周期。
+
 import XCTest
 @testable import CitizenSDK
 

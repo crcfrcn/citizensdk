@@ -1,3 +1,5 @@
+//! 验证SDK panic作用域嵌套及异常后的恢复。
+
 #[test]
 fn sdk_scope_is_nested_and_restored_after_panic() {
     assert!(!super::IN_SDK_BOUNDARY.with(std::cell::Cell::get));

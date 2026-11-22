@@ -1,3 +1,5 @@
+// 声明Windows CNG硬件密钥能力、属性校验和错误映射。
+
 #ifndef CITIZENSDK_WINDOWS_CNG_HPP
 #define CITIZENSDK_WINDOWS_CNG_HPP
 

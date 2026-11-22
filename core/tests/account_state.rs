@@ -1,3 +1,5 @@
+//! 验证真实metadata下的余额、费用和准确nonce，以及批读和冷签执行边界。
+
 #![cfg(feature = "chain")]
 
 use std::collections::BTreeMap;
@@ -668,16 +670,28 @@ fn assert_integrity<T>(result: Result<T, EngineError>) {
 // 经过真实 Engine 准备与冷签执行入口，验证执行不再二次读取链状态或 nonce。
 #[test]
 fn prepared_execution_reads_nonce_once_and_keeps_single_use_and_source_isolation() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
-    check_prepared_execution(fixture["metadata"].as_str().unwrap(), true);
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    check_prepared_execution(fixture["metadata"].as_str().unwrap(), true, false);
 }
 
 #[test]
 fn old_metadata_cannot_prepare_a_new_v5_native_transaction() {
-    check_prepared_execution(include_str!("citizenchain-revive-v15-metadata.hex"), false);
+    check_prepared_execution(
+        include_str!("citizenchain-revive-v15-metadata.hex"),
+        false,
+        false,
+    );
 }
 
-fn check_prepared_execution(metadata_hex: &str, supported: bool) {
+#[test]
+fn outdated_rebind_schema_is_rejected_before_new_account_signing() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    check_prepared_execution(fixture["metadata"].as_str().unwrap(), true, true);
+}
+
+fn check_prepared_execution(metadata_hex: &str, supported: bool, rebind: bool) {
     use citizensdk::types::{
         citizen_ss58_address, CapabilityName, ColdWalletAccount, TransactionExecutionId,
         TransactionHistoryCursor, TransactionHistoryIndex, TransactionHistoryMutation,
@@ -830,15 +844,53 @@ fn check_prepared_execution(metadata_hex: &str, supported: bool) {
     let call = pallet
         .call_variant_by_name("remark")
         .expect("remark metadata");
-    let call_data = vec![pallet.index(), call.index, 0];
+    let call_data = if rebind {
+        use subxt_core::ext::scale_value::Value;
+        use subxt_core::tx::payload::Payload;
+        subxt_core::tx::payload::dynamic(
+            "CitizenIdentity",
+            "self_rebind_cid_account_id",
+            vec![
+                Value::from_bytes(b"CN583-CTZN2-763721825-2026"),
+                Value::u128(1),
+                Value::u128(1800000000),
+                Value::from_bytes([1u8; 64]),
+            ],
+        )
+        .encode_call_data(&metadata)
+        .expect("metadata编码的换绑call")
+    } else {
+        vec![pallet.index(), call.index, 0]
+    };
+    let previous = AccountId32::from_bytes([0x52; 32]);
     let profile = WalletState::try_from_catalog_parts(
         1,
         None,
         vec![
             ColdWalletAccount::try_new(2, account, citizen_ss58_address(account), "合成钱包", 0)
                 .expect("synthetic cold account"),
-        ],
-        vec![account],
+        ]
+        .into_iter()
+        .chain(if rebind {
+            Some(
+                ColdWalletAccount::try_new(
+                    1,
+                    previous,
+                    citizen_ss58_address(previous),
+                    "原冷账户",
+                    0,
+                )
+                .expect("previous account"),
+            )
+        } else {
+            None
+        })
+        .collect(),
+        if rebind {
+            vec![previous, account]
+        } else {
+            vec![account]
+        },
         3,
         None,
         None,
@@ -874,8 +926,19 @@ fn check_prepared_execution(metadata_hex: &str, supported: bool) {
                 .collect(),
         )
         .expect("running capabilities");
-    let result = futures::executor::block_on(engine.prepare_transaction(account, call_data.clone()));
-    if !supported { assert!(result.is_err(), "旧交易合同不得继续准备原生交易"); return; }
+    let result =
+        futures::executor::block_on(engine.prepare_transaction(account, call_data.clone()));
+    if rebind {
+        assert!(
+            result.is_err(),
+            "旧call9仍含expires_at，必须在目标账户签名前拒绝"
+        );
+        return;
+    }
+    if !supported {
+        assert!(result.is_err(), "旧交易合同不得继续准备原生交易");
+        return;
+    }
     let prepared = result.expect("one V5 preparation");
     let reads = chain.reads.load(Ordering::SeqCst);
     assert_eq!(nonce.0.load(Ordering::SeqCst), 1);

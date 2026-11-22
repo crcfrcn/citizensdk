@@ -1,3 +1,5 @@
+// 提供钱包及账户操作，并管理准备钱包、恢复词和私钥查看资源。
+
 part of '../citizen_sdk.dart';
 
 extension Wallet on CitizenSdk {

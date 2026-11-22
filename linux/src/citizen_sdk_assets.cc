@@ -1,3 +1,5 @@
+// 安全读取Linux安装包内精确命名的链资产，拒绝链接和路径替换。
+
 #include "citizen_sdk_assets.hpp"
 
 #include <cerrno>

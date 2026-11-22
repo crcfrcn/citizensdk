@@ -1,3 +1,5 @@
+//! 验证QR_V1严格编解码、原始字段及账户授权和码型边界。
+
 use crate::types::AccountSignature as Sr25519Signature;
 use super::*;
 // 只有纯协议测试可注入时间；生产入口始终读取 SDK 时钟。

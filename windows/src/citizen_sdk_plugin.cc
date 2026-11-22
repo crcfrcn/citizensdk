@@ -1,3 +1,5 @@
+// 在Windows UI线程接入Flutter调用、事件和纹理，并管理插件资源退休。
+
 #include "citizen_sdk_plugin.h"
 
 #include <flutter/binary_messenger.h>

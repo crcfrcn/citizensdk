@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 声明桌面Flutter绑定的回复、私钥和二维码捕获资源接口。
+
 #ifndef CITIZENSDK_FLUTTER_HPP
 #define CITIZENSDK_FLUTTER_HPP
 

@@ -1,3 +1,5 @@
+//! 验证二维码会话绑定、期限和消费边界，以及SDK模块唯一入口。
+
 use super::*;
 use crate::types::AccountSignature;
 use crate::types::SecretBuffer;
@@ -200,7 +202,7 @@ fn pq_response_round_trips_shared_frames_and_is_consumed_once() {
         ),
     };
     let encoded = answer.encode().unwrap();
-    let parsed = crate::qr::codec::parse_at(&encoded, 10).unwrap();
+    let parsed = crate::qr::parse_at(&encoded, 10).unwrap();
     let normalized = parsed.normalized().unwrap();
     let frames = normalized["qr_frames"]
         .as_array()
@@ -218,4 +220,44 @@ fn pq_response_round_trips_shared_frames_and_is_consumed_once() {
     let (_, signature) = store.verify_and_consume_response(&answer).unwrap();
     assert_eq!(signature.to_wire().len(), 5261);
     assert!(store.verify_and_consume_response(&answer).is_err());
+}
+
+// 模块公开入口必须承载原业务实现，禁止恢复被替代的汇总层。
+#[test]
+fn qr_store_and_type_entries_have_one_public_surface() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "core/src/qr/mod.rs",
+        "core/src/store/mod.rs",
+        "core/src/types/mod.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        assert!(
+            !source
+                .lines()
+                .any(|line| line.trim_start().starts_with("pub mod ")),
+            "{relative}"
+        );
+    }
+    assert!(std::fs::read_to_string(root.join("core/src/qr/mod.rs"))
+        .unwrap()
+        .contains("pub fn parse"));
+    assert!(std::fs::read_to_string(root.join("core/src/store/mod.rs"))
+        .unwrap()
+        .contains("pub struct PublicStore"));
+    assert!(std::fs::read_to_string(root.join("core/src/types/mod.rs"))
+        .unwrap()
+        .contains("pub trait WalletProfileStore"));
+    for relative in [
+        "core/src/qr/codec.rs",
+        "core/src/store/public.rs",
+        "core/src/store/error.rs",
+        "core/src/store/key.rs",
+        "core/src/types/store.rs",
+        "core/src/types/store_chain_database.rs",
+        "core/src/types/store_runtime_cache.rs",
+        "core/src/types/store_wallet_profile.rs",
+    ] {
+        assert!(!root.join(relative).exists(), "{relative}");
+    }
 }

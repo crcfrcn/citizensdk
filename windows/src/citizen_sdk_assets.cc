@@ -1,3 +1,5 @@
+// 以已验证目录句柄读取Windows链资产，拒绝链接、替换和不可信文件。
+
 #include "citizen_sdk_assets.hpp"
 
 #include "citizen_sdk_directory.hpp"

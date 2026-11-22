@@ -1,9 +1,10 @@
+//! 验证既有平台数据库布局互通、系统元数据保留及额外结构拒绝。
+
 use citizensdk::{abi, store, types};
 mod db;
-use citizensdk::store::codec;
-use citizensdk::store::sqlite::Connection;
-use citizensdk::store::sqlite::Value;
+use citizensdk::store::Connection;
 use citizensdk::store::PublicStore;
+use citizensdk::store::Value;
 use citizensdk::types::*;
 use futures::executor::block_on;
 
@@ -17,7 +18,7 @@ fn android_system_metadata_is_preserved_and_extra_business_objects_still_fail() 
         .unwrap();
     conn.execute("INSERT INTO android_metadata VALUES('en_US')", &[])
         .unwrap();
-    citizensdk::store::schema::initialize(&mut *conn, true).unwrap();
+    citizensdk::store::initialize(&mut *conn, true).unwrap();
     assert_eq!(
         conn.query("SELECT locale FROM android_metadata", &[], 1, 1024)
             .unwrap()[0]
@@ -27,12 +28,12 @@ fn android_system_metadata_is_preserved_and_extra_business_objects_still_fail() 
     );
     conn.execute("CREATE TABLE sqlitex_extra(value)", &[])
         .unwrap();
-    assert!(citizensdk::store::schema::initialize(&mut *conn, true).is_err());
+    assert!(citizensdk::store::initialize(&mut *conn, true).is_err());
 }
 
 #[test]
 fn unavailable_android_pragma_is_distinct_from_a_failed_or_weakened_setting() {
-    use citizensdk::store::sqlite::{Row, Value};
+    use citizensdk::store::{Row, Value};
     use citizensdk::types::ContractResult;
     struct Older<'a>(&'a mut dyn Connection);
     impl Connection for Older<'_> {
@@ -78,8 +79,8 @@ fn unavailable_android_pragma_is_distinct_from_a_failed_or_weakened_setting() {
     }
     let db = db::Db::open();
     let mut conn = db.0.lock().unwrap();
-    citizensdk::store::schema::initialize(&mut Older(&mut *conn), true).unwrap();
-    assert!(citizensdk::store::schema::initialize(&mut Older(&mut *conn), false).is_err());
+    citizensdk::store::initialize(&mut Older(&mut *conn), true).unwrap();
+    assert!(citizensdk::store::initialize(&mut Older(&mut *conn), false).is_err());
 }
 
 #[test]
@@ -97,11 +98,11 @@ fn existing_schema_and_cshr_records_are_read_without_rewrite() {
             .unwrap(),
         ),
     );
-    let encoded = codec::encode_chain_database_snapshot(&snapshot).unwrap();
+    let encoded = citizensdk::store::encode_chain_database_snapshot(&snapshot).unwrap();
     {
         let mut conn = db.0.lock().unwrap();
         conn.execute("PRAGMA auto_vacuum=INCREMENTAL", &[]).unwrap();
-        for sql in citizensdk::store::schema::STATEMENTS {
+        for sql in citizensdk::store::STATEMENTS {
             conn.execute(sql, &[]).unwrap();
         }
         conn.execute("PRAGMA user_version=2", &[]).unwrap();
@@ -146,14 +147,16 @@ fn records_written_by_rust_are_readable_as_the_existing_cshr_sql_layout() {
         "03000000000000000000000000000000"
     );
     assert_eq!(
-        codec::decode_transaction_execution_record(rows[0].bytes(1, 33554432).unwrap()).unwrap(),
+        citizensdk::store::decode_transaction_execution_record(rows[0].bytes(1, 33554432).unwrap())
+            .unwrap(),
         record
     );
 }
 
 #[test]
 fn physical_tables_and_columns_are_exact_and_have_no_derived_keys() {
-    use citizensdk::store::{secure::Format, SecureStore};
+    use citizensdk::store::Format;
+    use citizensdk::store::SecureStore;
     for format in [
         None,
         Some(Format::Device),

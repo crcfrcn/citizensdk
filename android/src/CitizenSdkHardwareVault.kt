@@ -1,3 +1,5 @@
+// 以Android硬件金库和系统认证执行机密操作，管理取消和密钥代际。
+
 @file:kotlin.jvm.JvmSynthetic
 
 package org.citizen.sdk.internal

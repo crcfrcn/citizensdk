@@ -1,3 +1,5 @@
+// 追踪桌面异步操作和完成接纳，协调请求路由及真实取消。
+
 #ifndef CITIZENSDK_OPERATION_HPP
 #define CITIZENSDK_OPERATION_HPP
 

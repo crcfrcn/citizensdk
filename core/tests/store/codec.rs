@@ -1,18 +1,20 @@
-use citizensdk::store::codec::decode_chain_database_snapshot;
-use citizensdk::store::codec::decode_encrypted_secret_blob_snapshot;
-use citizensdk::store::codec::decode_host_record;
-use citizensdk::store::codec::decode_runtime_context;
-use citizensdk::store::codec::decode_transaction_execution_record;
-use citizensdk::store::codec::decode_wallet_state;
-use citizensdk::store::codec::encode_chain_database_snapshot;
-use citizensdk::store::codec::encode_encrypted_secret_blob_snapshot;
-use citizensdk::store::codec::encode_host_record;
-use citizensdk::store::codec::encode_runtime_context;
-use citizensdk::store::codec::encode_transaction_execution_record;
-use citizensdk::store::codec::encode_wallet_state;
-use citizensdk::store::codec::HostCodecErrorKind;
-use citizensdk::store::codec::HostRecordDomain;
-use citizensdk::store::codec::HOST_RECORD_FORMAT_VERSION;
+//! 验证持久记录编解码、严格身份和版本边界及容量预算。
+
+use citizensdk::store::decode_chain_database_snapshot;
+use citizensdk::store::decode_encrypted_secret_blob_snapshot;
+use citizensdk::store::decode_host_record;
+use citizensdk::store::decode_runtime_context;
+use citizensdk::store::decode_transaction_execution_record;
+use citizensdk::store::decode_wallet_state;
+use citizensdk::store::encode_chain_database_snapshot;
+use citizensdk::store::encode_encrypted_secret_blob_snapshot;
+use citizensdk::store::encode_host_record;
+use citizensdk::store::encode_runtime_context;
+use citizensdk::store::encode_transaction_execution_record;
+use citizensdk::store::encode_wallet_state;
+use citizensdk::store::HostCodecErrorKind;
+use citizensdk::store::HostRecordDomain;
+use citizensdk::store::HOST_RECORD_FORMAT_VERSION;
 use citizensdk::types::citizen_ss58_address;
 use citizensdk::types::AccountId32;
 use citizensdk::types::ChainDatabaseSnapshot;
@@ -335,7 +337,7 @@ fn encrypted_secret_presence_uses_complete_codec_and_preserves_outputs_on_failur
             assert_eq!(hex(&bytes), "43534852010038000500000000000000600000000000000017b5fd919396d702e90558844acef60fb5a38a41f42bdfa34a449075559ce09101000700000008080808080808080808080808080808090909090909090909090909090909090a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a010200000000000000030e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e");
         }
         assert_eq!(
-            citizensdk::store::codec::encrypted_secret_record_has_secret(
+            citizensdk::store::encrypted_secret_record_has_secret(
                 account,
                 snapshot.revision(),
                 &bytes
@@ -343,34 +345,28 @@ fn encrypted_secret_presence_uses_complete_codec_and_preserves_outputs_on_failur
             .unwrap_or_else(|_| panic!("存在性解码失败")),
             present
         );
-        assert!(
-            !citizensdk::store::codec::encrypted_secret_record_has_secret(
-                AccountId32::from_bytes([99; 32]),
-                snapshot.revision(),
-                &bytes
-            )
-            .unwrap_or_else(|_| panic!("异账户解码失败"))
-        );
-        assert!(
-            citizensdk::store::codec::encrypted_secret_record_has_secret(
-                account,
-                snapshot.revision() + 1,
-                &bytes
-            )
-            .is_err()
-        );
+        assert!(!citizensdk::store::encrypted_secret_record_has_secret(
+            AccountId32::from_bytes([99; 32]),
+            snapshot.revision(),
+            &bytes
+        )
+        .unwrap_or_else(|_| panic!("异账户解码失败")));
+        assert!(citizensdk::store::encrypted_secret_record_has_secret(
+            account,
+            snapshot.revision() + 1,
+            &bytes
+        )
+        .is_err());
         let mut corrupt = bytes.clone();
         // 修改封套原字节必须破坏冻结摘要；不依赖第二份SQL修订列。
         let last = corrupt.len() - 1;
         corrupt[last] ^= 1;
-        assert!(
-            citizensdk::store::codec::encrypted_secret_record_has_secret(
-                account,
-                snapshot.revision(),
-                &corrupt
-            )
-            .is_err()
-        );
+        assert!(citizensdk::store::encrypted_secret_record_has_secret(
+            account,
+            snapshot.revision(),
+            &corrupt
+        )
+        .is_err());
     }
 }
 

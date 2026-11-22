@@ -1,8 +1,5 @@
-//! 通用 opaque 交易准备、冷热执行、历史读取与安全结果复制的稳定 C ABI 边界。
-//!
-//! 原生句柄始终绑定单个 CitizenSDK 实例；只有安全摘要跨越 ABI，签名消息、签名和交易模板留在 Engine。
+//! 提供不透明交易准备、冷热签执行、历史读取及绑定实例的安全结果复制接口。
 
-// 原生交易与通用扫码签名使用设备时间300秒会话，不引入业务授权期限。
 #[cfg(all(feature = "transactions", feature = "qr"))]
 const TRANSACTION_QR_TTL_SECONDS: u64 = 300;
 
@@ -331,6 +328,25 @@ pub extern "C" fn citizensdk_prepared_transaction_release(
     }
 }
 
+/// 热签执行与冷签回扫共用钱包变更通知；通知不能改写已完成的链上事实。
+#[cfg(feature = "transactions")]
+fn track_wallet_change(
+    runtime: &std::sync::Arc<crate::runtime::NativeRuntime>,
+    before: Option<crate::wallet_service::WalletStateSnapshot>,
+    operation: impl FnOnce() -> FfiResult<ResultPayload>,
+) -> FfiResult<ResultPayload> {
+    let Some(before) = before else { return operation() };
+    let before = before.revision();
+    let notification = runtime.reserve_wallet_changed()?;
+    let outcome = operation();
+    let after = runtime.drive_local(runtime.engine().wallet_state())
+        .ok().and_then(Result::ok).map(|state| state.revision());
+    if after != Some(before) {
+        let _ = runtime.publish_wallet_changed(notification);
+    }
+    outcome
+}
+
 #[no_mangle]
 /// Consumes one prepared handle and completes hot signing or creates one bound QR_V1 execution.
 pub unsafe extern "C" fn citizensdk_execute_prepared_transaction(
@@ -368,6 +384,10 @@ pub unsafe extern "C" fn citizensdk_execute_prepared_transaction(
                 }
             }
             accept_and_write(runtime, out_request_id, move |runtime, _, _| {
+                let id = lock_prepared_transactions()?.get(&prepared_transaction)
+                    .ok_or_else(|| FfiError::new(CitizenSdkErrorCode::InvalidHandle, "prepared transaction 已消费或不存在"))?.preparation_id;
+                let before = runtime.engine().transaction_rebind_wallet(id.into_bytes())?;
+                track_wallet_change(runtime, before, || {
                 // A rejected queue admission must not consume the preparation. Consumption occurs
                 // inside the admitted job and therefore remains exactly-once under racing callers.
                 let entry = {
@@ -470,6 +490,7 @@ pub unsafe extern "C" fn citizensdk_execute_prepared_transaction(
                         }
                     }
                 }
+                })
             })
         })
     }
@@ -548,7 +569,8 @@ pub unsafe extern "C" fn citizensdk_transaction_execution_consume_qr_response(
                 move |runtime, _, request_cancellation| {
                     let mut cancellation = request_cancellation;
                     let mut signature_accepted = false;
-                    let outcome = (|| {
+                    let before = runtime.engine().transaction_rebind_wallet(id.into_bytes())?;
+                    let outcome = track_wallet_change(runtime, before, || {
                         if worker_cancellation.is_cancelled() {
                             return Err(FfiError::new(
                                 CitizenSdkErrorCode::Cancelled,
@@ -588,7 +610,7 @@ pub unsafe extern "C" fn citizensdk_transaction_execution_consume_qr_response(
                         Ok(ResultPayload::TransactionExecution(
                             TransactionExecutionPayload::Completed(completed),
                         ))
-                    })();
+                    });
                     if cancellation
                         .as_mut()
                         .is_some_and(|receiver| !matches!(receiver.try_recv(), Ok(None)))

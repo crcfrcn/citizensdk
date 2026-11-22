@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 实现Linux和Windows共用的Flutter会话、资源调用及事件接线。
+
 #include "flutter.hpp"
 
 #if defined(_WIN32) // 系统差异

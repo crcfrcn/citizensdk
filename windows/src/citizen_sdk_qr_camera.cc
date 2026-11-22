@@ -1,3 +1,5 @@
+// 管理Windows相机帧、二维码识别和真实设备回调排空。
+
 #include "citizen_sdk_qr_camera.hpp"
 #include "input.hpp"
 #include "citizensdk_qr_image.h"

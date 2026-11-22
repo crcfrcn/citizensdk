@@ -1,3 +1,5 @@
+// 以有效用户身份、ACL和相对句柄实现Windows私有目录及文件访问。
+
 #include "citizen_sdk_directory.hpp"
 
 #include <aclapi.h>

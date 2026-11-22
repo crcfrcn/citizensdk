@@ -1,3 +1,5 @@
+// 验证Windows Flutter资源参数、枚举及非法调用拒绝。
+
 #include <cassert>
 #include <string>
 #include <vector>

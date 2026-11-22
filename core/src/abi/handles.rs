@@ -1,3 +1,5 @@
+//! 登记、查找和回收SDK实例句柄，拒绝无效实例访问。
+
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;

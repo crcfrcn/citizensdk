@@ -1,9 +1,9 @@
 //! 当前公共数据库唯一结构；严格拒绝不匹配结构，不升级或重建真实数据库。
-use crate::store::error::integrity;
-use crate::store::sqlite::scalar;
-use crate::store::sqlite::transaction;
-use crate::store::sqlite::Connection;
-use crate::store::sqlite::Value;
+use crate::store::integrity;
+use crate::store::scalar;
+use crate::store::transaction;
+use crate::store::Connection;
+use crate::store::Value;
 use crate::types::ContractResult;
 pub const VERSION: i64 = 2;
 pub const STATEMENTS: &[&str] = &[

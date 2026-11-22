@@ -1,3 +1,5 @@
+// 验证Apple金库密钥存在、封装、退役和系统错误的失败边界。
+
 import Foundation
 import Security
 import XCTest

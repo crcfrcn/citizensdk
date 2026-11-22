@@ -1,4 +1,5 @@
-//! SDK generic execution-history coordination state.
+//! 维护SDK通用交易历史监视的取消、代次及更新协调状态。
+
 use crate::types::FinalizedBlockRef;
 use crate::types::TransactionExecutionId;
 use std::sync::atomic::AtomicBool;

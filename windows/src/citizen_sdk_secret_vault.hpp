@@ -1,3 +1,5 @@
+// 声明跨进程代际锁、系统金库服务和受控机密操作接口。
+
 #ifndef CITIZENSDK_WINDOWS_SECRET_VAULT_HPP
 #define CITIZENSDK_WINDOWS_SECRET_VAULT_HPP
 

@@ -1,9 +1,4 @@
-//! CitizenChain 账户公开状态读取与链上费用策略。
-//!
-//! 本模块只消费 [`VerifiedChainClient`] 和强类型 [`AccountNonceSource`]：余额始终读取
-//! finalized `System.Account`，交易 nonce 始终绑定同一次准确 best Runtime 调用，
-//! 费率与存在性存款始终从同一准确 best 块的 metadata 解码。这里没有任意 RPC 逃生口，
-//! 也不接触钱包秘密；同账户未决交易的 single-flight 门由历史服务在广播前执行。
+//! 通过验证型链客户端读取余额、准确best的nonce及链上费用策略。
 
 use std::collections::BTreeMap;
 

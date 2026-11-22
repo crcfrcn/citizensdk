@@ -1,3 +1,5 @@
+// 定义Linux相机帧、预览像素、灯光和二维码捕获资源接口。
+
 #ifndef CITIZENSDK_LINUX_QR_CAMERA_HPP
 #define CITIZENSDK_LINUX_QR_CAMERA_HPP
 #include <cstdint>

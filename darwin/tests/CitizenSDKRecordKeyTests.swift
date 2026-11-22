@@ -1,3 +1,5 @@
+// 验证Apple宿主身份和钱包代际对应的记录键隔离。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

@@ -1,4 +1,5 @@
-// JVM与设备共用唯一测试目录；设备文件集合只归本声明。
+// 编译Android Flutter库、打包链资产并统一JVM及设备测试源码。
+
 rootProject.ext.citizenSdkDeviceTests = ['CitizenSdkHardwareVaultTest.kt', 'CitizenSdkLifecycleTest.kt', 'CitizenSdkNativeAbiTest.kt', 'CitizenSdkStateStoreTest.kt', 'CitizenSdkWalletFlowSecretBoundaryTest.kt', 'CitizenSdkWalletInputTest.kt']
 
 group = 'org.citizen.sdk'

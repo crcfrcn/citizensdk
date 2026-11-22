@@ -1,3 +1,5 @@
+//! 验证nonce结果的账户和准确区块绑定及错误类别保留。
+
 use super::*;
 use crate::types::FinalizedBlockRef;
 use crate::types::Hash32;

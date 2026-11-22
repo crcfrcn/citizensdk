@@ -1,3 +1,5 @@
+// 声明统一公开C接口，定义实例、异步请求、结果及受控资源操作。
+
 #ifndef CITIZENSDK_H
 #define CITIZENSDK_H
 

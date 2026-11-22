@@ -1,3 +1,5 @@
+// 拥有Dart实例的Core句柄、在途请求和实际系统资源，协调生命周期及诊断。
+
 part of '../citizen_sdk.dart';
 
 final c.Bindings _api = c.Bindings.fromLookup(<T extends NativeType>(

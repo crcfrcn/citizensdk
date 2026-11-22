@@ -1,3 +1,5 @@
+// 表示可关联和取消的异步SDK操作及其真实完成结果。
+
 package org.citizen.sdk
 
 import java.util.concurrent.CompletableFuture

@@ -1,3 +1,5 @@
+// 声明二维码图像编解码的C接口及输入跨度和字节输出合同。
+
 #ifndef CITIZENSDK_QR_IMAGE_H
 #define CITIZENSDK_QR_IMAGE_H
 

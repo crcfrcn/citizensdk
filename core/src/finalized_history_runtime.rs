@@ -1,8 +1,4 @@
-//! 对 SDK 已提交的通用交易执行精确的最终确认状态核对。
-//!
-//! 本模块不索引账户全部事件，也不解码应用 pallet。
-//! 每批最多处理 32 条持久执行记录，核验准确区块体和同索引 System 结果；
-//! 每个运行中的 Engine 代次，至多重新广播每条原始签名 extrinsic 一次。
+//! 按准确区块和System结果确认已提交交易，并有界恢复原始交易广播。
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;

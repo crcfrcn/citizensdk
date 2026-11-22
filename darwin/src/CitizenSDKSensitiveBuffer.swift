@@ -1,3 +1,5 @@
+// 分配并管理可清零的Apple敏感字节缓冲区。
+
 import Foundation
 
 /// Fixed-lifetime mutable bytes that are zeroed before deallocation.

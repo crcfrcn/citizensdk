@@ -1,3 +1,5 @@
+//! 验证准确块Runtime缓存、并发合并、取消及容量和链身份边界。
+
 use super::*;
 use smoldot_light::ChainFinalizedBlockSnapshot;
 

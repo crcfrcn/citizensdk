@@ -1,3 +1,5 @@
+//! 为ABI黑盒测试提供真实SQLite机械资源表。
+
 #![allow(unsafe_code)]
 
 #[path = "../store/db.rs"]

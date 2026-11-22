@@ -1,3 +1,5 @@
+// 定义公开C接口和宿主存储所需的值、枚举及固定布局。
+
 #ifndef CITIZENSDK_TYPES_H
 #define CITIZENSDK_TYPES_H
 

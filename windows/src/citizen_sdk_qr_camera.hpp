@@ -1,3 +1,5 @@
+// 声明Windows相机帧、像素转换、灯光及捕获生命周期接口。
+
 #ifndef CITIZENSDK_WINDOWS_QR_CAMERA_HPP
 #define CITIZENSDK_WINDOWS_QR_CAMERA_HPP
 #include <cstdint>

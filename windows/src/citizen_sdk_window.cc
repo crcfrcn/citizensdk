@@ -1,3 +1,5 @@
+// 管理SDK隐藏调度窗口、UI队列和销毁时待完成回调。
+
 #include "citizen_sdk_window.hpp"
 
 #include <windows.h>

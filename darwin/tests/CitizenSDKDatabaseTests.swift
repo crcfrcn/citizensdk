@@ -1,3 +1,5 @@
+// 验证Apple数据库资源的事务、文件保护和持久化边界。
+
 import Foundation
 import SQLite3
 import XCTest

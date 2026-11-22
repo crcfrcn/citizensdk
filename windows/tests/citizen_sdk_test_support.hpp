@@ -1,3 +1,5 @@
+// 提供Windows测试的安全临时目录和金库夹具。
+
 #ifndef CITIZENSDK_WINDOWS_TEST_SUPPORT_HPP
 #define CITIZENSDK_WINDOWS_TEST_SUPPORT_HPP
 

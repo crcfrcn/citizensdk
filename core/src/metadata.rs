@@ -255,7 +255,7 @@ fn value_json<T>(value: scale_value::Value<T>) -> serde_json::Value {
 }
 
 pub(crate) fn chain_codec(metadata: &[u8], request: &[u8]) -> Result<Vec<u8>, EngineError> {
-    use crate::types::account::blake2b;
+    use crate::types::blake2b;
     use subxt_core::{storage, tx::payload::Payload};
     let request: CodecRequest =
         serde_json::from_slice(request).map_err(|error| invalid_call(error.to_string()))?;
@@ -444,11 +444,21 @@ pub(crate) fn chain_codec(metadata: &[u8], request: &[u8]) -> Result<Vec<u8>, En
 mod tests;
 
 /// 从真实metadata借用扩展坐标，不复制或改写注册表。
-pub(crate) struct NativeExtension<'a> { identifier: &'a str, extra: u32, implicit: u32 }
+pub(crate) struct NativeExtension<'a> {
+    identifier: &'a str,
+    extra: u32,
+    implicit: u32,
+}
 impl<'a> NativeExtension<'a> {
-    pub(crate) fn identifier(&self) -> &'a str { self.identifier }
-    pub(crate) fn extra_ty(&self) -> u32 { self.extra }
-    pub(crate) fn additional_ty(&self) -> u32 { self.implicit }
+    pub(crate) fn identifier(&self) -> &'a str {
+        self.identifier
+    }
+    pub(crate) fn extra_ty(&self) -> u32 {
+        self.extra
+    }
+    pub(crate) fn additional_ty(&self) -> u32 {
+        self.implicit
+    }
 }
 
 /// 唯一原生交易合同：V5、认证管线1、账户认证位于全部业务检查之前。
@@ -462,7 +472,11 @@ pub(crate) fn native_extensions(
     let all = ext
         .transaction_extensions_by_version(1)
         .ok_or_else(|| invalid_call("缺少认证管线1"))?
-        .map(|item| NativeExtension { identifier: item.identifier(), extra: item.extra_ty(), implicit: item.additional_ty() })
+        .map(|item| NativeExtension {
+            identifier: item.identifier(),
+            extra: item.extra_ty(),
+            implicit: item.additional_ty(),
+        })
         .collect::<Vec<_>>();
     if ext.transaction_extension_version_to_use_for_encoding() != 1
         || all.first().map(|item| item.identifier()) != Some("AccountAuth")

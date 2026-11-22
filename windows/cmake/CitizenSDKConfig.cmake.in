@@ -1,3 +1,5 @@
+# 生成Windows SDK安装包的原生双库、资源路径和依赖目标声明。
+
 @PACKAGE_INIT@
 
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR

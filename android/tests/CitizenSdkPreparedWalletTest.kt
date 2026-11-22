@@ -1,3 +1,5 @@
+// 验证钱包准备消费、恢复词释放及私钥一次性交付所有权。
+
 package org.citizen.sdk
 
 import org.junit.Assert.assertArrayEquals

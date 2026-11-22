@@ -1,3 +1,5 @@
+//! 定义公开C ABI的句柄、错误码、事件及请求和结果布局。
+
 pub use crate::host::CitizenSdkHostVaultHasAnyWalletKeyV1;
 use std::ffi::c_void;
 

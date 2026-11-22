@@ -1,3 +1,5 @@
+//! 验证结果句柄单次释放、永久耗尽和未完成预留回收。
+
 use std::sync::atomic::Ordering;
 
 use super::get;

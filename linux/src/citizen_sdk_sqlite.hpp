@@ -1,3 +1,5 @@
+// 声明Linux SQLite连接、文件安全及同步资源回调接口。
+
 #ifndef CITIZENSDK_LINUX_SQLITE_HPP
 #define CITIZENSDK_LINUX_SQLITE_HPP
 

@@ -1,3 +1,5 @@
+// 表示二维码内容、审阅、授权和签名载荷的受控公开资源。
+
 package org.citizen.sdk
 
 import org.json.JSONObject

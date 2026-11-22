@@ -1,3 +1,5 @@
+//! 逐项核对Rust导出和C头声明，拒绝未授权RPC、私钥及旧符号。
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 

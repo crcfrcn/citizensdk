@@ -1,3 +1,5 @@
+// 表示SDK生命周期、验证区块、同步状态及System事件。
+
 part of '../citizen_sdk.dart';
 
 /// CitizenSDK 实例的稳定生命周期。

@@ -1,4 +1,4 @@
-//! Generic opaque transaction preparation value contracts.
+//! 验证不透明调用、公开准备摘要和持久执行的单调状态合同。
 
 use citizensdk::types::blake2_256;
 use citizensdk::types::AccountId32;

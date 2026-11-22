@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证实例句柄非零、单调且不复用。
+
 #![allow(unsafe_code)]
 // 本黑盒实例夹具只组合真实 chain；不隐式要求交易或本地金库。
 #![cfg(feature = "chain")]

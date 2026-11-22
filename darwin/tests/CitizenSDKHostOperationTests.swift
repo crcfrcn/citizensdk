@@ -1,3 +1,5 @@
+// 验证Apple宿主异步操作的身份、取消和真实完成所有权。
+
 import XCTest
 @testable import CitizenSDK
 

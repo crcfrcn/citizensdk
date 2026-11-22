@@ -1,3 +1,5 @@
+// 提供Windows Flutter测试的有限调度、句柄及安全临时目录。
+
 #ifndef CITIZENSDK_WINDOWS_FLUTTER_TEST_SUPPORT_HPP
 #define CITIZENSDK_WINDOWS_FLUTTER_TEST_SUPPORT_HPP
 

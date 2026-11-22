@@ -1,3 +1,5 @@
+// 以真实Win32窗口验证Flutter装配预检及所属窗口观察。
+
 #include <windows.h>
 
 #include <cassert>

@@ -1,3 +1,5 @@
+// 管理Android Flutter实例、受控资源和订阅，收敛关闭及安全诊断。
+
 package org.citizen.sdk
 
 import android.content.Context

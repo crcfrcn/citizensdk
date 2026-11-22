@@ -1,3 +1,5 @@
+// 验证Flutter会话、纹理编号及资源关闭与订阅代次。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

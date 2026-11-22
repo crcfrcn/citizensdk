@@ -1,3 +1,5 @@
+// 验证相机亮度边界和私有资源完成事件的身份及关闭隔离。
+
 package org.citizen.sdk.internal
 
 import org.citizen.sdk.CitizenSdkErrorCode

@@ -1,3 +1,5 @@
+// 提供Linux跨进程屏障、临时目录及金库测试夹具。
+
 #ifndef CITIZENSDK_LINUX_TEST_SUPPORT_HPP
 #define CITIZENSDK_LINUX_TEST_SUPPORT_HPP
 

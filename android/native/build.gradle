@@ -1,3 +1,5 @@
+// 构建独立Android原生AAR并装配JNI、Core及链资产。
+
 group = 'org.citizen.sdk'
 version = rootProject.version
 

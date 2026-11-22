@@ -1,3 +1,5 @@
+# 装配Windows宿主、Flutter和系统资源测试及安装消费者。
+
 cmake_minimum_required(VERSION 3.24)
 
 # 独立安装消费者提前返回：不得落入下方重新编译 Host 的合同测试分支。

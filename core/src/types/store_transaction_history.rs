@@ -1,8 +1,4 @@
-//! Product-independent durable transaction executions and public history views.
-//!
-//! Applications own destination, amount, remark, direction, pallet/event and
-//! every other business projection. This store keeps only the exact opaque
-//! authorization required to recover transactions submitted by CitizenSDK.
+//! 定义持久交易执行、公开历史分页及容量预算合同。
 
 use std::collections::BTreeSet;
 

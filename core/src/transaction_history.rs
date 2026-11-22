@@ -1,28 +1,24 @@
-//! Product-independent transaction execution history.
-//!
-//! The store is indexed by generic execution facts. Core never loads or
-//! rewrites the complete history value: public pages are limit-bounded, status
-//! updates touch one record, and recovery reads only reconcilable records.
+//! 以通用执行事实维护持久交易历史、分页、修订和并发更新。
 
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use crate::types::store::HistoryTransactionStatus;
-use crate::types::store::TransactionExecutionRecord;
-use crate::types::store::TransactionHistoryCursor;
-use crate::types::store::TransactionHistoryIndex;
-use crate::types::store::TransactionHistoryMutation;
-use crate::types::store::TransactionHistoryPage;
-use crate::types::store::TransactionHistoryQueryKind;
-use crate::types::store::TransactionHistoryRecord;
-use crate::types::store::TransactionHistoryRecordBatch;
-use crate::types::store::TransactionHistoryStore;
 use crate::types::AccountId32;
 use crate::types::ContractErrorCode;
 use crate::types::Hash32;
+use crate::types::HistoryTransactionStatus;
 use crate::types::RuntimeVersion;
 use crate::types::SignedExtrinsic;
 use crate::types::TransactionExecutionId;
+use crate::types::TransactionExecutionRecord;
+use crate::types::TransactionHistoryCursor;
+use crate::types::TransactionHistoryIndex;
+use crate::types::TransactionHistoryMutation;
+use crate::types::TransactionHistoryPage;
+use crate::types::TransactionHistoryQueryKind;
+use crate::types::TransactionHistoryRecord;
+use crate::types::TransactionHistoryRecordBatch;
+use crate::types::TransactionHistoryStore;
 use crate::types::VerifiedBlockRef;
 use crate::types::MAX_TRANSACTION_HISTORY_DURABLE_WEIGHT_BYTES;
 use crate::types::MAX_TRANSACTION_HISTORY_PAGE_SIZE;

@@ -1,3 +1,5 @@
+// 通过Apple系统金库和LAContext执行硬件机密操作并管理授权取消。
+
 import Foundation
 import LocalAuthentication
 import Security

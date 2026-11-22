@@ -1,3 +1,5 @@
+// 验证Java公开API准确保留u128无符号十进制值。
+
 package org.citizen.sdk;
 
 import static org.junit.Assert.assertEquals;

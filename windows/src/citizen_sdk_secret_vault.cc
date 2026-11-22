@@ -1,3 +1,5 @@
+// 协调Windows金库记录、TPM和授权，以代际锁管理机密及永久退役。
+
 #include "citizen_sdk_secret_vault.hpp"
 
 #include <windows.h>

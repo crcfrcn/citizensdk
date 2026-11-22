@@ -1,3 +1,5 @@
+// 定义TPM2能力、密钥操作及稳定错误分类接口。
+
 #ifndef CITIZENSDK_LINUX_TPM2_HPP
 #define CITIZENSDK_LINUX_TPM2_HPP
 

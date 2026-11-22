@@ -1,3 +1,5 @@
+//! 缓存准确块Runtime上下文，限制容量并维护可失效的best指针。
+
 use crate::types::BlockFinality;
 use crate::types::ContractErrorCode;
 use crate::types::RuntimeContext;

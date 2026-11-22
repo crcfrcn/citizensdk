@@ -1,3 +1,5 @@
+//! 验证Runtime上下文不可变性、best切换及最终性提升。
+
 use citizensdk::types::Hash32;
 use citizensdk::types::RuntimeContext;
 use citizensdk::types::RuntimeVersion;

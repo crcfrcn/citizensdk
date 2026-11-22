@@ -1,4 +1,4 @@
-//! 账户余额、准确 best Runtime nonce 与链上费率的强类型合同。
+//! 验证公开账户、钱包目录、准确nonce及费用策略的强类型合同。
 
 use std::future::Future;
 
@@ -165,10 +165,10 @@ fn wallet_profile_rebuild_helpers_preserve_identity_and_delete_only_children() {
 
     let active = value_or_panic(profile.try_with_active_account(child));
     assert_eq!(active.active_account_id(), child);
-    let renamed = value_or_panic(active.try_with_account_name(child, "  旅费账户  "));
+    let renamed = value_or_panic(active.try_with_account_name(child, "  一二三四五六七八九十  "));
     assert_eq!(
         renamed.account_by_id(child).map(WalletAccount::name),
-        Some("旅费账户")
+        Some("一二三四五六七八九十")
     );
 
     let (remaining, removed) = value_or_panic(renamed.try_without_child_account(child));
@@ -178,7 +178,7 @@ fn wallet_profile_rebuild_helpers_preserve_identity_and_delete_only_children() {
     assert!(remaining.try_without_child_account(master).is_err());
     assert!(remaining.try_with_account_name(master, " ").is_err());
     assert!(remaining
-        .try_with_account_name(master, "中".repeat(31))
+        .try_with_account_name(master, "中".repeat(11))
         .is_err());
     for control in ['\u{001c}', '\u{001f}', '\u{007f}', '\u{009f}'] {
         assert!(remaining

@@ -1,11 +1,4 @@
-//! Typed account and wallet projection for the stable CitizenSDK ABI.
-//!
-//! Secret inputs are copied synchronously into Rust-owned zeroizing containers
-//! before an asynchronous request is accepted. The only secret output is the
-//! recovery phrase owned by a prepared-wallet handle. Explicit private-key
-//! access uses the public receiver lease: it borrows the account mini-secret
-//! only after real authorization and stays alive until callbacks drain.
-//! Rendering belongs to the host, never to a native SDK window.
+//! 提供账户和钱包C接口，同步接收敏感输入并管理受控私钥查看资源。
 
 use std::collections::HashMap;
 use std::panic::catch_unwind;

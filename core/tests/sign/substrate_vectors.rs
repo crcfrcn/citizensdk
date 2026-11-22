@@ -1,7 +1,4 @@
-//! 冻结 CitizenApp/CitizenWallet 已共同验证的 Substrate 派生结果。
-//!
-//! 这里只验证 signer 接收到 child mini-secret 后计算出的 AccountId；助记词和 junction
-//! 编码已由根钱包金标独立覆盖，避免把钱包职责塞进密码学 crate。
+//! 以冻结子密钥向量核对真实签名器产生的账户公钥。
 
 #![forbid(unsafe_code)]
 

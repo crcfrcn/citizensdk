@@ -1,13 +1,4 @@
-//! Versioned, domain-separated envelopes for records persisted by a host.
-//!
-//! The host treats every encoded record as opaque.  The domain is part of the
-//! digest input and is checked again while decoding, so bytes returned through
-//! one typed store callback cannot be interpreted as another store's value.
-//!
-//! SHA-256 here detects accidental or host-storage corruption only.  It is not
-//! an authenticity boundary: encrypted account material is authenticated by
-//! the Rust-owned AES-GCM envelope and its domain-bound AAD before it reaches
-//! this codec.
+//! 编解码带版本和域隔离摘要的宿主持久记录，并校验载荷边界。
 
 use sha2::Digest;
 use sha2::Sha256;

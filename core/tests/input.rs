@@ -1,4 +1,5 @@
-//! 仅使用公开合成熵，不引入真实用户助记词或密码。
+//! 以公开合成输入验证助记词校验、词数和补全，确保错误不回显秘密。
+
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use bip39::Language;

@@ -1,3 +1,5 @@
+// 定义钱包初始化、签名模式、只读诊断和输入校验等公开模型。
+
 part of '../citizen_sdk.dart';
 
 enum CitizenWalletOrigin { created, imported }

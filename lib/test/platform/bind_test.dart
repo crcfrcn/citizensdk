@@ -1,4 +1,7 @@
+// 验证Dart生成FFI声明与真实64位C资源布局一致。
+
 // ignore_for_file: depend_on_referenced_packages
+
 import 'dart:ffi';
 import 'package:citizen_sdk/platform/bind.dart' as c;
 import 'package:flutter_test/flutter_test.dart';

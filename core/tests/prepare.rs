@@ -1,15 +1,22 @@
+//! 以实际Runtime向量验证交易准备、认证绑定、并发及篡改拒绝。
+
 use super::*;
+use subxt_core::ext::codec::Encode;
 
 #[test]
 fn sdk_v16_messages_and_both_pq_envelopes_match_actual_frame_runtime() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
     let bytes = |name: &str| hex::decode(fixture[name].as_str().unwrap()).unwrap();
     let metadata = decode_metadata_strict(&bytes("metadata")).unwrap();
     let genesis: [u8; 32] = bytes("genesis").try_into().unwrap();
-    let (explicit, implicit) = crate::metadata::native_extension_bytes(&metadata, genesis, 0, 0, 7).unwrap();
+    let (explicit, implicit) =
+        crate::metadata::native_extension_bytes(&metadata, genesis, 0, 0, 7).unwrap();
     assert_eq!(explicit, bytes("extensions"));
     let call = bytes("call");
-    let mut review = call.clone(); review.extend_from_slice(&explicit); review.extend_from_slice(&implicit);
+    let mut review = call.clone();
+    review.extend_from_slice(&explicit);
+    review.extend_from_slice(&implicit);
     assert_eq!(review, bytes("review"));
     let child: [u8; 32] = bytes("child").try_into().unwrap();
     let public = mldsa::public_key(&child);
@@ -18,15 +25,36 @@ fn sdk_v16_messages_and_both_pq_envelopes_match_actual_frame_runtime() {
     let message = mldsa::review_message(&account, &review);
     assert_eq!(message.as_slice(), bytes("message"));
     let signature = mldsa::sign(&child, &message).unwrap();
-    let first = mldsa::Proof::First { account, public, signature: signature.clone() };
+    let first = mldsa::Proof::First {
+        account,
+        public,
+        signature: signature.clone(),
+    };
     let stored = mldsa::Proof::Stored { account, signature };
-    assert_eq!(mldsa::encode_transaction(&first, &explicit, &call), bytes("first"));
-    assert_eq!(mldsa::encode_transaction(&stored, &explicit, &call), bytes("stored"));
+    assert_eq!(
+        mldsa::encode_transaction(&first, &explicit, &call),
+        bytes("first")
+    );
+    assert_eq!(
+        mldsa::encode_transaction(&stored, &explicit, &call),
+        bytes("stored")
+    );
     let sr_account: [u8; 32] = bytes("sr_account").try_into().unwrap();
     let sr_signature: [u8; 64] = bytes("sr_signature").try_into().unwrap();
-    let sr = mldsa::Proof::Sr25519 { account: sr_account, signature: sr_signature };
-    assert_eq!(mldsa::encode_transaction(&sr, &explicit, &call), bytes("sr_extrinsic"));
-    assert!(crate::sign::verify(crate::types::AccountId32::from_bytes(sr_account), &mldsa::review_message(&sr_account, &review), crate::types::AccountSignature::from_bytes(sr_signature)).unwrap());
+    let sr = mldsa::Proof::Sr25519 {
+        account: sr_account,
+        signature: sr_signature,
+    };
+    assert_eq!(
+        mldsa::encode_transaction(&sr, &explicit, &call),
+        bytes("sr_extrinsic")
+    );
+    assert!(crate::sign::verify(
+        crate::types::AccountId32::from_bytes(sr_account),
+        &mldsa::review_message(&sr_account, &review),
+        crate::types::AccountSignature::from_bytes(sr_signature)
+    )
+    .unwrap());
 }
 
 #[test]
@@ -68,55 +96,229 @@ fn assert_contract_code(error: EngineError, expected: ContractErrorCode) {
 fn v5_persisted_transactions_revalidate_authentication_and_reject_tampering() {
     use crate::types::*;
     use futures::executor::block_on;
-    struct KeyClient { block: VerifiedBlockRef, key: Vec<u8>, public: Option<Vec<u8>> }
-    fn unused<T>() -> ContractFuture<'static, T> { Box::pin(async { panic!("unexpected provider call") }) }
+    struct KeyClient {
+        block: VerifiedBlockRef,
+        key: Vec<u8>,
+        public: Option<Vec<u8>>,
+    }
+    fn unused<T>() -> ContractFuture<'static, T> {
+        Box::pin(async { panic!("unexpected provider call") })
+    }
     impl VerifiedChainClient for KeyClient {
-        fn identity(&self) -> ContractFuture<'_, ChainIdentity> { unused() }
-        fn get_best_head(&self) -> ContractFuture<'_, VerifiedBlockRef> { unused() }
-        fn get_finalized_head(&self) -> ContractFuture<'_, FinalizedBlockRef> { unused() }
-        fn get_runtime_context_at(&self, _: VerifiedBlockRef) -> ContractFuture<'_, RuntimeContext> { unused() }
-        fn get_storage_at(&self, block: VerifiedBlockRef, key: Vec<u8>) -> ContractFuture<'_, Option<Vec<u8>>> {
-            assert_eq!(block, self.block); assert_eq!(key, self.key);
+        fn identity(&self) -> ContractFuture<'_, ChainIdentity> {
+            unused()
+        }
+        fn get_best_head(&self) -> ContractFuture<'_, VerifiedBlockRef> {
+            unused()
+        }
+        fn get_finalized_head(&self) -> ContractFuture<'_, FinalizedBlockRef> {
+            unused()
+        }
+        fn get_runtime_context_at(
+            &self,
+            _: VerifiedBlockRef,
+        ) -> ContractFuture<'_, RuntimeContext> {
+            unused()
+        }
+        fn get_storage_at(
+            &self,
+            block: VerifiedBlockRef,
+            key: Vec<u8>,
+        ) -> ContractFuture<'_, Option<Vec<u8>>> {
+            assert_eq!(block, self.block);
+            assert_eq!(key, self.key);
             Box::pin(async { Ok(self.public.clone()) })
         }
-        fn get_storage_batch_at(&self, _: VerifiedBlockRef, _: Vec<Vec<u8>>) -> ContractFuture<'_, Vec<Option<Vec<u8>>>> { unused() }
-        fn get_block_extrinsics_at(&self, _: VerifiedBlockRef) -> ContractFuture<'_, Vec<Vec<u8>>> { unused() }
-        fn submit_extrinsic(&self, _: SignedExtrinsic) -> ContractFuture<'_, SubmittedExtrinsic> { unused() }
-        fn watch_extrinsic(&self, _: SignedExtrinsic) -> ContractStream<'_, ExtrinsicWatchEvent> { Box::pin(futures::stream::empty()) }
-        fn export_state(&self) -> ContractFuture<'_, ExportedChainState> { unused() }
-        fn import_state(&self, _: ExportedChainState) -> ContractFuture<'_, StateImportReceipt> { unused() }
+        fn get_storage_batch_at(
+            &self,
+            _: VerifiedBlockRef,
+            _: Vec<Vec<u8>>,
+        ) -> ContractFuture<'_, Vec<Option<Vec<u8>>>> {
+            unused()
+        }
+        fn get_block_extrinsics_at(&self, _: VerifiedBlockRef) -> ContractFuture<'_, Vec<Vec<u8>>> {
+            unused()
+        }
+        fn submit_extrinsic(&self, _: SignedExtrinsic) -> ContractFuture<'_, SubmittedExtrinsic> {
+            unused()
+        }
+        fn watch_extrinsic(&self, _: SignedExtrinsic) -> ContractStream<'_, ExtrinsicWatchEvent> {
+            Box::pin(futures::stream::empty())
+        }
+        fn export_state(&self) -> ContractFuture<'_, ExportedChainState> {
+            unused()
+        }
+        fn import_state(&self, _: ExportedChainState) -> ContractFuture<'_, StateImportReceipt> {
+            unused()
+        }
     }
     block_on(async {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
         let bytes = |name: &str| hex::decode(fixture[name].as_str().unwrap()).unwrap();
         let block = VerifiedBlockRef::best(Hash32::from_bytes([0x41; 32]), 2);
-        let context = RuntimeContext::try_new(block, RuntimeVersion::new(0, 0), bytes("metadata")).unwrap();
+        let context =
+            RuntimeContext::try_new(block, RuntimeVersion::new(0, 0), bytes("metadata")).unwrap();
         let identity = ChainIdentity::citizenchain();
         let account: [u8; 32] = bytes("account").try_into().unwrap();
         let metadata = decode_metadata_strict(context.metadata()).unwrap();
-        let address = subxt_core::dynamic::storage("Mldsa", "PqPublicKey", vec![subxt_core::dynamic::Value::from_bytes(account)]);
+        let address = subxt_core::dynamic::storage(
+            "Mldsa",
+            "PqPublicKey",
+            vec![subxt_core::dynamic::Value::from_bytes(account)],
+        );
         let key = subxt_core::storage::get_address_bytes(&address, &metadata).unwrap();
         let public = mldsa::public_key(&[7; 32]).encode();
-        let mut client = KeyClient { block, key, public: Some(public) };
+        let mut client = KeyClient {
+            block,
+            key,
+            public: Some(public),
+        };
         let record = |extrinsic: Vec<u8>, nonce: u64| {
-            let mut body = extrinsic.as_slice(); let _ = Compact::<u32>::decode(&mut body).unwrap();
+            let mut body = extrinsic.as_slice();
+            let _ = Compact::<u32>::decode(&mut body).unwrap();
             let proof = mldsa::Proof::decode(&mut &body[2..]).unwrap();
-            let signer = match proof { mldsa::Proof::Sr25519 { account, .. } | mldsa::Proof::First { account, .. } | mldsa::Proof::Stored { account, .. } => account };
+            let signer = match proof {
+                mldsa::Proof::Sr25519 { account, .. }
+                | mldsa::Proof::First { account, .. }
+                | mldsa::Proof::Stored { account, .. } => account,
+            };
             let call = bytes("call");
-            TransactionExecutionRecord::try_new(TransactionExecutionId::try_new([1; 16]).unwrap(), AccountId32::from_bytes(signer),
-                Hash32::from_bytes(crate::types::blake2_256(&call).unwrap()), call,
-                Hash32::from_bytes(crate::types::blake2_256(&extrinsic).unwrap()), SignedExtrinsic::try_new(extrinsic).unwrap(),
-                block, context.version(), identity.genesis_hash(), nonce, HistoryTransactionStatus::Pending, 1, 1).unwrap()
+            TransactionExecutionRecord::try_new(
+                TransactionExecutionId::try_new([1; 16]).unwrap(),
+                AccountId32::from_bytes(signer),
+                Hash32::from_bytes(crate::types::blake2_256(&call).unwrap()),
+                call,
+                Hash32::from_bytes(crate::types::blake2_256(&extrinsic).unwrap()),
+                SignedExtrinsic::try_new(extrinsic).unwrap(),
+                block,
+                context.version(),
+                identity.genesis_hash(),
+                nonce,
+                HistoryTransactionStatus::Pending,
+                1,
+                1,
+            )
+            .unwrap()
         };
         for kind in ["first", "stored", "sr_extrinsic"] {
             let good = record(bytes(kind), 7);
-            validate_persisted_transaction_execution(&good, &identity, &context, &client).await.unwrap();
+            validate_persisted_transaction_execution(&good, &identity, &context, &client)
+                .await
+                .unwrap();
             let wrong_nonce = record(bytes(kind), 8);
-            assert!(validate_persisted_transaction_execution(&wrong_nonce, &identity, &context, &client).await.is_err());
-            let mut bad = bytes(kind); bad[60] ^= 1;
-            assert!(validate_persisted_transaction_execution(&record(bad, 7), &identity, &context, &client).await.is_err());
+            assert!(validate_persisted_transaction_execution(
+                &wrong_nonce,
+                &identity,
+                &context,
+                &client
+            )
+            .await
+            .is_err());
+            let mut bad = bytes(kind);
+            bad[60] ^= 1;
+            assert!(validate_persisted_transaction_execution(
+                &record(bad, 7),
+                &identity,
+                &context,
+                &client
+            )
+            .await
+            .is_err());
         }
         client.public = None;
-        assert!(validate_persisted_transaction_execution(&record(bytes("stored"), 7), &identity, &context, &client).await.is_err());
+        assert!(validate_persisted_transaction_execution(
+            &record(bytes("stored"), 7),
+            &identity,
+            &context,
+            &client
+        )
+        .await
+        .is_err());
     });
+}
+
+#[test]
+fn self_rebind_parameters_and_catalog_remain_instance_owned_and_single_use() {
+    use crate::types::{citizen_ss58_address, ColdWalletAccount, WalletState};
+    use crate::wallet_service::WalletStateSnapshot;
+    // 既有当前call9金标；不改写metadata或伪造版本来迁就测试。
+    let metadata = hex::decode(
+        include_str!("citizenchain-revive-v15-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let old = AccountId32::from_bytes([0xa1; 32]);
+    let target = AccountId32::from_bytes([0xb2; 32]);
+    let wallet = WalletState::try_from_catalog_parts(
+        7,
+        None,
+        vec![
+            ColdWalletAccount::try_new(1, old, citizen_ss58_address(old), "原账户", 0).unwrap(),
+            ColdWalletAccount::try_new(2, target, citizen_ss58_address(target), "新账户", 0)
+                .unwrap(),
+        ],
+        vec![old, target],
+        3,
+        None,
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+    let snapshot = WalletStateSnapshot::from_state(&wallet).unwrap();
+    for revision in [0u64, 1, u64::MAX] {
+        let request = serde_json::json!({"op":"call","pallet":"CitizenIdentity","method":"self_rebind_cid_account_id",
+            "args":{"kind":"sequence","value":[{"kind":"bytes","value":b"CN583-CTZN2-763721825-2026"},
+                {"kind":"integer","value":revision.to_string()},{"kind":"bytes","value":vec![1u8;64]}]}});
+        let call = crate::metadata::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
+            .unwrap();
+        let mut registry = PreparedTransactionRegistry::default();
+        let id = registry.reserve(target).unwrap();
+        let block = crate::types::VerifiedBlockRef::best(Hash32::from_bytes([3; 32]), 42);
+        let identity = ChainIdentity::citizenchain();
+        let mut prepared = PreparedTransaction {
+            summary: PreparedTransactionSummary::try_new(
+                id,
+                target,
+                OpaqueTransactionCall::try_new(call.clone())
+                    .unwrap()
+                    .hash()
+                    .unwrap(),
+                block,
+                crate::types::RuntimeVersion::new(0, 0),
+                1,
+            )
+            .unwrap(),
+            identity: identity.clone(),
+            runtime_context: RuntimeContext::try_new(
+                block,
+                crate::types::RuntimeVersion::new(0, 0),
+                metadata.clone(),
+            )
+            .unwrap(),
+            nonce: AccountNonce::try_new(&identity, block, target, 1).unwrap(),
+            call_data: Zeroizing::new(call),
+            full_signing_payload: Zeroizing::new(Vec::new()),
+            extension_bytes: Vec::new(),
+            pq_registered: false,
+            signed_extensions: Vec::new(),
+            generation: 1,
+            rebind_wallet: None,
+        };
+        if revision != 1 {
+            assert!(prepared.rebind_parameters().is_err());
+            continue;
+        }
+        assert_eq!(
+            prepared.rebind_parameters().unwrap(),
+            Some((b"CN583-CTZN2-763721825-2026".to_vec(), 1))
+        );
+        prepared.freeze_rebind_wallet(snapshot.clone());
+        registry.commit(target, id, prepared).unwrap();
+        let claimed = registry.claim(id).unwrap();
+        assert_eq!(claimed.rebind_wallet().unwrap(), &snapshot);
+        assert!(registry.claim(id).is_none());
+        assert_eq!(snapshot.ordered_account_ids(), &[old, target]);
+    }
 }

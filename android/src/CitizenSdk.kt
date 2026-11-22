@@ -1,3 +1,5 @@
+// 提供同一Core实例的Kotlin公开接口和受控资源操作。
+
 package org.citizen.sdk
 
 import org.citizen.sdk.internal.Bindings

@@ -1,3 +1,5 @@
+// 通过固定PCP提供程序管理TPM硬件KEK，并核对密钥属性。
+
 #include "citizen_sdk_cng.hpp"
 
 #include <windows.h>

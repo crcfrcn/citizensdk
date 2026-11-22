@@ -1,8 +1,4 @@
-//! CitizenChain 无根热钱包的 BIP-39、password 与 `//index` 派生真源。
-//!
-//! 本模块只在 Rust 受控秘密缓冲区中处理助记词、master mini-secret 与 child
-//! mini-secret。调用者只能取得公开公钥和仍由 [`SecretBuffer`] 拥有的 child；任何
-//! Dart、Kotlin 或公共 C ABI 都不得直接调用这些内部函数导出秘密。
+//! 在受控秘密缓冲区中按BIP39密码及硬派生序号生成钱包账户。
 
 use bip39::Language;
 use bip39::Mnemonic;

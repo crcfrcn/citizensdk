@@ -1,5 +1,4 @@
-//! SDK 无界面的钱包输入能力；词表、checksum 与派生使用同一个 BIP-39 依赖。
-//! 不生成钱包、不访问金库、不持久化输入，错误仅携带位置而不包含单词或秘密。
+//! 校验钱包助记词和密码并提供词表补全，返回不含秘密的原因和位置。
 
 use crate::types::ContractErrorCode;
 use bip39::Language;

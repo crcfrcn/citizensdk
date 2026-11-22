@@ -1,3 +1,5 @@
+// 验证取消等待Core真实终态，且早到或丢弃结果只释放一次引用。
+
 package org.citizen.sdk
 import org.citizen.sdk.internal.CitizenSdkRequestRouter
 import org.citizen.sdk.internal.CoreResult

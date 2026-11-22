@@ -1,3 +1,5 @@
+// 定义交易准备、执行、历史和准确链上结果的公开模型。
+
 part of '../citizen_sdk.dart';
 
 enum CitizenTransactionResolution {

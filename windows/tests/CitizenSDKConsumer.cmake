@@ -1,4 +1,5 @@
-# 只消费唯一构建器本轮已验真的安装件；这里不编译任何 Host/Core 私有实现。
+# 仅用安装后的公开接口编译Windows C和C++消费者。
+
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CITIZENSDK_CONSUMER_PREFIX "" CACHE PATH "Exact current CitizenSDK installation prefix")

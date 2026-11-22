@@ -1,4 +1,5 @@
-# 只消费 Flutter 官方目标和同包已安装双库，不下载或重编 Host/Core。
+# 将Windows Flutter插件目标连接同包已安装原生双库。
+
 if(NOT TARGET flutter OR NOT TARGET flutter_wrapper_plugin)
   message(FATAL_ERROR "CitizenSDK Windows requires official Flutter plugin targets")
 endif()

@@ -1,3 +1,5 @@
+// 定义Dart生命周期、状态失效和受控资源事件。
+
 part of '../citizen_sdk.dart';
 
 sealed class CitizenSdkEvent {

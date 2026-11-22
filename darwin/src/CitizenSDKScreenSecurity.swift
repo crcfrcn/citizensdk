@@ -1,3 +1,5 @@
+// 报告Apple前后台及录屏状态，向宿主提供屏幕安全事实。
+
 import Foundation
 #if os(iOS)
 import UIKit

@@ -1,3 +1,5 @@
+// 装配Windows Flutter原生环境，观察所属窗口并预检安装资源。
+
 #include "citizen_sdk_flutter_environment.hpp"
 
 #include <commctrl.h>

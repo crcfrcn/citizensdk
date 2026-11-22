@@ -1,3 +1,5 @@
+// 验证公开Android生命周期、二维码和私钥资源的签名及所有权合同。
+
 package org.citizen.sdk
 
 import org.junit.Assert.assertNotNull

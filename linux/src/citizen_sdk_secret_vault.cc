@@ -1,3 +1,5 @@
+// 协调Linux安全存储、TPM和用户授权，按准确代际执行机密操作。
+
 #include "citizen_sdk_secret_vault.hpp"
 
 #include "input.hpp"

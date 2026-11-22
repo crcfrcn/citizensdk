@@ -1,3 +1,5 @@
+//! 将原生smoldot接入类型化链客户端，管理安全传输、链身份和运行生命周期。
+
 #![forbid(unsafe_code)]
 use std::borrow::Cow;
 use std::future::Future;

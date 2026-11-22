@@ -1,3 +1,5 @@
+// 注册Apple Flutter方法、事件和纹理通道，将资源操作接入同一SDK。
+
 #if os(iOS)
 @preconcurrency import Flutter
 import UIKit

@@ -1,6 +1,6 @@
 //! SQLite同步资源。一个run在同一已有工作线程完成，不跨异步保留连接或Cursor。
-use crate::store::error::error;
-use crate::store::error::integrity;
+use crate::store::error;
+use crate::store::integrity;
 use crate::types::ContractErrorCode;
 use crate::types::ContractResult;
 
@@ -561,7 +561,7 @@ fn secure_resource(
 }
 unsafe fn vault_key(
     key: *const crate::abi::types::CitizenSdkHostWalletKeyRefV1,
-) -> FfiResult<crate::store::vault::Key> {
+) -> FfiResult<crate::store::Key> {
     if key.is_null() {
         return Err(FfiError::invalid("vault key is null"));
     }
@@ -569,7 +569,7 @@ unsafe fn vault_key(
     if key.reserved != 0 {
         return Err(FfiError::invalid("vault key reserved field differs"));
     }
-    Ok(crate::store::vault::Key {
+    Ok(crate::store::Key {
         index: key.wallet_index,
         generation: crate::types::VaultGeneration::from_bytes(key.generation.bytes),
     })
@@ -690,7 +690,7 @@ pub unsafe extern "C" fn citizensdk_store_object(
             }
             let key_name = String::from_utf8(bytes.remove(0))
                 .map_err(|_| FfiError::invalid("object key name is not UTF-8"))?;
-            Some(crate::store::vault::Object {
+            Some(crate::store::Object {
                 key_name,
                 public: bytes.remove(0),
                 private: bytes.remove(0),

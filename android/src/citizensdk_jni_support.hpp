@@ -1,3 +1,5 @@
+// 声明JNI实现共用的宿主桥接及参数转换辅助接口。
+
 #ifndef CITIZENSDK_JNI_SUPPORT_HPP
 #define CITIZENSDK_JNI_SUPPORT_HPP
 

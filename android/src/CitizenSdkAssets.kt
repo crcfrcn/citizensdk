@@ -1,3 +1,5 @@
+// 定位Android安装包内的链资产和正式SDK资源。
+
 package org.citizen.sdk.internal
 
 import android.content.Context

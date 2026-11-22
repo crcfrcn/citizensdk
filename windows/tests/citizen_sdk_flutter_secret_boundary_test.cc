@@ -1,3 +1,5 @@
+// 验证Windows Flutter通道的秘密和受控资源跨界限制。
+
 #include <cassert>
 #include "value.hpp"
 namespace csf=citizen_sdk::flutter;

@@ -1,3 +1,5 @@
+//! 以真实执行索引验证System事件结论及交易和区块证据绑定。
+
 #![cfg(feature = "chain")]
 
 use citizensdk::signed_extrinsic_hash;

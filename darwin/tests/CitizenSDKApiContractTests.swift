@@ -1,3 +1,5 @@
+// 验证Apple公开接口、受控资源投影及私钥查看授权边界。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

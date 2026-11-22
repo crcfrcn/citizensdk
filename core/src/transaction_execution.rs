@@ -1,16 +1,12 @@
-//! Product-independent pending-before-broadcast and exact terminal transaction closure.
-//!
-//! The opaque RuntimeCall is never decoded here. A provider `Finalized` notification is only an
-//! upper-bound fact; the exact canonical body and same-index System outcome are verified before a
-//! completed value is created.
+//! 先持久化待发交易，再提交并核验准确终态，协调取消和错误。
 
 use std::sync::Arc;
 
-use crate::types::store::HistoryTransactionStatus;
 use crate::types::ContractErrorCode;
 use crate::types::ExecutionConclusion;
 use crate::types::ExtrinsicWatchEvent;
 use crate::types::Hash32;
+use crate::types::HistoryTransactionStatus;
 use crate::types::SignedExtrinsic;
 use crate::types::TransactionExecutionCompleted;
 use crate::types::TransactionExecutionId;

@@ -1,8 +1,10 @@
+//! 验证金库代际属主、硬件对象、永久退役及跨连接并发。
+
 use citizensdk::{abi, store, types};
 mod db;
-use citizensdk::store::secure::Format;
-use citizensdk::store::vault::Key;
-use citizensdk::store::vault::Object;
+use citizensdk::store::Format;
+use citizensdk::store::Key;
+use citizensdk::store::Object;
 use citizensdk::store::SecureStore;
 use citizensdk::types::*;
 fn key() -> Key {

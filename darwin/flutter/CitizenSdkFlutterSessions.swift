@@ -1,3 +1,5 @@
+// 管理Apple Flutter资源会话、事件订阅和纹理，以及卸载时的关闭协调。
+
 @_spi(CitizenSDKFlutter) import CitizenSDK
 import CoreFoundation
 import Foundation

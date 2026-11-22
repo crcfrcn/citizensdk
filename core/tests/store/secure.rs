@@ -1,7 +1,9 @@
+//! 验证钱包密文条件更新、永久墓碑及不确定提交的准确回读。
+
 use citizensdk::{abi, store, types};
 mod db;
-use citizensdk::store::secure::Format;
-use citizensdk::store::sqlite::Connection;
+use citizensdk::store::Connection;
+use citizensdk::store::Format;
 use citizensdk::store::SecureStore;
 use citizensdk::types::*;
 use futures::executor::block_on;
@@ -42,14 +44,14 @@ fn wallet_revision_cas_preserves_records_and_rejects_envelope_tampering() {
         .code(),
         ContractErrorCode::Conflict
     );
-    let mut corrupt = citizensdk::store::codec::encode_wallet_state(&next).unwrap();
+    let mut corrupt = citizensdk::store::encode_wallet_state(&next).unwrap();
     let last = corrupt.len() - 1;
     corrupt[last] ^= 1;
     db.0.lock()
         .unwrap()
         .execute(
             "UPDATE wallet SET data=?",
-            &[citizensdk::store::sqlite::Value::Blob(corrupt)],
+            &[citizensdk::store::Value::Blob(corrupt)],
         )
         .unwrap();
     assert_eq!(
@@ -267,7 +269,7 @@ fn secure_schema_literal_changes_are_rejected() {
 }
 #[test]
 fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
-    use citizensdk::store::{codec, key, sqlite::Value};
+    use citizensdk::store::Value;
     let db = db::Db::open();
     let store = SecureStore::new(db.clone());
     block_on(WalletProfileStore::load(&store)).unwrap();
@@ -276,7 +278,8 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
             cleanup_operation_id: [1; 16],
         })
         .unwrap();
-    let bytes = codec::encode_encrypted_secret_blob_snapshot(reference(), &tomb).unwrap();
+    let bytes =
+        citizensdk::store::encode_encrypted_secret_blob_snapshot(reference(), &tomb).unwrap();
     db.0.lock().unwrap().execute("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<65537) INSERT INTO secret SELECT printf('%05d',x),? FROM n",&[Value::Blob(bytes)]).unwrap();
     assert_eq!(
         block_on(store.has_account_secret(reference().account_id()))
@@ -300,12 +303,12 @@ fn secret_scan_stops_early_and_rejects_more_than_65536_candidates() {
         .execute("INSERT INTO secret VALUES('bad',x'01')", &[])
         .unwrap();
     assert!(block_on(store.has_account_secret(reference().account_id())).unwrap());
-    assert!(key::secret(reference()).starts_with("7:1:"));
+    assert!(citizensdk::store::secret(reference()).starts_with("7:1:"));
 }
 
 #[test]
 fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated() {
-    use citizensdk::store::{key, sqlite::Value};
+    use citizensdk::store::Value;
     for record in [vec![0], vec![1, 2], vec![0xff; 80]] {
         let db = db::Db::open();
         let store = SecureStore::with_format(db.clone(), Format::Device);
@@ -315,7 +318,7 @@ fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated
             .execute(
                 "INSERT INTO secret VALUES(?,?)",
                 &[
-                    Value::Text(key::secret(reference())),
+                    Value::Text(citizensdk::store::secret(reference())),
                     Value::Blob(record.clone()),
                 ],
             )
@@ -344,7 +347,7 @@ fn malformed_revisions_never_overwrite_and_independent_databases_remain_isolated
         block_on(WalletProfileStore::load(&second)).unwrap(),
         WalletState::empty()
     );
-    let key = citizensdk::store::vault::Key {
+    let key = citizensdk::store::Key {
         index: 0,
         generation: reference().generation(),
     };

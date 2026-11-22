@@ -1,3 +1,5 @@
+//! 验证未启用链模块时公开符号拒绝请求且不解引用宿主指针。
+
 use super::*;
 use crate::abi::transaction_abi::citizensdk_get_transaction_history;
 use crate::abi::transaction_abi::citizensdk_sync_transaction_history;

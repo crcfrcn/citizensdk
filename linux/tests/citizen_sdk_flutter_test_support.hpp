@@ -1,3 +1,5 @@
+// 提供Linux Flutter测试的公开值和独占临时目录辅助工具。
+
 #ifndef CITIZENSDK_LINUX_FLUTTER_TEST_SUPPORT_HPP
 #define CITIZENSDK_LINUX_FLUTTER_TEST_SUPPORT_HPP
 

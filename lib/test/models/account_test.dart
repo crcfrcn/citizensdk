@@ -1,3 +1,5 @@
+// 验证正式Dart包入口公开稳定账户API和模型。
+
 // 主包测试位于lib/test，测试依赖沿用pubspec的dev_dependencies，不进入运行依赖。
 // ignore_for_file: depend_on_referenced_packages
 

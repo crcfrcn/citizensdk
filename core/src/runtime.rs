@@ -1,3 +1,5 @@
+//! 调度原生实例请求和能力监视，维护通道序号、取消及生命周期接纳状态。
+
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -115,8 +117,8 @@ pub struct NativeRuntime {
     provider: Option<Arc<SmoldotVerifiedChainClient>>,
     engine: Arc<CitizenEngine>,
     modules: crate::types::Modules,
-    public_store: Option<Arc<crate::store::PublicStore<crate::store::sqlite::Sqlite>>>,
-    secure_store: Option<Arc<crate::store::SecureStore<crate::store::sqlite::Sqlite>>>,
+    public_store: Option<Arc<crate::store::PublicStore<crate::store::Sqlite>>>,
+    secure_store: Option<Arc<crate::store::SecureStore<crate::store::Sqlite>>>,
     host_services: Option<crate::host::HostSecretVault>,
     dispatcher: EventDispatcher,
     result_handles: &'static ResultHandleAllocator,
@@ -216,7 +218,7 @@ impl NativeRuntime {
         system_name: String,
         system_version: String,
         modules: crate::types::Modules,
-        store: crate::store::sqlite::Stores,
+        store: crate::store::Stores,
     ) -> FfiResult<Arc<Self>> {
         use crate::types::{
             ChainDatabaseStore, EncryptedSecretBlobStore, Modules, RuntimeCacheStore,

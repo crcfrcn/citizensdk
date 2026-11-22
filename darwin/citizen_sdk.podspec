@@ -1,3 +1,5 @@
+# 声明Flutter通过CocoaPods集成Apple SDK的源码、框架和系统依赖。
+
 framework_path = 'CitizenSDK.xcframework'
 raise "Missing CitizenSDK framework: #{framework_path}" unless Dir.exist?(File.join(__dir__, framework_path))
 

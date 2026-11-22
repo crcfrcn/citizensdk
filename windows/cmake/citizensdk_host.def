@@ -1,3 +1,5 @@
+; 声明Windows Host动态库及其固定导出符号。
+
 LIBRARY citizensdk_host
 EXPORTS
   citizensdk_host_abi_version

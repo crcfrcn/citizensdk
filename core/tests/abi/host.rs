@@ -1,3 +1,5 @@
+//! 验证真实宿主桥接的金库代际、回调结果和秘密所有权边界。
+
 use crate::types::*;
 use std::future::Future;
 use std::sync::atomic::AtomicU8;

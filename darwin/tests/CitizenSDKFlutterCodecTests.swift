@@ -1,3 +1,5 @@
+// 验证Apple Flutter调用形状、类型和非法参数拒绝。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

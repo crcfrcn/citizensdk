@@ -1,4 +1,5 @@
-// 普通测试不创建 TPM key。真实授权测试必须显式选择隔离 TPM 与防猜测预算。
+// 验证TPM提供程序属性、错误映射及显式隔离硬件授权入口。
+
 #include <windows.h>
 #include <bcrypt.h>
 #include <ncrypt.h>

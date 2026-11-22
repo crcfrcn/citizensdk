@@ -1,8 +1,10 @@
+//! 以真实SQLite验证公开仓储CAS、并发耐久性、历史分页及事务回滚。
+
 use citizensdk::{abi, store, types};
 mod db;
-use citizensdk::store::sqlite::Connection;
-use citizensdk::store::sqlite::Value;
+use citizensdk::store::Connection;
 use citizensdk::store::PublicStore;
+use citizensdk::store::Value;
 use citizensdk::types::*;
 use futures::executor::block_on;
 fn context(index: u8) -> RuntimeContext {
@@ -117,8 +119,8 @@ fn separate_connections_serialize_cas_and_preserve_reopened_data() {
         }
     }
     let _remove = Remove(directory.clone());
-    let name = std::ffi::CString::new(directory.join("public-state.sqlite3").to_str().unwrap())
-        .unwrap();
+    let name =
+        std::ffi::CString::new(directory.join("public-state.sqlite3").to_str().unwrap()).unwrap();
     let first = PublicStore::new(db::Db::named(&name));
     let second = PublicStore::new(db::Db::named(&name));
     block_on(ChainDatabaseStore::load(&first)).unwrap();
@@ -244,10 +246,7 @@ fn malformed_revisions_and_extra_schema_are_rejected_without_overwrite() {
         block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).unwrap();
         db.0.lock()
             .unwrap()
-            .execute(
-                "UPDATE chain SET data=?",
-                &[Value::Blob(corrupt.clone())],
-            )
+            .execute("UPDATE chain SET data=?", &[Value::Blob(corrupt.clone())])
             .unwrap();
         assert!(block_on(ChainDatabaseStore::load(&store)).is_err());
         assert!(block_on(ChainDatabaseStore::compare_and_swap(&store, 0, None)).is_err());

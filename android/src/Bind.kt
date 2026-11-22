@@ -1,3 +1,5 @@
+// 声明并协调JNI绑定调用，保持原生方法签名和回调生命周期。
+
 @file:kotlin.jvm.JvmSynthetic
 package org.citizen.sdk.internal
 import android.content.Context

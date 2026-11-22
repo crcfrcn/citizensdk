@@ -1,3 +1,5 @@
+// 以C++消费者验证真实异步结果持有、排空和关闭边界。
+
 #include "citizensdk_host.h"
 #include <atomic>
 #include <cassert>

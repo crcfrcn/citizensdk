@@ -1,7 +1,4 @@
-//! CitizenChain 账户公开链状态值对象。
-//!
-//! 本模块只描述可公开的 AccountId、余额、nonce 与链上费率。每个链状态对象都绑定
-//! CitizenSDK 唯一正式链身份及准确块锚；它不保存助记词、mini-secret、私钥或金库引用。
+//! 定义绑定正式链身份和准确区块的公开余额、nonce及费用策略。
 
 use crate::types::AccountId32;
 use crate::types::BlockFinality;

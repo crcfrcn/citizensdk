@@ -1,3 +1,5 @@
+// 管理Linux相机采集、二维码识别及等待设备排空的停止流程。
+
 #include "citizen_sdk_qr_camera.hpp"
 #include "input.hpp"
 #include "citizensdk_qr_image.h"

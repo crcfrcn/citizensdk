@@ -1,3 +1,5 @@
+// 声明Windows链信任资产的持有和安全读取接口。
+
 #ifndef CITIZENSDK_WINDOWS_ASSETS_HPP
 #define CITIZENSDK_WINDOWS_ASSETS_HPP
 

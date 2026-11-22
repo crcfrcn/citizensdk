@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证持有结果阻止销毁且只能释放一次。
+
 #![allow(unsafe_code)]
 // 此所有权用例使用真实 chain 读取；无链查看结果在组合测试单独覆盖。
 #![cfg(feature = "chain")]

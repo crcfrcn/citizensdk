@@ -1,3 +1,5 @@
+// 以串行相机采集提供二维码捕获和不可变预览帧，管理停止与撤销。
+
 import Foundation
 @preconcurrency import AVFoundation
 import CoreVideo

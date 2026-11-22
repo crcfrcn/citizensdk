@@ -1,3 +1,5 @@
+// 协调交易准备、冷热执行和持久历史查询，回收取消或失败的执行资源。
+
 part of '../citizen_sdk.dart';
 
 extension Transactions on CitizenSdk {

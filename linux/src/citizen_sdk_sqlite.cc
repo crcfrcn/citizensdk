@@ -1,3 +1,5 @@
+// 实现Linux安全文件描述符VFS、OFD锁和SQLite连接资源。
+
 #include "citizen_sdk_sqlite.hpp"
 
 #include <algorithm>

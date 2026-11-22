@@ -1,3 +1,5 @@
+// 定义Apple公开错误类别、失败阶段和跨界结果检查。
+
 import Foundation
 
 /// Stable error vocabulary shared verbatim with `citizensdk_error_code_t`.

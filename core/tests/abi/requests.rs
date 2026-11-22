@@ -1,3 +1,5 @@
+//! 验证请求执行器的资源隔离、共享独占接纳及panic安全返回。
+
 use std::ffi::c_void;
 use std::sync::mpsc;
 use std::sync::Arc;

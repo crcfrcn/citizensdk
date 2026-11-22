@@ -1,8 +1,4 @@
-//! Product-independent signing intents and SDK-owned wallet-mutation authorization.
-//!
-//! Callers own the meaning and encoding of every opaque payload. CitizenSDK only applies a
-//! bounded, explicitly selected byte transform, routes the account by its stored sign mode, and
-//! verifies the resulting sr25519 or ML-DSA-65 signature. No consumer action registry belongs in this module.
+//! 定义不透明签名意图和账户修改授权，提供共用载荷编码及摘要。
 
 use std::collections::BTreeSet;
 

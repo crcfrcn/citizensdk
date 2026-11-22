@@ -1,3 +1,5 @@
+// 实现Android JNI到Core的调用、参数转换及受控资源交付。
+
 #include "citizensdk_jni_support.hpp"
 
 #include <algorithm>

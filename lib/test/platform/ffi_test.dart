@@ -1,4 +1,7 @@
+// 通过真实FFI验证账户编解码、链事件、钱包操作及取消和持久化。
+
 // ignore_for_file: depend_on_referenced_packages
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';

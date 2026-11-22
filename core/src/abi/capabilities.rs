@@ -1,3 +1,5 @@
+//! 从实际模块和宿主探测事实生成SDK能力及就绪状态的ABI快照。
+
 #[cfg(feature = "chain")]
 use crate::chain::ProviderLifecycle;
 use crate::types::CapabilityName;

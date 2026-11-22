@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 声明宿主资源回调、异步操作和引用生命周期的C合同。
+
 #ifndef CITIZENSDK_HOST_H
 #define CITIZENSDK_HOST_H
 

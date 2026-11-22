@@ -1,4 +1,6 @@
 // swift-tools-version: 5.9
+// 声明Apple平台SDK包的目标、依赖及公开库产品。
+
 import PackageDescription
 
 let package = Package(

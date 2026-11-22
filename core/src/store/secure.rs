@@ -1,15 +1,14 @@
 //! 钱包目录与密文的唯一持久化实现；不接收明文秘密。
 use crate::store::codec;
-use crate::store::error::codec as decode_error;
-use crate::store::error::error;
-use crate::store::error::integrity;
-use crate::store::error::invalid;
-use crate::store::key;
+use crate::store::codec_error as decode_error;
+use crate::store::error;
+use crate::store::integrity;
+use crate::store::invalid;
 use crate::store::schema;
-use crate::store::sqlite::transaction_recover;
-use crate::store::sqlite::Connection;
-use crate::store::sqlite::Database;
-use crate::store::sqlite::Value;
+use crate::store::transaction_recover;
+use crate::store::Connection;
+use crate::store::Database;
+use crate::store::Value;
 use crate::types::*;
 use std::sync::Mutex;
 pub(crate) const DEVICE: &[&str]=&[
@@ -122,7 +121,7 @@ fn encrypted(
 ) -> ContractResult<EncryptedSecretBlobSnapshot> {
     let rows = conn.query(
         "SELECT data FROM secret WHERE key = ?",
-        &[Value::Text(key::secret(reference))],
+        &[Value::Text(crate::store::secret(reference))],
         1,
         65536,
     )?;
@@ -203,7 +202,10 @@ impl<D: Database> EncryptedSecretBlobStore for SecureStore<D> {
                                 .map_err(decode_error)?;
                         conn.execute(
                             "INSERT OR REPLACE INTO secret(key, data) VALUES(?, ?)",
-                            &[Value::Text(key::secret(reference)), Value::Blob(record)],
+                            &[
+                                Value::Text(crate::store::secret(reference)),
+                                Value::Blob(record),
+                            ],
                         )?;
                         Ok(candidate)
                     },

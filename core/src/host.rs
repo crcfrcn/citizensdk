@@ -1,30 +1,4 @@
-//! 真实系统金库C回调与拥有者。
-//!
-//! SQLite业务和记录验证直接由Core仓储执行；此处仅保有物理金库操作。
-//!
-//! Every operation follows one asynchronous rule:
-//! - returning `OK` accepts the operation and requires exactly one later
-//!   completion callback;
-//! - returning any other stable error rejects it and forbids a completion;
-//! - ordinary inputs are borrowed only until the operation callback returns;
-//! - the `wrap_dek` input is an exception: its Rust-owned zeroizing allocation
-//!   remains valid from dispatch through first completion/synchronous reject,
-//!   so an asynchronous host must not copy the plaintext DEK into managed code;
-//! - completion outputs are borrowed only while the completion callback runs,
-//!   and CitizenSDK synchronously copies/validates them;
-//! - every non-null completion must repeat the operation ID encoded in its
-//!   opaque SDK context; a crossed token/result pair is ignored before the
-//!   pending-operation registry is read or changed, while a null result still
-//!   terminates the operation identified by its token;
-//! - the one `unwrap_dek` mutable output is Rust-owned, exclusively borrowed
-//!   until completion (or immediate rejection), and cannot be retained after;
-//! - callbacks may complete concurrently on background threads and must not
-//!   block a platform main thread.
-//!
-//! The vault surface owns only KEK lifecycle and 32-byte DEK wrapping.  It can
-//! never receive an account child mini-secret, private key, mnemonic, or
-//! sr25519 signing request.  Rust authenticates/decrypts the secret envelope,
-//! signs, and zeroizes its buffers on its side of this boundary.
+//! 桥接系统金库异步C回调，校验结果并管理宿主操作及秘密字节所有权。
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;

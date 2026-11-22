@@ -1,3 +1,5 @@
+// 将Core宿主回调接入JVM数据库和金库，管理线程附着及请求资源。
+
 #include "citizensdk_host_bridge.hpp"
 
 #include <cstring>

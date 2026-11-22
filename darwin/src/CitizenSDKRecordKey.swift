@@ -1,3 +1,5 @@
+// 以宿主Bundle身份和钱包代际构造隔离的金库记录标识。
+
 import CryptoKit
 import Foundation
 

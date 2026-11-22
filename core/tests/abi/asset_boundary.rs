@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过真实原始指针C接口验证实例创建前重新核验链资产。
+
 #![allow(unsafe_code)]
 // 此黑盒夹具验证真实链资产；纯本地模块不读取这些资产。
 #![cfg(feature = "chain")]

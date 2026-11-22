@@ -1,3 +1,5 @@
+//! 读取并核验准确区块和Runtime上下文，合并同块请求及有界缓存。
+
 #![forbid(unsafe_code)]
 use futures_channel::oneshot;
 use parking_lot::Mutex;

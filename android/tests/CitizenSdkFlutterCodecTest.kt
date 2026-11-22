@@ -1,3 +1,5 @@
+// 验证Flutter资源参数的准确形状及非法类型和业务调用拒绝。
+
 package org.citizen.sdk
 import org.junit.Assert.*
 import org.junit.Test

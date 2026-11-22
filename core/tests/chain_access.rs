@@ -1,3 +1,5 @@
+//! 验证链就绪、静态身份、批量余额和错误传播的模块边界。
+
 #![cfg(feature = "chain")]
 
 #[path = "store/db.rs"]

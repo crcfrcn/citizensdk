@@ -1,3 +1,5 @@
+//! 验证正式provider的类型化链合同、准确块上下文及定向实网入口。
+
 use crate::chain::ProviderLifecycle;
 use crate::chain::SmoldotProviderConfig;
 use crate::chain::SmoldotVerifiedChainClient;

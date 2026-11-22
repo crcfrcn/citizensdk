@@ -1,3 +1,5 @@
+//! 验证合同错误及失败阶段经过Engine和C接口后保持稳定。
+
 use crate::types::ContractError;
 use crate::types::ContractErrorCode;
 use crate::types::FailureStage;

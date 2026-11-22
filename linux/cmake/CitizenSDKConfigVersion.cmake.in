@@ -1,4 +1,5 @@
-# 只接受当前版本及同一ABI主版本内的较旧请求；主版本读取真实产品声明。
+# 按产品主版本和请求版本判定Linux SDK兼容性及精确匹配。
+
 set(PACKAGE_VERSION "@PROJECT_VERSION@")
 if(NOT PACKAGE_FIND_VERSION)
   set(PACKAGE_VERSION_COMPATIBLE TRUE)

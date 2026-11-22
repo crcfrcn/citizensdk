@@ -1,8 +1,4 @@
-//! Offline lifecycle baseline through the existing public smoldot provider.
-//!
-//! No benchmark hook is added to production and `smoldot/**` remains
-//! read-only. Timings are descriptive samples, while lifecycle assertions are
-//! stable release gates.
+//! 通过真实smoldot验证离线启动、恢复、导出和停止的生命周期基线。
 
 use std::sync::Arc;
 use std::time::Instant;

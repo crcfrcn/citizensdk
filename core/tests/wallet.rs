@@ -1,7 +1,4 @@
-//! 无根热钱包生命周期、CAS 写后异常与补偿所有权的 Engine 级测试。
-//!
-//! 内存 fake 刻意把公开 profile、设备密文与硬件钱包密钥分成三个独立事实源，测试
-//! 不会因为一个“万能 Map”而掩盖孤儿密文、误删其它实例成功钱包或删除契约遗漏。
+//! 验证钱包生命周期、跨实例CAS、机密清理所有权及异常补偿。
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -15,9 +12,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::error::EngineError;
-use crate::types::store::EncryptedSecretBlobStore;
-use crate::types::store::WalletProfileStore;
 use crate::types::AccountId32;
+use crate::types::EncryptedSecretBlobStore;
+use crate::types::WalletProfileStore;
 use crate::wallet_derivation::WalletEntropySource;
 use crate::wallet_derivation::WalletWordCount;
 use crate::wallet_service::SigningService;
@@ -1636,7 +1633,7 @@ fn wallet_metadata_rejects_bad_names_and_preserves_failed_cas() {
             String::new(),
             " ".into(),
             "坏\u{0085}名".into(),
-            "名".repeat(31),
+            "名".repeat(11),
         ] {
             assert_contract_code(
                 h.service
@@ -1647,7 +1644,7 @@ fn wallet_metadata_rejects_bad_names_and_preserves_failed_cas() {
             );
             assert_eq!(h.profiles.snapshot(), before);
         }
-        let boundary = "名".repeat(30);
+        let boundary = "名".repeat(10);
         *h.profiles.next_fault.lock().unwrap() = WriteFault::BeforeWrite;
         assert!(h
             .service
@@ -3642,4 +3639,379 @@ fn shared_mnemonic_creates_both_zero_accounts_and_appends_the_selected_algorithm
         }
         engine.dispose().unwrap();
     });
+}
+
+/// 使用真实Runtime metadata与官方SCALE编码构造已finalized的公开换绑证据。
+/// 此处不伪造钱包签名，也不把热/冷模式变成另一条目录写路径。
+#[cfg(feature = "chain")]
+#[test]
+fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
+    use crate::types::*;
+    use subxt_core::ext::scale_encode::EncodeAsType;
+    use subxt_core::ext::scale_value::Value;
+    use subxt_core::Metadata;
+    struct Chain {
+        block: FinalizedBlockRef,
+        metadata: Vec<u8>,
+        values: HashMap<Vec<u8>, Vec<u8>>,
+        wrong_runtime: bool,
+    }
+    fn unused<T>() -> ContractFuture<'static, T> {
+        Box::pin(async { panic!("公开收尾不得广播、签名或读取其他链资源") })
+    }
+    impl VerifiedChainClient for Chain {
+        fn identity(&self) -> ContractFuture<'_, ChainIdentity> {
+            Box::pin(async { Ok(ChainIdentity::citizenchain()) })
+        }
+        fn get_best_head(&self) -> ContractFuture<'_, VerifiedBlockRef> {
+            unused()
+        }
+        fn get_finalized_head(&self) -> ContractFuture<'_, FinalizedBlockRef> {
+            Box::pin(async { Ok(self.block) })
+        }
+        fn get_runtime_context_at(
+            &self,
+            block: VerifiedBlockRef,
+        ) -> ContractFuture<'_, RuntimeContext> {
+            assert_eq!(block, self.block.verified());
+            Box::pin(async move {
+                RuntimeContext::try_new(
+                    if self.wrong_runtime {
+                        VerifiedBlockRef::finalized(Hash32::from_bytes([8; 32]), 41)
+                    } else {
+                        block
+                    },
+                    RuntimeVersion::new(0, 0),
+                    self.metadata.clone(),
+                )
+            })
+        }
+        fn get_storage_at(
+            &self,
+            block: VerifiedBlockRef,
+            key: Vec<u8>,
+        ) -> ContractFuture<'_, Option<Vec<u8>>> {
+            assert_eq!(block, self.block.verified());
+            Box::pin(async move { Ok(self.values.get(&key).cloned()) })
+        }
+        fn get_storage_batch_at(
+            &self,
+            block: VerifiedBlockRef,
+            keys: Vec<Vec<u8>>,
+        ) -> ContractFuture<'_, Vec<Option<Vec<u8>>>> {
+            assert_eq!(block, self.block.verified());
+            Box::pin(async move {
+                Ok(keys
+                    .iter()
+                    .map(|key| self.values.get(key).cloned())
+                    .collect())
+            })
+        }
+        fn get_block_extrinsics_at(&self, _: VerifiedBlockRef) -> ContractFuture<'_, Vec<Vec<u8>>> {
+            unused()
+        }
+        fn submit_extrinsic(&self, _: SignedExtrinsic) -> ContractFuture<'_, SubmittedExtrinsic> {
+            unused()
+        }
+        fn watch_extrinsic(&self, _: SignedExtrinsic) -> ContractStream<'_, ExtrinsicWatchEvent> {
+            panic!("收尾不得广播")
+        }
+        fn export_state(&self) -> ContractFuture<'_, ExportedChainState> {
+            unused()
+        }
+        fn import_state(&self, _: ExportedChainState) -> ContractFuture<'_, StateImportReceipt> {
+            unused()
+        }
+    }
+    fn encoded(metadata: &Metadata, entry: &str, value: Value) -> Vec<u8> {
+        let pallet = if entry == "Events" {
+            "System"
+        } else {
+            "CitizenIdentity"
+        };
+        let ty = metadata
+            .pallet_by_name(pallet)
+            .unwrap()
+            .storage()
+            .unwrap()
+            .entry_by_name(entry)
+            .unwrap()
+            .entry_type()
+            .value_ty();
+        let mut out = Vec::new();
+        value
+            .encode_as_type_to(ty, metadata.types(), &mut out)
+            .unwrap();
+        out
+    }
+    fn key(metadata: &Metadata, entry: &str, bytes: &[u8]) -> Vec<u8> {
+        subxt_core::storage::get_address_bytes(
+            &subxt_core::dynamic::storage("CitizenIdentity", entry, vec![Value::from_bytes(bytes)]),
+            metadata,
+        )
+        .unwrap()
+    }
+    for (old_cold, new_cold, case) in [
+        (false, false, "ok"),
+        (false, true, "ok"),
+        (true, false, "ok"),
+        (true, true, "ok"),
+        (true, true, "wrong_runtime"),
+        (true, true, "wrong_index"),
+        (true, true, "wrong_cid"),
+        (true, true, "wrong_previous"),
+        (true, true, "wrong_target"),
+        (true, true, "wrong_revision"),
+        (true, true, "missing_event"),
+        (true, true, "bad_reverse"),
+        (true, true, "bad_owner"),
+        (true, true, "inactive"),
+        (true, true, "cancelled"),
+        (true, true, "catalog_race"),
+        (true, true, "write_fail"),
+        (true, true, "write_after_fail"),
+    ] {
+        block_on(async {
+            let h = Harness::new();
+            let profile = h.service.import(&known_mnemonic(), "").await.unwrap();
+            let hot = profile.master_account_id();
+            let quantum = profile.accounts()[1].account_id();
+            let cold_old = AccountId32::from_bytes([0xa1; 32]);
+            let cold_new = AccountId32::from_bytes([0xb2; 32]);
+            h.service
+                .import_cold_account(cold_old, "旧冷账户")
+                .await
+                .unwrap();
+            h.service
+                .import_cold_account(cold_new, "新冷账户")
+                .await
+                .unwrap();
+            let old = if old_cold { cold_old } else { hot };
+            let target = if new_cold { cold_new } else { quantum };
+            let state = h.profiles.snapshot();
+            let order = std::iter::once(old)
+                .chain(
+                    state
+                        .ordered_account_ids()
+                        .iter()
+                        .copied()
+                        .filter(|id| *id != old),
+                )
+                .collect();
+            *h.profiles.state.lock().unwrap() = WalletState::try_from_catalog_parts(
+                state.revision(),
+                state.profile().cloned(),
+                state.cold_accounts().to_vec(),
+                order,
+                state.next_cold_wallet_index(),
+                None,
+                None,
+                Vec::new(),
+            )
+            .unwrap();
+            let before = h.service.state().await.unwrap();
+            let auth = h.vault.open_calls.load(Ordering::SeqCst);
+            let fixture: serde_json::Value =
+                serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
+            let metadata_bytes = hex::decode(fixture["metadata"].as_str().unwrap()).unwrap();
+            let metadata = crate::system_events::decode_metadata_strict(&metadata_bytes).unwrap();
+            let cid = b"CN583-CTZN2-763721825-2026";
+            let event = Value::named_composite([
+                (
+                    "phase",
+                    Value::unnamed_variant(
+                        "ApplyExtrinsic",
+                        [Value::u128(if case == "wrong_index" { 2 } else { 1 })],
+                    ),
+                ),
+                (
+                    "event",
+                    Value::unnamed_variant(
+                        "CitizenIdentity",
+                        [Value::named_variant(
+                            "CidAccountIdRebound",
+                            [
+                                (
+                                    "cid_number",
+                                    Value::from_bytes(if case == "wrong_cid" {
+                                        b"other".as_slice()
+                                    } else {
+                                        cid.as_slice()
+                                    }),
+                                ),
+                                (
+                                    "previous_account_id",
+                                    Value::from_bytes(if case == "wrong_previous" {
+                                        target.as_bytes()
+                                    } else {
+                                        old.as_bytes()
+                                    }),
+                                ),
+                                (
+                                    "new_account_id",
+                                    Value::from_bytes(if case == "wrong_target" {
+                                        old.as_bytes()
+                                    } else {
+                                        target.as_bytes()
+                                    }),
+                                ),
+                                (
+                                    "binding_revision",
+                                    Value::u128(if case == "wrong_revision" { 3 } else { 2 }),
+                                ),
+                            ],
+                        )],
+                    ),
+                ),
+                ("topics", Value::unnamed_composite(Vec::<Value>::new())),
+            ]);
+            let mut values = HashMap::new();
+            values.insert(
+                crate::system_events::SYSTEM_EVENTS_STORAGE_KEY.to_vec(),
+                encoded(
+                    &metadata,
+                    "Events",
+                    Value::unnamed_composite(if case == "missing_event" {
+                        vec![]
+                    } else {
+                        vec![event]
+                    }),
+                ),
+            );
+            values.insert(
+                key(&metadata, "AccountIdByCid", cid),
+                encoded(
+                    &metadata,
+                    "AccountIdByCid",
+                    Value::from_bytes(if case == "bad_owner" {
+                        old.as_bytes()
+                    } else {
+                        target.as_bytes()
+                    }),
+                ),
+            );
+            values.insert(
+                key(&metadata, "BindingRevisionByCid", cid),
+                encoded(&metadata, "BindingRevisionByCid", Value::u128(2)),
+            );
+            values.insert(
+                key(&metadata, "CidByAccountId", target.as_bytes()),
+                encoded(
+                    &metadata,
+                    "CidByAccountId",
+                    Value::from_bytes(if case == "bad_reverse" {
+                        b"other".as_slice()
+                    } else {
+                        cid.as_slice()
+                    }),
+                ),
+            );
+            values.insert(
+                key(&metadata, "CidRegistry", cid),
+                encoded(
+                    &metadata,
+                    "CidRegistry",
+                    Value::named_composite([
+                        ("registrar_cid_number", Value::from_bytes(b"SELF")),
+                        ("commitment", Value::from_bytes([0u8; 32])),
+                        ("residence_province_code", Value::from_bytes([])),
+                        ("residence_city_code", Value::from_bytes([])),
+                        (
+                            "status",
+                            Value::unnamed_variant(
+                                if case == "inactive" {
+                                    "Revoked"
+                                } else {
+                                    "Active"
+                                },
+                                Vec::<Value>::new(),
+                            ),
+                        ),
+                        ("registered_at", Value::u128(1)),
+                        (
+                            "revoked_at",
+                            Value::unnamed_variant("None", Vec::<Value>::new()),
+                        ),
+                    ]),
+                ),
+            );
+            if case == "catalog_race" {
+                h.service
+                    .rename_wallet(before.revision(), 0, "并发改名")
+                    .await
+                    .unwrap();
+            }
+            if case == "write_fail" {
+                *h.profiles.next_fault.lock().unwrap() = WriteFault::BeforeWrite;
+            }
+            if case == "write_after_fail" {
+                h.profiles.fail_next_after_write();
+            }
+            let unchanged = h.profiles.snapshot();
+            let block = FinalizedBlockRef::from_parts(Hash32::from_bytes([9; 32]), 42);
+            let chain = Arc::new(Chain {
+                block,
+                metadata: metadata_bytes,
+                values,
+                wrong_runtime: case == "wrong_runtime",
+            });
+            let engine = crate::CitizenEngine::new(
+                Some(chain),
+                Some(h.vault.clone()),
+                None,
+                None,
+                Some(h.profiles.clone()),
+                None,
+                Some(h.secrets.clone()),
+            );
+            let completed = TransactionExecutionCompleted::new(
+                TransactionExecutionId::try_new([1; 16]).unwrap(),
+                target,
+                Hash32::from_bytes([2; 32]),
+                Hash32::from_bytes([3; 32]),
+                TransactionExecutionResolution::Finalized(ExecutionConclusion::Success {
+                    block: block.verified(),
+                    extrinsic_index: 1,
+                }),
+            );
+            let result = engine
+                .finish_identity_rebind(&before, cid, 1, &completed, || {
+                    if case == "cancelled" {
+                        Err(EngineError::Cancelled)
+                    } else {
+                        Ok(())
+                    }
+                })
+                .await;
+            if case == "ok" || case == "write_after_fail" {
+                result.unwrap();
+                let committed = h.profiles.snapshot();
+                assert_eq!(committed.default_account_id(), Some(target));
+                let expected = std::iter::once(target)
+                    .chain(
+                        before
+                            .ordered_account_ids()
+                            .iter()
+                            .copied()
+                            .filter(|id| *id != target),
+                    )
+                    .collect::<Vec<_>>();
+                assert_eq!(committed.ordered_account_ids(), expected);
+                assert_eq!(committed.revision(), before.revision() + 1);
+                assert!(engine
+                    .finish_identity_rebind(&before, cid, 1, &completed, || Ok(()))
+                    .await
+                    .is_err());
+                assert_eq!(h.profiles.snapshot(), committed, "重复完成不能再次改目录");
+            } else {
+                assert!(result.is_err(), "{case}");
+                assert_eq!(h.profiles.snapshot(), unchanged, "{case}");
+            }
+            assert_eq!(
+                h.vault.open_calls.load(Ordering::SeqCst),
+                auth,
+                "默认同步不能触发第三次认证"
+            );
+        });
+    }
 }

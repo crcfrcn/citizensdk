@@ -1,3 +1,5 @@
+// 使用图像库编解码二维码，校验亮度跨度和输出容量并保留原始字节。
+
 #include "citizensdk_qr_image.h"
 
 #include <ZXingC.h>

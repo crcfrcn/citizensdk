@@ -1,3 +1,5 @@
+//! 接纳并执行异步Core请求，管理取消、资源专用队列及完成事件。
+
 use std::cell::Cell;
 use std::sync::mpsc;
 use std::sync::Arc;

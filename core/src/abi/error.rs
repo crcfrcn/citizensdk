@@ -1,3 +1,5 @@
+//! 捕获SDK边界panic并返回固定公开错误，管理线程内最后错误。
+
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Once;

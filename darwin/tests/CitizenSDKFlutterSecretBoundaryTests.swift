@@ -1,3 +1,5 @@
+// 验证Apple Flutter秘密资源仅通过受控接口跨界。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证通道序号及回调内销毁的忙碌拒绝。
+
 #![allow(unsafe_code)]
 // 此黑盒控制夹具组合 chain；无链查看回调反调和关闭排空在组合测试覆盖。
 #![cfg(feature = "chain")]

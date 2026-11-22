@@ -1,3 +1,5 @@
+// 将Flutter方法和事件通道接入同一Android SDK实例。
+
 package org.citizen.sdk
 
 import androidx.fragment.app.FragmentActivity

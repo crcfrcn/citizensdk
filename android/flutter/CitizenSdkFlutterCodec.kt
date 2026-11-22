@@ -1,3 +1,5 @@
+// 编解码Flutter调用外壳及资源参数，严格校验类型和接口形状。
+
 package org.citizen.sdk
 
 /** 平台仅解资源与UI输入；业务参数和结果直接使用同一Rust C ABI。 */

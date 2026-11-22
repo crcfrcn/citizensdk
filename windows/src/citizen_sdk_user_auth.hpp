@@ -1,3 +1,5 @@
+// 声明Windows设备凭据及独立生物认证请求和结果接口。
+
 #ifndef CITIZENSDK_WINDOWS_USER_AUTH_HPP
 #define CITIZENSDK_WINDOWS_USER_AUTH_HPP
 

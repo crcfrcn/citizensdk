@@ -1,3 +1,5 @@
+//! 验证取消信号唤醒正在等待provider的交易执行。
+
 use std::future::Future;
 use std::task::Context;
 

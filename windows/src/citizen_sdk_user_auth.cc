@@ -1,3 +1,5 @@
+// 管理Windows用户凭据和认证回调的校验、取消与完成所有权。
+
 #include "citizen_sdk_user_auth.hpp"
 
 #include <utility>

@@ -1,12 +1,12 @@
+//! 管理二维码签名会话，核对账户、期限及真实签名后原子消费响应。
+
 use std::collections::BTreeMap;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-
-
+use crate::types::AccountSignature;
 use crate::types::SigningTransform;
 use crate::types::Sr25519PublicKey;
-use crate::types::AccountSignature;
 
 use crate::qr::QrError;
 use crate::qr::QrErrorCode;
@@ -146,7 +146,7 @@ impl<C: QrClock> QrSessionStore<C> {
                 "同一实例的有效二维码签名会话超过上限",
             ));
         }
-        let request_id = crate::qr::codec::new_request_id("")?;
+        let request_id = crate::qr::new_request_id("")?;
         let request = SignRequest {
             request_id: request_id.clone(),
             expires_at,
@@ -204,16 +204,17 @@ impl<C: QrClock> QrSessionStore<C> {
             ));
         }
         let request = session.request.clone();
-        let signer_account_id = crate::types::AccountId32::from_bytes(*response.signer_public_key.as_bytes());
-        let message = crate::types::signing_message_for_account(signer_account_id, &request.review_payload, &session.transform, response.signature.algorithm())
-            .map_err(|_| QrError::new(QrErrorCode::InvalidField, "签名 transform 或载荷无效"))?;
+        let signer_account_id =
+            crate::types::AccountId32::from_bytes(*response.signer_public_key.as_bytes());
+        let message = crate::types::signing_message_for_account(
+            signer_account_id,
+            &request.review_payload,
+            &session.transform,
+            response.signature.algorithm(),
+        )
+        .map_err(|_| QrError::new(QrErrorCode::InvalidField, "签名 transform 或载荷无效"))?;
         let verified = crate::sign::verify(signer_account_id, message, response.signature.clone())
-            .map_err(|_| {
-                QrError::new(
-                    QrErrorCode::InvalidSignature,
-                    "签名响应无法通过账户验签",
-                )
-            })?;
+            .map_err(|_| QrError::new(QrErrorCode::InvalidSignature, "签名响应无法通过账户验签"))?;
         if !verified {
             return Err(QrError::new(
                 QrErrorCode::InvalidSignature,
@@ -246,8 +247,16 @@ impl<C: QrClock> QrSessionStore<C> {
 
     /// 仅在持有所属会话锁并刚完成验签后使用。
     pub(crate) fn consume_verified(&mut self, request_id: &str) -> Result<(), QrError> {
-        let session = self.sessions.get_mut(request_id).ok_or_else(|| QrError::new(QrErrorCode::MismatchedRequest, "missing QR session"))?;
-        if session.consumed { return Err(QrError::new(QrErrorCode::AlreadyConsumed, "QR session consumed")) }
+        let session = self
+            .sessions
+            .get_mut(request_id)
+            .ok_or_else(|| QrError::new(QrErrorCode::MismatchedRequest, "missing QR session"))?;
+        if session.consumed {
+            return Err(QrError::new(
+                QrErrorCode::AlreadyConsumed,
+                "QR session consumed",
+            ));
+        }
         session.consumed = true;
         Ok(())
     }

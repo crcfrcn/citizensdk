@@ -1,3 +1,5 @@
+//! 验证公开C接口及宿主、SQLite和结果结构的固定布局与常量。
+
 use std::mem::align_of;
 use std::mem::offset_of;
 use std::mem::size_of;

@@ -1,4 +1,5 @@
-# 所有平台使用同一产品版本；只接受当前版本及同一 ABI major 内的较旧请求。
+# 判定Windows SDK安装版本对请求版本的兼容性及准确匹配。
+
 set(PACKAGE_VERSION "@PROJECT_VERSION@")
 if(NOT PACKAGE_FIND_VERSION)
   set(PACKAGE_VERSION_COMPATIBLE TRUE)

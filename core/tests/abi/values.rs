@@ -1,3 +1,5 @@
+//! 验证完成结果所有权及不借用指针的状态通知。
+
 use super::*;
 use std::sync::mpsc;
 unsafe extern "C" fn native(context: *mut c_void, event: *const CitizenSdkEvent) {

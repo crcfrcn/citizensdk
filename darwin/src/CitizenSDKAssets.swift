@@ -1,3 +1,5 @@
+// 从正式Apple框架Bundle定位唯一链信任资产。
+
 import Foundation
 
 internal struct CitizenSDKAssets {

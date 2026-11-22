@@ -1,3 +1,5 @@
+// 管理Linux设备凭据和生物认证回调，保持真实完成与取消所有权。
+
 #include "citizen_sdk_user_auth.hpp"
 
 #include <utility>

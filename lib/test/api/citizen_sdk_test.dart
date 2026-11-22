@@ -1,5 +1,8 @@
+// 验证SDK请求取消、精确金额及EVM付款编码和证据核验。
+
 // 主包测试使用声明的dev_dependencies。
 // ignore_for_file: depend_on_referenced_packages
+
 import 'dart:async';
 import 'dart:typed_data';
 

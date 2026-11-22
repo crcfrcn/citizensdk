@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 声明共用桌面宿主及二维码捕获、窗口父级和平台资源接口。
+
 #ifndef CITIZENSDK_HOST_HPP
 #define CITIZENSDK_HOST_HPP
 

@@ -1,3 +1,5 @@
+//! 验证metadata驱动的账户地址、存储、调用及常量编解码。
+
 use super::*;
 use crate::system_events::decode_metadata_strict;
 
@@ -270,7 +272,7 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
     let cid = b"CN001-TEST-2026".to_vec();
     let cid_bytes = cid.encode();
     let mut expected = get_address_root_bytes(&dynamic("CitizenIdentity", "AccountIdByCid", ()));
-    expected.extend_from_slice(&crate::types::account::blake2b::<16>(&cid_bytes));
+    expected.extend_from_slice(&crate::types::blake2b::<16>(&cid_bytes));
     expected.extend_from_slice(&cid_bytes);
     assert_eq!(
         codec(json!({
@@ -284,7 +286,7 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
     let id = 42_u128;
     let mut prefix = get_address_root_bytes(&dynamic("InternalVote", "InternalVotesByTicket", ()));
     let id_bytes = id.to_le_bytes();
-    prefix.extend_from_slice(&crate::types::account::blake2b::<16>(&id_bytes));
+    prefix.extend_from_slice(&crate::types::blake2b::<16>(&id_bytes));
     prefix.extend_from_slice(&id_bytes);
     assert_eq!(
         codec(json!({

@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 实现桌面平台受控资源创建、借用和生命周期释放。
+
 #include "citizen_sdk_qr_camera.hpp"
 #include "host.hpp"
 

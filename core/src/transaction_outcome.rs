@@ -1,4 +1,6 @@
-use crate::types::account::blake2b;
+//! 核验交易证据与原签名交易摘要，生成可信执行结论。
+
+use crate::types::blake2b;
 use crate::types::DispatchFailure;
 use crate::types::ExecutionConclusion;
 use crate::types::Hash32;

@@ -1,3 +1,5 @@
+//! 验证Engine历史、Runtime缓存和会话的资源数量及所有权基线。
+
 #![cfg(feature = "chain")]
 
 //! Repeatable, assertion-based resource baseline for the public Engine surface.

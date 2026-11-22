@@ -1,8 +1,4 @@
-//! Product-independent transaction preparation contracts.
-//!
-//! Applications own the meaning and SCALE encoding of every opaque RuntimeCall. This module
-//! only bounds those bytes and exposes a non-sensitive summary of one Engine-owned preparation;
-//! signer messages, signatures and extrinsic templates never cross the public contract.
+//! 定义交易准备身份、执行关联和公开摘要，限制调用字节及准备资源。
 
 use crate::types::blake2_256;
 use crate::types::AccountId32;

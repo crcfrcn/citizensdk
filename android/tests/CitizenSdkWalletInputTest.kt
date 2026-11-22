@@ -1,3 +1,5 @@
+// 验证真实Core钱包输入原因、公开词表及派生序号边界。
+
 package org.citizen.sdk
 
 import androidx.test.core.app.ApplicationProvider

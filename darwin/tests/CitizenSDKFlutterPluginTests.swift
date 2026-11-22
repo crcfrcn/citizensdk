@@ -1,3 +1,5 @@
+// 验证Flutter插件主线程隔离、同步入口及卸载后的事件撤销。
+
 #if os(iOS)
 import Flutter
 #elseif os(macOS)

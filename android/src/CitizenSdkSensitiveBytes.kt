@@ -1,3 +1,5 @@
+// 保存可清零的敏感字节，限制复制和关闭后的访问。
+
 @file:kotlin.jvm.JvmSynthetic
 
 package org.citizen.sdk.internal

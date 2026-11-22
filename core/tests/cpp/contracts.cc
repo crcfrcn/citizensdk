@@ -1,3 +1,5 @@
+// 通过同一C接口验证C++句柄、用途拒绝及失败时输出保持。
+
 #include "citizensdk.h"
 #include <algorithm>
 #include <array>

@@ -1,4 +1,4 @@
-//! Product-independent immortal signing payload and signed-build contracts.
+//! 验证永久交易签名载荷的账户、nonce、Runtime和链身份绑定。
 
 use citizensdk::types::AccountId32;
 use citizensdk::types::AccountNonce;

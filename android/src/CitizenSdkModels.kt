@@ -1,3 +1,5 @@
+// 定义Android公开SDK数据模型及钱包输入校验结果。
+
 package org.citizen.sdk
 
 import java.math.BigInteger

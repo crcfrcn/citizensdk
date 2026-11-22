@@ -1,3 +1,5 @@
+// 声明Flutter官方注册器使用的Windows插件注册入口。
+
 #ifndef FLUTTER_PLUGIN_CITIZEN_SDK_PLUGIN_H_
 #define FLUTTER_PLUGIN_CITIZEN_SDK_PLUGIN_H_
 

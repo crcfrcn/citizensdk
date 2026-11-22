@@ -1,3 +1,5 @@
+// 以共用SQLite适配连接Rust存储，封装平台金库记录访问。
+
 #ifndef CITIZENSDK_SQLITE_HPP
 #define CITIZENSDK_SQLITE_HPP
 #include "citizensdk.h"

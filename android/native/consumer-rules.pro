@@ -1,6 +1,5 @@
-# CitizenSDK resolves JNI entry points by exact class and method names. The
-# public facade may be optimized, but its private JNI boundary must not be
-# renamed or removed.
+# 保留JNI、系统证书验证器及原生返回模型所需的准确类名和成员。
+
 -keep class org.citizen.sdk.internal.Bindings { *; }
 -keep class org.citizen.sdk.internal.CitizenSdkHostServices { *; }
 -keep class org.citizen.sdk.internal.CitizenSdkHardwareVault$VaultFailure { *; }

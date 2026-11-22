@@ -1,3 +1,5 @@
+// 按SDK记录身份和代际构造硬件金库别名。
+
 package org.citizen.sdk.internal
 
 import java.security.MessageDigest

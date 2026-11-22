@@ -1,3 +1,5 @@
+//! 验证本地钱包修改与链监视的接纳、暂停所有权及停止状态。
+
 use super::*;
 
 #[cfg(not(feature = "chain"))]

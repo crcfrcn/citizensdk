@@ -1,3 +1,5 @@
+// 以合成字节验证敏感缓冲区借用、复制和清零。
+
 import Foundation
 import XCTest
 @testable import CitizenSDK

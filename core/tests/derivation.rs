@@ -1,7 +1,4 @@
-//! 已验证 Dart 钱包向量与 Rust 无根热钱包派生边界的差分测试。
-//!
-//! 测试直接读取仓库内冻结 JSON 金标，防止助记词 password 规范、BIP-39、`//index`
-//! junction、sr25519 公钥或 CitizenChain SS58 任一环节静默漂移。
+//! 以冻结向量核对BIP39密码、硬派生、公钥和SS58结果。
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

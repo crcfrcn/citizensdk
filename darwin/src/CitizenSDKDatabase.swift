@@ -1,3 +1,5 @@
+// 实现Apple数据库资源和系统文件锁，将记录及事务策略交由Rust。
+
 import Foundation
 import SQLite3
 import Darwin

@@ -1,3 +1,5 @@
+//! 验证节点选择、链身份、安全传输及启动panic的收敛。
+
 use super::*;
 
 const VALID_SPEC: &str = r#"{

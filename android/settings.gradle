@@ -1,6 +1,5 @@
-// 仅独立AAR读取本settings；Flutter宿主直接引入库模块，沿用宿主的工具选择。
-// 由任务 settings 应用本脚本；插件统一经下面的 buildscript classpath 装载。
-// 不在只读源码目录登记可写 Gradle 工程，也不另存一份 SDK 配置。
+// 配置独立AAR原生模块和任务工程，统一Gradle插件解析。
+
 def sdkSourceValue = System.getenv('CITIZENSDK_SOURCE_DIR')
 def sdkWorkValue = System.getenv('CITIZENSDK_WORK_DIR')
 if (!sdkSourceValue || !sdkWorkValue || !new File(sdkSourceValue).isAbsolute() || !new File(sdkWorkValue).isAbsolute()) {

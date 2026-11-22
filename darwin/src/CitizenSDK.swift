@@ -1,3 +1,5 @@
+// 提供Apple公开SDK接口，协调Core实例、请求、回调和销毁排空。
+
 import Foundation
 internal import CitizenSDKInternal
 

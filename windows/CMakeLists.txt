@@ -1,3 +1,5 @@
+# 构建并安装Windows Host和Core，链接系统CNG及Win32能力。
+
 cmake_minimum_required(VERSION 3.24)
 project(CitizenSDKHost VERSION 2.0.0 LANGUAGES C CXX)
 

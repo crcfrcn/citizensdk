@@ -1,3 +1,5 @@
+// 验证SDK生命周期无需自有钱包或二维码Activity。
+
 package org.citizen.sdk
 
 import android.content.pm.PackageManager

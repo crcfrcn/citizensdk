@@ -1,3 +1,5 @@
+//! 验证宿主存储作业执行次数、错误优先级、单元格复制及回调边界。
+
 use super::*;
 unsafe extern "C" fn once(_: *mut c_void, job: Job, context: *mut c_void) -> i32 {
     job(context)

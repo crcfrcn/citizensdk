@@ -1,3 +1,5 @@
+// 以Android数据库实现Core宿主存储，管理事务、连接锁和失效连接。
+
 package org.citizen.sdk.internal
 
 import android.database.Cursor

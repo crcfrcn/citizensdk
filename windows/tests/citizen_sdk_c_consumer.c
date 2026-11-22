@@ -1,5 +1,5 @@
-/* 沿用 Linux 已安装消费者的公开生命周期合同，路径/等待改用 Windows API。
- * 纯 C 消费者只包含安装后的公开 Host/Core 头，不借用私有 helper。 */
+// 以纯C安装消费者验证Windows宿主和Core公开生命周期。
+
 #include <windows.h>
 #include <strsafe.h>
 

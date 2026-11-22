@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 实现桌面宿主请求登记、资源租用及Core实例生命周期协调。
+
 #include "citizensdk_host.h"
 
 #include <algorithm>

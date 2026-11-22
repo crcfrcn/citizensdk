@@ -1,3 +1,5 @@
+// 定义签名载荷、转换、意图和冷热签完成结果。
+
 part of '../citizen_sdk.dart';
 
 /// 公民身份上链确认(对齐 OP_SIGN_CITIZEN_IDENTITY)。

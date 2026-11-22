@@ -1,3 +1,5 @@
+# 生成Linux SDK安装包的Core、Host及资源位置和依赖目标声明。
+
 @PACKAGE_INIT@
 
 set(_CITIZENSDK_PACKAGE_PLATFORM "@CITIZENSDK_PLATFORM@")

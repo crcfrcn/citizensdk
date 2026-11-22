@@ -1,3 +1,5 @@
+// 校验Flutter资源调用的外壳和参数，并转换平台响应。
+
 import CoreFoundation
 import Foundation
 import CitizenSDK

@@ -1,3 +1,5 @@
+// 定义桌面Core宿主配置和凭据挑战，传递实际资源与模块选择。
+
 #ifndef CITIZENSDK_ENVIRONMENT_HPP
 #define CITIZENSDK_ENVIRONMENT_HPP
 

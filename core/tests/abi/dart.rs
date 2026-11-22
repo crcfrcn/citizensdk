@@ -1,3 +1,5 @@
+//! 验证Dart事件来源的实例隔离和错误后的作用域恢复。
+
 use super::*;
 #[test]
 fn origin_is_owner_scoped_and_restored_after_errors() {

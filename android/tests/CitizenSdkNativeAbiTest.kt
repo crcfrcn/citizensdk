@@ -1,3 +1,5 @@
+// 通过真实JNI和Core验证模块接纳、资源归属、事件及安全关闭。
+
 package org.citizen.sdk
 
 import androidx.test.core.app.ApplicationProvider

@@ -1,3 +1,5 @@
+// 以C11编译并核对SDK公开头文件及ABI声明。
+
 #include "citizensdk.h"
 #include <stddef.h>
 

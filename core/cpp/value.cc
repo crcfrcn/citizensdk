@@ -1,4 +1,5 @@
-// 两平台共同编译这份真实实现；条件块只保留系统调用差异。
+// 实现桌面公开值、Flutter参数和Core结果的编码转换。
+
 #include "value.hpp"
 #include <algorithm>
 #include <array>

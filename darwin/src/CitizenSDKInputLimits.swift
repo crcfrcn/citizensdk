@@ -1,3 +1,5 @@
+// 校验Apple公开接口的批量大小、派生序号和输入容量边界。
+
 import Foundation
 
 internal enum CitizenSDKInputLimits {

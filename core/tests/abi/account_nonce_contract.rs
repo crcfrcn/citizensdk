@@ -1,5 +1,4 @@
-//! smoldot `AccountNonceSource` 的公开生命周期与准确best接纳边界。
-//! 块接纳与结果核验的行为回归分别由上游扩展和provider自身单元测试执行。
+//! 验证类型化账户nonce读取的生命周期和准确best锚点要求。
 
 use crate::chain::SmoldotProviderConfig;
 use crate::chain::SmoldotVerifiedChainClient;

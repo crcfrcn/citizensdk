@@ -1,3 +1,5 @@
+// 声明Linux随包链资产的持有和读取接口。
+
 #ifndef CITIZENSDK_LINUX_ASSETS_HPP
 #define CITIZENSDK_LINUX_ASSETS_HPP
 

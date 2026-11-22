@@ -1,3 +1,5 @@
+// 以C++17编译并核对SDK公开头文件及ABI声明。
+
 #include <cstddef>
 #include <type_traits>
 

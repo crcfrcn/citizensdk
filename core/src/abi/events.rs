@@ -1,3 +1,5 @@
+//! 调度Core事件和回调，为已接纳请求预留有界完成队列。
+
 use std::ffi::c_void;
 use std::sync::mpsc;
 use std::sync::Arc;

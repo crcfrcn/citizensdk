@@ -1,3 +1,5 @@
+// 向Core提供Android存储和金库宿主服务，并维持请求线程边界。
+
 @file:kotlin.jvm.JvmSynthetic
 
 package org.citizen.sdk.internal

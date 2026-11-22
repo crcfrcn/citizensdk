@@ -1,4 +1,5 @@
-# 本文件是现有构建器的安装后验收入口，不创建另一套 Core/Host 构建。
+# 以安装后的公开库编译并运行Linux C和C++消费者。
+
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CITIZENSDK_CONSUMER_PREFIX "" CACHE PATH "Exact current CitizenSDK installation prefix")

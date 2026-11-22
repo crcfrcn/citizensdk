@@ -1,3 +1,5 @@
+# 装配Linux宿主、Flutter和平台资源测试及安装消费者验收。
+
 cmake_minimum_required(VERSION 3.24)
 
 # 独立消费者只从本轮安装前缀取得公开头与双库；提前返回，绝不落入

@@ -1,3 +1,5 @@
+//! 验证能力探测完整性、依赖关闭、显式原因及语义修订。
+
 use citizensdk::resolve_capabilities;
 use citizensdk::types::CapabilityName;
 use citizensdk::types::CapabilityReason;

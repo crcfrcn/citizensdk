@@ -1,3 +1,5 @@
+// 验证预览旋转、会话诊断及停止失败时的实例和错误保留。
+
 package org.citizen.sdk
 
 import org.junit.Assert.assertFalse

@@ -1,3 +1,5 @@
+// 提供Apple SQLite连接及文件保护，将耐久和CAS规则交由Rust。
+
 import Foundation
 import SQLite3
 

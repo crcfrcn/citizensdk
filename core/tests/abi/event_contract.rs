@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证每个已接纳请求在分发线程完成一次。
+
 #![allow(unsafe_code)]
 // 本文件用链读取请求验证事件合同；无链事件/查看排空由内部组合运行测试覆盖。
 #![cfg(feature = "chain")]

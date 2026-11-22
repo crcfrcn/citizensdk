@@ -1,3 +1,5 @@
+// 调用真实Core验证钱包纯输入校验、公开词表和派生序号。
+
 import XCTest
 @testable import CitizenSDK
 

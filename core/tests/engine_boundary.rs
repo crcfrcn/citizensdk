@@ -1,3 +1,5 @@
+//! 验证Engine的模块组合、链状态持久化及依赖失败边界。
+
 #![cfg(feature = "chain")]
 
 use std::sync::atomic::AtomicUsize;

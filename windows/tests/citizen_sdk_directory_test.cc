@@ -1,4 +1,5 @@
-// Windows 存储测试只创建中央测试根内的对象，不修改用户目录 ACL。
+// 在独占测试目录验证Windows ACL、链接拒绝和安全路径访问。
+
 #include "citizen_sdk_directory.hpp"
 #include "citizen_sdk_test_support.hpp"
 

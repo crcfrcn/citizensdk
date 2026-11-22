@@ -1,3 +1,5 @@
+// 验证Linux Flutter通道的敏感输入和资源边界。
+
 #include <cassert>
 #include "value.hpp"
 namespace csf=citizen_sdk::flutter;

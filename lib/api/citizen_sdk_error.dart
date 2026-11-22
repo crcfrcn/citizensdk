@@ -1,3 +1,5 @@
+// 定义Dart公开错误、通用失败阶段和安全诊断数据。
+
 part of '../citizen_sdk.dart';
 
 /// 与 CitizenSDK C ABI 2 一一对应的稳定错误分类。

@@ -1,16 +1,15 @@
 //! 金库代际、永久墓碑和硬件对象身份；不执行硬件密钥或认证动作。
-use crate::store::error::error;
-use crate::store::error::integrity;
-use crate::store::error::invalid;
-use crate::store::key;
-use crate::store::secure::Format;
-use crate::store::secure::SecureStore;
-use crate::store::sqlite::transaction;
-use crate::store::sqlite::transaction_recover;
-use crate::store::sqlite::Connection;
-use crate::store::sqlite::Database;
-use crate::store::sqlite::Row;
-use crate::store::sqlite::Value;
+use crate::store::error;
+use crate::store::integrity;
+use crate::store::invalid;
+use crate::store::transaction;
+use crate::store::transaction_recover;
+use crate::store::Connection;
+use crate::store::Database;
+use crate::store::Format;
+use crate::store::Row;
+use crate::store::SecureStore;
+use crate::store::Value;
 use crate::types::ContractErrorCode as Code;
 use crate::types::ContractResult;
 use crate::types::VaultGeneration;
@@ -80,7 +79,11 @@ fn valid(format: Format, key: Key, value: &Object) -> bool {
                 && value.salt.len() == 16
         }
         Format::Cng => {
-            value.key_name == format!("citizensdk.{}", key::hex(key.generation.as_bytes()))
+            value.key_name
+                == format!(
+                    "citizensdk.{}",
+                    crate::store::hex(key.generation.as_bytes())
+                )
                 && (281..=288).contains(&value.public.len())
                 && value.private.is_empty()
                 && (1..=1024).contains(&value.name.len())
@@ -104,7 +107,10 @@ fn object(conn: &mut dyn Connection, format: Format, key: Key) -> ContractResult
     };
     let value = if format == Format::Cng {
         Object {
-            key_name: format!("citizensdk.{}", key::hex(key.generation.as_bytes())),
+            key_name: format!(
+                "citizensdk.{}",
+                crate::store::hex(key.generation.as_bytes())
+            ),
             public: row.bytes(0, 288)?.to_vec(),
             private: vec![],
             name: row.bytes(1, 1024)?.to_vec(),

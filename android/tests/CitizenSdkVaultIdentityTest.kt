@@ -1,3 +1,5 @@
+// 验证金库别名的SDK作用域及准确代际隔离。
+
 package org.citizen.sdk.internal
 
 import org.junit.Assert.assertEquals

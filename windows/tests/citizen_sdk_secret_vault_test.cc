@@ -1,4 +1,5 @@
-// 使用真实 VaultStore 与生产 Vault 状态机；替身仅取代 TPM/交互，不冒充硬件验收。
+// 以真实Rust仓储和生产状态机验证金库代际、跨进程锁及退役。
+
 #include <windows.h>
 #include <bcrypt.h>
 #include <algorithm>

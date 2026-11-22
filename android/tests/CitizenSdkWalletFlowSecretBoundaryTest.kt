@@ -1,3 +1,5 @@
+// 验证秘密接收撤销、迟到交付及受控输入和恢复资源释放。
+
 package org.citizen.sdk
 
 import java.nio.ByteBuffer

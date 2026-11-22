@@ -1,3 +1,5 @@
+// 通过CameraX采集二维码，转换亮度和预览方向并管理捕获资源。
+
 package org.citizen.sdk
 
 import android.Manifest

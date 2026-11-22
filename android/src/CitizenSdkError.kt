@@ -1,3 +1,5 @@
+// 定义Android公开错误码及SDK异常。
+
 package org.citizen.sdk
 
 /** Stable error vocabulary shared with `citizensdk_error_code_t`. */

@@ -1,3 +1,5 @@
+# 连接Android JNI桥、Rust Core和二维码图像库。
+
 cmake_minimum_required(VERSION 3.31.6)
 project(citizensdk_jni LANGUAGES CXX)
 

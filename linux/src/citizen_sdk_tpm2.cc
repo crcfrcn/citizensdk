@@ -1,3 +1,5 @@
+// 调用TPM2系统接口管理硬件密钥、加密会话及OAEP封装。
+
 #include "citizen_sdk_tpm2.hpp"
 
 #include <algorithm>

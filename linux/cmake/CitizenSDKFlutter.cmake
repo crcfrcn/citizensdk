@@ -1,5 +1,5 @@
-# Flutter 官方 target 与 ABI 机器字段只在此转换成产品平台名。
-# 本文件不下载、不构建 Core/Host；没有同版安装投影即失败关闭。
+# 将Linux Flutter目标接入同版已安装Host和Core。
+
 if(NOT TARGET flutter)
   message(FATAL_ERROR "CitizenSDK Flutter adapter requires the official flutter target")
 endif()

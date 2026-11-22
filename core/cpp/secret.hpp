@@ -1,3 +1,5 @@
+// 表示钱包公开身份、硬件密封对象及可清零的敏感缓冲区。
+
 #ifndef CITIZENSDK_SECRET_HPP
 #define CITIZENSDK_SECRET_HPP
 

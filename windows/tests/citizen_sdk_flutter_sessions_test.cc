@@ -1,3 +1,5 @@
+// 验证Windows Flutter资源的早到完成、编号绑定和接收者关闭。
+
 #include <cassert>
 #include <functional>
 #include <memory>

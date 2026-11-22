@@ -1,3 +1,5 @@
+//! 定义Engine公开错误类别及稳定失败阶段。
+
 use core::fmt;
 
 use crate::types::ContractError;

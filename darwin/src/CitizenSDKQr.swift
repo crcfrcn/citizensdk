@@ -1,3 +1,5 @@
+// 投影Core二维码文档、审阅和签名结果，管理公开受控资源。
+
 import Foundation
 
 

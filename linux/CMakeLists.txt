@@ -1,3 +1,5 @@
+# 构建并安装Linux Host、Core集成和受控平台依赖。
+
 cmake_minimum_required(VERSION 3.24)
 
 project(CitizenSDKHost VERSION 2.0.0 LANGUAGES C CXX)

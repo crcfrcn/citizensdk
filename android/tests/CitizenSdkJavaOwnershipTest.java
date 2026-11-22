@@ -1,3 +1,5 @@
+// 验证Java操作仅公开关联和取消能力，不泄漏Core句柄或秘密入口。
+
 package org.citizen.sdk;
 
 import static org.junit.Assert.assertNotNull;

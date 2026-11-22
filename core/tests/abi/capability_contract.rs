@@ -1,4 +1,5 @@
-// This black-box test intentionally crosses the exported raw-pointer ABI.
+//! 通过公开C接口验证真实能力快照及回调重入的接纳边界。
+
 #![allow(unsafe_code)]
 #![cfg(all(feature = "chain", feature = "transactions"))]
 

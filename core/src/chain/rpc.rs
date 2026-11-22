@@ -1,3 +1,5 @@
+//! 以固定方法白名单传输smoldot内部JSON-RPC，关联响应及最终块订阅。
+
 #![forbid(unsafe_code)]
 //! crate 私有的 smoldot JSON-RPC allowlist 运输层。
 //!

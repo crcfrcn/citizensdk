@@ -1,3 +1,5 @@
+// 声明Linux硬件金库的封装、解封、授权及取消接口。
+
 #ifndef CITIZENSDK_LINUX_SECRET_VAULT_HPP
 #define CITIZENSDK_LINUX_SECRET_VAULT_HPP
 

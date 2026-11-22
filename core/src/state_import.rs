@@ -1,3 +1,5 @@
+//! 按随包链身份和生命周期校验轻节点数据库导入、启动及导出。
+
 use crate::types::ChainIdentity;
 use crate::types::ExportedChainState;
 use crate::types::FinalizedBlockRef;

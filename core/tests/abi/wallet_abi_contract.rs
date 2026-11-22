@@ -1,3 +1,5 @@
+//! 验证钱包二维码公开符号、数据布局及秘密跨界限制。
+
 use std::collections::BTreeSet;
 use std::mem::align_of;
 use std::mem::size_of;

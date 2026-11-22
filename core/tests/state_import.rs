@@ -1,3 +1,5 @@
+//! 验证链数据库导入的生命周期、身份、格式及防回退锚点。
+
 use citizensdk::types::ChainIdentity;
 use citizensdk::types::ExportedChainState;
 use citizensdk::types::FinalizedBlockRef;

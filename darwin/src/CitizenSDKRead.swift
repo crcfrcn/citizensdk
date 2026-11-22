@@ -1,3 +1,5 @@
+// 复制并校验Core公开读取结果，构造Apple模型。
+
 import Foundation
 
 /// Decodes retained Core result handles into secret-free Swift value types.

@@ -1,3 +1,5 @@
+// 验证Linux Flutter原生环境的身份、资源路径及模块装配预检。
+
 #include <cassert>
 #include <filesystem>
 #include <fstream>

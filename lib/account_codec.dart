@@ -1,3 +1,5 @@
+// 通过Core校验和转换规范AccountId与公民链SS58地址。
+
 part of 'citizen_sdk.dart';
 
 /// 由公民链 Core 公布的 SS58 前缀。

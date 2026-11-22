@@ -1,3 +1,5 @@
+// 验证Linux Flutter资源参数、枚举和错误编解码边界。
+
 #include <cassert>
 #include <string>
 #include <vector>

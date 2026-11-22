@@ -1,4 +1,7 @@
+// 验证唯一Dart主库的公开接口及第一方源码布局。
+
 // ignore_for_file: depend_on_referenced_packages
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';

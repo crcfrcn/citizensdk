@@ -1,3 +1,5 @@
+//! 依据真实metadata严格遍历System事件并解码交易执行结果。
+
 use subxt_core::config::SubstrateConfig;
 use subxt_core::events::EventDetails;
 use subxt_core::events::Events;

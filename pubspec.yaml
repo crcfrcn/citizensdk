@@ -42,6 +42,8 @@ flutter:
 # 生成配置唯一归本声明；运行dart run ffigen。
 ffigen:
   name: Bindings
+  preamble: |
+    // 将公民SDK公开C接口绑定为Dart FFI类型和原生调用。
   description: '由公民SDK公开C头生成；禁止手工维护签名。'
   output: lib/platform/bind.dart
   headers:

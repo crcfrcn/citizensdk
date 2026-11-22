@@ -1,13 +1,4 @@
-//! Stable CitizenSDK product C ABI.
-//!
-//! Only `citizensdk_*` symbols are exported. All chain work crosses the typed
-//! `CitizenEngine`; arbitrary JSON-RPC, private keys, child mini-secrets and
-//! standalone signed wallet extrinsics are never public. Mnemonic bytes cross
-//! only the explicit import/add-account or prepared-backup functions, while
-//! host vault callbacks can handle only random DEKs and never account secrets.
-
-// Raw pointer validation and symbol export are confined to this audited crate;
-// contracts, Engine and providers continue to forbid unsafe code.
+//! 实现统一产品C ABI，协调模块接纳、生命周期和类型化链操作。
 
 #[cfg(feature = "chain")]
 use std::cell::Cell;
@@ -57,9 +48,9 @@ pub(crate) mod handles;
 pub(crate) mod ownership;
 pub(crate) mod qr_abi;
 pub(crate) mod requests;
-pub use crate::store::sqlite::CitizenSdkSqlValue;
-pub use crate::store::sqlite::CitizenSdkStoreV1;
-pub use crate::store::sqlite::CitizenSdkStoresV1;
+pub use crate::store::CitizenSdkSqlValue;
+pub use crate::store::CitizenSdkStoreV1;
+pub use crate::store::CitizenSdkStoresV1;
 pub(crate) mod transaction_abi;
 pub(crate) mod wallet_abi;
 
@@ -382,7 +373,7 @@ pub unsafe extern "C" fn citizensdk_create(
         let modules = crate::capabilities::validate_modules(modules)?;
         require_output(out_handle, "out_handle")?;
         let options = read_versioned(options, "create options")?;
-        let stores = crate::store::sqlite::Stores::new(config)?;
+        let stores = crate::store::Stores::new(config)?;
         create_instance(&options, modules, stores, out_handle)
     })
 }
@@ -391,7 +382,7 @@ pub unsafe extern "C" fn citizensdk_create(
 pub(crate) unsafe fn create_instance(
     options: &CitizenSdkCreateOptions,
     modules: Modules,
-    store: crate::store::sqlite::Stores,
+    store: crate::store::Stores,
     out_handle: *mut CitizenSdkHandle,
 ) -> FfiResult<()> {
     require_output(out_handle, "out_handle")?;
@@ -1082,7 +1073,7 @@ pub unsafe extern "C" fn citizensdk_hash_extrinsic(
         if bytes.is_empty() {
             return Err(FfiError::invalid("extrinsic is empty"));
         }
-        let hash = crate::types::account::blake2b::<32>(&bytes);
+        let hash = crate::types::blake2b::<32>(&bytes);
         ptr::copy_nonoverlapping(hash.as_ptr(), out_hash_32, hash.len());
         Ok(())
     })

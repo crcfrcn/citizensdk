@@ -1,3 +1,5 @@
+// 验证真实二维码识别、旋转、行跨度、多码和损坏输入。
+
 #include "citizensdk_qr_image.h"
 
 #include <algorithm>

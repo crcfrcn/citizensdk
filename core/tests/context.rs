@@ -1,3 +1,5 @@
+//! 验证Runtime上下文的迟到响应隔离、容量和当前best保留。
+
 use crate::types::ContractErrorCode;
 use crate::types::Hash32;
 use crate::types::RuntimeContext;

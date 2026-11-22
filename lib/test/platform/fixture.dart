@@ -1,4 +1,7 @@
+// 提供真实Core、SQLite和二维码测试会话，仅替换系统资源边界。
+
 // ignore_for_file: depend_on_referenced_packages
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';

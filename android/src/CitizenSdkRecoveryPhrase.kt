@@ -1,3 +1,5 @@
+// 管理恢复词与私钥的受控显示副本和一次性交付。
+
 package org.citizen.sdk
 
 import java.nio.ByteBuffer

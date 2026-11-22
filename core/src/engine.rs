@@ -1,3 +1,5 @@
+//! 组合实例所选链与钱包模块，协调能力、存储、生命周期和受控操作。
+
 use crate::types::SigningTransform;
 use std::collections::HashMap;
 use std::future::Future;
@@ -6,21 +8,22 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::types::store::ChainDatabaseSnapshot;
-use crate::types::store::ChainDatabaseStore;
-use crate::types::store::EncryptedSecretBlobStore;
-use crate::types::store::RuntimeCacheStore;
-use crate::types::store::TransactionHistoryIndex;
-use crate::types::store::TransactionHistoryStore;
-use crate::types::store::WalletProfileStore;
-use crate::types::store::MAX_PERSISTED_RUNTIME_METADATA_BYTES;
 use crate::types::AccountId32;
 use crate::types::AccountNonce;
 use crate::types::AccountNonceSource;
 use crate::types::CapabilityName;
 use crate::types::CapabilityReason;
 use crate::types::CapabilitySnapshot;
+use crate::types::ChainDatabaseSnapshot;
+use crate::types::ChainDatabaseStore;
+use crate::types::EncryptedSecretBlobStore;
+use crate::types::RuntimeCacheStore;
+use crate::types::TransactionHistoryIndex;
+use crate::types::TransactionHistoryStore;
+use crate::types::WalletProfileStore;
+use crate::types::MAX_PERSISTED_RUNTIME_METADATA_BYTES;
 
+use crate::types::AccountSignature;
 use crate::types::ChainSyncStatus;
 use crate::types::ContractError;
 use crate::types::ContractErrorCode;
@@ -40,7 +43,6 @@ use crate::types::SecretVault;
 use crate::types::SignedExtrinsic;
 use crate::types::SigningCompletion;
 use crate::types::SigningIntent;
-use crate::types::AccountSignature;
 use crate::types::StateImportReceipt;
 use crate::types::SubmittedExtrinsic;
 use crate::types::TransactionExecutionCompleted;
@@ -592,10 +594,17 @@ impl CitizenEngine {
         })
     }
 
-    pub fn finalized_block_range(&self, start: u64, end: u64) -> EngineFuture<'_, Vec<FinalizedBlockRef>> {
+    pub fn finalized_block_range(
+        &self,
+        start: u64,
+        end: u64,
+    ) -> EngineFuture<'_, Vec<FinalizedBlockRef>> {
         Box::pin(async move {
             self.require_capabilities(&[CapabilityName::ChainRead])?;
-            self.chain_client()?.get_finalized_blocks_at(start, end).await.map_err(EngineError::from)
+            self.chain_client()?
+                .get_finalized_blocks_at(start, end)
+                .await
+                .map_err(EngineError::from)
         })
     }
 
@@ -810,14 +819,32 @@ impl CitizenEngine {
         })();
         Box::pin(async move {
             let (call, generation, preparation_id, chain_client, nonce_source) = preparation?;
-            let built = build_prepared_transaction(
-                chain_client.as_ref(),
-                nonce_source.as_ref(),
-                preparation_id,
-                generation,
-                source_account_id,
-                call,
-            )
+            let built = async {
+                let mut prepared = build_prepared_transaction(
+                    chain_client.as_ref(),
+                    nonce_source.as_ref(),
+                    preparation_id,
+                    generation,
+                    source_account_id,
+                    call,
+                )
+                .await?;
+                if prepared.rebind_parameters()?.is_some() {
+                    let wallet = self.wallet_state().await?;
+                    if wallet.cleanup_pending()
+                        || wallet.default_account_id().is_none()
+                        || wallet.default_account_id() == Some(source_account_id)
+                        || !wallet.ordered_account_ids().contains(&source_account_id)
+                    {
+                        return Err(EngineError::contract(
+                            ContractErrorCode::Conflict,
+                            "自助换绑必须从当前默认账户切换到另一本机账户",
+                        ));
+                    }
+                    prepared.freeze_rebind_wallet(wallet);
+                }
+                Ok(prepared)
+            }
             .await;
             let prepared = match built {
                 Ok(prepared) => prepared,
@@ -875,6 +902,28 @@ impl CitizenEngine {
                     "transaction preparation 不存在、已取消或已失效",
                 )
             })
+    }
+
+    /// ABI仅为实际自助换绑预留目录事件；普通交易不增加目录读取或事件槽。
+    #[cfg(feature = "chain")]
+    pub(crate) fn transaction_rebind_wallet(
+        &self,
+        id: [u8; 16],
+    ) -> Result<Option<WalletStateSnapshot>, EngineError> {
+        if let Some(wallet) = self
+            .prepared_transactions
+            .lock()
+            .map_err(|_| EngineError::StatePoisoned)?
+            .rebind_wallet(TransactionPreparationId::try_new(id)?)
+        {
+            return Ok(Some(wallet));
+        }
+        Ok(self
+            .transaction_executions
+            .lock()
+            .map_err(|_| EngineError::StatePoisoned)?
+            .get(&TransactionExecutionId::try_new(id)?)
+            .and_then(|execution| execution.prepared.rebind_wallet().cloned()))
     }
 
     /// Atomically consume one preparation and run the generic hot/cold execution closure.
@@ -1089,6 +1138,9 @@ impl CitizenEngine {
         let genesis_hash = prepared.identity().genesis_hash();
         let nonce = prepared.nonce().value();
 
+        let generation = prepared.generation();
+        let rebind = prepared.rebind_parameters()?;
+        let wallet = prepared.rebind_wallet().cloned();
         let build = prepared.complete_with_signature(signature)?;
         let result = persist_submit_and_verify_exact(
             self.chain_client()?.as_ref(),
@@ -1105,11 +1157,185 @@ impl CitizenEngine {
             cancellation,
         )
         .await;
+        let outcome = async {
+            let completed = result?;
+            if let (Some((cid, revision)), Some(wallet)) = (rebind, wallet) {
+                // 冷热共用此收尾；链上成功事实先持久保存，目录失败不能重写为交易失败。
+                if let crate::types::TransactionExecutionResolution::Finalized(
+                    ExecutionConclusion::Success { .. },
+                ) = completed.resolution()
+                {
+                    self.finish_identity_rebind(&wallet, &cid, revision, &completed, || {
+                        if cancellation.is_some_and(TransactionExecutionCancellation::is_cancelled)
+                        {
+                            return Err(EngineError::Cancelled);
+                        }
+                        let state = self.state.lock().map_err(|_| EngineError::StatePoisoned)?;
+                        if state.lifecycle != EngineLifecycle::Running
+                            || state.generation != generation
+                        {
+                            return Err(EngineError::contract(
+                                ContractErrorCode::Conflict,
+                                "换绑收尾已超出原Engine代次",
+                            ));
+                        }
+                        Ok(())
+                    })
+                    .await?;
+                }
+            }
+            Ok(completed)
+        }
+        .await;
+        // 同账户门直到公开目录收尾完成才释放；错误与取消仍按原路径归还。
         self.prepared_transactions
             .lock()
             .map_err(|_| EngineError::StatePoisoned)?
             .finish(source, preparation_id);
-        result
+        outcome
+    }
+
+    /// 同次自助换绑的链上证明是唯一授权；不把任意成功交易或宿主布尔值当作证明。
+    #[cfg(feature = "chain")]
+    pub(crate) async fn finish_identity_rebind(
+        &self,
+        before: &WalletStateSnapshot,
+        cid: &[u8],
+        revision: u64,
+        completed: &TransactionExecutionCompleted,
+        ensure_current: impl Fn() -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        use subxt_core::ext::codec::Decode;
+        let invalid = || {
+            EngineError::contract(
+                ContractErrorCode::Integrity,
+                "链上交易已完成，自助换绑证明不完整；本机默认账户未同步，禁止重发交易",
+            )
+        };
+        ensure_current()?;
+        let crate::types::TransactionExecutionResolution::Finalized(ExecutionConclusion::Success {
+            block,
+            extrinsic_index: index,
+        }) = completed.resolution()
+        else {
+            return Err(invalid());
+        };
+        let (block, index, target) = (*block, *index, completed.source_account_id());
+        let client = self.chain_client()?;
+        let finalized = client
+            .resolve_finalized_block(block.hash(), block.number())
+            .await?;
+        if finalized.verified() != block {
+            return Err(invalid());
+        }
+        let runtime = client.get_finalized_runtime_context_at(finalized).await?;
+        if runtime.block() != block {
+            return Err(invalid());
+        }
+        let raw = client
+            .get_finalized_storage_at(finalized, SYSTEM_EVENTS_STORAGE_KEY.to_vec())
+            .await?
+            .ok_or_else(invalid)?;
+        let decoded = crate::system_events::decode_system_events(runtime.metadata(), &raw)?;
+        let events: serde_json::Value = serde_json::from_slice(&decoded).map_err(|_| invalid())?;
+        let matches = events
+            .as_array()
+            .ok_or_else(invalid)?
+            .iter()
+            .filter(|event| {
+                event["extrinsic_index"].as_u64() == Some(u64::from(index))
+                    && event["pallet"] == "CitizenIdentity"
+                    && event["name"] == "CidAccountIdRebound"
+            })
+            .collect::<Vec<_>>();
+        let [event] = matches.as_slice() else {
+            return Err(invalid());
+        };
+        let bytes = |value: &serde_json::Value| -> Result<Vec<u8>, EngineError> {
+            let mut value = value;
+            while let Some(array) = value
+                .as_array()
+                .filter(|array| array.len() == 1 && array[0].is_array())
+            {
+                value = &array[0];
+            }
+            value
+                .as_array()
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|item| {
+                    item.as_str()
+                        .and_then(|s| s.parse::<u8>().ok())
+                        .ok_or_else(invalid)
+                })
+                .collect()
+        };
+        let previous = before.default_account_id().ok_or_else(invalid)?;
+        let fields = &event["fields"];
+        if bytes(&fields["cid_number"])? != cid
+            || bytes(&fields["previous_account_id"])? != previous.as_bytes()
+            || bytes(&fields["new_account_id"])? != target.as_bytes()
+            || fields["binding_revision"]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                != revision.checked_add(1)
+        {
+            return Err(invalid());
+        }
+        // 同一精确块末态再核对双向绑定，避免块内后续交易已将该CID再次换走。
+        let metadata = crate::system_events::decode_metadata_strict(runtime.metadata())?;
+        let key = |entry: &str, value: &[u8]| {
+            let address = subxt_core::dynamic::storage(
+                "CitizenIdentity",
+                entry,
+                vec![subxt_core::dynamic::Value::from_bytes(value)],
+            );
+            subxt_core::storage::get_address_bytes(&address, &metadata)
+                .map_err(|error| EngineError::InvalidMetadata(error.to_string()))
+        };
+        let rows = client
+            .get_finalized_storage_batch_at(
+                finalized,
+                vec![
+                    key("AccountIdByCid", cid)?,
+                    key("BindingRevisionByCid", cid)?,
+                    key("CidRegistry", cid)?,
+                    key("CidByAccountId", target.as_bytes())?,
+                    key("CidByAccountId", previous.as_bytes())?,
+                ],
+            )
+            .await?;
+        if rows.len() != 5 {
+            return Err(invalid());
+        }
+        let registry = rows[2].as_ref().ok_or_else(invalid)?;
+        let request = serde_json::json!({"op":"decode_storage", "pallet":"CitizenIdentity",
+            "entry":"CidRegistry", "value":registry});
+        let registry: serde_json::Value = serde_json::from_slice(&crate::metadata::chain_codec(
+            runtime.metadata(),
+            &serde_json::to_vec(&request).map_err(|_| invalid())?,
+        )?)
+        .map_err(|_| invalid())?;
+        let rev = rows[1]
+            .as_ref()
+            .filter(|v| v.len() == 8)
+            .ok_or_else(invalid)?;
+        let reverse = rows[3].as_ref().ok_or_else(invalid)?;
+        let mut reverse = reverse.as_slice();
+        let reversed = Vec::<u8>::decode(&mut reverse).map_err(|_| invalid())?;
+        if rows[0].as_deref() != Some(target.as_bytes().as_slice())
+            || u64::decode(&mut rev.as_slice()).map_err(|_| invalid())? != revision + 1
+            || registry["status"]["variant"] != "Active"
+            || reversed != cid
+            || !reverse.is_empty()
+            || rows[4].is_some()
+        {
+            return Err(invalid());
+        }
+        self.local_wallet_read_service()?
+            .commit_finalized_rebind(before, target, ensure_current)
+            .await?;
+        Ok(())
     }
 
     /// 从同一准确 best Runtime metadata 解码费率、最低费和存在性存款。
@@ -1554,13 +1780,14 @@ impl CitizenEngine {
                     .ok_or_else(|| component_missing("encrypted_secret_blob_store"))?,
             );
             let signature = service.sign_intent_guarded(&intent, &|| Ok(())).await?;
-            let message = crate::types::signing_message_for_account(intent.account_id(), intent.payload(), intent.transform(), signature.algorithm())?;
-
-            if !crate::sign::verify(
+            let message = crate::types::signing_message_for_account(
                 intent.account_id(),
-                message,
-                signature.clone(),
-            )? {
+                intent.payload(),
+                intent.transform(),
+                signature.algorithm(),
+            )?;
+
+            if !crate::sign::verify(intent.account_id(), message, signature.clone())? {
                 return Err(EngineError::contract(
                     ContractErrorCode::Integrity,
                     "热钱包签名未通过原账户和冻结 transform 复核",
@@ -1675,14 +1902,33 @@ impl CitizenEngine {
             let message = review.request().signing_message().map_err(|_| {
                 EngineError::contract(ContractErrorCode::Decode, "二维码签名载荷无效")
             })?;
-            let signer_account_id = AccountId32::from_bytes(*review.request().require_signer().map_err(|_| {
-                EngineError::contract(ContractErrorCode::Decode, "二维码未指定签名账户")
-            })?.as_bytes());
-            let transform = if review.request().action >= 256 { SigningTransform::SubstrateSigningPayload } else { SigningTransform::Raw };
-            let signing_payload = if review.request().action >= 256 { review.request().review_payload.clone() } else { message.clone() };
+            let signer_account_id = AccountId32::from_bytes(
+                *review
+                    .request()
+                    .require_signer()
+                    .map_err(|_| {
+                        EngineError::contract(ContractErrorCode::Decode, "二维码未指定签名账户")
+                    })?
+                    .as_bytes(),
+            );
+            let transform = if review.request().action >= 256 {
+                SigningTransform::SubstrateSigningPayload
+            } else {
+                SigningTransform::Raw
+            };
+            let signing_payload = if review.request().action >= 256 {
+                review.request().review_payload.clone()
+            } else {
+                message.clone()
+            };
             let intent = SigningIntent::try_new(signer_account_id, signing_payload, transform)?;
             let signature = service.sign_intent_guarded(&intent, &guard).await?;
-            let message = crate::types::signing_message_for_account(intent.account_id(), intent.payload(), intent.transform(), signature.algorithm())?;
+            let message = crate::types::signing_message_for_account(
+                intent.account_id(),
+                intent.payload(),
+                intent.transform(),
+                signature.algorithm(),
+            )?;
             guard()?;
 
             if !crate::sign::verify(signer_account_id, message, signature.clone())? {

@@ -1,3 +1,5 @@
+# 构建二维码图像库及真实编码解码测试目标。
+
 cmake_minimum_required(VERSION 3.24)
 project(CitizenSDKQrImage LANGUAGES C CXX)
 

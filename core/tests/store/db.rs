@@ -1,9 +1,11 @@
+//! 为仓储测试提供同一真实SQLite连接及同步C资源回调。
+
 #![allow(unsafe_code)]
-use crate::store::error::error;
-use crate::store::sqlite::Connection;
-use crate::store::sqlite::Database;
-use crate::store::sqlite::Row;
-use crate::store::sqlite::Value;
+use crate::store::error;
+use crate::store::Connection;
+use crate::store::Database;
+use crate::store::Row;
+use crate::store::Value;
 use crate::types::ContractErrorCode;
 use crate::types::ContractResult;
 use std::ffi::c_char;
