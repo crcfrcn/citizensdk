@@ -82,7 +82,18 @@ fn base_wallet_and_qr_exports_are_exact_and_disjoint() {
     assert!(source.contains("#[cfg(target_os = \"android\")]\n#[no_mangle]\npub unsafe extern \"C\" fn citizensdk_android_init_tls"));
     assert!(base.remove("citizensdk_android_init_tls"));
     let wallet = rust_exports(include_str!("../../src/abi/wallet_abi.rs"));
-    let qr = rust_exports(include_str!("../../src/abi/qr_abi.rs"));
+    let source = include_str!("../../src/abi/qr_abi.rs");
+    let (enabled, disabled) = source.split_once("#[cfg(not(feature = \"qr\"))]")
+        .expect("QR implementations must remain mutually exclusive");
+    let qr = rust_exports(enabled);
+    let mut unavailable = rust_exports(disabled);
+    for line in disabled.lines().map(str::trim) {
+        if let Some(call) = line.strip_prefix("qr_unavailable!(") {
+            let name = call.split_once('(').expect("QR stub must name a function").0;
+            assert!(unavailable.insert(name.to_owned()), "duplicate disabled QR export {name}");
+        }
+    }
+    assert_eq!(qr, unavailable, "enabled and disabled QR exports differ");
     // 钱包、账户编解码和交易事件工具按同一 159 项公开 C 符号集合核对。
     assert_eq!(base.len(), 62);
     for symbol in [

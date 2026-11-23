@@ -1,3 +1,5 @@
+# 声明公民SDK核心、可选功能、锁定依赖及合同测试目标。
+
 [package]
 name = "citizensdk"
 description = "CitizenSDK唯一Rust实现与公开C接口。"
@@ -23,7 +25,7 @@ signing = []
 transactions = ["chain"]
 history = ["chain"]
 qr = []
-chain = ["dep:blake2-rfc", "dep:bytes", "dep:hex", "dep:http", "dep:http-body-util", "dep:hyper-rustls", "dep:hyper-util", "dep:parking_lot", "dep:rustls", "dep:smoldot-light", "dep:subxt-core", "dep:tokio", "dep:url"]
+chain = ["dep:blake2-rfc", "dep:bytes", "dep:http", "dep:http-body-util", "dep:hyper-rustls", "dep:hyper-util", "dep:parking_lot", "dep:rustls", "dep:smoldot-light", "dep:subxt-core", "dep:tokio", "dep:url"]
 
 [dependencies]
 mldsa = { path = "../citizenchain/runtime/transaction/mldsa", default-features = false, features = ["signing", "std", "ffi"] }
@@ -42,7 +44,7 @@ futures-executor = { version = "=0.3.34" }
 futures-util = { version = "=0.3.34" }
 getrandom = { version = "=0.3.4" }
 ghash = { version = "=0.5.1", features = ["zeroize"] }
-hex = { version = "=0.4.3", optional = true }
+hex = "=0.4.3"
 hmac = { version = "=0.12.1" }
 http = { version = "=1.5.0", optional = true }
 http-body-util = { version = "=0.1.5", optional = true }

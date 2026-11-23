@@ -1,4 +1,4 @@
-//! VerifiedChainClient 的块语义、对象安全和同块 runtime 合同。
+//! 验证账户标识解析、链客户端块语义、对象安全及同块Runtime合同。
 
 use std::future::Future;
 use std::pin::Pin;
@@ -269,4 +269,22 @@ fn verified_client_is_object_safe_and_never_implies_submit_success() {
     assert_eq!(exported.identity().chain_id(), "citizenchain");
     assert_eq!(exported.identity().protocol_id(), "citizenchain");
     assert_eq!(exported.finalized().number(), 7);
+}
+
+#[test]
+fn account_id_text_parsing_is_available_without_chain_feature() {
+    use citizensdk::types::AccountId32;
+    let text = format!("0x{}", "ab".repeat(32));
+    let value: AccountId32 = text.parse().expect("valid lowercase account id");
+    assert_eq!(value, AccountId32::from_bytes([0xab; 32]));
+    for invalid in [
+        text.to_uppercase(),
+        format!("0x{}", "AB".repeat(32)),
+        "0x00".to_owned(),
+        format!("0x{}", "gg".repeat(32)),
+        "ab".repeat(32),
+        format!("{text}00"),
+    ] {
+        assert!(invalid.parse::<AccountId32>().is_err(), "accepted {invalid}");
+    }
 }

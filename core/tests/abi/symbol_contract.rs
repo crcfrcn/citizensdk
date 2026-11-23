@@ -183,7 +183,7 @@ fn rust_exports(source: &str) -> BTreeSet<String> {
             .nth(1)
             .and_then(|value| value.split(['(', '<']).next())
             .unwrap_or_else(|| panic!("cannot parse exported declaration: {declaration}"));
-        // 未编译 QR 的宏模板不是第十个符号；实例化只复用下方精确九个名字。
+        // 宏模板不计作公开符号；禁用分支的实际名称由宏调用单独核对。
         if function == "$name" {
             continue;
         }
@@ -268,6 +268,34 @@ fn header_declarations(header: &str) -> BTreeMap<String, String> {
     exports
 }
 
+fn qr_exports(source: &str) -> BTreeSet<String> {
+    let (enabled, disabled) = source.split_once("#[cfg(not(feature = \"qr\"))]")
+        .expect("QR implementations must remain mutually exclusive");
+    let qr = rust_exports(enabled);
+    let mut unavailable = rust_exports(disabled);
+    for line in disabled.lines().map(str::trim) {
+        if let Some(call) = line.strip_prefix("qr_unavailable!(") {
+            let name = call.split_once('(').expect("QR stub must name a function").0;
+            assert!(unavailable.insert(name.to_owned()), "duplicate disabled QR export {name}");
+        }
+    }
+    assert_eq!(qr, unavailable, "enabled and disabled QR exports differ");
+    qr
+}
+
+#[test]
+fn qr_branches_reject_duplicates_and_missing_exports() {
+    let source = include_str!("../../src/abi/qr_abi.rs");
+    let marker = "#[cfg(not(feature = \"qr\"))]";
+    let duplicate = "#[no_mangle]\npub unsafe extern \"C\" fn citizensdk_qr_parse() {}\n";
+    let enabled_duplicate = source.replacen(marker, &format!("{duplicate}{marker}"), 1);
+    let disabled_duplicate = format!("{source}\n{duplicate}");
+    let missing = source.replace("qr_unavailable!(citizensdk_qr_parse(", "qr_unavailable!(citizensdk_qr_unreviewed(");
+    for invalid in [enabled_duplicate, disabled_duplicate, missing] {
+        assert!(std::panic::catch_unwind(|| qr_exports(&invalid)).is_err());
+    }
+}
+
 #[test]
 fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
     let expected: BTreeSet<_> = EXPECTED_EXPORTS
@@ -280,7 +308,7 @@ fn rust_and_c_publish_exactly_the_reviewed_product_symbols() {
     assert!(source.contains("#[cfg(target_os = \"android\")]\n#[no_mangle]\npub unsafe extern \"C\" fn citizensdk_android_init_tls"));
     assert!(rust.remove("citizensdk_android_init_tls"));
     let wallet = rust_exports(include_str!("../../src/abi/wallet_abi.rs"));
-    let qr = rust_exports(include_str!("../../src/abi/qr_abi.rs"));
+    let qr = qr_exports(include_str!("../../src/abi/qr_abi.rs"));
     let transaction = rust_exports(include_str!("../../src/abi/transaction_abi.rs"));
     for export in wallet {
         assert!(
