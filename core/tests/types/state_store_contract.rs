@@ -472,7 +472,7 @@ fn wallet_profile_rejects_duplicate_or_cross_generation_secret_refs() {
     let first = value_or_panic(WalletAccount::try_new(
         0,
         first_id,
-        secret_ref(1, 4),
+        secret_ref(10, 4),
         citizen_ss58_address(first_id),
         "first",
         100,
@@ -495,6 +495,29 @@ fn wallet_profile_rejects_duplicate_or_cross_generation_secret_refs() {
         vec![first.clone(), same_index],
     )
     .is_ok());
+
+    // 同一有效钱包基准下分别隔离 owner 重复和 owner/generation 撞值。
+    for owner in [10, 1] {
+        let account_id = AccountId32::from_bytes([8; 32]);
+        let invalid = value_or_panic(WalletAccount::try_new(
+            1,
+            account_id,
+            secret_ref(owner, 8),
+            citizen_ss58_address(account_id),
+            "owner",
+            102,
+        ));
+        assert!(WalletProfile::try_new(
+            0,
+            generation,
+            first_id,
+            WalletOrigin::Created,
+            100,
+            first_id,
+            vec![first.clone(), invalid],
+        )
+        .is_err());
+    }
 
     let foreign_ref = SecretRef::account_mini_secret(
         1,
