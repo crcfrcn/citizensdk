@@ -165,7 +165,11 @@ jobs:
             sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none --no-modify-path
           fi
           rustup toolchain install "$PRODUCT_RUST" --profile minimal --no-self-update
-          for name in rustup cargo rustc rustdoc; do cp -p "$(command -v "$name")" "$tool_cache/bin/"; done
+          # 已有可执行缓存直接复用，避免覆盖恢复后只读的官方工具。
+          for name in rustup cargo rustc rustdoc; do
+            binary="$(command -v "$name")"
+            if [ ! -x "$tool_cache/bin/$(basename "$binary")" ]; then cp -p "$binary" "$tool_cache/bin/"; fi
+          done
           mkdir -p target/cache/sources
           node --input-type=module -e 'import {nativeSources} from "./scripts/config.mjs";for(const [name,value] of Object.entries(nativeSources))console.log([name,value.url,value.archive_root].join(" "))' > "$RUNNER_TEMP/native-sources.txt"
           while read -r source url directory; do
