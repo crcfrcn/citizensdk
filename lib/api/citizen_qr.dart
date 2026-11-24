@@ -23,7 +23,7 @@ abstract final class CitizenQrActions {
   static const int transferWithRemark = 0x0400;
   static const int personalCreate = 0x0700;
   static const int personalClose = 0x0701;
-  static const int personalAdminsChange = 0x1d00;
+  static const int personalAdminsChange = 0x0703;
   static const int resolutionIssuance = 0x0800;
   static const int finalizeProposal = 0x0903;
   static const int retryPassedProposal = 0x0904;

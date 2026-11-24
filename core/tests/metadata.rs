@@ -232,26 +232,99 @@ fn chain_codec_uses_exact_metadata_for_storage_and_call() {
 #[test]
 fn chain_codec_reads_unsigned_constant_from_verified_metadata() {
     let metadata = hex::decode(
+        include_str!("citizenchain-personal-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .unwrap();
+    // 链上转账历史合同只在其v15金标中验证，不把历史pallet名带入当前个人金标。
+    let historical = hex::decode(
         include_str!("citizenchain-revive-v15-metadata.hex")
             .trim()
             .trim_start_matches("0x"),
     )
     .unwrap();
-    let read = |pallet, name| {
+    let read = |metadata: &[u8], pallet, name| {
         let request = serde_json::json!({
             "op": "unsigned_constant",
             "pallet": pallet,
             "name": name,
         });
-        super::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
+        super::chain_codec(metadata, &serde_json::to_vec(&request).unwrap())
     };
-    assert_eq!(read("PersonalManage", "MinCreateAmount").unwrap(), b"111");
     assert_eq!(
-        read("OnchainTransaction", "MaxTransferRemarkLen").unwrap(),
+        read(&metadata, "Personal", "MinCreateAmount").unwrap(),
+        b"111"
+    );
+    assert_eq!(
+        read(&historical, "OnchainTransaction", "MaxTransferRemarkLen").unwrap(),
         b"99"
     );
-    assert!(read("PersonalManage", "MissingConstant").is_err());
-    assert!(read("System", "Version").is_err());
+    assert!(read(&metadata, "Personal", "MissingConstant").is_err());
+    assert!(read(&metadata, "System", "Version").is_err());
+}
+
+/// 当前个人模块的公开metadata来自实际编译Runtime，历史夹具及原断言保持。
+#[test]
+fn personal_metadata_keeps_pallet_and_call_contract() {
+    let bytes = hex::decode(
+        include_str!("citizenchain-personal-metadata.hex")
+            .trim()
+            .trim_start_matches("0x"),
+    )
+    .expect("compiled personal runtime metadata");
+    let current = decode_metadata_strict(&bytes).expect("actual Runtime metadata");
+    assert_eq!(call_indices(&current, "Personal", "propose_create"), (7, 0));
+    assert_eq!(call_indices(&current, "Personal", "propose_close"), (7, 1));
+    assert_eq!(
+        call_indices(&current, "Personal", "propose_admin_set_change"),
+        (7, 3)
+    );
+    assert!(current.pallet_by_index(29).is_none());
+    let pallet = current
+        .pallet_by_name("Personal")
+        .expect("single personal pallet");
+    let storage = pallet.storage().expect("personal storage");
+    for name in [
+        "PersonalAccounts",
+        "AdminAccounts",
+        "PendingPersonalCreate",
+        "PendingCloseProposal",
+    ] {
+        assert!(
+            storage.entry_by_name(name).is_some(),
+            "missing personal storage: {name}"
+        );
+    }
+    // 以真实metadata验证三字段成员，旧CID槽不得混入当前调用。
+    let create_call = |cid_slot: bool| {
+        let mut call = vec![7, 0, 4, b'x', 8];
+        for wallet in [1u8, 2] {
+            call.extend_from_slice(&[wallet; 32]);
+            if cid_slot {
+                call.push(0);
+            }
+            call.extend_from_slice(&[4, b'f', 4, b'g']);
+        }
+        call.extend_from_slice(&2u32.to_le_bytes());
+        call.extend_from_slice(&111u128.to_le_bytes());
+        OpaqueTransactionCall::try_new(call).unwrap()
+    };
+    validate_opaque_runtime_call(&current, &create_call(false))
+        .expect("wallet and name notes only");
+    assert!(
+        validate_opaque_runtime_call(&current, &create_call(true)).is_err(),
+        "CID-bearing member layout must not be accepted"
+    );
+    let request = serde_json::json!({
+        "op": "unsigned_constant",
+        "pallet": "Personal",
+        "name": "MinCreateAmount",
+    });
+    assert_eq!(
+        super::chain_codec(&bytes, &serde_json::to_vec(&request).unwrap()).unwrap(),
+        b"111",
+    );
 }
 
 #[test]

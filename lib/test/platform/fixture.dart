@@ -40,7 +40,7 @@ class CitizenSdkTestFixture {
       (package) => package['name'] == 'citizen_sdk',
     );
     final root = Directory.fromUri(config.uri.resolve(sdk['rootUri'] as String));
-    final fixture = root.uri.resolve('core/tests/citizenchain-revive-v15-metadata.hex');
+    final fixture = root.uri.resolve('core/tests/citizenchain-personal-metadata.hex');
     final hex = File.fromUri(fixture)
         .readAsStringSync()
         .trim()
