@@ -164,7 +164,7 @@ pub enum SigningPayload<'a> {
     BinaryPrefix {
         op_tag: u8,
     },
-    ActivateAdmin {
+    RoleAccess {
         cid_number: &'a str,
         institution_code: [u8; 4],
         kind: u8,
@@ -172,7 +172,7 @@ pub enum SigningPayload<'a> {
         timestamp: u64,
         nonce: [u8; 16],
     },
-    DecryptAdmin {
+    ClearingDecrypt {
         cid_number: &'a str,
         signer_public_key: [u8; 32],
         timestamp: u64,
@@ -187,7 +187,7 @@ pub fn encode_signing_payload(input: SigningPayload<'_>) -> ContractResult<Vec<u
     fn prefix(tag: u8) -> Vec<u8> {
         vec![b'G', b'M', b'B', tag]
     }
-    fn admin(
+    fn binary_payload(
         tag: u8,
         cid: &str,
         fields: &[u8],
@@ -220,7 +220,7 @@ pub fn encode_signing_payload(input: SigningPayload<'_>) -> ContractResult<Vec<u
             Ok(blake2_256(&bytes)?.to_vec())
         }
         SigningPayload::BinaryPrefix { op_tag } => Ok(prefix(op_tag)),
-        SigningPayload::ActivateAdmin {
+        SigningPayload::RoleAccess {
             cid_number,
             institution_code,
             kind,
@@ -232,14 +232,14 @@ pub fn encode_signing_payload(input: SigningPayload<'_>) -> ContractResult<Vec<u
             fields.extend_from_slice(&institution_code);
             fields.push(kind);
             fields.extend_from_slice(&signer_public_key);
-            admin(0x18, cid_number, &fields, timestamp, nonce)
+            binary_payload(0x18, cid_number, &fields, timestamp, nonce)
         }
-        SigningPayload::DecryptAdmin {
+        SigningPayload::ClearingDecrypt {
             cid_number,
             signer_public_key,
             timestamp,
             nonce,
-        } => admin(0x19, cid_number, &signer_public_key, timestamp, nonce),
+        } => binary_payload(0x19, cid_number, &signer_public_key, timestamp, nonce),
         SigningPayload::ScaleString(value) => {
             if value.len() > MAX_SIGNING_PAYLOAD_BYTES - 5 {
                 return Err(invalid("SCALE字符串超过载荷上限"));

@@ -6,10 +6,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:citizen_sdk/platform/bind.dart' as c;
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixture.dart';
@@ -19,6 +19,165 @@ void main() {
   final fixture = CitizenSdkTestFixture();
   setUp(fixture.install);
   tearDown(fixture.dispose);
+  // 编码及热签必须归真实 FFI 阶段，沿本轮原生库、SQLite 工作目录和系统边界夹具执行。
+  test('岗位访问和清算解密沿用原动作数字、ABI种类和二进制字段', () async {
+    expect(CitizenQrActions.onchinaConfirm, 3);
+    expect(CitizenQrActions.roleAccess, 5);
+    expect(CitizenQrActions.clearingDecrypt, 6);
+    expect(kOpSignRoleAccess, 0x18);
+    expect(kOpSignClearingDecrypt, 0x19);
+    expect(kBinaryCidSlotLength, 32);
+    expect(kBinaryNonceLength, 16);
+    final key = Uint8List.fromList(List.filled(32, 7));
+    final nonce = Uint8List.fromList(List.filled(16, 8));
+    final access = CitizenSigningPayload.roleAccess(
+      cidNumber: 'LN001-NRC0G-944805165-2026',
+      institutionCode: Uint8List.fromList([78, 82, 67, 0]),
+      kind: 0,
+      signerPublicKey: key,
+      timestamp: BigInt.from(123),
+      nonce: nonce,
+    );
+    final decrypt = CitizenSigningPayload.clearingDecrypt(
+      cidNumber: 'LN001-NRC0G-944805165-2026',
+      signerPublicKey: key,
+      timestamp: BigInt.from(123),
+      nonce: nonce,
+    );
+    key.fillRange(0, key.length, 0);
+    nonce.fillRange(0, nonce.length, 0);
+    expect(access.kind, 3);
+    expect(decrypt.kind, 4);
+    final accessFields = jsonDecode(access.fieldsJson) as Map<String, dynamic>;
+    final decryptFields =
+        jsonDecode(decrypt.fieldsJson) as Map<String, dynamic>;
+    expect(accessFields.keys, [
+      'cid_number',
+      'institution_code',
+      'kind',
+      'signer_public_key',
+      'timestamp',
+      'nonce',
+    ]);
+    expect(decryptFields.keys, [
+      'cid_number',
+      'signer_public_key',
+      'timestamp',
+      'nonce',
+    ]);
+    expect(accessFields['signer_public_key'], '0x${'07' * 32}');
+    expect(accessFields['nonce'], '0x${'08' * 16}');
+    expect(
+      decryptFields['signer_public_key'],
+      accessFields['signer_public_key'],
+    );
+    expect(decryptFields['nonce'], accessFields['nonce']);
+    expect(access.payloadBytes, isEmpty);
+    expect(decrypt.payloadBytes, isEmpty);
+    final accessBytes = await CitizenSdk.encodePayload(access);
+    final decryptBytes = await CitizenSdk.encodePayload(decrypt);
+    final cidSlot = Uint8List(32)
+      ..setAll(0, utf8.encode('LN001-NRC0G-944805165-2026'));
+    final timestamp = (ByteData(
+      8,
+    )..setUint64(0, 123, Endian.little)).buffer.asUint8List();
+    expect(accessBytes, [
+      0x47,
+      0x4d,
+      0x42,
+      0x18,
+      ...cidSlot,
+      78,
+      82,
+      67,
+      0,
+      0,
+      ...List.filled(32, 7),
+      ...timestamp,
+      ...List.filled(16, 8),
+    ]);
+    expect(decryptBytes, [
+      0x47,
+      0x4d,
+      0x42,
+      0x19,
+      ...cidSlot,
+      ...List.filled(32, 7),
+      ...timestamp,
+      ...List.filled(16, 8),
+    ]);
+  });
+
+  test('真实Core热签岗位访问和清算解密，修改二进制域后验签失败', () async {
+    final sdk = await CitizenSdk.open(
+      modules:
+          CitizenSdkModules.wallet |
+          CitizenSdkModules.signing |
+          CitizenSdkModules.qr,
+    );
+    try {
+      expect(fixture.vault(fixture.handles.values.single, 1), 0);
+      final prepared = await sdk
+          .prepareWalletCreation(wordCount: CitizenWalletWordCount.words12)
+          .result;
+      await prepared.commit().result;
+      await prepared.release();
+      final account = (await sdk.getWalletState().result).accounts.firstWhere(
+        (account) => account.isDefault,
+      );
+      final signer = citizenAccountIdBytes(account.accountId);
+      final nonce = Uint8List.fromList(List.filled(16, 8));
+      for (final payload in [
+        CitizenSigningPayload.roleAccess(
+          cidNumber: 'LN001-NRC0G-944805165-2026',
+          institutionCode: Uint8List.fromList([78, 82, 67, 0]),
+          kind: 0,
+          signerPublicKey: signer,
+          timestamp: BigInt.from(123),
+          nonce: nonce,
+        ),
+        CitizenSigningPayload.clearingDecrypt(
+          cidNumber: 'LN001-NRC0G-944805165-2026',
+          signerPublicKey: signer,
+          timestamp: BigInt.from(123),
+          nonce: nonce,
+        ),
+      ]) {
+        final bytes = await CitizenSdk.encodePayload(payload);
+        final signed = await sdk
+            .beginSigning(
+              CitizenSigningIntent(
+                accountId: account.accountId,
+                payload: bytes,
+                transform: CitizenSigningTransform.raw(),
+              ),
+            )
+            .result;
+        expect(signed, isA<CitizenSigningCompleted>());
+        final signature = (signed as CitizenSigningCompleted).signature;
+        expect(
+          await CitizenSdk.verify(
+            accountId: account.accountId,
+            signature: signature,
+            payload: bytes,
+          ),
+          isTrue,
+        );
+        final changed = Uint8List.fromList(bytes)..[3] ^= 1;
+        expect(
+          await CitizenSdk.verify(
+            accountId: account.accountId,
+            signature: signature,
+            payload: changed,
+          ),
+          isFalse,
+        );
+      }
+    } finally {
+      await sdk.close();
+    }
+  });
+
   // 余额依赖真实账户编解码，统一在本阶段注册一次。
   _balances();
   Future<CitizenSdk> wallet() =>

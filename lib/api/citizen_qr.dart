@@ -15,9 +15,9 @@ abstract final class CitizenQrActions {
   static const int switchDefaultAccount = 12;
   static const int mlsDeviceBind = 13;
   static const int publish = 15;
-  static const int onchinaAdmin = 3;
-  static const int activateAdmin = 5;
-  static const int decryptAdmin = 6;
+  static const int onchinaConfirm = 3;
+  static const int roleAccess = 5;
+  static const int clearingDecrypt = 6;
   static const int runtimeUpgradeHash = 7;
   static const int squareAccountAction = 9;
   static const int transferWithRemark = 0x0400;

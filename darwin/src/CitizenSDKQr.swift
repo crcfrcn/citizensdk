@@ -111,11 +111,11 @@ public struct CitizenSigningPayload: Sendable, CustomStringConvertible {
     public var description: String { "CitizenSigningPayload" }
     public static func message(opTag: UInt8, scalePayload: Data) throws -> Self { try Self(1, ["op_tag": opTag], scalePayload) }
     public static func binaryPrefix(opTag: UInt8) throws -> Self { try Self(2, ["op_tag": opTag]) }
-    public static func activateAdmin(cidNumber: String, institutionCode: Data, kind: UInt8, signerPublicKey: Data, timestamp: UInt64, nonce: Data) throws -> Self {
+    public static func roleAccess(cidNumber: String, institutionCode: Data, kind: UInt8, signerPublicKey: Data, timestamp: UInt64, nonce: Data) throws -> Self {
         try Self(3, ["cid_number": cidNumber, "institution_code": citizenCodecHex(institutionCode), "kind": kind,
             "signer_public_key": citizenCodecHex(signerPublicKey), "timestamp": String(timestamp), "nonce": citizenCodecHex(nonce)])
     }
-    public static func decryptAdmin(cidNumber: String, signerPublicKey: Data, timestamp: UInt64, nonce: Data) throws -> Self {
+    public static func clearingDecrypt(cidNumber: String, signerPublicKey: Data, timestamp: UInt64, nonce: Data) throws -> Self {
         try Self(4, ["cid_number": cidNumber, "signer_public_key": citizenCodecHex(signerPublicKey),
             "timestamp": String(timestamp), "nonce": citizenCodecHex(nonce)])
     }

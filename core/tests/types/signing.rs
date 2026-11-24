@@ -35,7 +35,7 @@ fn payload_primitives_keep_original_domains_layouts_and_compact_boundaries() {
         assert_eq!(&encoded[..prefix.len()], prefix.as_slice());
         assert_eq!(&encoded[prefix.len()..], text.as_bytes());
     }
-    let activate = encode_signing_payload(SigningPayload::ActivateAdmin {
+    let role_access = encode_signing_payload(SigningPayload::RoleAccess {
         cid_number: "CID-7",
         institution_code: [1, 2, 3, 4],
         kind: 9,
@@ -44,30 +44,30 @@ fn payload_primitives_keep_original_domains_layouts_and_compact_boundaries() {
         nonce: [8; 16],
     })
     .unwrap();
-    assert_eq!(activate.len(), 97);
-    assert_eq!(&activate[..9], b"GMB\x18CID-7");
-    assert_eq!(&activate[9..36], &[0; 27]);
-    assert_eq!(&activate[36..41], &[1, 2, 3, 4, 9]);
-    assert_eq!(&activate[41..73], &[7; 32]);
-    assert_eq!(&activate[73..81], &[1, 2, 3, 4, 5, 6, 7, 8]);
-    assert_eq!(&activate[81..], &[8; 16]);
-    let decrypt = encode_signing_payload(SigningPayload::DecryptAdmin {
+    assert_eq!(role_access.len(), 97);
+    assert_eq!(&role_access[..9], b"GMB\x18CID-7");
+    assert_eq!(&role_access[9..36], &[0; 27]);
+    assert_eq!(&role_access[36..41], &[1, 2, 3, 4, 9]);
+    assert_eq!(&role_access[41..73], &[7; 32]);
+    assert_eq!(&role_access[73..81], &[1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(&role_access[81..], &[8; 16]);
+    let clearing_decrypt = encode_signing_payload(SigningPayload::ClearingDecrypt {
         cid_number: "C",
         signer_public_key: [7; 32],
         timestamp: 1,
         nonce: [8; 16],
     })
     .unwrap();
-    assert_eq!(decrypt.len(), 92);
-    assert_eq!(&decrypt[..5], b"GMB\x19C");
-    assert!(encode_signing_payload(SigningPayload::DecryptAdmin {
+    assert_eq!(clearing_decrypt.len(), 92);
+    assert_eq!(&clearing_decrypt[..5], b"GMB\x19C");
+    assert!(encode_signing_payload(SigningPayload::ClearingDecrypt {
         cid_number: "",
         signer_public_key: [7; 32],
         timestamp: 1,
         nonce: [8; 16],
     })
     .is_err());
-    assert!(encode_signing_payload(SigningPayload::DecryptAdmin {
+    assert!(encode_signing_payload(SigningPayload::ClearingDecrypt {
         cid_number: &"x".repeat(33),
         signer_public_key: [7; 32],
         timestamp: 1,
@@ -196,11 +196,11 @@ fn default_account_payload_matches_the_independent_wallet_layout() {
 }
 
 #[test]
-fn u32_year_cid_uses_the_original_fixed_admin_slots() {
+fn u32_year_cid_uses_the_original_fixed_binary_slots() {
     // 规范 u32 最大年份 CID 恰好占满既有 32 字节；旧短 CID 金标仍保留在原测试中。
     let cid = "GD001-CGOVU-000000001-4294967295";
     assert_eq!(cid.len(), 32);
-    let activate = encode_signing_payload(SigningPayload::ActivateAdmin {
+    let role_access = encode_signing_payload(SigningPayload::RoleAccess {
         cid_number: cid,
         institution_code: *b"CGOV",
         kind: 0,
@@ -209,24 +209,24 @@ fn u32_year_cid_uses_the_original_fixed_admin_slots() {
         nonce: [8; 16],
     })
     .unwrap();
-    assert_eq!(activate.len(), 97);
-    assert_eq!(&activate[4..36], cid.as_bytes());
-    assert_eq!(&activate[36..40], b"CGOV");
-    assert_eq!(&activate[41..73], &[7; 32]);
-    assert_eq!(&activate[73..81], &123u64.to_le_bytes());
-    assert_eq!(&activate[81..97], &[8; 16]);
-    let decrypt = encode_signing_payload(SigningPayload::DecryptAdmin {
+    assert_eq!(role_access.len(), 97);
+    assert_eq!(&role_access[4..36], cid.as_bytes());
+    assert_eq!(&role_access[36..40], b"CGOV");
+    assert_eq!(&role_access[41..73], &[7; 32]);
+    assert_eq!(&role_access[73..81], &123u64.to_le_bytes());
+    assert_eq!(&role_access[81..97], &[8; 16]);
+    let clearing_decrypt = encode_signing_payload(SigningPayload::ClearingDecrypt {
         cid_number: cid,
         signer_public_key: [7; 32],
         timestamp: 123,
         nonce: [8; 16],
     })
     .unwrap();
-    assert_eq!(decrypt.len(), 92);
-    assert_eq!(&decrypt[4..36], cid.as_bytes());
-    assert_eq!(&decrypt[36..68], &[7; 32]);
-    assert_eq!(&decrypt[68..76], &123u64.to_le_bytes());
-    assert_eq!(&decrypt[76..92], &[8; 16]);
+    assert_eq!(clearing_decrypt.len(), 92);
+    assert_eq!(&clearing_decrypt[4..36], cid.as_bytes());
+    assert_eq!(&clearing_decrypt[36..68], &[7; 32]);
+    assert_eq!(&clearing_decrypt[68..76], &123u64.to_le_bytes());
+    assert_eq!(&clearing_decrypt[76..92], &[8; 16]);
 }
 
 #[test]

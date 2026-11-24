@@ -28,11 +28,11 @@ const int kOpSignOffchainBatch = 0x16;
 /// L2 确认(对齐 OP_SIGN_L2_ACK)。
 const int kOpSignL2Ack = 0x17;
 
-/// 管理员激活(对齐 OP_SIGN_ACTIVATE_ADMIN)。
-const int kOpSignActivateAdmin = 0x18;
+/// 岗位访问授权（对齐 OP_SIGN_ROLE_ACCESS）。
+const int kOpSignRoleAccess = 0x18;
 
-/// 解密授权(对齐 OP_SIGN_DECRYPT)。
-const int kOpSignDecrypt = 0x19;
+/// 清算解密授权（对齐 OP_SIGN_CLEARING_DECRYPT）。
+const int kOpSignClearingDecrypt = 0x19;
 
 /// 同一MLS公钥登记；当前CID绑定账户授权，签名域与OP_SIGN_MLS_DEVICE_BIND一致。
 const int kOpSignMlsDeviceBind = 0x1C;
@@ -58,9 +58,9 @@ const int kOpSignCidAdminRebind = 0x1F;
 
 // ── 二进制前缀域(0x18/0x19)──
 //
-// ACTIVATE_ADMIN / DECRYPT 不经 message 原语 做 blake2 hash:冷钱包对整段
+// ROLE_ACCESS / CLEARING_DECRYPT 不经 message 原语 做 blake2 hash:冷钱包对整段
 // 原始可解析 payload 直接 sr25519 签名,node 按字节偏移解析。其 op_tag
-// (kOpSignActivateAdmin/kOpSignDecrypt)仅作 payload **前 4 字节**
+// (kOpSignRoleAccess/kOpSignClearingDecrypt)仅作 payload **前 4 字节**
 // GMB(3B) || op_tag(1B) 二进制前缀。单源对齐 primitives::sign::
 // binary_domain_prefix / BINARY_PREFIX_LEN。金标布局见
 // test/signer/fixtures/binary_prefix_domain_vectors.json。
@@ -68,13 +68,13 @@ const int kOpSignCidAdminRebind = 0x1F;
 /// 二进制前缀域统一前缀长度 = GMB(3B) + op_tag(1B) = 4(对齐 BINARY_PREFIX_LEN)。
 const int kBinaryPrefixLen = 4;
 
-/// 管理员激活/解密载荷中的机构 CID 固定槽长度。
-/// 与 runtime `CID_NUMBER_MAX_BYTES`/`ACTIVATE_ADMIN_CID_LEN` 唯一对齐。
-const int kAdminCidSlotLength = 32;
+/// 岗位访问和清算解密载荷中的机构 CID 固定槽长度。
+/// 与 runtime `CID_NUMBER_MAX_BYTES`/`ROLE_ACCESS_CID_LEN` 唯一对齐。
+const int kBinaryCidSlotLength = 32;
 
-/// 管理员原始签名载荷中的固定字段长度。
+/// 原始二进制授权载荷中的固定字段长度。
 const int kSignerPublicKeyLength = 32;
-const int kAdminNonceLength = 16;
+const int kBinaryNonceLength = 16;
 
 /// 签名域分隔符 GMB(3 字节 ASCII),单源对齐 core_const::GMB。
 const List<int> kGmbSignDomain = [0x47, 0x4D, 0x42]; // "GMB"
@@ -97,7 +97,7 @@ final class CitizenSigningPayload {
   }) => CitizenSigningPayload._(1, {'op_tag': opTag}, scalePayload);
   factory CitizenSigningPayload.binaryPrefix(int opTag) =>
       CitizenSigningPayload._(2, {'op_tag': opTag}, Uint8List(0));
-  factory CitizenSigningPayload.activateAdmin({
+  factory CitizenSigningPayload.roleAccess({
     required String cidNumber,
     required Uint8List institutionCode,
     required int kind,
@@ -112,7 +112,7 @@ final class CitizenSigningPayload {
     'timestamp': timestamp.toString(),
     'nonce': _payloadHex(nonce),
   }, Uint8List(0));
-  factory CitizenSigningPayload.decryptAdmin({
+  factory CitizenSigningPayload.clearingDecrypt({
     required String cidNumber,
     required Uint8List signerPublicKey,
     required BigInt timestamp,

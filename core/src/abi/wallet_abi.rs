@@ -58,7 +58,7 @@ struct PayloadTagFields {
 }
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PayloadActivationFields {
+struct PayloadRoleAccessFields {
     cid_number: String,
     institution_code: String,
     kind: u8,
@@ -68,7 +68,7 @@ struct PayloadActivationFields {
 }
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PayloadDecryptionFields {
+struct PayloadClearingDecryptFields {
     cid_number: String,
     signer_public_key: String,
     timestamp: String,
@@ -133,8 +133,8 @@ fn encode_payload(kind: u32, fields: &[u8], payload: &[u8]) -> FfiResult<Vec<u8>
             encode_signing_payload(SigningPayload::BinaryPrefix { op_tag: f.op_tag })?
         }
         3 => {
-            let f: PayloadActivationFields = payload_fields(fields)?;
-            encode_signing_payload(SigningPayload::ActivateAdmin {
+            let f: PayloadRoleAccessFields = payload_fields(fields)?;
+            encode_signing_payload(SigningPayload::RoleAccess {
                 cid_number: &f.cid_number,
                 institution_code: payload_hex(&f.institution_code)?,
                 kind: f.kind,
@@ -144,8 +144,8 @@ fn encode_payload(kind: u32, fields: &[u8], payload: &[u8]) -> FfiResult<Vec<u8>
             })?
         }
         4 => {
-            let f: PayloadDecryptionFields = payload_fields(fields)?;
-            encode_signing_payload(SigningPayload::DecryptAdmin {
+            let f: PayloadClearingDecryptFields = payload_fields(fields)?;
+            encode_signing_payload(SigningPayload::ClearingDecrypt {
                 cid_number: &f.cid_number,
                 signer_public_key: payload_hex(&f.signer_public_key)?,
                 timestamp: payload_u64(&f.timestamp)?,

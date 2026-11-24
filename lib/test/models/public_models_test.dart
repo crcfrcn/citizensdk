@@ -8,7 +8,9 @@ import 'dart:typed_data';
 import 'package:citizen_sdk/citizen_sdk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('SCALE 定宽无符号整数保持 u32、u128 字节和宽度约束', () {
     final id = BigInt.from(0xffffffff);
     final max = (BigInt.one << 128) - BigInt.one;
@@ -16,8 +18,14 @@ void main() {
     expect(CitizenScale.unsigned(max, 16), List.filled(16, 255));
     final framed = Uint8List.fromList([0xaa, 0x34, 0x12, 0, 0, 0xbb]);
     expect(CitizenScale.readUnsigned(framed, 1, 4), BigInt.from(0x1234));
-    expect(() => CitizenScale.readUnsigned(framed, 3, 4), throwsFormatException);
-    expect(() => CitizenScale.unsigned(id + BigInt.one, 4), throwsArgumentError);
+    expect(
+      () => CitizenScale.readUnsigned(framed, 3, 4),
+      throwsFormatException,
+    );
+    expect(
+      () => CitizenScale.unsigned(id + BigInt.one, 4),
+      throwsArgumentError,
+    );
     expect(() => CitizenScale.unsigned(-BigInt.one, 16), throwsArgumentError);
   });
 
@@ -325,7 +333,9 @@ void main() {
         await completeCitizenTransaction(
           pending,
           requestResponse: (_) async {
-            if (stage == '扫描') Error.throwWithStackTrace(original, originalStack);
+            if (stage == '扫描') {
+              Error.throwWithStackTrace(original, originalStack);
+            }
             return 'response';
           },
           consumeResponse: (_, _) async =>

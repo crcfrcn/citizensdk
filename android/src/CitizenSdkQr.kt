@@ -72,10 +72,10 @@ class CitizenSigningPayload internal constructor(internal val kind: Int, interna
         private fun hex(bytes: ByteArray) = "0x" + bytes.joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         fun message(opTag: Int, scalePayload: ByteArray) = CitizenSigningPayload(1, JSONObject(mapOf("op_tag" to opTag)).toString(), scalePayload)
         fun binaryPrefix(opTag: Int) = CitizenSigningPayload(2, JSONObject(mapOf("op_tag" to opTag)).toString(), byteArrayOf())
-        fun activateAdmin(cidNumber: String, institutionCode: ByteArray, kind: Int, signerPublicKey: ByteArray, timestamp: ULong, nonce: ByteArray) =
+        fun roleAccess(cidNumber: String, institutionCode: ByteArray, kind: Int, signerPublicKey: ByteArray, timestamp: ULong, nonce: ByteArray) =
             CitizenSigningPayload(3, JSONObject(mapOf("cid_number" to cidNumber, "institution_code" to hex(institutionCode),
                 "kind" to kind, "signer_public_key" to hex(signerPublicKey), "timestamp" to timestamp.toString(), "nonce" to hex(nonce))).toString(), byteArrayOf())
-        fun decryptAdmin(cidNumber: String, signerPublicKey: ByteArray, timestamp: ULong, nonce: ByteArray) =
+        fun clearingDecrypt(cidNumber: String, signerPublicKey: ByteArray, timestamp: ULong, nonce: ByteArray) =
             CitizenSigningPayload(4, JSONObject(mapOf("cid_number" to cidNumber, "signer_public_key" to hex(signerPublicKey),
                 "timestamp" to timestamp.toString(), "nonce" to hex(nonce))).toString(), byteArrayOf())
         fun scaleString(value: String) = CitizenSigningPayload(5, "{}", value.toByteArray(Charsets.UTF_8))

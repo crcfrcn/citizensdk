@@ -327,6 +327,128 @@ fn personal_metadata_keeps_pallet_and_call_contract() {
     );
 }
 
+/// 真实Runtime导出的当前机构协议：两个结构没有旧枚举或钱包字段。
+#[test]
+fn institution_metadata_encodes_person_cids_seats_and_separate_registration() {
+    use scale_value::Value;
+    use subxt_core::ext::codec::Encode;
+    let bytes = hex::decode(include_str!("citizenchain-personal-metadata.hex").trim().trim_start_matches("0x")).unwrap();
+    let current = decode_metadata_strict(&bytes).unwrap();
+    for removed in ["PublicAdmins", "PrivateAdmins", "PersonalAdmins", "PublicManage", "PrivateManage"] {
+        assert!(current.pallet_by_name(removed).is_none(), "removed pallet {removed}");
+    }
+    assert_eq!(call_indices(&current, "Multisig", "propose_transfer"), (17, 0));
+    assert_eq!(call_indices(&current, "InternalVote", "cast"), (20, 0));
+    let personal = current.pallet_by_name("Personal").unwrap();
+    assert_eq!(personal.constant_by_name("MaxPersonalAccountAdmins").unwrap().value(), &64u32.to_le_bytes());
+    let cid = b"LN001-NRC0G-944805165-2026";
+    let actor = b"ZS001-FRG07-249474503-2026";
+    let role = b"RCHAIR";
+    let persons = ["CN220-CTZN2-198805200-2026", "CN951-CTZN1-539598435-2026"];
+    for (pallet_name, index, governance_hex, registration_hex) in [
+        ("PublicEntity", 30, "0x1e08684c4e3030312d4e524330472d3934343830353136352d32303236040024e8b4a2e58aa1e5b2970002000000041c7265732d69737300000000000868434e3232302d43545a4e322d3139383830353230302d32303236000000000000000005000068434e3935312d43545a4e312d3533393539383433352d3230323600000000000000000500000000684c4e3030312d4e524330472d3934343830353136352d3230323618524348414952", "0x1e09684c4e3030312d4e524330472d3934343830353136352d32303236040024e8b4a2e58aa1e5b2970002000000041c7265732d69737300000000000868434e3232302d43545a4e322d3139383830353230302d32303236000000000000000001000068434e3935312d43545a4e312d3533393539383433352d32303236000000000000000001000000685a533030312d46524730372d3234393437343530332d3230323618524348414952abababababababababababababababababababababababababababababababab0102000000"),
+        ("PrivateEntity", 31, "0x1f08684c4e3030312d4e524330472d3934343830353136352d32303236040024e8b4a2e58aa1e5b2970002000000041c7265732d69737300000000000868434e3232302d43545a4e322d3139383830353230302d32303236000000000000000005000068434e3935312d43545a4e312d3533393539383433352d3230323600000000000000000500000000684c4e3030312d4e524330472d3934343830353136352d3230323618524348414952", "0x1f09684c4e3030312d4e524330472d3934343830353136352d32303236040024e8b4a2e58aa1e5b2970002000000041c7265732d69737300000000000868434e3232302d43545a4e322d3139383830353230302d32303236000000000000000001000068434e3935312d43545a4e312d3533393539383433352d32303236000000000000000001000000685a533030312d46524730372d3234393437343530332d3230323618524348414952abababababababababababababababababababababababababababababababab0102000000"),
+    ] {
+        let pallet = current.pallet_by_name(pallet_name).unwrap();
+        assert_eq!(pallet.index(), index);
+        assert!(pallet.call_variant_by_index(10).is_none());
+        for (method, call_index, registration, expected_hex, type_name, names) in [
+            ("propose_institution_governance", 8, false, governance_hex, "InstitutionGovernanceAction", vec!["cid_number", "action", "actor_cid_number", "proposer_role_code"]),
+            ("register_institution_roles", 9, true, registration_hex, "InstitutionRoleRegistration", vec!["cid_number", "action", "actor_cid_number", "actor_role_code", "expected_state_hash", "initial_threshold"]),
+        ] {
+            let call = pallet.call_variant_by_name(method).unwrap();
+            assert_eq!(call.index, call_index);
+            assert_eq!(call.fields.iter().map(|field| field.name.as_deref().unwrap()).collect::<Vec<_>>(), names);
+            let action_type = call.fields[1].ty.id;
+            assert_eq!(current.types().resolve(action_type).unwrap().path.segments.last().unwrap(), type_name);
+            let assignments = persons.iter().map(|person| Value::named_composite([
+                ("person_cid", Value::from_bytes(person.as_bytes())),
+                ("term_start", Value::u128(0)),
+                ("term_end", Value::u128(0)),
+                ("assignment_source", Value::unnamed_variant(if registration { "Registry" } else { "InstitutionGovernance" }, [])),
+                ("assignment_source_ref", Value::from_bytes([])),
+                ("assignment_status", Value::unnamed_variant("Active", [])),
+            ])).collect::<Vec<_>>();
+            let mutation = Value::named_variant("Create", [
+                ("role_name", Value::from_bytes("财务岗".as_bytes())),
+                ("term_required", Value::bool(false)),
+                ("seats", Value::u128(2)),
+                ("permissions", Value::unnamed_composite([Value::named_composite([
+                    ("business_action_id", Value::named_composite([
+                        ("module_tag", Value::from_bytes(b"res-iss")),
+                        ("action_code", Value::u128(0)),
+                    ])),
+                    ("operation", Value::unnamed_variant("Propose", [])),
+                ])])),
+                ("assignments", Value::unnamed_composite(assignments)),
+            ]);
+            let mut fields = vec![
+                ("role_mutations", Value::unnamed_composite([mutation])),
+                ("assignment_changes", Value::unnamed_composite([])),
+            ];
+            if !registration {
+                fields.push(("legal_representative_change", Value::unnamed_variant("None", [])));
+            }
+            let mut action = Vec::new();
+            Value::named_composite(fields).encode_as_type_to(action_type, current.types(), &mut action).unwrap();
+            let mut encoded = vec![index, call_index];
+            encoded.extend(cid.to_vec().encode());
+            encoded.extend_from_slice(&action);
+            encoded.extend(if registration { actor.to_vec() } else { cid.to_vec() }.encode());
+            encoded.extend(role.to_vec().encode());
+            if registration {
+                encoded.extend([0xab; 32]);
+                encoded.extend(Some(2u32).encode());
+            }
+            assert_eq!(format!("0x{}", hex::encode(&encoded)), expected_hex);
+            validate_opaque_runtime_call(&current, &OpaqueTransactionCall::try_new(encoded.clone()).unwrap()).unwrap();
+            for cut in 0..encoded.len() {
+                if cut == 0 { continue; }
+                assert!(validate_opaque_runtime_call(&current, &OpaqueTransactionCall::try_new(encoded[..cut].to_vec()).unwrap()).is_err());
+            }
+            let mut trailing = encoded.clone(); trailing.push(0);
+            assert!(validate_opaque_runtime_call(&current, &OpaqueTransactionCall::try_new(trailing).unwrap()).is_err());
+            // 旧治理enum前缀、登记法代槽和call10不能被新metadata解释为有效调用。
+            let mut legacy = vec![index, call_index];
+            legacy.extend(cid.to_vec().encode()); legacy.push(1);
+            legacy.extend_from_slice(&encoded[2 + cid.to_vec().encode().len()..]);
+            assert!(validate_opaque_runtime_call(&current, &OpaqueTransactionCall::try_new(legacy).unwrap()).is_err());
+            if registration {
+                let mut legal_slot = encoded.clone();
+                legal_slot.insert(2 + cid.to_vec().encode().len() + action.len(), 0);
+                assert!(validate_opaque_runtime_call(&current, &OpaqueTransactionCall::try_new(legal_slot).unwrap()).is_err());
+            }
+        }
+        let mut legal = Vec::new();
+        let action_type = pallet.call_variant_by_index(8).unwrap().fields[1].ty.id;
+        Value::named_composite([
+            ("role_mutations", Value::unnamed_composite([])),
+            ("assignment_changes", Value::unnamed_composite([])),
+            ("legal_representative_change", Value::unnamed_variant("Some", [Value::named_variant("Set", [
+                ("family_name", Value::from_bytes("张".as_bytes())),
+                ("given_name", Value::from_bytes("三".as_bytes())),
+                ("person_cid", Value::from_bytes(persons[0].as_bytes())),
+            ])])),
+        ]).encode_as_type_to(action_type, current.types(), &mut legal).unwrap();
+        let mut expected = vec![0, 0, 1, 0];
+        expected.extend("张".as_bytes().to_vec().encode());
+        expected.extend("三".as_bytes().to_vec().encode());
+        expected.extend(persons[0].as_bytes().to_vec().encode());
+        assert_eq!(legal, expected);
+    }
+    // RoleVoters的第二个键直接是RoleSubject，不套AuthorizationSubject::Institution枚举。
+    let key = super::chain_codec(&bytes, &serde_json::to_vec(&serde_json::json!({
+        "op":"storage", "pallet":"VotingEngine", "entry":"RoleVoters", "keys":[
+            {"kind":"integer","value":"42"},
+            {"kind":"sequence","value":[{"kind":"bytes","value":cid},{"kind":"bytes","value":b"COMMITTEE_MEMBER"}]}
+        ]
+    })).unwrap()).unwrap();
+    let subject = (cid.to_vec(), b"COMMITTEE_MEMBER".to_vec()).encode();
+    assert!(key.ends_with(&subject));
+    let call10 = OpaqueTransactionCall::try_new(vec![30, 10, 0]).unwrap();
+    assert!(validate_opaque_runtime_call(&current, &call10).is_err());
+}
+
 #[test]
 fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
     use serde_json::json;
