@@ -52,7 +52,7 @@ fn onchain_fee_metadata() -> Vec<u8> {
     let pallet = meta
         .pallets
         .iter_mut()
-        .find(|p| p.name == "OnchainTransaction")
+        .find(|p| p.index == 4)
         .unwrap_or_else(|| panic!("historical fee pallet missing"));
     pallet.name = "Onchain".into();
     if let Some(storage) = &mut pallet.storage {
@@ -886,7 +886,7 @@ fn check_prepared_execution(metadata_hex: &str, supported: bool, rebind: bool) {
         let pallet = meta
             .pallets
             .iter_mut()
-            .find(|p| p.name == "CitizenIdentity")
+            .find(|p| p.index == 10)
             .unwrap();
         pallet.name = "Identity".into();
         if let Some(storage) = &mut pallet.storage {

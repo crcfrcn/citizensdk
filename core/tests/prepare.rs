@@ -257,7 +257,7 @@ fn self_rebind_parameters_and_catalog_remain_instance_owned_and_single_use() {
     let pallet = meta
         .pallets
         .iter_mut()
-        .find(|p| p.name == "CitizenIdentity")
+        .find(|p| p.index == 10)
         .unwrap();
     pallet.name = "Identity".into();
     if let Some(storage) = &mut pallet.storage {

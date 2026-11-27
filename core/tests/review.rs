@@ -91,7 +91,8 @@ fn complete_scale_payload_exposes_all_confirmed_facts_without_wallet() {
     let (request, context, _) = fixture();
     let reviewed = review(request.clone(), &context).unwrap();
     assert_eq!(reviewed.request(), &request);
-    assert_eq!(reviewed.pallet_name(), "OnchainTransaction");
+    let metadata = crate::system_events::decode_metadata_strict(context.metadata()).unwrap();
+    assert_eq!(reviewed.pallet_name(), metadata.pallet_by_index(4).unwrap().name());
     assert_eq!(reviewed.call_name(), "transfer_with_remark");
     assert!(reviewed.call_arguments().contains("123456"));
     assert!(reviewed.call_arguments().contains("remark"));

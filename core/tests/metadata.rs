@@ -5,6 +5,12 @@ use crate::system_events::decode_metadata_strict;
 
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 
+// 固定历史metadata按自身索引取名，禁止把历史捕获的名称当作现行Runtime合同。
+fn fixture_pallet_name(metadata: &Metadata, index: u8) -> String {
+    metadata.pallet_by_index(index).expect("fixture pallet index").name().to_owned()
+}
+
+
 #[test]
 fn account_evm_address_matches_runtime_vectors_and_rejects_wrong_lengths() {
     let fixture: serde_json::Value =
@@ -35,7 +41,7 @@ fn metadata() -> Metadata {
         .step_by(2)
         .map(|offset| u8::from_str_radix(&text[offset..offset + 2], 16).expect("metadata hex"))
         .collect::<Vec<_>>();
-    decode_metadata_strict(&bytes).expect("production metadata")
+    decode_metadata_strict(&bytes).expect("frozen V14 metadata")
 }
 
 #[test]
@@ -68,14 +74,14 @@ fn call_indices(metadata: &Metadata, pallet_name: &str, call_name: &str) -> (u8,
 
 #[test]
 fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
-    // 金标由当前Runtime源码公开metadata_at_version(15)导出；源码测试版本为0/0，正式升级版本由发布入口指定。
+    // 固定历史Wasm的V15金标；源码测试版本为0/0，不代表现行链上版本。
     let text = include_str!("citizenchain-revive-v15-metadata.hex").trim();
     let hex = text.strip_prefix("0x").expect("metadata prefix");
     let bytes = (0..hex.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("metadata hex"))
         .collect::<Vec<_>>();
-    let current = decode_metadata_strict(&bytes).expect("current WASM metadata");
+    let current = decode_metadata_strict(&bytes).expect("frozen V15 metadata");
     use subxt_core::ext::codec::Decode;
     let mut version = current
         .pallet_by_name("System")
@@ -100,7 +106,7 @@ fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
         35
     );
     let identity = current
-        .pallet_by_name("CitizenIdentity")
+        .pallet_by_index(10)
         .expect("identity pallet");
     let self_rebind = identity
         .call_variant_by_name("self_rebind_cid_account_id")
@@ -127,16 +133,11 @@ fn revive_metadata_preserves_native_calls_and_zero_byte_set_origin() {
         .any(|field| field.name.as_deref() == Some("expires_at")));
 
     let before = metadata();
-    for name in [
-        "System",
-        "Balances",
-        "OnchainTransaction",
-        "CitizenIdentity",
-    ] {
+    for index in [0u8, 2, 4, 10] {
         assert_eq!(
-            before.pallet_by_name(name).expect("before").index(),
-            current.pallet_by_name(name).expect("current").index(),
-            "{name}"
+            fixture_pallet_name(&before, index),
+            fixture_pallet_name(&current, index),
+            "historical pallet index {index}"
         );
     }
     let call = vec![4, 0]
@@ -197,15 +198,16 @@ fn chain_codec_uses_exact_metadata_for_storage_and_call() {
     let codec = |operation: serde_json::Value| {
         super::chain_codec(&metadata, &serde_json::to_vec(&operation).unwrap())
     };
+    let parsed = crate::system_events::decode_metadata_strict(&metadata).unwrap();
+    let onchain = fixture_pallet_name(&parsed, 4);
     let account = vec![0x31u8; 32];
     let args = json!({"kind":"sequence","value":[
         {"kind":"bytes","value":account},
         {"kind":"integer","value":"123"},
         {"kind":"bytes","value":[0x61, 0x62]}
     ]});
-    let call = codec(json!({"op":"call","pallet":"OnchainTransaction","method":"transfer_with_remark","args":args})).unwrap();
+    let call = codec(json!({"op":"call","pallet":onchain,"method":"transfer_with_remark","args":args})).unwrap();
     let verified = crate::types::OpaqueTransactionCall::try_new(call.clone()).unwrap();
-    let parsed = crate::system_events::decode_metadata_strict(&metadata).unwrap();
     super::validate_opaque_runtime_call(&parsed, &verified).unwrap();
     let generated = codec(
         json!({"op":"storage","pallet":"System","entry":"Account","keys":[
@@ -220,7 +222,7 @@ fn chain_codec_uses_exact_metadata_for_storage_and_call() {
     .unwrap();
     assert_eq!(generated, expected);
     assert!(codec(
-        json!({"op":"call","pallet":"OnchainTransaction","method":"not_a_call","args":args})
+        json!({"op":"call","pallet":onchain,"method":"not_a_call","args":args})
     )
     .is_err());
     assert!(codec(
@@ -256,8 +258,10 @@ fn chain_codec_reads_unsigned_constant_from_verified_metadata() {
         read(&metadata, "Personal", "MinCreateAmount").unwrap(),
         b"111"
     );
+    let historical_metadata = decode_metadata_strict(&historical).unwrap();
+    let onchain = fixture_pallet_name(&historical_metadata, 4);
     assert_eq!(
-        read(&historical, "OnchainTransaction", "MaxTransferRemarkLen").unwrap(),
+        read(&historical, onchain.as_str(), "MaxTransferRemarkLen").unwrap(),
         b"99"
     );
     assert!(read(&metadata, "Personal", "MissingConstant").is_err());
@@ -334,8 +338,10 @@ fn institution_metadata_encodes_person_cids_seats_and_separate_registration() {
     use subxt_core::ext::codec::Encode;
     let bytes = hex::decode(include_str!("citizenchain-personal-metadata.hex").trim().trim_start_matches("0x")).unwrap();
     let current = decode_metadata_strict(&bytes).unwrap();
-    for removed in ["PublicAdmins", "PrivateAdmins", "PersonalAdmins", "PublicManage", "PrivateManage"] {
-        assert!(current.pallet_by_name(removed).is_none(), "removed pallet {removed}");
+    let historical = metadata();
+    for retired_index in [27u8, 28, 29, 30, 31] {
+        let removed = fixture_pallet_name(&historical, retired_index);
+        assert!(current.pallet_by_name(&removed).is_none(), "removed historical pallet {removed}");
     }
     assert_eq!(call_indices(&current, "Multisig", "propose_transfer"), (17, 0));
     assert_eq!(call_indices(&current, "InternalVote", "cast"), (20, 0));
@@ -464,14 +470,18 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
         super::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())
     };
 
+    let parsed = decode_metadata_strict(&metadata).unwrap();
+    let identity = fixture_pallet_name(&parsed, 10);
+    let square = fixture_pallet_name(&parsed, 34);
+    let offchain = fixture_pallet_name(&parsed, 19);
     let cid = b"CN001-TEST-2026".to_vec();
     let cid_bytes = cid.encode();
-    let mut expected = get_address_root_bytes(&dynamic("CitizenIdentity", "AccountIdByCid", ()));
+    let mut expected = get_address_root_bytes(&dynamic(identity.clone(), "AccountIdByCid", ()));
     expected.extend_from_slice(&crate::types::blake2b::<16>(&cid_bytes));
     expected.extend_from_slice(&cid_bytes);
     assert_eq!(
         codec(json!({
-            "op":"storage","pallet":"CitizenIdentity","entry":"AccountIdByCid",
+            "op":"storage","pallet":identity,"entry":"AccountIdByCid",
             "keys":[{"kind":"bytes","value":cid}],
         }))
         .unwrap(),
@@ -494,7 +504,7 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
 
     for (name, discriminant) in [("Freedom", 0), ("Spark", 2)] {
         let key = codec(json!({
-            "op":"storage","pallet":"SquarePost","entry":"PlatformPrice",
+            "op":"storage","pallet":square,"entry":"PlatformPrice",
             "keys":[{"kind":"variant","value":[name, []]}],
         }))
         .unwrap();
@@ -504,7 +514,7 @@ fn chain_codec_preserves_runtime_keys_and_u128_clearing_calls() {
 
     for (method, index) in [("deposit", 31), ("withdraw", 32)] {
         let call = codec(json!({
-            "op":"call","pallet":"OffchainTransaction","method":method,
+            "op":"call","pallet":offchain,"method":method,
             "args":{"kind":"sequence","value":[{"kind":"integer","value":"4660"}]},
         }))
         .unwrap();

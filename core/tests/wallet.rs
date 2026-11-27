@@ -3814,6 +3814,8 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
             let fixture: serde_json::Value =
                 serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
             let metadata_bytes = hex::decode(fixture["metadata"].as_str().unwrap()).unwrap();
+            let historical = crate::system_events::decode_metadata_strict(&metadata_bytes).unwrap();
+            let historical_identity = historical.pallet_by_index(10).unwrap().name().to_owned();
             // 历史V16原件只在内存映射现行模块名称，保留事件类型、字段和索引。
             use subxt_core::ext::codec::{Decode, Encode};
             let mut current =
@@ -3825,7 +3827,7 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
             let pallet = meta
                 .pallets
                 .iter_mut()
-                .find(|p| p.name == "CitizenIdentity")
+                .find(|p| p.index == 10)
                 .unwrap();
             pallet.name = "Identity".into();
             if let Some(storage) = &mut pallet.storage {
@@ -3845,7 +3847,7 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
                 (
                     "event",
                     Value::unnamed_variant(
-                        "CitizenIdentity",
+                        historical_identity.clone(),
                         [Value::named_variant(
                             "CidAccountIdRebound",
                             [
