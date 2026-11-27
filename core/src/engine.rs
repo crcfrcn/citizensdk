@@ -1244,7 +1244,7 @@ impl CitizenEngine {
             .iter()
             .filter(|event| {
                 event["extrinsic_index"].as_u64() == Some(u64::from(index))
-                    && event["pallet"] == "CitizenIdentity"
+                    && event["pallet"] == "Identity"
                     && event["name"] == "CidAccountIdRebound"
             })
             .collect::<Vec<_>>();
@@ -1286,7 +1286,7 @@ impl CitizenEngine {
         let metadata = crate::system_events::decode_metadata_strict(runtime.metadata())?;
         let key = |entry: &str, value: &[u8]| {
             let address = subxt_core::dynamic::storage(
-                "CitizenIdentity",
+                "Identity",
                 entry,
                 vec![subxt_core::dynamic::Value::from_bytes(value)],
             );
@@ -1309,7 +1309,7 @@ impl CitizenEngine {
             return Err(invalid());
         }
         let registry = rows[2].as_ref().ok_or_else(invalid)?;
-        let request = serde_json::json!({"op":"decode_storage", "pallet":"CitizenIdentity",
+        let request = serde_json::json!({"op":"decode_storage", "pallet":"Identity",
             "entry":"CidRegistry", "value":registry});
         let registry: serde_json::Value = serde_json::from_slice(&crate::metadata::chain_codec(
             runtime.metadata(),

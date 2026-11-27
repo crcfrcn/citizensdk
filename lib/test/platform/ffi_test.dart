@@ -210,7 +210,7 @@ void main() {
     final reward = CitizenSystemEvent(
       eventIndex: 8,
       extrinsicIndex: null,
-      pallet: 'FullnodeIssuance',
+      pallet: 'FullnodeIssue',
       name: 'FullnodeIssuanceIssued',
       fields: {
         'block': '7',
@@ -289,6 +289,37 @@ void main() {
     expect(() => body.transactionHashAt(1), throwsFormatException);
   });
 
+  test('现行Onchain备注事件合并本金并拒绝缺失前序本金', () async {
+    final block = CitizenBlockRef(
+      hash: '0x${'06' * 32}',
+      number: BigInt.one,
+      finality: CitizenBlockFinality.finalized,
+    );
+    List<String> bytes(int byte) => List<String>.filled(32, '$byte');
+    CitizenSystemEvent event(int index, String pallet, String name, Object? fields) =>
+        CitizenSystemEvent(eventIndex: index, extrinsicIndex: 0,
+          pallet: pallet, name: name, fields: fields);
+    final principal = event(0, 'Balances', 'Transfer', {
+      'from': bytes(1), 'to': bytes(2), 'amount': '100',
+    });
+    final remark = event(1, 'Onchain', 'TransferWithRemark', {
+      'from_account_id': bytes(1), 'beneficiary_account_id': bytes(2),
+      'amount': '100', 'remark': ['104', '105'],
+    });
+    final success = event(2, 'System', 'ExtrinsicSuccess', null);
+    final body = CitizenBlockBody(block: block,
+      extrinsics: [Uint8List.fromList([12, 132, 1, 2])]);
+    final facts = await readCitizenWalletEvents(block, [account(1)],
+      readEvents: (_) async => [principal, remark, success],
+      readBody: (_) async => body);
+    expect(facts.transfers.single.remark, 'hi');
+    expect(facts.transfers.single.amountFen, BigInt.from(100));
+    await expectLater(readCitizenWalletEvents(block, [account(1)],
+      readEvents: (_) async => [remark, success],
+      readBody: (_) async => throw StateError('缺少本金不得读取交易体')),
+      throwsFormatException);
+  });
+
   test('钱包事实保留同一失败执行的每条实际扣费', () async {
     final block = CitizenBlockRef(
       hash: '0x${'06' * 32}',
@@ -316,11 +347,11 @@ void main() {
         'to': bytes(2),
         'amount': '9007199254740993',
       }),
-      event(1, 'OnchainTransaction', 'FeePaid', {
+      event(1, 'Onchain', 'FeePaid', {
         'account_id': bytes(1),
         'fee': '10',
       }),
-      event(2, 'OnchainTransaction', 'FeePaid', {
+      event(2, 'Onchain', 'FeePaid', {
         'account_id': bytes(2),
         'fee': '20',
       }),

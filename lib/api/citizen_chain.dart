@@ -524,7 +524,7 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
         outcomes[index] = event.name == 'ExtrinsicSuccess'
             ? CitizenExecutionStatus.success
             : CitizenExecutionStatus.failed;
-      case ('FullnodeIssuance', 'FullnodeIssuanceIssued'):
+      case ('FullnodeIssue', 'FullnodeIssuanceIssued'):
         final recipient = citizenAccountIdFromBytes(
           event.fieldBytes('reward_account_id'),
         );
@@ -544,7 +544,7 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
           amountFen: amount,
           eventIndex: event.eventIndex,
         ));
-      case ('OnchainTransaction', 'FeePaid'):
+      case ('Onchain', 'FeePaid'):
         final payer = citizenAccountIdFromBytes(event.fieldBytes('account_id'));
         if (!accounts.contains(payer)) continue;
         final amount = event.fieldUnsigned('fee');
@@ -553,7 +553,7 @@ Future<CitizenWalletBlockEvents> readCitizenWalletEvents(
         }
         fees.add((event, payer, amount));
       case ('Balances', 'Transfer'):
-      case ('OnchainTransaction', 'TransferWithRemark'):
+      case ('Onchain', 'TransferWithRemark'):
         final plain = event.pallet == 'Balances';
         final from = citizenAccountIdFromBytes(
           event.fieldBytes(plain ? 'from' : 'from_account_id'),

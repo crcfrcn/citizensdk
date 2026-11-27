@@ -67,21 +67,31 @@ impl PreparedTransaction {
     pub(crate) fn rebind_parameters(&self) -> Result<Option<(Vec<u8>, u64)>, EngineError> {
         let metadata = decode_metadata_strict(self.runtime_context.metadata())?;
         let bytes = self.call_data();
-        let Some(pallet) = metadata.pallet_by_index(bytes[0]) else { return Ok(None) };
-        let Some(call) = pallet.call_variant_by_index(bytes[1]) else { return Ok(None) };
-        if pallet.name() != "CitizenIdentity" || call.name != "self_rebind_cid_account_id" {
+        let Some(pallet) = metadata.pallet_by_index(bytes[0]) else {
+            return Ok(None);
+        };
+        let Some(call) = pallet.call_variant_by_index(bytes[1]) else {
+            return Ok(None);
+        };
+        if pallet.name() != "Identity" || call.name != "self_rebind_cid_account_id" {
             return Ok(None);
         }
         let mut remaining = &bytes[2..];
         let (cid, revision, _signature) = <(Vec<u8>, u64, Vec<u8>)>::decode(&mut remaining)
             .map_err(|error| EngineError::InvalidMetadata(error.to_string()))?;
         if !remaining.is_empty() || cid.is_empty() || revision == 0 || revision == u64::MAX {
-            return Err(EngineError::contract(ContractErrorCode::Integrity, "自助换绑参数不完整"));
+            return Err(EngineError::contract(
+                ContractErrorCode::Integrity,
+                "自助换绑参数不完整",
+            ));
         }
         Ok(Some((cid, revision)))
     }
 
-    pub(crate) fn freeze_rebind_wallet(&mut self, wallet: crate::wallet_service::WalletStateSnapshot) {
+    pub(crate) fn freeze_rebind_wallet(
+        &mut self,
+        wallet: crate::wallet_service::WalletStateSnapshot,
+    ) {
         self.rebind_wallet = Some(wallet);
     }
 
@@ -207,8 +217,13 @@ pub(crate) struct PreparedTransactionRegistry {
 }
 
 impl PreparedTransactionRegistry {
-    pub(crate) fn rebind_wallet(&self, id: TransactionPreparationId) -> Option<crate::wallet_service::WalletStateSnapshot> {
-        self.entries.get(&id).and_then(|prepared| prepared.rebind_wallet().cloned())
+    pub(crate) fn rebind_wallet(
+        &self,
+        id: TransactionPreparationId,
+    ) -> Option<crate::wallet_service::WalletStateSnapshot> {
+        self.entries
+            .get(&id)
+            .and_then(|prepared| prepared.rebind_wallet().cloned())
     }
 
     pub(crate) fn reserve(

@@ -138,8 +138,8 @@ pub trait AccountNonceSource: Send + Sync {
 
 /// 从同一准确 runtime metadata 解码出的链上资金交易费率。
 ///
-/// `fee_rate_parts` 对应 `OnchainTransaction.OnchainFeeRate`，`minimum_fee_fen` 对应
-/// `OnchainTransaction.OnchainMinFee`。本对象不允许本地默认值或无效的零费率。
+/// `fee_rate_parts` 对应 `Onchain.OnchainFeeRate`，`minimum_fee_fen` 对应
+/// `Onchain.OnchainMinFee`。本对象不允许本地默认值或无效的零费率。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OnchainFeePolicy {
     block: VerifiedBlockRef,

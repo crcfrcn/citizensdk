@@ -3727,7 +3727,7 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
         let pallet = if entry == "Events" {
             "System"
         } else {
-            "CitizenIdentity"
+            "Identity"
         };
         let ty = metadata
             .pallet_by_name(pallet)
@@ -3746,7 +3746,7 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
     }
     fn key(metadata: &Metadata, entry: &str, bytes: &[u8]) -> Vec<u8> {
         subxt_core::storage::get_address_bytes(
-            &subxt_core::dynamic::storage("CitizenIdentity", entry, vec![Value::from_bytes(bytes)]),
+            &subxt_core::dynamic::storage("Identity", entry, vec![Value::from_bytes(bytes)]),
             metadata,
         )
         .unwrap()
@@ -3814,6 +3814,24 @@ fn finalized_rebind_proof_commits_one_catalog_without_another_authorization() {
             let fixture: serde_json::Value =
                 serde_json::from_str(include_str!("mldsa-runtime-v16.json")).unwrap();
             let metadata_bytes = hex::decode(fixture["metadata"].as_str().unwrap()).unwrap();
+            // 历史V16原件只在内存映射现行模块名称，保留事件类型、字段和索引。
+            use subxt_core::ext::codec::{Decode, Encode};
+            let mut current =
+                frame_metadata::RuntimeMetadataPrefixed::decode(&mut metadata_bytes.as_slice())
+                    .unwrap();
+            let frame_metadata::RuntimeMetadata::V16(meta) = &mut current.1 else {
+                panic!("V16 fixture")
+            };
+            let pallet = meta
+                .pallets
+                .iter_mut()
+                .find(|p| p.name == "CitizenIdentity")
+                .unwrap();
+            pallet.name = "Identity".into();
+            if let Some(storage) = &mut pallet.storage {
+                storage.prefix = "Identity".into();
+            }
+            let metadata_bytes = current.encode();
             let metadata = crate::system_events::decode_metadata_strict(&metadata_bytes).unwrap();
             let cid = b"CN583-CTZN2-763721825-2026";
             let event = Value::named_composite([

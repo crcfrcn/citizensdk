@@ -307,18 +307,14 @@ pub fn decode_best_fee_snapshot(
         ));
     }
     let metadata = decode_metadata_strict(context.metadata())?;
-    let fee_rate = decode_integer_constant(&metadata, "OnchainTransaction", "OnchainFeeRate")?;
+    let fee_rate = decode_integer_constant(&metadata, "Onchain", "OnchainFeeRate")?;
     let fee_rate = u32::try_from(fee_rate).map_err(|_| {
-        EngineError::contract(
-            ContractErrorCode::Decode,
-            "OnchainTransaction.OnchainFeeRate 超出 u32",
-        )
+        EngineError::contract(ContractErrorCode::Decode, "Onchain.OnchainFeeRate 超出 u32")
     })?;
-    let minimum_fee_fen =
-        decode_integer_constant(&metadata, "OnchainTransaction", "OnchainMinFee")?;
+    let minimum_fee_fen = decode_integer_constant(&metadata, "Onchain", "OnchainMinFee")?;
     let existential_deposit_fen =
         decode_integer_constant(&metadata, "Balances", "ExistentialDeposit")?;
-    let FLAT_FEE = decode_integer_constant(&metadata, "OnchainTransaction", "FLAT_FEE")?;
+    let FLAT_FEE = decode_integer_constant(&metadata, "Onchain", "FLAT_FEE")?;
     let policy = OnchainFeePolicy::try_new(identity, context.block(), fee_rate, minimum_fee_fen)
         .map_err(EngineError::from)?;
     Ok(BestFeeSnapshot {

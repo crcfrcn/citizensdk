@@ -1,7 +1,7 @@
 //! 以实际Runtime向量验证交易准备、认证绑定、并发及篡改拒绝。
 
 use super::*;
-use subxt_core::ext::codec::Encode;
+use subxt_core::ext::codec::{Decode, Encode};
 
 #[test]
 fn sdk_v16_messages_and_both_pq_envelopes_match_actual_frame_runtime() {
@@ -242,13 +242,28 @@ fn v5_persisted_transactions_revalidate_authentication_and_reject_tampering() {
 fn self_rebind_parameters_and_catalog_remain_instance_owned_and_single_use() {
     use crate::types::{citizen_ss58_address, ColdWalletAccount, WalletState};
     use crate::wallet_service::WalletStateSnapshot;
-    // 既有当前call9金标；不改写metadata或伪造版本来迁就测试。
+    // 沿用call9金标的结构；仅在内存同步现行Identity名称，不改历史原件或版本。
     let metadata = hex::decode(
         include_str!("citizenchain-revive-v15-metadata.hex")
             .trim()
             .trim_start_matches("0x"),
     )
     .unwrap();
+    let mut current =
+        frame_metadata::RuntimeMetadataPrefixed::decode(&mut metadata.as_slice()).unwrap();
+    let frame_metadata::RuntimeMetadata::V15(meta) = &mut current.1 else {
+        panic!("V15 fixture")
+    };
+    let pallet = meta
+        .pallets
+        .iter_mut()
+        .find(|p| p.name == "CitizenIdentity")
+        .unwrap();
+    pallet.name = "Identity".into();
+    if let Some(storage) = &mut pallet.storage {
+        storage.prefix = "Identity".into();
+    }
+    let metadata = current.encode();
     let old = AccountId32::from_bytes([0xa1; 32]);
     let target = AccountId32::from_bytes([0xb2; 32]);
     let wallet = WalletState::try_from_catalog_parts(
@@ -268,7 +283,7 @@ fn self_rebind_parameters_and_catalog_remain_instance_owned_and_single_use() {
     .unwrap();
     let snapshot = WalletStateSnapshot::from_state(&wallet).unwrap();
     for revision in [0u64, 1, u64::MAX] {
-        let request = serde_json::json!({"op":"call","pallet":"CitizenIdentity","method":"self_rebind_cid_account_id",
+        let request = serde_json::json!({"op":"call","pallet":"Identity","method":"self_rebind_cid_account_id",
             "args":{"kind":"sequence","value":[{"kind":"bytes","value":b"CN583-CTZN2-763721825-2026"},
                 {"kind":"integer","value":revision.to_string()},{"kind":"bytes","value":vec![1u8;64]}]}});
         let call = crate::metadata::chain_codec(&metadata, &serde_json::to_vec(&request).unwrap())

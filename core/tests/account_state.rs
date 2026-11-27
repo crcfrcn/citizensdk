@@ -41,6 +41,26 @@ use subxt_core::Metadata;
 const METADATA_HEX: &str = include_str!("citizenchain-runtime-v14-metadata.hex");
 const VECTOR_JSON: &str = include_str!("citizenchain-balance-fee-v1.json");
 
+// 在内存中表达当前Runtime名称，保留共享历史metadata原件与全部常量字节。
+fn onchain_fee_metadata() -> Vec<u8> {
+    let bytes = decode_hex(METADATA_HEX);
+    let mut metadata = frame_metadata::RuntimeMetadataPrefixed::decode(&mut bytes.as_slice())
+        .unwrap_or_else(|error| panic!("metadata fixture failed: {error}"));
+    let frame_metadata::RuntimeMetadata::V14(meta) = &mut metadata.1 else {
+        panic!("V14 fixture")
+    };
+    let pallet = meta
+        .pallets
+        .iter_mut()
+        .find(|p| p.name == "OnchainTransaction")
+        .unwrap_or_else(|| panic!("historical fee pallet missing"));
+    pallet.name = "Onchain".into();
+    if let Some(storage) = &mut pallet.storage {
+        storage.prefix = "Onchain".into();
+    }
+    metadata.encode()
+}
+
 struct TestClient {
     identity: ChainIdentity,
     best: VerifiedBlockRef,
@@ -455,7 +475,8 @@ fn fee_policy_is_decoded_only_from_one_exact_production_runtime_context() {
             .unwrap_or_else(|| panic!("best block number is not u64")),
     );
     let finalized = FinalizedBlockRef::from_parts(Hash32::from_bytes([0xaa; 32]), 77);
-    let client = TestClient::new(best, finalized);
+    let mut client = TestClient::new(best, finalized);
+    client.metadata = onchain_fee_metadata();
     let service = AccountStateService::new(&client, None);
     let snapshot = futures::executor::block_on(service.best_fee_snapshot())
         .unwrap_or_else(|error| panic!("fee snapshot failed: {error}"));
@@ -513,26 +534,42 @@ fn fee_policy_is_decoded_only_from_one_exact_production_runtime_context() {
 #[test]
 fn fee_snapshot_requires_the_shared_metadata_constant() {
     let best = VerifiedBlockRef::best(Hash32::from_bytes([0x32; 32]), 32);
-    let mut input = decode_hex(METADATA_HEX);
-    let mut metadata =
-        frame_metadata::RuntimeMetadataPrefixed::decode(&mut input.as_slice()).unwrap();
-    let frame_metadata::RuntimeMetadata::V14(meta) = &mut metadata.1 else {
-        panic!("V14 fixture")
-    };
-    let pallet = meta
-        .pallets
-        .iter_mut()
-        .find(|p| p.name == "OnchainTransaction")
-        .unwrap();
-    let index = pallet
-        .constants
-        .iter()
-        .position(|c| c.name == "FLAT_FEE")
-        .unwrap();
-    pallet.constants.remove(index);
-    input = metadata.encode();
-    let context = RuntimeContext::try_new(best, RuntimeVersion::new(0, 0), input).unwrap();
-    assert!(decode_best_fee_snapshot(&ChainIdentity::citizenchain(), &context).is_err());
+    for required in ["OnchainFeeRate", "OnchainMinFee", "FLAT_FEE"] {
+        let input = onchain_fee_metadata();
+        let mut metadata =
+            frame_metadata::RuntimeMetadataPrefixed::decode(&mut input.as_slice()).unwrap();
+        let frame_metadata::RuntimeMetadata::V14(meta) = &mut metadata.1 else {
+            panic!("V14 fixture")
+        };
+        let pallet = meta
+            .pallets
+            .iter_mut()
+            .find(|p| p.name == "Onchain")
+            .unwrap();
+        let index = pallet
+            .constants
+            .iter()
+            .position(|c| c.name == required)
+            .unwrap();
+        pallet.constants.remove(index);
+        let context =
+            RuntimeContext::try_new(best, RuntimeVersion::new(0, 0), metadata.encode()).unwrap();
+        assert!(
+            decode_best_fee_snapshot(&ChainIdentity::citizenchain(), &context).is_err(),
+            "missing {required} must fail"
+        );
+    }
+}
+
+#[test]
+fn fee_snapshot_rejects_old_pallet_prefix() {
+    let best = VerifiedBlockRef::best(Hash32::from_bytes([0x32; 32]), 32);
+    let context =
+        RuntimeContext::try_new(best, RuntimeVersion::new(0, 0), decode_hex(METADATA_HEX)).unwrap();
+    assert!(
+        decode_best_fee_snapshot(&ChainIdentity::citizenchain(), &context).is_err(),
+        "current fee reader must not accept the replaced pallet prefix"
+    );
 }
 
 #[test]
@@ -838,6 +875,25 @@ fn check_prepared_execution(metadata_hex: &str, supported: bool, rebind: bool) {
     let best = VerifiedBlockRef::best(finalized.hash(), finalized.number());
     let mut client = TestClient::new(best, finalized);
     client.metadata = decode_hex(metadata_hex);
+    if rebind {
+        // 当前Identity仍须拒绝旧换绑参数结构，不能因旧模块名而跳过保护。
+        let mut current =
+            frame_metadata::RuntimeMetadataPrefixed::decode(&mut client.metadata.as_slice())
+                .unwrap();
+        let frame_metadata::RuntimeMetadata::V16(meta) = &mut current.1 else {
+            panic!("V16 fixture")
+        };
+        let pallet = meta
+            .pallets
+            .iter_mut()
+            .find(|p| p.name == "CitizenIdentity")
+            .unwrap();
+        pallet.name = "Identity".into();
+        if let Some(storage) = &mut pallet.storage {
+            storage.prefix = "Identity".into();
+        }
+        client.metadata = current.encode();
+    }
     let chain = Arc::new(client);
     let metadata = decode_metadata(&chain.metadata);
     let pallet = metadata.pallet_by_name("System").expect("System metadata");
@@ -848,7 +904,7 @@ fn check_prepared_execution(metadata_hex: &str, supported: bool, rebind: bool) {
         use subxt_core::ext::scale_value::Value;
         use subxt_core::tx::payload::Payload;
         subxt_core::tx::payload::dynamic(
-            "CitizenIdentity",
+            "Identity",
             "self_rebind_cid_account_id",
             vec![
                 Value::from_bytes(b"CN583-CTZN2-763721825-2026"),
